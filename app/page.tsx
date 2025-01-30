@@ -1,6 +1,17 @@
+'use client'; // Required for client-side interactivity
+import { useState } from "react";
+import { signInWithGoogle, logOut } from "@/lib/firebaseAuth";
 import Image from "next/image";
+import { User } from "firebase/auth";
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+
+  const handleLogin = async () => {
+    const userData = await signInWithGoogle();
+    setUser(userData);
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
@@ -47,6 +58,17 @@ export default function Home() {
           >
             Read our docs
           </a>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: "50px" }}>
+          {user ? (
+            <>
+              <h2>Привет, {user.displayName}!</h2>
+              <button onClick={logOut}>Выйти</button>
+            </>
+          ) : (
+            <button onClick={handleLogin}>Войти через Google</button>
+          )}
         </div>
       </main>
       <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
