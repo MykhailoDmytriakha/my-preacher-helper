@@ -1,9 +1,11 @@
-import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously, setPersistence, browserLocalPersistence } from "firebase/auth";
 import app from "./firebaseConfig";
 
-
-const auth = getAuth(app);
+export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
+
+// Add persistence setup
+setPersistence(auth, browserLocalPersistence);
 
 export const signInAsGuest = async (): Promise<User | null> => {
   try {
@@ -31,6 +33,7 @@ export const logOut = async (): Promise<void> => {
   try {
     await signOut(auth);
     console.log("User logged out");
+    window.location.href = '/';
   } catch (error) {
     console.error("Error logging out:", error);
     throw error;
