@@ -1,21 +1,43 @@
 'use client'; // Required for client-side interactivity
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signInWithGoogle, signInAsGuest, logOut } from "@/lib/firebaseAuth";
 import Image from "next/image";
 import { User } from "firebase/auth";
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Переносим проверку localStorage в useEffect
+  useEffect(() => {
+    const saved = localStorage.getItem('guestUser');
+    setUser(saved ? JSON.parse(saved) : null);
+    setIsLoading(false);
+  }, []);
 
   const handleLogin = async () => {
     const userData = await signInWithGoogle();
     setUser(userData);
+    localStorage.setItem('guestUser', JSON.stringify(userData));
   };
 
   const handleGuestLogin = async () => {
     const userData = await signInAsGuest();
     setUser(userData);
+    // Сохраняем данные гостя в localStorage
+    localStorage.setItem('guestUser', JSON.stringify(userData));
   };
+
+  // Добавляем обработчик выхода
+  const handleLogout = async () => {
+    await logOut();
+    setUser(null);
+    localStorage.removeItem('guestUser');
+  };
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-white dark:bg-gray-900" />;
+  }
 
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 font-[family-name:var(--font-geist-sans)]">
@@ -75,12 +97,20 @@ export default function Home() {
 
         <div className="flex gap-4 items-center flex-col sm:flex-row w-full justify-center">
           {user ? (
-            <button 
-              className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-lg"
-              onClick={() => {/* Add recording handler */}}
-            >
-              🎤 Начать запись
-            </button>
+            <div className="flex flex-col gap-4 items-center">
+              <button 
+                className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-lg"
+                onClick={() => {/* Add recording handler */}}
+              >
+                🎤 Начать запись
+              </button>
+              <button
+                className="px-6 py-2 text-red-600 hover:text-red-700 transition-colors"
+                onClick={handleLogout}
+              >
+                Выйти
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
               <div className="text-center space-y-2">
