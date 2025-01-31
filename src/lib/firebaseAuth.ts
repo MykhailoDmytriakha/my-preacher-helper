@@ -1,9 +1,20 @@
-import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously } from "firebase/auth";
 import app from "./firebaseConfig";
 
 
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
+
+export const signInAsGuest = async (): Promise<User | null> => {
+  try {
+    const result = await signInAnonymously(auth);
+    console.log("Anonymous User:", result.user);
+    return result.user;
+  } catch (error) {
+    console.error("Error signing in anonymously:", error);
+    throw error;
+  }
+}; 
 
 export const signInWithGoogle = async (): Promise<User | null> => {
   try {
@@ -24,4 +35,4 @@ export const logOut = async (): Promise<void> => {
     console.error("Error logging out:", error);
     throw error;
   }
-}; 
+};

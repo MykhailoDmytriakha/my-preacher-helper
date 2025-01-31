@@ -1,6 +1,6 @@
 'use client'; // Required for client-side interactivity
 import { useState } from "react";
-import { signInWithGoogle, logOut } from "@/lib/firebaseAuth";
+import { signInWithGoogle, signInAsGuest, logOut } from "@/lib/firebaseAuth";
 import Image from "next/image";
 import { User } from "firebase/auth";
 
@@ -9,6 +9,11 @@ export default function Home() {
 
   const handleLogin = async () => {
     const userData = await signInWithGoogle();
+    setUser(userData);
+  };
+
+  const handleGuestLogin = async () => {
+    const userData = await signInAsGuest();
     setUser(userData);
   };
 
@@ -67,7 +72,20 @@ export default function Home() {
               <button onClick={logOut}>Выйти</button>
             </>
           ) : (
-            <button onClick={handleLogin}>Войти через Google</button>
+            <div className="flex flex-col gap-3">
+            <button 
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              onClick={handleLogin}
+            >
+              Войти через Google
+            </button>
+            <button
+              className="px-6 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition-colors"
+              onClick={handleGuestLogin}
+            >
+              Продолжить как гость
+            </button>
+          </div>
           )}
         </div>
       </main>
