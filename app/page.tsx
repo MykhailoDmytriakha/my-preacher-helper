@@ -115,11 +115,8 @@ export default function Home() {
             <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
               <div className="text-center space-y-2">
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Добро пожаловать
+                  Начните использовать
                 </h2>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">
-                  Начните создавать проповеди<br/>с помощью AI-ассистента
-                </p>
               </div>
               
               <div className="w-full space-y-3">
@@ -157,11 +154,6 @@ export default function Home() {
                   Продолжить как гость
                 </button>
               </div>
-              
-              <p className="text-center text-xs text-gray-400 mt-4">
-                Нажимая продолжить, вы принимаете наши<br/>
-                <a href="#" className="text-blue-600 hover:underline">Условия использования</a>
-              </p>
             </div>
           )}
         </div>
