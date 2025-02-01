@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { getSermonById } from "@/services/sermon.service";
@@ -9,6 +9,7 @@ import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
 import { Sermon } from "@/services/sermon.service";
 import { transcribeAudio } from "@/services/transcription.service";
+import ExportButtons from "@components/ExportButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default function SermonPage() {
 
   useEffect(() => {
     const loadSermon = async () => {
-      const data = await getSermonById(id); // Используем id из хука
+      const data = await getSermonById(id);
       setSermon(data || null);
     };
     loadSermon();
@@ -59,14 +60,13 @@ export default function SermonPage() {
   const handleNewRecording = async (audioBlob: Blob) => {
     try {
       const text = await transcribeAudio(audioBlob);
-  
       // Формируем новую мысль
       const newThought = {
         text,
-        tag: "auto-generated",
+        tag: "auto-generated" as const,
         createdAt: new Date(),
       };
-  
+      // Here you can update your sermon state or perform any other logic
     } catch (error) {
       console.error("Recording error:", error);
       alert("Ошибка обработки аудио");
@@ -84,17 +84,7 @@ export default function SermonPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 {sermon.title}
               </h1>
-              <div className="flex gap-4">
-                <button className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors">
-                  TXT
-                </button>
-                <button className="px-4 py-2 bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors">
-                  PDF
-                </button>
-                <button className="px-4 py-2 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition-colors">
-                  Word
-                </button>
-              </div>
+              <ExportButtons sermonId={sermon.id} />
             </div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {sermon.date}

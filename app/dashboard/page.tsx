@@ -1,5 +1,6 @@
 import { getSermons } from '@/services/sermon.service';
 import Link from "next/link";
+import ExportButtons from "@components/ExportButtons";
 
 export default async function DashboardPage() {
   const sermons = await getSermons();
@@ -28,17 +29,7 @@ export default async function DashboardPage() {
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{sermon.date}</p>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <button className="w-full px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md">
-                    TXT
-                  </button>
-                  <button className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md">
-                    PDF
-                  </button>
-                  <button className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md">
-                    Word
-                  </button>
-                </div>
+                <ExportButtons sermonId={sermon.id} orientation='vertical' />
               </div>
             </div>
           </Link>
