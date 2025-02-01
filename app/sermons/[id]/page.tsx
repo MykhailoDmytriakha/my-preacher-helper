@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById } from "@/services/sermon.service";
+import { getSermonById, Thought } from "@/services/sermon.service";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
@@ -50,25 +50,49 @@ export default function SermonPage() {
     );
   }
 
+  // Format the sermon date to display digits only.
+  // This will output format like "01.02.2025, 11:47"
+  const formattedDate = new Date(sermon.date).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const totalThoughts = sermon.thoughts.length;
+
   const tagCounts = {
-    introduction: sermon.thoughts.filter((t) => t.tag === "introduction")
-      .length,
+    introduction: sermon.thoughts.filter((t) => t.tag === "introduction").length,
     main: sermon.thoughts.filter((t) => t.tag === "main").length,
     conclusion: sermon.thoughts.filter((t) => t.tag === "conclusion").length,
   };
 
+  const introPercentage = totalThoughts ? Math.round((tagCounts.introduction / totalThoughts) * 100) : 0;
+  const mainPercentage = totalThoughts ? Math.round((tagCounts.main / totalThoughts) * 100) : 0;
+  const conclusionPercentage = totalThoughts ? Math.round((tagCounts.conclusion / totalThoughts) * 100) : 0;
+
   const handleNewRecording = async (audioBlob: Blob) => {
+    console.log("handleNewRecording: Received audio blob", audioBlob);
     try {
       const text = await transcribeAudio(audioBlob);
+      console.log("handleNewRecording: Transcription successful", text);
       // Формируем новую мысль
-      const newThought = {
+      const newThought:Thought = {
         text,
         tag: "auto-generated" as const,
-        createdAt: new Date(),
+        date: new Date().toISOString(),
       };
-      // Here you can update your sermon state or perform any other logic
+      console.log("handleNewRecording: New thought created", newThought);
+      // Update the sermon by appending the new thought
+      setSermon((prevSermon) =>
+        prevSermon
+          ? { ...prevSermon, thoughts: [...prevSermon.thoughts, newThought] }
+          : prevSermon
+      );
     } catch (error) {
-      console.error("Recording error:", error);
+      console.error("handleNewRecording: Recording error:", error);
       alert("Ошибка обработки аудио");
     }
   };
@@ -87,7 +111,7 @@ export default function SermonPage() {
               <ExportButtons sermonId={sermon.id} />
             </div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {sermon.date}
+              {formattedDate}
             </span>
             <div>
               {sermon.verse && (
@@ -110,38 +134,51 @@ export default function SermonPage() {
               </div>
 
               <div className="space-y-4">
-                {sermon.thoughts.map((thought, index) => (
-                  <div
-                    key={index}
-                    className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                  >
-                    {thought.tag !== "auto-generated" && (
+                {sermon.thoughts.length === 0 ? (
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Нет записей для этой проповеди.
+                  </p>
+                ) : (
+                  sermon.thoughts.map((thought, index) => (
+                    <div
+                      key={index}
+                      className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    >
                       <div className="flex justify-between items-start mb-2">
-                        <span
-                          className={`text-sm px-2 py-1 rounded-full ${
-                            thought.tag === "introduction"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                        {thought.tag !== "auto-generated" && (
+                          <span
+                            className={`text-sm px-2 py-1 rounded-full ${
+                              thought.tag === "introduction"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                : thought.tag === "main"
+                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            }`}
+                          >
+                            {thought.tag === "introduction"
+                              ? "Вступление"
                               : thought.tag === "main"
-                              ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                          }`}
-                        >
-                          {thought.tag === "introduction"
-                            ? "Вступление"
-                            : thought.tag === "main"
-                            ? "Основная часть"
-                            : "Заключение"}
-                        </span>
+                              ? "Основная часть"
+                              : "Заключение"}
+                          </span>
+                        )}
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(thought.createdAt).toLocaleTimeString()}
+                          {new Date(thought.date).toLocaleTimeString("ru-RU", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
                         </span>
                       </div>
-                    )}
-                    <p className="text-gray-800 dark:text-gray-200">
-                      {thought.text}
-                    </p>
-                  </div>
-                ))}
+                      <p className="text-gray-800 dark:text-gray-200">
+                        {thought.text}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -160,29 +197,21 @@ export default function SermonPage() {
                       <div
                         className="bg-blue-600 transition-all duration-500"
                         style={{
-                          width: `${
-                            (tagCounts.introduction / sermon.thoughts.length) *
-                            100
-                          }%`,
+                          width: totalThoughts ? `${introPercentage}%` : "0%",
                         }}
                         data-tooltip={`Вступление: ${tagCounts.introduction} записей`}
                       />
                       <div
                         className="bg-purple-600 transition-all duration-500"
                         style={{
-                          width: `${
-                            (tagCounts.main / sermon.thoughts.length) * 100
-                          }%`,
+                          width: totalThoughts ? `${mainPercentage}%` : "0%",
                         }}
                         data-tooltip={`Основная часть: ${tagCounts.main} записей`}
                       />
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
-                          width: `${
-                            (tagCounts.conclusion / sermon.thoughts.length) *
-                            100
-                          }%`,
+                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                         }}
                         data-tooltip={`Заключение: ${tagCounts.conclusion} записей`}
                       />
@@ -192,11 +221,7 @@ export default function SermonPage() {
                   <div className="flex justify-between text-sm">
                     <div className="text-blue-600 text-center">
                       <div className="text-lg font-bold">
-                        {Math.round(
-                          (tagCounts.introduction / sermon.thoughts.length) *
-                            100
-                        )}
-                        %
+                        {introPercentage}%
                       </div>
                       <span className="text-xs text-gray-500">
                         Рекомендуется: 20%
@@ -207,10 +232,7 @@ export default function SermonPage() {
 
                     <div className="text-purple-600 text-center">
                       <div className="text-lg font-bold">
-                        {Math.round(
-                          (tagCounts.main / sermon.thoughts.length) * 100
-                        )}
-                        %
+                        {mainPercentage}%
                       </div>
                       <span className="text-xs text-gray-500">
                         Целевой показатель: 60%
@@ -221,10 +243,7 @@ export default function SermonPage() {
 
                     <div className="text-green-600 text-center">
                       <div className="text-lg font-bold">
-                        {Math.round(
-                          (tagCounts.conclusion / sermon.thoughts.length) * 100
-                        )}
-                        %
+                        {conclusionPercentage}%
                       </div>
                       <span className="text-xs text-gray-500">
                         Рекомендуется: 20%
