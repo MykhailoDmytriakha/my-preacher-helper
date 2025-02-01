@@ -2,20 +2,25 @@
 
 import React from "react";
 
-// ExportButtons component (presentational)
-interface ExportButtonsProps {
-  onTxtClick?: () => void;
-  onPdfClick?: () => void;
-  onWordClick?: () => void;
+/**
+ * Props for the presentational export buttons layout.
+ */
+interface ExportButtonsLayoutProps {
+  onTxtClick: () => void;
+  onPdfClick: () => void;
+  onWordClick: () => void;
   orientation?: "horizontal" | "vertical";
 }
 
-function ExportButtonsLayout({
+/**
+ * Presentational layout for export buttons.
+ */
+export function ExportButtonsLayout({
   onTxtClick,
   onPdfClick,
   onWordClick,
   orientation = "horizontal",
-}: ExportButtonsProps) {
+}: ExportButtonsLayoutProps) {
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
 
   return (
@@ -42,20 +47,24 @@ function ExportButtonsLayout({
   );
 }
 
-// ClientExportButtons component (container)
-interface ExportButtonsProps {
+/**
+ * Props for the container export buttons component.
+ */
+interface ExportButtonsContainerProps {
   sermonId: string;
   orientation?: "horizontal" | "vertical";
 }
 
+/**
+ * Container component that wires up the export buttons with sermon-specific actions.
+ */
 export default function ExportButtons({
   sermonId,
   orientation = "horizontal",
-}: ExportButtonsProps) {
+}: ExportButtonsContainerProps) {
   return (
     <ExportButtonsLayout
       orientation={orientation}
-      sermonId={sermonId}
       onTxtClick={() => console.log(`Export TXT for sermon ${sermonId}`)}
       onPdfClick={() => console.log(`Export PDF for sermon ${sermonId}`)}
       onWordClick={() => console.log(`Export Word for sermon ${sermonId}`)}
