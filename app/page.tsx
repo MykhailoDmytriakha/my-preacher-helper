@@ -1,6 +1,6 @@
 'use client'; // Required for client-side interactivity
 import { useState, useEffect } from "react";
-import { signInWithGoogle, signInAsGuest, logOut } from "@/lib/firebaseAuth";
+import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
 import Image from "next/image";
 import { User, getAuth, onAuthStateChanged } from "firebase/auth";
 

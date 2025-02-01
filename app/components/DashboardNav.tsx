@@ -1,11 +1,11 @@
 'use client';
 
 import Link from "next/link";
-import { logOut } from "@/lib/firebaseAuth";
+import { logOut } from "@services/firebaseAuth.service";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebaseAuth";
+import { auth } from "@services/firebaseAuth.service";
 
 export default function DashboardNav() {
   const [user, setUser] = useState<User | null>(null);

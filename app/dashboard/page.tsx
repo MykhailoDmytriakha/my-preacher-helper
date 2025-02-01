@@ -1,4 +1,4 @@
-import { getSermons } from '@/services/sermon.service';
+import { getSermons } from '@services/sermon.service';
 import Link from "next/link";
 import ExportButtons from "@components/ExportButtons";
 import AddSermonModal from "@components/AddSermonModal";

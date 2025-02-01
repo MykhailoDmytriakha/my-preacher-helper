@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebaseAuth";
+import { auth } from "@services/firebaseAuth.service";
 
 export function GuestBanner() {
   const [isGuest, setIsGuest] = useState(false);

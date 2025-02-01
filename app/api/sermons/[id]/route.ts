@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebaseConfig';
+import { db } from 'app/config/firebaseConfig';
 import { doc, getDoc } from "firebase/firestore";
 
 // GET /api/sermons/:id

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSermon } from '@/services/sermon.service';
+import { createSermon } from '@services/sermon.service';
 
 export default function AddSermonModal() {
   const [open, setOpen] = useState(false);

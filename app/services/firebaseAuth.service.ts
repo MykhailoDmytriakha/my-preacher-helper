@@ -1,5 +1,5 @@
 import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously, setPersistence, browserLocalPersistence } from "firebase/auth";
-import app from "./firebaseConfig";
+import app from "../config/firebaseConfig";
 
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();

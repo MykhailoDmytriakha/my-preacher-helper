@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById, Thought } from "@/services/sermon.service";
+import { getSermonById, Thought } from "@services/sermon.service";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
-import { Sermon } from "@/services/sermon.service";
-import { transcribeAudio } from "@/services/transcription.service";
+import { Sermon } from "@services/sermon.service";
+import { transcribeAudio } from "@services/transcription.service";
 import ExportButtons from "@components/ExportButtons";
 
 export const dynamic = "force-dynamic";
