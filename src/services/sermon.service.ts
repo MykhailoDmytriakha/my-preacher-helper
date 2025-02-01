@@ -1,13 +1,15 @@
+export interface Thought {
+  text: string;
+  tag: "introduction" | "main" | "conclusion" | "auto-generated";
+  createdAt: Date;
+}
+
 export interface Sermon {
   id: string;
   title: string;
   verse: string;
   date: string;
-  thoughts: {
-    text: string;
-    tag: 'introduction' | 'main' | 'conclusion';
-    createdAt: Date;
-  }[];
+  thoughts: Thought[];
   structure?: string;
 }
 
