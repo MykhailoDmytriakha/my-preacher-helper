@@ -64,14 +64,21 @@ export default function SermonPage() {
   const totalThoughts = sermon.thoughts.length;
 
   const tagCounts = {
-    introduction: sermon.thoughts.filter((t) => t.tag === "introduction").length,
+    introduction: sermon.thoughts.filter((t) => t.tag === "introduction")
+      .length,
     main: sermon.thoughts.filter((t) => t.tag === "main").length,
     conclusion: sermon.thoughts.filter((t) => t.tag === "conclusion").length,
   };
 
-  const introPercentage = totalThoughts ? Math.round((tagCounts.introduction / totalThoughts) * 100) : 0;
-  const mainPercentage = totalThoughts ? Math.round((tagCounts.main / totalThoughts) * 100) : 0;
-  const conclusionPercentage = totalThoughts ? Math.round((tagCounts.conclusion / totalThoughts) * 100) : 0;
+  const introPercentage = totalThoughts
+    ? Math.round((tagCounts.introduction / totalThoughts) * 100)
+    : 0;
+  const mainPercentage = totalThoughts
+    ? Math.round((tagCounts.main / totalThoughts) * 100)
+    : 0;
+  const conclusionPercentage = totalThoughts
+    ? Math.round((tagCounts.conclusion / totalThoughts) * 100)
+    : 0;
 
   const handleNewRecording = async (audioBlob: Blob) => {
     console.log("handleNewRecording: Received audio blob", audioBlob);
@@ -79,9 +86,9 @@ export default function SermonPage() {
       const text = await transcribeAudio(audioBlob);
       console.log("handleNewRecording: Transcription successful", text);
       // Формируем новую мысль
-      const newThought:Thought = {
+      const newThought: Thought = {
         text,
-        tag: "auto-generated" as const,
+        tag: "introduction" as const,
         date: new Date().toISOString(),
       };
       console.log("handleNewRecording: New thought created", newThought);
@@ -145,23 +152,6 @@ export default function SermonPage() {
                       className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        {thought.tag !== "auto-generated" && (
-                          <span
-                            className={`text-sm px-2 py-1 rounded-full ${
-                              thought.tag === "introduction"
-                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                                : thought.tag === "main"
-                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            }`}
-                          >
-                            {thought.tag === "introduction"
-                              ? "Вступление"
-                              : thought.tag === "main"
-                              ? "Основная часть"
-                              : "Заключение"}
-                          </span>
-                        )}
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           {new Date(thought.date).toLocaleTimeString("ru-RU", {
                             day: "2-digit",
@@ -172,6 +162,22 @@ export default function SermonPage() {
                             hour12: false,
                           })}
                         </span>
+                        {thought.tag !== "auto-generated" && (
+                          <span
+                            className={`text-sm px-2 py-1 rounded-full ${thought.tag === "introduction"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                              : thought.tag === "main"
+                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                              }`}
+                          >
+                            {thought.tag === "introduction"
+                              ? "Вступление"
+                              : thought.tag === "main"
+                                ? "Основная часть"
+                                : "Заключение"}
+                          </span>
+                        )}
                       </div>
                       <p className="text-gray-800 dark:text-gray-200">
                         {thought.text}
@@ -211,7 +217,9 @@ export default function SermonPage() {
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
-                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
+                          width: totalThoughts
+                            ? `${conclusionPercentage}%`
+                            : "0%",
                         }}
                         data-tooltip={`Заключение: ${tagCounts.conclusion} записей`}
                       />
@@ -231,9 +239,7 @@ export default function SermonPage() {
                     <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
 
                     <div className="text-purple-600 text-center">
-                      <div className="text-lg font-bold">
-                        {mainPercentage}%
-                      </div>
+                      <div className="text-lg font-bold">{mainPercentage}%</div>
                       <span className="text-xs text-gray-500">
                         Целевой показатель: 60%
                       </span>
