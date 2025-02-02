@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { addDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
-import { Sermon } from '@services/sermon.service';
+import { Sermon } from '@services/api.service';
 
 // GET /api/sermons
 export async function GET() {
