@@ -8,7 +8,7 @@ import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
 import { Sermon } from "@services/api.service";
-import { transcribeAudio } from "@services/api.service";
+import { transcribeAudioToNote } from "@services/api.service";
 import ExportButtons from "@components/ExportButtons";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +83,8 @@ export default function SermonPage() {
   const handleNewRecording = async (audioBlob: Blob) => {
     console.log("handleNewRecording: Received audio blob", audioBlob);
     try {
-      const text = await transcribeAudio(audioBlob);
+      const text = await transcribeAudioToNote(audioBlob, sermon.id);
+      // TODO: until we waiting on response let's change button on "Thinking" on light blue color
       console.log("handleNewRecording: Transcription successful", text);
       // Формируем новую мысль
       const newThought: Thought = {
@@ -113,6 +114,7 @@ export default function SermonPage() {
           <div>
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                {/* TODO: it should be editable TITLE and VERSE */}
                 {sermon.title}
               </h1>
               <ExportButtons sermonId={sermon.id} />
@@ -147,6 +149,7 @@ export default function SermonPage() {
                   </p>
                 ) : (
                   sermon.thoughts.map((thought, index) => (
+                    // TODO: we should have ability to edit thoughts and delete them
                     <div
                       key={index}
                       className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"

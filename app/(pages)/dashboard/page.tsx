@@ -41,6 +41,7 @@ export default async function DashboardPage() {
                     </p>
                   </div>
                   <ExportButtons sermonId={sermon.id} orientation="vertical" />
+                  {/* TODO: we need to add delete button with confirmation popup */}
                 </div>
               </div>
             </Link>

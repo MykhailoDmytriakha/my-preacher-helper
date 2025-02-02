@@ -23,7 +23,8 @@
       "@/*": ["./app/*"],
       "@components/*": ["./app/components/*"],
       "@services/*": ["./app/services/*"],
-      "@api/*": ["./app/api/*"]
+      "@api/*": ["./app/api/*"],
+      "@clients/*": ["./app/api/clients/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.js"],

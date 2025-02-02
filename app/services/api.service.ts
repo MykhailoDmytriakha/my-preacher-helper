@@ -29,7 +29,7 @@ export const getSermons = async (): Promise<Sermon[]> => {
         const data = await response.json();
         console.log("getSermons: Sermons fetched successfully", data);
         // Sort sermons by date in descending order (latest first)
-        return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return data.sort((a: Sermon, b: Sermon) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } catch (error) {
         console.error('getSermons: Error fetching sermons:', error);
         return [];
@@ -77,25 +77,29 @@ export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> 
 };
 
 
-export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+export const transcribeAudioToNote = async (
+    audioBlob: Blob,
+    sermonId: string
+): Promise<string> => {
+    // TODO: i want to know what is the length of this audio, and leter to track this data
     console.log("transcribeAudio: Starting transcription process.");
+
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
+    formData.append("sermonId", sermonId);
 
     console.log(
-        `transcribeAudio: Sending audio blob to ${API_BASE}/api/transcribe.`
+        `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
     );
-    const response = await fetch(`${API_BASE}/api/transcribe`, {
+
+    const response = await fetch(`${API_BASE}/api/thoughts`, {
         method: "POST",
-        body: formData
+        body: formData,
     });
 
     console.log("transcribeAudio: Received response:", response);
     if (!response.ok) {
-        console.error(
-            "transcribeAudio: Transcription failed with status",
-            response.status
-        );
+        console.error("transcribeAudio: Transcription failed with status", response.status);
         throw new Error("Transcription failed");
     }
 

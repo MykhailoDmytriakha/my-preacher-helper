@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from 'app/config/firebaseConfig';
-import { doc, getDoc } from "firebase/firestore";
+import { fetchSermonById } from '@clients/firestore.client'
 
 // GET /api/sermons/:id
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -8,24 +7,15 @@ export async function GET(request: Request, { params }: { params: { id: string }
   console.log(`Fetching sermon with id: ${id}`);
   
   try {
-    // Create a reference to the document in the "sermons" collection using the provided id.
-    const docRef = doc(db, 'sermons', id);
-    
-    // Fetch the document snapshot
-    const docSnap = await getDoc(docRef);
-    
-    if (!docSnap.exists()) {
-      console.log(`Sermon with id ${id} not found in Firestore`);
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    const sermon = await fetchSermonById(id);
+    return NextResponse.json(sermon);
+  } catch (error: any) {
+    console.error(`Error fetching sermon with id ${id}:`, error);
+
+    if (error.message === "Sermon not found") {
+      return NextResponse.json({ error: error.message }, { status: 404 });
     }
     
-    // Combine the document id with its data.
-    const sermon = { id: docSnap.id, ...docSnap.data() };
-    console.log('Sermon retrieved:', sermon);
-    
-    return NextResponse.json(sermon);
-  } catch (error) {
-    console.error(`Error fetching sermon with id ${id}:`, error);
     return NextResponse.json({ error: 'Failed to fetch sermon' }, { status: 500 });
   }
 }
