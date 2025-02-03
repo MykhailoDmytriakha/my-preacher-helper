@@ -77,26 +77,23 @@ export async function generateThought(
     console.log('generateThought: Starting thought generation with transcription and sermon content');
     console.log('received transcript', transcription);
 
-    // Updated system prompt:
-    // Instruct the model to add "example" if an anecdote is detected,
-    // "explanation" if key terms from the sermon (e.g. "познавать") are discussed,
-    // and to correct obvious transcription errors (e.g. replacing "знание" with "здание" when the context indicates construction).
-    const promptSystemMessage = `Analyze the sermon content and the provided transcription.
-If the transcription is relevant to the sermon, return the transcription in Russian with only minimal corrections—only fix grammar, punctuation, and obvious transcription errors without rephrasing, shortening, or altering the order of ideas.
-If the transcription is not relevant, return the original transcription unchanged.
-IMPORTANT:
-- Your output must be a single, valid JSON object with exactly three keys: "text", "tags", and "relevant". Do not include any extra keys.
-- "text": The (corrected) transcription text in Russian.
-- "tags": An array of strings that must include at least one strict tag ("introduction", "main", or "conclusion"). In addition, if the transcription includes an anecdote or illustrative example, include the tag "example". Also, if the transcription contains discussion or reflection on key terms from the sermon (for instance, if it refers to words like "познавать"), include the tag "explanation".
-- Additionally, if there is an obvious transcription error where a word is misheard—for example, if the transcription contains "знание" in a context where "здание" is expected (especially in relation to construction)—correct it accordingly.
-- "relevant": A boolean that is true if the transcription is related to the sermon, or false otherwise.
-If the transcription is not relevant, output:
+    // Обновлённый системный промпт для получения тегов на русском языке.
+    const promptSystemMessage = `Анализируйте содержание проповеди и предоставленную транскрипцию.
+Если транскрипция актуальна, верните транскрипцию на русском языке с минимальными исправлениями — исправьте только грамматические ошибки, пунктуацию и очевидные ошибки транскрипции, не перефразируя, не сокращая и не изменяя порядок идей.
+Если транскрипция не актуальна, верните исходную транскрипцию без изменений.
+ВАЖНО:
+- Ваш вывод должен быть единственным валидным JSON объектом с ровно тремя ключами: "text", "tags" и "relevant". Не включайте дополнительные ключи.
+- "text": Исправленная транскрипция на русском языке.
+- "tags": Массив строк, который должен содержать как минимум один основной тег ("Вступление", "Основная часть" или "Заключение"). Если транскрипция содержит рассказ или иллюстративный пример, добавьте тег "пример". Если в транскрипции обсуждаются ключевые термины из проповеди (например, если упоминается "познавать"), добавьте тег "объяснение".
+- Кроме того, если обнаружена очевидная ошибка (например, "знание" вместо "здание" в контексте строительства), исправьте её.
+- "relevant": Булево значение, true если транскрипция связана с проповедью, false в противном случае.
+Если транскрипция не актуальна, выведите:
 {
-  "text": "<original transcription>",
-  "tags": ["not_relevant"],
+  "text": "<исходная транскрипция>",
+  "tags": ["не_актуально"],
   "relevant": false
 }
-Return the JSON exactly as specified.`;
+Верните JSON строго в указанном формате.`;
 
     // Call OpenAI Chat Completion API with the system prompt and user message containing sermon content and transcription.
     const response = await openai.chat.completions.create({
@@ -104,7 +101,7 @@ Return the JSON exactly as specified.`;
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: promptSystemMessage },
-        { role: "user", content: `Sermon Content: ${JSON.stringify(sermon)}\n\nTranscription: ${transcription}` }
+        { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${transcription}` }
       ]
     });
     console.log('generateThought: Received response from OpenAI', response);
@@ -127,16 +124,12 @@ Return the JSON exactly as specified.`;
     }
 
     // Ensure at least one strict tag is present if relevant is true
-    const strictTags = ['introduction', 'main', 'conclusion'];
+    const strictTags = ['Вступление', 'Основная часть', 'Заключение'];
     if (result.relevant) {
       const hasStrictTag = result.tags.some((tag: string) => strictTags.includes(tag));
       if (!hasStrictTag) {
-        console.warn('generateThought: No strict tag found in tags. Assigning default strict tag "introduction".');
-        result.tags.unshift('introduction');
-      }
-      // Limit the total number of tags to 5
-      if (result.tags.length > 5) {
-        result.tags = result.tags.slice(0, 5);
+        console.warn('generateThought: No strict tag found in tags. Assigning default strict tag "Вступление".');
+        result.tags.unshift('Вступление');
       }
     }
 
@@ -148,7 +141,7 @@ Return the JSON exactly as specified.`;
     // In case of an error, return the original transcription with the tag "not_relevant" and relevant set to false
     return {
       text: transcription,
-      tags: ['not_relevant'],
+      tags: ['не_актуально'],
       relevant: false
     };
   }

@@ -65,19 +65,19 @@ export default function SermonPage() {
 
   // Calculate tag counts for the progress bar (based on primary tags)
   const tagCounts = {
-    introduction: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("introduction") ? 1 : 0), 0),
-    main: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("main") ? 1 : 0), 0),
-    conclusion: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("conclusion") ? 1 : 0), 0),
+    "Вступление": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0), 0),
+    "Основная часть": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0), 0),
+    "Заключение": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0), 0),
   };
 
   const introPercentage = totalThoughts
-    ? Math.round((tagCounts.introduction / totalThoughts) * 100)
+    ? Math.round((tagCounts["Вступление"] / totalThoughts) * 100)
     : 0;
   const mainPercentage = totalThoughts
-    ? Math.round((tagCounts.main / totalThoughts) * 100)
+    ? Math.round((tagCounts["Основная часть"] / totalThoughts) * 100)
     : 0;
   const conclusionPercentage = totalThoughts
-    ? Math.round((tagCounts.conclusion / totalThoughts) * 100)
+    ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100)
     : 0;
 
   // Updated function to handle new audio recording
@@ -172,22 +172,22 @@ export default function SermonPage() {
                           <div className="flex gap-2">
                             {thought.tags.map((tag) => {
                               let bgClass, textClass, displayText;
-                              if (tag === "introduction") {
+                              if (tag === "Вступление") {
                                 bgClass = "bg-blue-100 dark:bg-blue-900";
                                 textClass = "text-blue-800 dark:text-blue-200";
-                                displayText = "Вступление";
-                              } else if (tag === "main") {
+                                displayText = tag;
+                              } else if (tag === "Основная часть") {
                                 bgClass = "bg-purple-100 dark:bg-purple-900";
                                 textClass = "text-purple-800 dark:text-purple-200";
-                                displayText = "Основная часть";
-                              } else if (tag === "conclusion") {
+                                displayText = tag;
+                              } else if (tag === "Заключение") {
                                 bgClass = "bg-green-100 dark:bg-green-900";
                                 textClass = "text-green-800 dark:text-green-200";
-                                displayText = "Заключение";
+                                displayText = tag;
                               } else {
-                                // Additional tags displayed in gray
-                                bgClass = "bg-gray-100 dark:bg-gray-700";
-                                textClass = "text-gray-800 dark:text-gray-200";
+                                // Дополнительные теги отображаются в индиго для лучшего контраста с фоном
+                                bgClass = "bg-indigo-100 dark:bg-indigo-900";
+                                textClass = "text-indigo-800 dark:text-indigo-200";
                                 displayText = tag;
                               }
                               return (
@@ -225,21 +225,21 @@ export default function SermonPage() {
                         style={{
                           width: totalThoughts ? `${introPercentage}%` : "0%",
                         }}
-                        data-tooltip={`Вступление: ${tagCounts.introduction} записей`}
+                        data-tooltip={`Вступление: ${tagCounts["Вступление"]} записей`}
                       />
                       <div
                         className="bg-purple-600 transition-all duration-500"
                         style={{
                           width: totalThoughts ? `${mainPercentage}%` : "0%",
                         }}
-                        data-tooltip={`Основная часть: ${tagCounts.main} записей`}
+                        data-tooltip={`Основная часть: ${tagCounts["Основная часть"]} записей`}
                       />
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
                           width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                         }}
-                        data-tooltip={`Заключение: ${tagCounts.conclusion} записей`}
+                        data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
                       />
                     </div>
                   </div>
