@@ -1,15 +1,16 @@
 import OpenAI from 'openai';
 
+// Initialize OpenAI client using the API key from environment variables
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPEANAI_GPT_MODEL as string; // Verify that this environment variable is correct
 
-// Define interfaces
+// Define interfaces for Thought and Sermon
 export interface Thought {
   text: string;
-  tags: string[];
+  tags: string[]; // Array of tags (e.g., "introduction", "main", "conclusion", "example", "explanation", etc.)
   relevant: boolean;
 }
 
@@ -49,15 +50,19 @@ export async function createTranscription(file: File): Promise<string> {
  *   "relevant": true | false
  * }
  *
- * - The "tags" array must include at least one strict tag ("introduction", "main", or "conclusion")
- *   and can include up to 5 tags (optional tags may include "example", "illustration", "context",
- *   "real_life_application", "question_to_audience", etc.).
- *
  * IMPORTANT:
  * - If the transcription is not related to the sermon, return the original transcription unchanged,
  *   assign the tag ["not_relevant"], and set "relevant" to false.
  * - If the transcription is relevant, return it in Russian with only minimal corrections—only fix grammar,
- *   punctuation, and obvious transcription errors. Do not rephrase, shorten, or add any extra commentary.
+ *   punctuation, and obvious transcription errors without rephrasing, shortening, or altering the order of ideas.
+ * - The "tags" array must include at least one strict tag ("introduction", "main", or "conclusion").
+ * - In addition, if the transcription includes an anecdote or illustrative example, include the tag "example".
+ * - Also, if the transcription contains discussion or reflection on key terms from the sermon (for instance,
+ *   if it refers to words like "познавать" from the sermon verse), include the tag "explanation".
+ * - Additionally, if there is an obvious transcription error where a word is misheard—for example, if the
+ *   transcription contains "знание" in a context where "здание" (building) is expected, particularly in relation
+ *   to construction—correct it accordingly.
+ * - The array may include up to 5 tags.
  * - The output must be a valid JSON object with exactly three keys: "text", "tags", and "relevant". No extra keys are allowed.
  *
  * @param transcription - The transcription text.
@@ -72,12 +77,18 @@ export async function generateThought(
     console.log('generateThought: Starting thought generation with transcription and sermon content');
     console.log('received transcript', transcription);
 
+    // Updated system prompt:
+    // Instruct the model to add "example" if an anecdote is detected,
+    // "explanation" if key terms from the sermon (e.g. "познавать") are discussed,
+    // and to correct obvious transcription errors (e.g. replacing "знание" with "здание" when the context indicates construction).
     const promptSystemMessage = `Analyze the sermon content and the provided transcription.
 If the transcription is relevant to the sermon, return the transcription in Russian with only minimal corrections—only fix grammar, punctuation, and obvious transcription errors without rephrasing, shortening, or altering the order of ideas.
 If the transcription is not relevant, return the original transcription unchanged.
-IMPORTANT: Your output must be a single, valid JSON object with exactly three keys: "text", "tags", and "relevant". Do not include any extra keys.
+IMPORTANT:
+- Your output must be a single, valid JSON object with exactly three keys: "text", "tags", and "relevant". Do not include any extra keys.
 - "text": The (corrected) transcription text in Russian.
-- "tags": An array of strings that must include at least one strict tag ("introduction", "main", or "conclusion"). The array may include up to 5 tags.
+- "tags": An array of strings that must include at least one strict tag ("introduction", "main", or "conclusion"). In addition, if the transcription includes an anecdote or illustrative example, include the tag "example". Also, if the transcription contains discussion or reflection on key terms from the sermon (for instance, if it refers to words like "познавать"), include the tag "explanation".
+- Additionally, if there is an obvious transcription error where a word is misheard—for example, if the transcription contains "знание" in a context where "здание" is expected (especially in relation to construction)—correct it accordingly.
 - "relevant": A boolean that is true if the transcription is related to the sermon, or false otherwise.
 If the transcription is not relevant, output:
 {
@@ -87,6 +98,7 @@ If the transcription is not relevant, output:
 }
 Return the JSON exactly as specified.`;
 
+    // Call OpenAI Chat Completion API with the system prompt and user message containing sermon content and transcription.
     const response = await openai.chat.completions.create({
       model: gptModel,
       response_format: { type: "json_object" },
@@ -128,12 +140,12 @@ Return the JSON exactly as specified.`;
       }
     }
 
-    console.log('received transcrip', transcription)
-    console.log('generateThought: Successfully generated thought', result);
+    console.log("\x1b[31m received transcrip: %o\x1b[0m", transcription);
+    console.log("\x1b[31m generateThought: Successfully generated thought: %o\x1b[0m", result);
     return result as Thought;
   } catch (error) {
     console.error('generateThought: OpenAI API Error:', error);
-    // In case of an error, return the original transcription with the tag "not_relevant" and relevant false
+    // In case of an error, return the original transcription with the tag "not_relevant" and relevant set to false
     return {
       text: transcription,
       tags: ['not_relevant'],
