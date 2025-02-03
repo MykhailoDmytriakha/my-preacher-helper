@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById, Thought } from "@services/api.service";
+import { getSermonById, Thought, Sermon } from "@services/api.service";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
-import { Sermon } from "@services/api.service";
 import { transcribeAudioToNote } from "@services/api.service";
 import ExportButtons from "@components/ExportButtons";
 
+// Force dynamic rendering
 export const dynamic = "force-dynamic";
 
-// Correct dynamic import with named export handling
+// Dynamic import of the AudioRecorder component with isProcessing prop support
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
   {
@@ -25,6 +25,7 @@ const AudioRecorder = dynamicImport(
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const [sermon, setSermon] = useState<Sermon | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false); // State to track audio processing
 
   useEffect(() => {
     const loadSermon = async () => {
@@ -50,8 +51,7 @@ export default function SermonPage() {
     );
   }
 
-  // Format the sermon date to display digits only.
-  // This will output format like "01.02.2025, 11:47"
+  // Format the sermon date (e.g., "01.02.2025, 11:47")
   const formattedDate = new Date(sermon.date).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -63,11 +63,11 @@ export default function SermonPage() {
 
   const totalThoughts = sermon.thoughts.length;
 
+  // Calculate tag counts for the progress bar (based on primary tags)
   const tagCounts = {
-    introduction: sermon.thoughts.filter((t) => t.tag === "introduction")
-      .length,
-    main: sermon.thoughts.filter((t) => t.tag === "main").length,
-    conclusion: sermon.thoughts.filter((t) => t.tag === "conclusion").length,
+    introduction: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("introduction") ? 1 : 0), 0),
+    main: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("main") ? 1 : 0), 0),
+    conclusion: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("conclusion") ? 1 : 0), 0),
   };
 
   const introPercentage = totalThoughts
@@ -80,20 +80,20 @@ export default function SermonPage() {
     ? Math.round((tagCounts.conclusion / totalThoughts) * 100)
     : 0;
 
+  // Updated function to handle new audio recording
   const handleNewRecording = async (audioBlob: Blob) => {
     console.log("handleNewRecording: Received audio blob", audioBlob);
+    setIsProcessing(true); // Enable processing state
     try {
-      const text = await transcribeAudioToNote(audioBlob, sermon.id);
-      // TODO: until we waiting on response let's change button on "Thinking" on light blue color
-      console.log("handleNewRecording: Transcription successful", text);
-      // Формируем новую мысль
+      // Get the Thought object (includes text and tags) from the transcription service
+      const thoughtResponse = await transcribeAudioToNote(audioBlob, sermon.id);
+      console.log("handleNewRecording: Transcription successful", thoughtResponse);
       const newThought: Thought = {
-        text,
-        tag: "introduction" as const,
-        date: new Date().toISOString(),
+        ...thoughtResponse,
+        date: new Date().toISOString()
       };
       console.log("handleNewRecording: New thought created", newThought);
-      // Update the sermon by appending the new thought
+      // Update the sermon state by appending the new thought
       setSermon((prevSermon) =>
         prevSermon
           ? { ...prevSermon, thoughts: [...prevSermon.thoughts, newThought] }
@@ -102,6 +102,8 @@ export default function SermonPage() {
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
       alert("Ошибка обработки аудио");
+    } finally {
+      setIsProcessing(false); // Disable processing state
     }
   };
 
@@ -114,7 +116,7 @@ export default function SermonPage() {
           <div>
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                {/* TODO: it should be editable TITLE and VERSE */}
+                {/* TODO: Make the title and verse editable */}
                 {sermon.title}
               </h1>
               <ExportButtons sermonId={sermon.id} />
@@ -132,10 +134,11 @@ export default function SermonPage() {
           </div>
         </div>
 
-        <AudioRecorder onRecordingComplete={handleNewRecording} />
+        {/* Pass the isProcessing state to the AudioRecorder */}
+        <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Левая колонка - Сырые мысли */}
+          {/* Left column – Raw entries */}
           <div className="lg:col-span-2 space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
@@ -149,7 +152,6 @@ export default function SermonPage() {
                   </p>
                 ) : (
                   sermon.thoughts.map((thought, index) => (
-                    // TODO: we should have ability to edit thoughts and delete them
                     <div
                       key={index}
                       className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
@@ -165,21 +167,36 @@ export default function SermonPage() {
                             hour12: false,
                           })}
                         </span>
-                        {thought.tag !== "auto-generated" && (
-                          <span
-                            className={`text-sm px-2 py-1 rounded-full ${thought.tag === "introduction"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                              : thought.tag === "main"
-                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                              }`}
-                          >
-                            {thought.tag === "introduction"
-                              ? "Вступление"
-                              : thought.tag === "main"
-                                ? "Основная часть"
-                                : "Заключение"}
-                          </span>
+                        {/* Display tags: iterate over thought.tags and style based on tag value */}
+                        {thought.tags && thought.tags.length > 0 && (
+                          <div className="flex gap-2">
+                            {thought.tags.map((tag) => {
+                              let bgClass, textClass, displayText;
+                              if (tag === "introduction") {
+                                bgClass = "bg-blue-100 dark:bg-blue-900";
+                                textClass = "text-blue-800 dark:text-blue-200";
+                                displayText = "Вступление";
+                              } else if (tag === "main") {
+                                bgClass = "bg-purple-100 dark:bg-purple-900";
+                                textClass = "text-purple-800 dark:text-purple-200";
+                                displayText = "Основная часть";
+                              } else if (tag === "conclusion") {
+                                bgClass = "bg-green-100 dark:bg-green-900";
+                                textClass = "text-green-800 dark:text-green-200";
+                                displayText = "Заключение";
+                              } else {
+                                // Additional tags displayed in gray
+                                bgClass = "bg-gray-100 dark:bg-gray-700";
+                                textClass = "text-gray-800 dark:text-gray-200";
+                                displayText = tag;
+                              }
+                              return (
+                                <span key={tag} className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}>
+                                  {displayText}
+                                </span>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                       <p className="text-gray-800 dark:text-gray-200">
@@ -192,7 +209,7 @@ export default function SermonPage() {
             </div>
           </div>
 
-          {/* Правая колонка - Структура */}
+          {/* Right column – Sermon structure */}
           <div className="space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-semibold mb-4">
@@ -220,9 +237,7 @@ export default function SermonPage() {
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
-                          width: totalThoughts
-                            ? `${conclusionPercentage}%`
-                            : "0%",
+                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                         }}
                         data-tooltip={`Заключение: ${tagCounts.conclusion} записей`}
                       />

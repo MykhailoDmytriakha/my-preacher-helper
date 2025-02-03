@@ -2,14 +2,24 @@
 
 import { useState, useRef, useEffect } from 'react';
 
-export const AudioRecorder = ({ onRecordingComplete }: { onRecordingComplete: (audioBlob: Blob) => void }) => {
+// Define the props for AudioRecorder, including an optional isProcessing flag
+interface AudioRecorderProps {
+  onRecordingComplete: (audioBlob: Blob) => void;
+  isProcessing?: boolean; // true when audio processing is happening
+}
+
+export const AudioRecorder = ({ onRecordingComplete, isProcessing = false }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const timerRef = useRef<NodeJS.Timeout>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const chunks = useRef<Blob[]>([]);
 
+  // We'll use a ref to track the previous isProcessing value.
+  const prevIsProcessing = useRef(isProcessing);
+
+  // Function to start audio recording
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -20,6 +30,7 @@ export const AudioRecorder = ({ onRecordingComplete }: { onRecordingComplete: (a
       };
 
       mediaRecorder.current.onstop = () => {
+        // Create a Blob from the recorded audio chunks and call the callback function
         const blob = new Blob(chunks.current, { type: 'audio/webm' });
         onRecordingComplete(blob);
         chunks.current = [];
@@ -33,57 +44,88 @@ export const AudioRecorder = ({ onRecordingComplete }: { onRecordingComplete: (a
     }
   };
 
+  // Function to stop audio recording
   const stopRecording = () => {
     if (mediaRecorder.current) {
       mediaRecorder.current.stop();
       setIsRecording(false);
+      // Stop all tracks to release the microphone
       mediaRecorder.current.stream.getTracks().forEach(track => track.stop());
-      setRecordingTime(0);
+      // Do NOT reset the recording time here; it will be reset when processing finishes
     }
   };
 
+  // Timer effect: increment the recording time every second while recording
   useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           if (prev >= 60) {
+            // Automatically stop recording after 60 seconds
             stopRecording();
-            clearInterval(timerRef.current!);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+            }
           }
           return prev + 1;
         });
       }, 1000);
     }
-    
-    return () => clearInterval(timerRef.current!);
-  }, [isRecording]);
-
-  useEffect(() => {
     return () => {
-      if (mediaRecorder.current) {
-        mediaRecorder.current.stream?.getTracks().forEach(track => track.stop());
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
       }
     };
-  }, []);
+  }, [isRecording]);
 
+  // Update the timer reset effect so that it resets only when processing finishes.
+  useEffect(() => {
+    // Only reset if the previous state was processing (true) 
+    // and now processing is finished (false) and no recording is happening.
+    if (prevIsProcessing.current && !isProcessing && !isRecording) {
+      setRecordingTime(0);
+    }
+    prevIsProcessing.current = isProcessing;
+  }, [isProcessing, isRecording]);
+
+  // Function to format time as mm:ss
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Determine button style based on state:
+  // - Blue with pulse when processing
+  // - Red with pulse when recording
+  // - Green when idle
+  const buttonClass = isProcessing
+    ? 'bg-blue-600 hover:bg-blue-700 text-white animate-pulse'
+    : isRecording
+      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+      : 'bg-green-600 hover:bg-green-700 text-white';
+
+  // Determine button text based on state
+  const buttonText = isProcessing
+    ? 'Обработка...'
+    : isRecording
+      ? 'Остановить запись'
+      : 'Новая запись';
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <button
-          onClick={isRecording ? stopRecording : startRecording}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
-            isRecording
-              ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
+          onClick={() => {
+            // If processing is active, disable recording actions
+            if (!isProcessing) {
+              isRecording ? stopRecording() : startRecording();
+            }
+          }}
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${buttonClass}`}
+          disabled={isProcessing} // Disable button during processing
         >
-          {isRecording ? 'Остановить запись' : 'Новая запись'}
+          {buttonText}
         </button>
         <div className="text-sm text-gray-600 dark:text-gray-300">
           {formatTime(recordingTime)} / 1:00
@@ -91,4 +133,4 @@ export const AudioRecorder = ({ onRecordingComplete }: { onRecordingComplete: (a
       </div>
     </div>
   );
-}
+};
