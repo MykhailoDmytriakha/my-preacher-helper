@@ -94,7 +94,7 @@ export default function SermonPage() {
       };
       console.log("handleNewRecording: New thought created", newThought);
       // Update the sermon state by appending the new thought
-      setSermon((prevSermon) =>
+      setSermon((prevSermon: Sermon | null) =>
         prevSermon
           ? { ...prevSermon, thoughts: [...prevSermon.thoughts, newThought] }
           : prevSermon

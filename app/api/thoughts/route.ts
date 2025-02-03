@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { fetchSermonById } from '@clients/firestore.client';
-import { Sermon } from '@/services/api.service';
+import { Sermon } from '@/models/models';
 
 // POST api/thoughts
 export async function POST(request: Request) {

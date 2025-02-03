@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { Sermon, Thought } from '@/models/models';
 
 // Initialize OpenAI client using the API key from environment variables
 const openai = new OpenAI({
@@ -6,22 +7,6 @@ const openai = new OpenAI({
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPEANAI_GPT_MODEL as string; // Verify that this environment variable is correct
-
-// Define interfaces for Thought and Sermon
-export interface Thought {
-  text: string;
-  tags: string[]; // Array of tags (e.g., "introduction", "main", "conclusion", "example", "explanation", etc.)
-  relevant: boolean;
-}
-
-export interface Sermon {
-  id: string;
-  title: string;
-  verse: string;
-  date: string;
-  thoughts: Thought[];
-  structure?: string;
-}
 
 /**
  * Transcribes the provided audio file using OpenAI Whisper.
