@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById, Thought, Sermon } from "@services/api.service";
+import { getSermonById, transcribeAudioToNote } from "@services/api.service";
+import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
-import { transcribeAudioToNote } from "@services/api.service";
 import ExportButtons from "@components/ExportButtons";
 
 // Force dynamic rendering

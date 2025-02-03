@@ -2,6 +2,7 @@ export interface Thought {
   text: string;
   tags: string[];
   relevant: boolean;
+  date: string;
 }
 
 export interface Sermon {
