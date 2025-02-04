@@ -36,7 +36,7 @@ export default async function DashboardPage() {
                   <div className="mr-8">
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-semibold">{sermon.title}</h3>
-                      <OptionMenu sermonId={sermon.id} />
+                      <OptionMenu sermon={sermon} />
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 break-words">
                       {sermon.verse}
