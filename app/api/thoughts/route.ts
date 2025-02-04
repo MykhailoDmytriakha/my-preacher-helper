@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { fetchSermonById } from '@clients/firestore.client';
 import { Sermon } from '@/models/models';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
 
 // POST api/thoughts
@@ -55,5 +55,24 @@ export async function POST(request: Request) {
       { error: 'Failed to transcribe audio' },
       { status: 500 }
     );
+  }
+}
+
+// Added DELETE method to remove a thought from a sermon
+export async function DELETE(request: Request) {
+  console.log("Transcription service: Received DELETE request.");
+  try {
+    const body = await request.json();
+    const { sermonId, thought } = body;
+    if (!sermonId || !thought) {
+      return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
+    }
+    const sermonDocRef = doc(db, "sermons", sermonId);
+    await updateDoc(sermonDocRef, { thoughts: arrayRemove(thought) });
+    console.log("Successfully deleted thought.");
+    return NextResponse.json({ message: "Thought deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting thought:", error);
+    return NextResponse.json({ error: "Failed to delete thought." }, { status: 500 });
   }
 }

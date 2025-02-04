@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById, transcribeAudioToNote } from "@services/api.service";
+import { getSermonById, transcribeAudioToNote, deleteThought } from "@services/api.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
@@ -65,9 +65,19 @@ export default function SermonPage() {
 
   // Calculate tag counts for the progress bar (based on primary tags)
   const tagCounts = {
-    "Вступление": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0), 0),
-    "Основная часть": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0), 0),
-    "Заключение": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0), 0),
+    Вступление: sermon.thoughts.reduce(
+      (count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0),
+      0
+    ),
+    "Основная часть": sermon.thoughts.reduce(
+      (count, thought) =>
+        count + (thought.tags.includes("Основная часть") ? 1 : 0),
+      0
+    ),
+    Заключение: sermon.thoughts.reduce(
+      (count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0),
+      0
+    ),
   };
 
   const introPercentage = totalThoughts
@@ -87,10 +97,13 @@ export default function SermonPage() {
     try {
       // Get the Thought object (includes text and tags) from the transcription service
       const thoughtResponse = await transcribeAudioToNote(audioBlob, sermon.id);
-      console.log("handleNewRecording: Transcription successful", thoughtResponse);
+      console.log(
+        "handleNewRecording: Transcription successful",
+        thoughtResponse
+      );
       const newThought: Thought = {
         ...thoughtResponse,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
       };
       console.log("handleNewRecording: New thought created", newThought);
       // Update the sermon state by appending the new thought
@@ -104,6 +117,21 @@ export default function SermonPage() {
       alert("Ошибка обработки аудио");
     } finally {
       setIsProcessing(false); // Disable processing state
+    }
+  };
+
+  const handleDeleteThought = async (indexToDelete: number) => {
+    if (!sermon) return;
+    const thoughtToDelete = sermon.thoughts[indexToDelete];
+    try {
+      await deleteThought(sermon.id, thoughtToDelete);
+      setSermon({
+        ...sermon,
+        thoughts: sermon.thoughts.filter((_, index) => index !== indexToDelete),
+      });
+    } catch (error) {
+      console.error("Failed to delete thought", error);
+      alert("Ошибка при удалении записи. Попробуйте еще раз.");
     }
   };
 
@@ -135,7 +163,10 @@ export default function SermonPage() {
         </div>
 
         {/* Pass the isProcessing state to the AudioRecorder */}
-        <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
+        <AudioRecorder
+          onRecordingComplete={handleNewRecording}
+          isProcessing={isProcessing}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left column – Raw entries */}
@@ -154,7 +185,7 @@ export default function SermonPage() {
                   sermon.thoughts.map((thought, index) => (
                     <div
                       key={index}
-                      className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                      className="relative p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                     >
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -191,7 +222,10 @@ export default function SermonPage() {
                                 displayText = tag;
                               }
                               return (
-                                <span key={tag} className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}>
+                                <span
+                                  key={tag}
+                                  className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
+                                >
                                   {displayText}
                                 </span>
                               );
@@ -202,6 +236,15 @@ export default function SermonPage() {
                       <p className="text-gray-800 dark:text-gray-200">
                         {thought.text}
                       </p>
+                      {/* Added delete button at the bottom right corner with SVG trash icon */}
+                      <button
+                        onClick={() => handleDeleteThought(index)}
+                        className="absolute bottom-2 right-2 hover:bg-red-600 text-white p-2 rounded"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                        <path xmlns="http://www.w3.org/2000/svg" d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </button>
                     </div>
                   ))
                 )}
@@ -237,7 +280,9 @@ export default function SermonPage() {
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
-                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
+                          width: totalThoughts
+                            ? `${conclusionPercentage}%`
+                            : "0%",
                         }}
                         data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
                       />

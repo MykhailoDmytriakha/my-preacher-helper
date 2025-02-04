@@ -107,4 +107,22 @@ export async function deleteSermon(sermonId: string): Promise<void> {
     throw new Error(`Failed to delete sermon with id ${sermonId}`);
   }
 }
+
+// Added deleteThought function export
+export const deleteThought = async (sermonId: string, thought: Thought): Promise<void> => {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const response = await fetch(`${API_BASE}/api/thoughts`, {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify({ sermonId, thought }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete thought with status ${response.status}`);
+    }
+  } catch (error) {
+    console.error('deleteThought: Error deleting thought:', error);
+    throw error;
+  }
+};
   
