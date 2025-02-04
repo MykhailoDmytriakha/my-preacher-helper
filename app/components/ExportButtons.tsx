@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-
+import { log } from "@utils/logger";
 /**
  * Props for the presentational export buttons layout.
  */
@@ -65,9 +65,9 @@ export default function ExportButtons({
   return (
     <ExportButtonsLayout
       orientation={orientation}
-      onTxtClick={() => console.log(`Export TXT for sermon ${sermonId}`)}
-      onPdfClick={() => console.log(`Export PDF for sermon ${sermonId}`)}
-      onWordClick={() => console.log(`Export Word for sermon ${sermonId}`)}
+      onTxtClick={() => log.info(`Export TXT for sermon ${sermonId}`)}
+      onPdfClick={() => log.info(`Export PDF for sermon ${sermonId}`)}
+      onWordClick={() => log.info(`Export Word for sermon ${sermonId}`)}
     />
   );
 }

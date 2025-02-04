@@ -4,14 +4,15 @@ import { fetchSermonById } from '@clients/firestore.client';
 import { Sermon } from '@/models/models';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
+import { log } from '@utils/logger';
 
 // POST api/thoughts
 export async function POST(request: Request) {
   // TODO: i want to know what is the length of this audio, and leter to track this data
   // TODO: check length to limit time, no more that defined in constant
-  console.log("Transcription service: Received POST request.");
+  log.info("Transcription service: Received POST request.");
   try {
-    console.log("Transcription service: Starting transcription process.");
+    log.info("Transcription service: Starting transcription process.");
     
     const formData = await request.formData();
     const audioFile = formData.get('audio');
@@ -42,10 +43,10 @@ export async function POST(request: Request) {
       ...thought,
       date: new Date().toISOString()
     };
-    console.log("Generated thought:", thoughtWithDate);
+    log.info("Generated thought:", thoughtWithDate);
     const sermonDocRef = doc(db, "sermons", sermonId);
     await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
-    console.log("Firestore update: Stored new thought into sermon document.");
+    log.info("Firestore update: Stored new thought into sermon document.");
     // TODO store  thought to firestore
     
     return NextResponse.json(thoughtWithDate);
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 
 // Added DELETE method to remove a thought from a sermon
 export async function DELETE(request: Request) {
-  console.log("Transcription service: Received DELETE request.");
+  log.info("Transcription service: Received DELETE request.");
   try {
     const body = await request.json();
     const { sermonId, thought } = body;
@@ -69,7 +70,7 @@ export async function DELETE(request: Request) {
     }
     const sermonDocRef = doc(db, "sermons", sermonId);
     await updateDoc(sermonDocRef, { thoughts: arrayRemove(thought) });
-    console.log("Successfully deleted thought.");
+    log.info("Successfully deleted thought.");
     return NextResponse.json({ message: "Thought deleted successfully." });
   } catch (error) {
     console.error("Error deleting thought:", error);

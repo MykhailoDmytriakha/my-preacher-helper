@@ -4,6 +4,7 @@ import ExportButtons from "@components/ExportButtons";
 import DeleteSermonButton from "@components/DeleteSermonButton";
 import AddSermonModal from "@components/AddSermonModal";
 import OptionMenu from "@components/OptionMenu";
+import { formatDate } from "@utils/dateFormatter";
 
 export default async function DashboardPage() {
   const sermons = await getSermons();
@@ -21,14 +22,7 @@ export default async function DashboardPage() {
       <div className="grid gap-4">
         {sermons.map((sermon, index) => {
           // Format the sermon date with digits only
-          const formattedDate = new Date(sermon.date).toLocaleString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          });
+          const formattedDate = formatDate(sermon.date);
           return (
             <Link key={index} href={`/sermons/${sermon.id}`}>
               <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">

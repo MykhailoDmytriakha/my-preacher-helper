@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { Sermon, Thought } from '@/models/models';
-
+import { log } from '@utils/logger';
 // Initialize OpenAI client using the API key from environment variables
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -15,13 +15,13 @@ const gptModel = process.env.OPEANAI_GPT_MODEL as string; // Verify that this en
  * @returns Transcribed text.
  */
 export async function createTranscription(file: File): Promise<string> {
-  console.log('createTranscription: Received file for transcription', file);
+  log.info('createTranscription: Received file for transcription', file);
   const transcriptionResponse = await openai.audio.transcriptions.create({
     file,
     model: audioModel,
     response_format: "text",
   });
-  console.log('createTranscription: Transcription response received', transcriptionResponse);
+  log.info('createTranscription: Transcription response received', transcriptionResponse);
   return transcriptionResponse;
 }
 
@@ -59,8 +59,8 @@ export async function generateThought(
   sermon: Sermon
 ): Promise<Thought> {
   try {
-    console.log('generateThought: Starting thought generation with transcription and sermon content');
-    console.log('received transcript', transcription);
+    log.info('generateThought: Starting thought generation with transcription and sermon content');
+    log.info('received transcript', transcription);
 
     // Обновлённый системный промпт для получения тегов на русском языке.
     const promptSystemMessage = `Анализируйте содержание проповеди и предоставленную транскрипцию.
@@ -89,10 +89,10 @@ export async function generateThought(
         { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${transcription}` }
       ]
     });
-    console.log('generateThought: Received response from OpenAI', response);
+    log.info('generateThought: Received response from OpenAI', response);
 
     const rawJson = response.choices[0].message.content;
-    console.log('generateThought: Raw JSON response', rawJson);
+    log.info('generateThought: Raw JSON response', rawJson);
 
     let result;
     try {
@@ -118,8 +118,8 @@ export async function generateThought(
       }
     }
 
-    console.log("\x1b[31m received transcrip: %o\x1b[0m", transcription);
-    console.log("\x1b[31m generateThought: Successfully generated thought: %o\x1b[0m", result);
+    log.info("\x1b[31m received transcrip: %o\x1b[0m", transcription);
+    log.info("\x1b[31m generateThought: Successfully generated thought: %o\x1b[0m", result);
     return result as Thought;
   } catch (error) {
     console.error('generateThought: OpenAI API Error:', error);

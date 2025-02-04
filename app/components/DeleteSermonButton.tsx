@@ -1,14 +1,9 @@
-/*
-  DeleteSermonButton component
-  This component renders a delete button for a sermon on the dashboard page.
-  When clicked, it asks the user for confirmation. If confirmed, it calls deleteSermon API function and refreshes the page using next/navigation router.refresh()
-*/
-
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteSermon } from "@services/api.service";
+import { log } from "@utils/logger";
 
 interface DeleteSermonButtonProps {
   sermonId: string;
@@ -21,18 +16,18 @@ export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: Del
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
-    console.log(`DeleteSermonButton: handleDelete triggered for sermonId: ${sermonId}`);
+    log.info(`DeleteSermonButton: handleDelete triggered for sermonId: ${sermonId}`);
     const confirmed = window.confirm("Вы уверены, что хотите удалить проповедь?");
     if (!confirmed) {
-      console.log(`DeleteSermonButton: deletion cancelled for sermonId: ${sermonId}`);
+      log.info(`DeleteSermonButton: deletion cancelled for sermonId: ${sermonId}`);
       return;
     }
-    console.log(`DeleteSermonButton: deletion confirmed for sermonId: ${sermonId}`);
+    log.info(`DeleteSermonButton: deletion confirmed for sermonId: ${sermonId}`);
     setIsDeleting(true);
     try {
-      console.log(`DeleteSermonButton: calling deleteSermon for sermonId: ${sermonId}`);
+      log.info(`DeleteSermonButton: calling deleteSermon for sermonId: ${sermonId}`);
       await deleteSermon(sermonId);
-      console.log(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
+      log.info(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
       // Redirect to dashboard immediately after deletion
       window.location.href = '/dashboard';
     } catch (error) {

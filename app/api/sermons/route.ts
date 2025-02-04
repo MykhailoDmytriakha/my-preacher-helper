@@ -2,25 +2,26 @@ import { NextResponse } from 'next/server';
 import { addDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
 import { Sermon } from '@/models/models';
+import { log } from '@utils/logger';
 
 // GET /api/sermons
 export async function GET() {
-  console.log("GET: Request received for retrieving sermons");
+  log.info("GET: Request received for retrieving sermons");
   try {
-    console.log("GET: Fetching sermons from Firestore...");
+    log.info("GET: Fetching sermons from Firestore...");
     // Retrieve sermons stored in Firestore
     const snapshot = await getDocs(collection(db, 'sermons'));
-    console.log(`GET: Retrieved ${snapshot.docs.length} sermon(s) from Firestore`);
+    log.info(`GET: Retrieved ${snapshot.docs.length} sermon(s) from Firestore`);
 
     const sermons: Sermon[] = snapshot.docs.map(doc => {
-      console.log(`GET: Processing Firestore document with id: ${doc.id}`);
+      log.info(`GET: Processing Firestore document with id: ${doc.id}`);
       return {
         id: doc.id,
         ...doc.data()
       } as Sermon;
     });
     
-    console.log(`GET: Total sermons retrieved: ${sermons.length}`);
+    log.info(`GET: Total sermons retrieved: ${sermons.length}`);
     return NextResponse.json(sermons);
   } catch (error) {
     console.error('GET: Error fetching sermons:', error);
@@ -30,10 +31,10 @@ export async function GET() {
 
 // POST /api/sermons
 export async function POST(request: Request) {
-  console.log("POST request received for creating a sermon");
+  log.info("POST request received for creating a sermon");
   try {
     const sermon = await request.json();
-    console.log("Parsed sermon data:", sermon);
+    log.info("Parsed sermon data:", sermon);
 
     // Extract user id from request headers
     const userId = sermon.userId;
@@ -43,12 +44,12 @@ export async function POST(request: Request) {
 
     // Write sermon to Firestore
     const docRef = await addDoc(collection(db, 'sermons'), sermon);
-    console.log("Sermon written with ID:", docRef.id);
+    log.info("Sermon written with ID:", docRef.id);
     
     const newSermon = { id: docRef.id, ...sermon };
-    console.log("New sermon object after attaching ID:", newSermon);
+    log.info("New sermon object after attaching ID:", newSermon);
 
-    console.log("Returning success response for created sermon");
+    log.info("Returning success response for created sermon");
     return NextResponse.json({ message: 'Sermon created successfully', sermon: newSermon });
   } catch (error) {
     console.error("Error occurred while creating sermon:", error);

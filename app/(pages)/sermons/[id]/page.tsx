@@ -9,11 +9,13 @@ import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
 import ExportButtons from "@components/ExportButtons";
-
+import { log } from "@utils/logger";
+import { formatDate } from "@utils/dateFormatter";
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
 
 // Dynamic import of the AudioRecorder component with isProcessing prop support
+
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
   {
@@ -52,14 +54,7 @@ export default function SermonPage() {
   }
 
   // Format the sermon date (e.g., "01.02.2025, 11:47")
-  const formattedDate = new Date(sermon.date).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const formattedDate = formatDate(sermon.date);
 
   const totalThoughts = sermon.thoughts.length;
 
@@ -92,12 +87,12 @@ export default function SermonPage() {
 
   // Updated function to handle new audio recording
   const handleNewRecording = async (audioBlob: Blob) => {
-    console.log("handleNewRecording: Received audio blob", audioBlob);
+    log.info("handleNewRecording: Received audio blob", audioBlob);
     setIsProcessing(true); // Enable processing state
     try {
       // Get the Thought object (includes text and tags) from the transcription service
       const thoughtResponse = await transcribeAudioToNote(audioBlob, sermon.id);
-      console.log(
+      log.info(
         "handleNewRecording: Transcription successful",
         thoughtResponse
       );
@@ -105,7 +100,7 @@ export default function SermonPage() {
         ...thoughtResponse,
         date: new Date().toISOString(),
       };
-      console.log("handleNewRecording: New thought created", newThought);
+      log.info("handleNewRecording: New thought created", newThought);
       // Update the sermon state by appending the new thought
       setSermon((prevSermon: Sermon | null) =>
         prevSermon
@@ -124,7 +119,7 @@ export default function SermonPage() {
     if (!sermon) return;
     sermon.thoughts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const thoughtToDelete = sermon.thoughts[indexToDelete];
-    console.log("handleDeleteThought: Deleting thought", thoughtToDelete, indexToDelete);
+    log.info("handleDeleteThought: Deleting thought", thoughtToDelete, indexToDelete);
     try {
       await deleteThought(sermon.id, thoughtToDelete);
       setSermon({
@@ -194,14 +189,7 @@ export default function SermonPage() {
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center">
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(thought.date).toLocaleTimeString("ru-RU", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false,
-                              })}
+                              {formatDate(thought.date)}
                             </span>
                             <button
                               onClick={() => handleDeleteThought(index)}

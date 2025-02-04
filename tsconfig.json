@@ -24,7 +24,8 @@
       "@components/*": ["./app/components/*"],
       "@services/*": ["./app/services/*"],
       "@api/*": ["./app/api/*"],
-      "@clients/*": ["./app/api/clients/*"]
+      "@clients/*": ["./app/api/clients/*"],
+      "@utils/*": ["./app/utils/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.js"],
