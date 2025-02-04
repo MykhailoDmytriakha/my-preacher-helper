@@ -12,4 +12,5 @@ export interface Sermon {
   date: string;
   thoughts: Thought[];
   structure?: string;
-} 
+  userId: string;
+}

@@ -26,14 +26,15 @@ export const getSermons = async (): Promise<Sermon[]> => {
 export const getSermonById = async (id: string): Promise<Sermon | undefined> => {
   console.log(`getSermonById: Initiating fetch for sermon with id ${id}`);
   try {
+    console.log(`api.service.ts: getSermonById called for id ${id}`);
     const response = await fetch(`${API_BASE}/api/sermons/${id}`);
-    console.log(`getSermonById: Received response for id ${id}`, response);
+    console.log(`api.service.ts: Received response for id ${id} with status ${response.status}`);
     if (!response.ok) {
       console.error(`getSermonById: Response not ok for id ${id}, status: ${response.status}`);
       throw new Error('Failed to fetch sermon');
     }
     const data = await response.json();
-    console.log("getSermonById: Sermon fetched successfully", data);
+    console.log(`api.service.ts: Parsed sermon for id ${id}`, data);
     return data;
   } catch (error) {
     console.error(`getSermonById: Error fetching sermon ${id}:`, error);
@@ -44,9 +45,10 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
 export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> => {
   console.log("createSermon: Initiating creation of sermon", sermon);
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/sermons`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(sermon),
     });
     console.log("createSermon: Received response", response);
@@ -95,4 +97,14 @@ export const transcribeAudioToNote = async (
   console.log("transcribeAudio: Transcription succeeded. Thought:", thought);
   return thought;
 };
+
+// Added deleteSermon function export
+export async function deleteSermon(sermonId: string): Promise<void> {
+  const response = await fetch(`/api/sermons/${sermonId}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete sermon with id ${sermonId}`);
+  }
+}
   

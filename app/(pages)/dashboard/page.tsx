@@ -1,6 +1,7 @@
 import { getSermons } from '@services/api.service';
 import Link from "next/link";
 import ExportButtons from "@components/ExportButtons";
+import DeleteSermonButton from "@components/DeleteSermonButton";
 import AddSermonModal from "@components/AddSermonModal";
 
 export default async function DashboardPage() {
@@ -41,7 +42,7 @@ export default async function DashboardPage() {
                     </p>
                   </div>
                   <ExportButtons sermonId={sermon.id} orientation="vertical" />
-                  {/* TODO: we need to add delete button with confirmation popup */}
+                  <DeleteSermonButton sermonId={sermon.id} />
                 </div>
               </div>
             </Link>

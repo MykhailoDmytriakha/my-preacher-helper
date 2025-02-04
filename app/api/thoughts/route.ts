@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { fetchSermonById } from '@clients/firestore.client';
 import { Sermon } from '@/models/models';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from 'app/config/firebaseConfig';
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -41,6 +43,9 @@ export async function POST(request: Request) {
       date: new Date().toISOString()
     };
     console.log("Generated thought:", thoughtWithDate);
+    const sermonDocRef = doc(db, "sermons", sermonId);
+    await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
+    console.log("Firestore update: Stored new thought into sermon document.");
     // TODO store  thought to firestore
     
     return NextResponse.json(thoughtWithDate);

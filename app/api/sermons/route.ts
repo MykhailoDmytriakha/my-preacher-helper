@@ -32,14 +32,19 @@ export async function GET() {
 export async function POST(request: Request) {
   console.log("POST request received for creating a sermon");
   try {
-    const sermon: Omit<Sermon, 'id'> = await request.json();
+    const sermon = await request.json();
     console.log("Parsed sermon data:", sermon);
+
+    // Extract user id from request headers
+    const userId = sermon.userId;
+    if (!userId) {
+      return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+    }
 
     // Write sermon to Firestore
     const docRef = await addDoc(collection(db, 'sermons'), sermon);
     console.log("Sermon written with ID:", docRef.id);
     
-    // Optionally, you can attach the generated ID back to the sermon object:
     const newSermon = { id: docRef.id, ...sermon };
     console.log("New sermon object after attaching ID:", newSermon);
 
