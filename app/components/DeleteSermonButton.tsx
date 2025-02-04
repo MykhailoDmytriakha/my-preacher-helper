@@ -12,9 +12,11 @@ import { deleteSermon } from "@services/api.service";
 
 interface DeleteSermonButtonProps {
   sermonId: string;
+  iconOnly?: boolean;
+  noAction?: boolean;
 }
 
-export default function DeleteSermonButton({ sermonId }: DeleteSermonButtonProps) {
+export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: DeleteSermonButtonProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -40,6 +42,21 @@ export default function DeleteSermonButton({ sermonId }: DeleteSermonButtonProps
       setIsDeleting(false);
     }
   };
+
+  if (iconOnly) {
+    if (noAction) {
+      return <span className="ml-2 p-1">🗑️</span>;
+    }
+    return (
+      <button
+        onClick={handleDelete}
+        disabled={isDeleting}
+        className="ml-2 p-1"
+      >
+        {isDeleting ? "..." : "🗑️"}
+      </button>
+    );
+  }
 
   return (
     <button

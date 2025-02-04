@@ -3,6 +3,7 @@ import Link from "next/link";
 import ExportButtons from "@components/ExportButtons";
 import DeleteSermonButton from "@components/DeleteSermonButton";
 import AddSermonModal from "@components/AddSermonModal";
+import OptionMenu from "@components/OptionMenu";
 
 export default async function DashboardPage() {
   const sermons = await getSermons();
@@ -33,7 +34,10 @@ export default async function DashboardPage() {
               <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
                 <div className="flex justify-between items-center">
                   <div className="mr-8">
-                    <h3 className="text-lg font-semibold mb-2">{sermon.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">{sermon.title}</h3>
+                      <OptionMenu sermonId={sermon.id} />
+                    </div>
                     <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 break-words">
                       {sermon.verse}
                     </p>
@@ -42,7 +46,6 @@ export default async function DashboardPage() {
                     </p>
                   </div>
                   <ExportButtons sermonId={sermon.id} orientation="vertical" />
-                  <DeleteSermonButton sermonId={sermon.id} />
                 </div>
               </div>
             </Link>
