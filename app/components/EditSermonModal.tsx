@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Sermon } from '@/models/models';
+import TextareaAutosize from 'react-textarea-autosize';
 
 interface EditSermonModalProps {
   sermon: Sermon;
@@ -72,13 +73,13 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
             <label htmlFor="title" className="block text-sm font-medium text-gray-700">
               Тема
             </label>
-            <input 
-              type="text" 
+            <TextareaAutosize 
               id="title" 
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="Введите тему проповеди"
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none"
+              minRows={1}
               required
             />
           </div>
@@ -86,12 +87,13 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
             <label htmlFor="verse" className="block text-sm font-medium text-gray-700">
               Стих из Писания
             </label>
-            <textarea 
+            <TextareaAutosize 
               id="verse"
               value={verse}
               onChange={e => setVerse(e.target.value)}
               placeholder="Введите стих из Писания"
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none"
+              minRows={3}
               required
             />
           </div>
