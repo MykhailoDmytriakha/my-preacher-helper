@@ -10,20 +10,20 @@ import { log } from '@utils/logger';
 export async function POST(request: Request) {
   // TODO: i want to know what is the length of this audio, and leter to track this data
   // TODO: check length to limit time, no more that defined in constant
-  log.info("Transcription service: Received POST request.");
+  log.info("Thoughts route: Received POST request.");
   try {
-    log.info("Transcription service: Starting transcription process.");
+    log.info("Thoughts route: Starting transcription process.");
     
     const formData = await request.formData();
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
     if (!sermonId) {
-      console.error("Transcription service: sermonId is null.");
+      console.error("Thoughts route: sermonId is null.");
       return NextResponse.json({ error: 'sermonId is required' }, { status: 400 });
     }
     
     if (!(audioFile instanceof Blob)) {
-      console.error("Transcription service: Invalid audio format received.");
+      console.error("Thoughts route: Invalid audio format received.");
       return NextResponse.json(
         { error: 'Invalid audio format' },
         { status: 400 }
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     
     return NextResponse.json(thoughtWithDate);
   } catch (error) {
-    console.error('Transcription service: Transcription error:', error);
+    console.error('Thoughts route: Transcription error:', error);
     return NextResponse.json(
       { error: 'Failed to transcribe audio' },
       { status: 500 }
@@ -61,13 +61,14 @@ export async function POST(request: Request) {
 
 // Added DELETE method to remove a thought from a sermon
 export async function DELETE(request: Request) {
-  log.info("Transcription service: Received DELETE request.");
+  log.info("Thoughts route: Received DELETE request.");
   try {
     const body = await request.json();
     const { sermonId, thought } = body;
     if (!sermonId || !thought) {
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
     }
+    log.info("Thoughts route: Deleting thought:", thought);
     const sermonDocRef = doc(db, "sermons", sermonId);
     await updateDoc(sermonDocRef, { thoughts: arrayRemove(thought) });
     log.info("Successfully deleted thought.");
@@ -80,7 +81,7 @@ export async function DELETE(request: Request) {
 
 // After the DELETE method, add the following PUT method implementation
 export async function PUT(request: Request) {
-  log.info("Transcription service: Received PUT request for updating a thought.");
+  log.info("Thoughts route: Received PUT request for updating a thought.");
   try {
     const body = await request.json();
     const { sermonId, thought: updatedThought } = body;
@@ -99,6 +100,7 @@ export async function PUT(request: Request) {
     if (!oldThought) {
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
+    log.info("Thoughts route: Thought to update:", oldThought);
 
     const sermonDocRef = doc(db, "sermons", sermonId);
 

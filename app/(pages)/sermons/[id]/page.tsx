@@ -32,6 +32,9 @@ export default function SermonPage() {
   const [editingText, setEditingText] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Helper function for consistent thought sorting
+  const getSortedThoughts = () => sermon ? [...sermon.thoughts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+
   useEffect(() => {
     const loadSermon = async () => {
       const data = await getSermonById(id);
@@ -128,10 +131,7 @@ export default function SermonPage() {
   const handleDeleteThought = async (indexToDelete: number) => {
     if (!sermon) return;
     
-    // Sort thoughts once to match the display order
-    const sortedThoughts = [...sermon.thoughts].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    const sortedThoughts = getSortedThoughts();
     
     const thoughtToDelete = sortedThoughts[indexToDelete];
     const confirmed = window.confirm(`Вы уверены, что хотите удалить эту запись?
@@ -153,9 +153,7 @@ export default function SermonPage() {
 
   const saveEditedThought = async () => {
     if (!sermon || editingIndex === null) return;
-    const sortedThoughts = [...sermon.thoughts].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    const sortedThoughts = getSortedThoughts();
     const updatedThought = { ...sortedThoughts[editingIndex], text: editingText.trim() };
 
     try {
@@ -217,93 +215,91 @@ export default function SermonPage() {
                     Нет записей для этой проповеди.
                   </p>
                 ) : (
-                  [...sermon.thoughts]
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((thought, index) => (
-                      <div
-                        key={index}
-                        className="relative p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center">
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {formatDate(thought.date)}
-                            </span>
-                            <button
-                              onClick={() => handleDeleteThought(index)}
-                              className="hover:bg-red-200 text-white p-2 rounded"
-                              style={{ marginLeft: '2px' }}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                                <path xmlns="http://www.w3.org/2000/svg" d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => { setEditingIndex(index); setEditingText(thought.text); }}
-                              className="hover:bg-blue-200 text-white p-2 rounded"
-                              style={{ marginLeft: '2px' }}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="grey" className="w-4 h-4">
-                                <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z" />
-                                <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z" />
-                              </svg>
-                            </button>
-                          </div>
-                          {/* Display tags: iterate over thought.tags and style based on tag value */}
-                          {thought.tags && thought.tags.length > 0 && (
-                            <div className="flex gap-2">
-                              {thought.tags.map((tag) => {
-                                let bgClass, textClass, displayText;
-                                if (tag === "Вступление") {
-                                  bgClass = "bg-blue-100 dark:bg-blue-900";
-                                  textClass = "text-blue-800 dark:text-blue-200";
-                                  displayText = tag;
-                                } else if (tag === "Основная часть") {
-                                  bgClass = "bg-purple-100 dark:bg-purple-900";
-                                  textClass = "text-purple-800 dark:text-purple-200";
-                                  displayText = tag;
-                                } else if (tag === "Заключение") {
-                                  bgClass = "bg-green-100 dark:bg-green-900";
-                                  textClass = "text-green-800 dark:text-green-200";
-                                  displayText = tag;
-                                } else {
-                                  // Дополнительные теги отображаются в индиго для лучшего контраста с фоном
-                                  bgClass = "bg-indigo-100 dark:bg-indigo-900";
-                                  textClass = "text-indigo-800 dark:text-indigo-200";
-                                  displayText = tag;
-                                }
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
-                                  >
-                                    {displayText}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
+                  getSortedThoughts().map((thought, index) => (
+                    <div
+                      key={index}
+                      className="relative p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatDate(thought.date)}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteThought(index)}
+                            className="hover:bg-red-200 text-white p-2 rounded"
+                            style={{ marginLeft: '2px' }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                              <path xmlns="http://www.w3.org/2000/svg" d="M18 6L17.1991 18.0129C17.129 19.065 17.0939 19.5911 16.8667 19.99C16.6666 20.3412 16.3648 20.6235 16.0011 20.7998C15.588 21 15.0607 21 14.0062 21H9.99377C8.93927 21 8.41202 21 7.99889 20.7998C7.63517 20.6235 7.33339 20.3412 7.13332 19.99C6.90607 19.5911 6.871 19.065 6.80086 18.0129L6 6M4 6H20M16 6L15.7294 5.18807C15.4671 4.40125 15.3359 4.00784 15.0927 3.71698C14.8779 3.46013 14.6021 3.26132 14.2905 3.13878C13.9376 3 13.523 3 12.6936 3H11.3064C10.477 3 10.0624 3 9.70951 3.13878C9.39792 3.26132 9.12208 3.46013 8.90729 3.71698C8.66405 4.00784 8.53292 4.40125 8.27064 5.18807L8 6" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => { setEditingIndex(index); setEditingText(thought.text); }}
+                            className="hover:bg-blue-200 text-white p-2 rounded"
+                            style={{ marginLeft: '2px' }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="grey" className="w-4 h-4">
+                              <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z" />
+                              <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z" />
+                            </svg>
+                          </button>
                         </div>
-                        {editingIndex === index ? (
-                          <div>
-                            <textarea
-                              ref={textareaRef}
-                              value={editingText}
-                              onChange={(e) => setEditingText(e.target.value)}
-                              className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
-                            />
-                            <div className="flex gap-2">
-                              <button onClick={saveEditedThought} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Save</button>
-                              <button onClick={() => { setEditingIndex(null); setEditingText(""); }} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Cancel</button>
-                            </div>
+                        {/* Display tags: iterate over thought.tags and style based on tag value */}
+                        {thought.tags && thought.tags.length > 0 && (
+                          <div className="flex gap-2">
+                            {thought.tags.map((tag) => {
+                              let bgClass, textClass, displayText;
+                              if (tag === "Вступление") {
+                                bgClass = "bg-blue-100 dark:bg-blue-900";
+                                textClass = "text-blue-800 dark:text-blue-200";
+                                displayText = tag;
+                              } else if (tag === "Основная часть") {
+                                bgClass = "bg-purple-100 dark:bg-purple-900";
+                                textClass = "text-purple-800 dark:text-purple-200";
+                                displayText = tag;
+                              } else if (tag === "Заключение") {
+                                bgClass = "bg-green-100 dark:bg-green-900";
+                                textClass = "text-green-800 dark:text-green-200";
+                                displayText = tag;
+                              } else {
+                                // Дополнительные теги отображаются в индиго для лучшего контраста с фоном
+                                bgClass = "bg-indigo-100 dark:bg-indigo-900";
+                                textClass = "text-indigo-800 dark:text-indigo-200";
+                                displayText = tag;
+                              }
+                              return (
+                                <span
+                                  key={tag}
+                                  className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
+                                >
+                                  {displayText}
+                                </span>
+                              );
+                            })}
                           </div>
-                        ) : (
-                          <p className="text-gray-800 dark:text-gray-200">
-                            {thought.text}
-                          </p>
                         )}
                       </div>
-                    ))
+                      {editingIndex === index ? (
+                        <div>
+                          <textarea
+                            ref={textareaRef}
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={saveEditedThought} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Save</button>
+                            <button onClick={() => { setEditingIndex(null); setEditingText(""); }} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-800 dark:text-gray-200">
+                          {thought.text}
+                        </p>
+                      )}
+                    </div>
+                  ))
                 )}
               </div>
             </div>

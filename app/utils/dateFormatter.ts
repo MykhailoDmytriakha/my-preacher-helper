@@ -1,10 +1,11 @@
-export const formatDate = (dateStr: string, locale = "ru-RU") => {
-    return new Date(dateStr).toLocaleString(locale, {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  };
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+
+export const formatDate = (dateStr: string) => {
+  try {
+    return format(new Date(dateStr), 'dd.MM.yyyy, HH:mm', { locale: ru });
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid date';
+  }
+};

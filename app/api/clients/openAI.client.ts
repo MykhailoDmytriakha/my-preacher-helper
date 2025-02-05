@@ -6,7 +6,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
-const gptModel = process.env.OPEANAI_GPT_MODEL as string; // Verify that this environment variable is correct
+const gptModel = process.env.OPENAI_GPT_MODEL as string; // Verify that this environment variable is correct
 
 /**
  * Transcribes the provided audio file using OpenAI Whisper.
