@@ -125,4 +125,24 @@ export const deleteThought = async (sermonId: string, thought: Thought): Promise
     throw error;
   }
 };
+
+export const updateThought = async (sermonId: string, thought: Thought): Promise<Thought> => {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const response = await fetch(`${API_BASE}/api/thoughts`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ sermonId, thought })
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update thought with status ${response.status}`);
+    }
+    const updatedThought = await response.json();
+    return updatedThought;
+  } catch (error) {
+    console.error('updateThought: Error updating thought', error);
+    throw error;
+  }
+};
+
   

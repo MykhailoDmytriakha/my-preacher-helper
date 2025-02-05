@@ -77,3 +77,41 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Failed to delete thought." }, { status: 500 });
   }
 }
+
+// After the DELETE method, add the following PUT method implementation
+export async function PUT(request: Request) {
+  log.info("Transcription service: Received PUT request for updating a thought.");
+  try {
+    const body = await request.json();
+    const { sermonId, thought: updatedThought } = body;
+    if (!sermonId || !updatedThought) {
+      return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
+    }
+
+    // Fetch the sermon document to retrieve current thoughts
+    const sermon = await fetchSermonById(sermonId) as Sermon;
+    if (!sermon) {
+      return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
+    }
+
+    // Identify the old thought to update; assume the 'date' field uniquely identifies a thought
+    const oldThought = sermon.thoughts.find((th) => th.date === updatedThought.date);
+    if (!oldThought) {
+      return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
+    }
+
+    const sermonDocRef = doc(db, "sermons", sermonId);
+
+    // Remove the old thought from the array
+    await updateDoc(sermonDocRef, { thoughts: arrayRemove(oldThought) });
+
+    // Add the updated thought to the array
+    await updateDoc(sermonDocRef, { thoughts: arrayUnion(updatedThought) });
+
+    log.info("Successfully updated thought.");
+    return NextResponse.json(updatedThought);
+  } catch (error) {
+    console.error("Error updating thought:", error);
+    return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+  }
+}
