@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
+import { ChevronIcon } from "@components/Icons";
 
 export default function DashboardNav() {
   const [user, setUser] = useState<User | null>(null);
@@ -71,13 +72,7 @@ export default function DashboardNav() {
                   <span>{user?.email?.[0]?.toUpperCase() || 'G'}</span>
                 )}
               </div>
-              <svg 
-                className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
-                fill="currentColor" 
-                viewBox="0 0 20 20"
-              >
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
-              </svg>
+              <ChevronIcon className={`${showDropdown ? 'rotate-180' : ''}`} />
             </button>
 
             {showDropdown && (

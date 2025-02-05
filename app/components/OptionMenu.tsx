@@ -6,6 +6,7 @@ import DeleteSermonButton from "@components/DeleteSermonButton";
 import EditSermonModal from "@components/EditSermonModal"; // Импортируем новый модальный компонент
 import { deleteSermon } from "@services/api.service";
 import { Sermon } from "@/models/models";
+import { DotsVerticalIcon } from "@components/Icons";
 
 interface OptionMenuProps {
   sermon: Sermon; // Принимаем объект проповеди целиком
@@ -72,8 +73,9 @@ export default function OptionMenu({ sermon }: OptionMenuProps) {
         onClick={handleToggle}
         className="p-1 focus:outline-none hover:bg-gray-200 rounded transition-colors duration-200"
       >
-        ⋮
+        <DotsVerticalIcon className="w-5 h-5" />
       </button>
+
       {open && (
         <div className="origin-top-left absolute left-full top-0 ml-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
