@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSermon } from "@services/api.service";
+import { deleteSermon } from "@services/sermon.service";
 import { log } from "@utils/logger";
 
 interface DeleteSermonButtonProps {

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSermon } from '@services/api.service';
+import { createSermon } from '@services/sermon.service';
 import { auth } from '@services/firebaseAuth.service';
 import { Sermon } from '@/models/models';
 import { PlusIcon } from "@components/Icons";

@@ -85,6 +85,12 @@ export default function DashboardNav() {
                     {user?.email || ''}
                   </p>
                 </div>
+                <Link
+                  href="/settings"
+                  className="block w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Настройки
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full px-4 py-2 text-sm text-left text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"

@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById, transcribeAudioToNote, deleteThought, updateThought } from "@services/api.service";
+import { getSermonById } from "@services/sermon.service";
+import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
@@ -106,7 +107,7 @@ export default function SermonPage() {
     setIsProcessing(true); // Enable processing state
     try {
       // Get the Thought object (includes text and tags) from the transcription service
-      const thoughtResponse = await transcribeAudioToNote(audioBlob, sermon.id);
+      const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
       log.info(
         "handleNewRecording: Transcription successful",
         thoughtResponse

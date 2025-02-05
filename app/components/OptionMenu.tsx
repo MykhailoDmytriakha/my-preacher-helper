@@ -3,13 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import DeleteSermonButton from "@components/DeleteSermonButton";
-import EditSermonModal from "@components/EditSermonModal"; // Импортируем новый модальный компонент
-import { deleteSermon } from "@services/api.service";
+import EditSermonModal from "@components/EditSermonModal";
+import { deleteSermon } from "@services/sermon.service";
 import { Sermon } from "@/models/models";
 import { DotsVerticalIcon } from "@components/Icons";
 
 interface OptionMenuProps {
-  sermon: Sermon; // Принимаем объект проповеди целиком
+  sermon: Sermon;
 }
 
 export default function OptionMenu({ sermon }: OptionMenuProps) {
