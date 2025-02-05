@@ -15,7 +15,7 @@ interface Tag {
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>(getTags());
+  const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>({ requiredTags: [], customTags: [] });
   const [newTag, setNewTag] = useState({ name: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0') });
   const router = useRouter();
 
@@ -29,7 +29,19 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleAddTag = () => {
+  useEffect(() => {
+    async function fetchTags() {
+      try {
+        const tagsData = await getTags();
+        setTags(tagsData);
+      } catch (error) {
+        console.error('Error fetching tags:', error);
+      }
+    }
+    fetchTags();
+  }, []);
+
+  const handleAddTag = async () => {
     if (newTag.name.trim()) {
       const newTagObj = {
         id: Date.now().toString(),
@@ -37,7 +49,12 @@ export default function SettingsPage() {
         color: newTag.color,
       };
       addCustomTag(newTagObj);
-      setTags(getTags());
+      try {
+        const tagsData = await getTags();
+        setTags(tagsData);
+      } catch (error) {
+        console.error('Error updating tags:', error);
+      }
       setNewTag({ name: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0') });
     }
   };

@@ -1,19 +1,39 @@
-export const defaultTags = [
-  { id: 'intro', name: 'Вступление', color: '#4F46E5' },
-  { id: 'main', name: 'Основная часть', color: '#059669' },
-  { id: 'conclusion', name: 'Заключение', color: '#DC2626' },
-];
+import { log } from '@utils/logger';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000';
 
-let customTags: { id: string; name: string; color: string }[] = [];
-
-export function getTags() {
-  return {
-    requiredTags: defaultTags,
-    customTags,
-  };
+export async function getTags() {
+  log.info('getTags: Fetching tags from server');
+  try {
+    const res = await fetch(`${API_BASE}/api/tags`, { cache: 'no-store' });
+    if (!res.ok) {
+      throw new Error('Failed to fetch tags');
+    }
+    const data = await res.json();
+    log.info('getTags: Tags fetched successfully', data);
+    return data;
+  } catch (error) {
+    log.error('getTags: Error fetching tags', error);
+    throw error;
+  }
 }
 
-export function addCustomTag(tag: { id: string; name: string; color: string }) {
-  customTags.push(tag);
-  return tag;
-} 
+export async function addCustomTag(tag: { id: string; name: string; color: string }) {
+  log.info('addCustomTag: Adding custom tag', tag);
+  try {
+    const res = await fetch(`${API_BASE}/api/tags`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tag)
+    });
+    if (!res.ok) {
+      throw new Error('Failed to add custom tag');
+    }
+    log.info('addCustomTag: Custom tag added successfully');
+    return tag;
+  } catch (error) {
+    log.error('addCustomTag: Error adding custom tag', error);
+    throw error;
+  }
+}
