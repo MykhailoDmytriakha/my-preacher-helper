@@ -14,3 +14,10 @@ export interface Sermon {
   structure?: string;
   userId: string;
 }
+
+export interface Tag {
+  userId: string;
+  name: string;
+  color: string;
+  required: boolean;
+}

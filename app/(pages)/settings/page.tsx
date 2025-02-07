@@ -5,13 +5,8 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getTags, addCustomTag } from "@services/setting.service";
-
-interface Tag {
-  id: string;
-  name: string;
-  color: string;
-}
+import { getTags, addCustomTag, removeCustomTag } from "@services/setting.service";
+import { Tag } from "@/models/models";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -32,30 +27,45 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchTags() {
       try {
-        const tagsData = await getTags();
-        setTags(tagsData);
+        if (user?.uid) {
+          const tagsData = await getTags(user.uid);
+          setTags(tagsData);
+        }
       } catch (error) {
         console.error('Error fetching tags:', error);
       }
     }
     fetchTags();
-  }, []);
+  }, [user]);
 
   const handleAddTag = async () => {
     if (newTag.name.trim()) {
-      const newTagObj = {
-        id: Date.now().toString(),
+      const newTagObj: Tag = {
+        userId: user?.uid || '',
         name: newTag.name.trim(),
         color: newTag.color,
+        required: false,
       };
       addCustomTag(newTagObj);
       try {
-        const tagsData = await getTags();
+        const tagsData = await getTags(user?.uid || '');
         setTags(tagsData);
       } catch (error) {
         console.error('Error updating tags:', error);
       }
       setNewTag({ name: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0') });
+    }
+  };
+
+  const handleRemoveTag = async (tagName: string) => {
+    try {
+      if (user?.uid) {
+        await removeCustomTag(user.uid, tagName);
+        const tagsData = await getTags(user.uid);
+        setTags(tagsData);
+      }
+    } catch (error) {
+      console.error('Error removing tag:', error);
     }
   };
 
@@ -146,6 +156,25 @@ export default function SettingsPage() {
                   style={{ backgroundColor: tag.color }}
                 />
                 <span className="text-gray-800 dark:text-gray-200">{tag.name}</span>
+                <button
+                  onClick={() => handleRemoveTag(tag.name)}
+                  className="ml-auto text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  title="Удалить тег"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
               </div>
             ))}
           </div>

@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
+import { getRequiredTags, saveTag, getCustomTags, deleteTag } from '@clients/firestore.client'
+import { log } from '@utils/logger';
+import { Tag } from '@/models/models';
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+  const requiredTags = await getRequiredTags();
+  log.info('Required tags:', requiredTags);
+  let customTags: Tag[] = [];
+  if (userId) {
+    customTags = await getCustomTags(userId) as Tag[];
+    log.info('Custom tags:', customTags);
+  }
   const tags = {
-    requiredTags: [
-      { id: 'intro', name: 'Вступление', color: '#4F46E5' },
-      { id: 'main', name: 'Основная часть', color: '#059669' },
-      { id: 'conclusion', name: 'Заключение', color: '#DC2626' },
-    ],
-    customTags: [
-      { id: 'custom1', name: 'Кастомный тег 1', color: '#FF0000' },
-      { id: 'custom2', name: 'Кастомный тег 2', color: '#00FF00' },
-    ],
+    requiredTags: requiredTags,
+    customTags: customTags || [],
   };
   return NextResponse.json(tags);
 } 
@@ -18,15 +23,29 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const tag = await request.json();
   console.log('Received tag:', tag);
+  tag.required = false;
+  await saveTag(tag);
   return NextResponse.json({ message: 'Tag received' });
 }
 
 export async function PUT(request: Request) {
   const tag = await request.json();
   if (tag.command === 'generate') {
-    console.log('Received tag:', tag);
+    const requiredTags = await getRequiredTags();
+    console.log('Received tag:', requiredTags);
     return NextResponse.json({ message: 'Tag received' });
   } else {
     return NextResponse.json({ message: 'Invalid command' }, { status: 400 });
   }
+}
+
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+  const tagName = searchParams.get('tagName');
+  if (!userId || !tagName) {
+    return NextResponse.json({ message: 'Missing userId or tagName' }, { status: 400 });
+  }
+  await deleteTag(userId, tagName);
+  return NextResponse.json({ message: 'Tag removed' });
 }
