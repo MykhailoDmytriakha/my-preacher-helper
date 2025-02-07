@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { getSermonById } from "@services/sermon.service";
-import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
+import { createAudioThought, deleteThought, updateThought, generateTags } from "@services/thought.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
@@ -171,6 +171,17 @@ export default function SermonPage() {
     }
   };
 
+  const handleGenerateTags = async () => {
+    try {
+      const tagsData = await generateTags();
+      console.log("Сгенерированные метки:", tagsData);
+      alert("Метки сгенерированы. Проверьте консоль.");
+    } catch (error) {
+      console.error("Ошибка генерации меток:", error);
+      alert("Ошибка генерации меток");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <DashboardNav />
@@ -210,6 +221,7 @@ export default function SermonPage() {
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Все записи</h2>
+                <button onClick={handleGenerateTags} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">Сгенерировать метки</button>
               </div>
 
               <div className="space-y-4">

@@ -20,3 +20,13 @@ export async function POST(request: Request) {
   console.log('Received tag:', tag);
   return NextResponse.json({ message: 'Tag received' });
 }
+
+export async function PUT(request: Request) {
+  const tag = await request.json();
+  if (tag.command === 'generate') {
+    console.log('Received tag:', tag);
+    return NextResponse.json({ message: 'Tag received' });
+  } else {
+    return NextResponse.json({ message: 'Invalid command' }, { status: 400 });
+  }
+}
