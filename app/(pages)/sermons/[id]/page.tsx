@@ -171,6 +171,22 @@ export default function SermonPage() {
     }
   };
 
+  const generateExportContent = async () => {
+    if (!sermon) return "";
+    
+    const header = `${sermon.title}\n${sermon.verse ? "Текст: " + sermon.verse + "\n" : ""}Дата: ${formatDate(sermon.date)}\n\n`;
+    
+    const content = sermon.thoughts
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((thought, index) => {
+        const date = formatDate(thought.date);
+        return `[${date}] ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
+      })
+      .join("\n");
+  
+    return header + content;
+  };
+
   const handleGenerateTags = async () => {
     try {
       const tagsData = await generateTags();
@@ -194,7 +210,10 @@ export default function SermonPage() {
                 {/* TODO: Make the title and verse editable */}
                 {sermon.title}
               </h1>
-              <ExportButtons sermonId={sermon.id} />
+              <ExportButtons 
+                sermonId={sermon.id}
+                getExportContent={generateExportContent}
+              />
             </div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {formattedDate}
