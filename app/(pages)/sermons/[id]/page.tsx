@@ -13,12 +13,11 @@ import ExportButtons from "@components/ExportButtons";
 import { log } from "@utils/logger";
 import { formatDate } from "@utils/dateFormatter";
 import { TrashIcon, EditIcon } from "@components/Icons";
+import { getTags } from "@services/setting.service"; // Import tag fetching service
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
 
-
 // Dynamic import of the AudioRecorder component with isProcessing prop support
-
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
   {
@@ -33,10 +32,41 @@ export default function SermonPage() {
   const [isProcessing, setIsProcessing] = useState(false); // State to track audio processing
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<string>("");
+
+  // New state for editing tags and for allowed tags from settings
+  const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Helper function for editing tags: remove tag by index
+  const removeEditingTag = (index: number) => {
+    setEditingTags((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // When a thought is being edited, fetch the allowed tags from settings
+  useEffect(() => {
+    async function fetchAllowedTags() {
+      if (editingIndex !== null && sermon) {
+        try {
+          const tagData = await getTags(sermon.userId);
+          // Combine required and custom tags into one list.
+          const combinedTags = [
+            ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
+            ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
+          ];
+          setAllowedTags(combinedTags);
+        } catch (error) {
+          console.error("Error fetching allowed tags:", error);
+        }
+      }
+    }
+    fetchAllowedTags();
+  }, [editingIndex, sermon]);
+
   // Helper function for consistent thought sorting
-  const getSortedThoughts = () => sermon ? [...sermon.thoughts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+  const getSortedThoughts = () =>
+    sermon ? [...sermon.thoughts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
 
   useEffect(() => {
     const loadSermon = async () => {
@@ -48,8 +78,8 @@ export default function SermonPage() {
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
     }
   }, [editingText, editingIndex]);
 
@@ -81,8 +111,7 @@ export default function SermonPage() {
       0
     ),
     "Основная часть": sermon.thoughts.reduce(
-      (count, thought) =>
-        count + (thought.tags.includes("Основная часть") ? 1 : 0),
+      (count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0),
       0
     ),
     Заключение: sermon.thoughts.reduce(
@@ -108,10 +137,7 @@ export default function SermonPage() {
     try {
       // Get the Thought object (includes text and tags) from the transcription service
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
-      log.info(
-        "handleNewRecording: Transcription successful",
-        thoughtResponse
-      );
+      log.info("handleNewRecording: Transcription successful", thoughtResponse);
       const newThought: Thought = {
         ...thoughtResponse,
         date: new Date().toISOString(),
@@ -133,9 +159,9 @@ export default function SermonPage() {
 
   const handleDeleteThought = async (indexToDelete: number) => {
     if (!sermon) return;
-    
+
     const sortedThoughts = getSortedThoughts();
-    
+
     const thoughtToDelete = sortedThoughts[indexToDelete];
     const confirmed = window.confirm(`Вы уверены, что хотите удалить эту запись?
         \n${thoughtToDelete.text}`);
@@ -157,7 +183,11 @@ export default function SermonPage() {
   const saveEditedThought = async () => {
     if (!sermon || editingIndex === null) return;
     const sortedThoughts = getSortedThoughts();
-    const updatedThought = { ...sortedThoughts[editingIndex], text: editingText.trim() };
+    const updatedThought = {
+      ...sortedThoughts[editingIndex],
+      text: editingText.trim(),
+      tags: editingTags,
+    };
 
     try {
       await updateThought(sermon.id, updatedThought);
@@ -165,6 +195,7 @@ export default function SermonPage() {
       setSermon({ ...sermon, thoughts: sortedThoughts });
       setEditingIndex(null);
       setEditingText("");
+      setEditingTags([]);
     } catch (error) {
       console.error("Failed to update thought in Firestore", error);
       alert("Ошибка обновления записи в базе данных Firestore");
@@ -173,9 +204,11 @@ export default function SermonPage() {
 
   const generateExportContent = async () => {
     if (!sermon) return "";
-    
-    const header = `${sermon.title}\n${sermon.verse ? "Текст: " + sermon.verse + "\n" : ""}Дата: ${formatDate(sermon.date)}\n\n`;
-    
+
+    const header = `${sermon.title}\n${sermon.verse ? "Текст: " + sermon.verse + "\n" : ""}Дата: ${formatDate(
+      sermon.date
+    )}\n\n`;
+
     const content = sermon.thoughts
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .map((thought, index) => {
@@ -183,7 +216,7 @@ export default function SermonPage() {
         return `[${date}] ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
       })
       .join("\n");
-  
+
     return header + content;
   };
 
@@ -207,32 +240,21 @@ export default function SermonPage() {
           <div>
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                {/* TODO: Make the title and verse editable */}
                 {sermon.title}
               </h1>
-              <ExportButtons 
-                sermonId={sermon.id}
-                getExportContent={generateExportContent}
-              />
+              <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
             </div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {formattedDate}
-            </span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
             <div>
               {sermon.verse && (
-                <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium">
-                  {sermon.verse}
-                </p>
+                <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium">{sermon.verse}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Pass the isProcessing state to the AudioRecorder */}
-        <AudioRecorder
-          onRecordingComplete={handleNewRecording}
-          isProcessing={isProcessing}
-        />
+        <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left column – Raw entries */}
@@ -240,38 +262,40 @@ export default function SermonPage() {
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Все записи</h2>
-                <button onClick={handleGenerateTags} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">Сгенерировать метки</button>
+                <button
+                  onClick={handleGenerateTags}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Сгенерировать метки
+                </button>
               </div>
 
               <div className="space-y-4">
                 {sermon.thoughts.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400">
-                    Нет записей для этой проповеди.
-                  </p>
+                  <p className="text-gray-500 dark:text-gray-400">Нет записей для этой проповеди.</p>
                 ) : (
                   getSortedThoughts().map((thought, index) => (
-                    <div
-                      key={index}
-                      className="relative p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                    >
+                    <div key={index} className="relative p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatDate(thought.date)}
-                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(thought.date)}</span>
                           <button
                             onClick={() => handleDeleteThought(index)}
                             className="hover:bg-red-200 text-white p-2 rounded"
-                            style={{ marginLeft: '2px' }}
+                            style={{ marginLeft: "2px" }}
                           >
-                            <TrashIcon className="w-4 h-4" fill="gray"/>
+                            <TrashIcon className="w-4 h-4" fill="gray" />
                           </button>
                           <button
-                            onClick={() => { setEditingIndex(index); setEditingText(thought.text); }}
+                            onClick={() => {
+                              setEditingIndex(index);
+                              setEditingText(thought.text);
+                              setEditingTags([...thought.tags]);
+                            }}
                             className="hover:bg-blue-200 text-white p-2 rounded"
-                            style={{ marginLeft: '2px' }}
+                            style={{ marginLeft: "2px" }}
                           >
-                            <EditIcon className="w-4 h-4" fill="gray"/>
+                            <EditIcon className="w-4 h-4" fill="gray" />
                           </button>
                         </div>
                         {/* Display tags: iterate over thought.tags and style based on tag value */}
@@ -292,16 +316,12 @@ export default function SermonPage() {
                                 textClass = "text-green-800 dark:text-green-200";
                                 displayText = tag;
                               } else {
-                                // Дополнительные теги отображаются в индиго для лучшего контраста с фоном
                                 bgClass = "bg-indigo-100 dark:bg-indigo-900";
                                 textClass = "text-indigo-800 dark:text-indigo-200";
                                 displayText = tag;
                               }
                               return (
-                                <span
-                                  key={tag}
-                                  className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
-                                >
+                                <span key={tag} className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}>
                                   {displayText}
                                 </span>
                               );
@@ -317,15 +337,77 @@ export default function SermonPage() {
                             onChange={(e) => setEditingText(e.target.value)}
                             className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
                           />
+                          {/* Tag editing section using allowed tags */}
+                          <div className="mb-2">
+                            <p className="font-medium">Теги:</p>
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {editingTags.map((tag, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-1 rounded-full"
+                                >
+                                  <span>{tag}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeEditingTag(idx)}
+                                    className="ml-1 text-red-500 hover:text-red-700"
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-2">
+                              <select
+                                className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+                                onChange={(e) => {
+                                  const selectedTag = e.target.value;
+                                  if (selectedTag && !editingTags.includes(selectedTag)) {
+                                    setEditingTags([...editingTags, selectedTag]);
+                                  }
+                                }}
+                                defaultValue=""
+                              >
+                                <option value="" disabled>
+                                  Выберите тег для добавления
+                                </option>
+                                {allowedTags
+                                  .filter((t) => !editingTags.includes(t.name))
+                                  .map((t) => (
+                                    <option key={t.name} value={t.name}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                              </select>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Если нужный тег отсутствует, перейдите в{" "}
+                                <Link href="/settings" className="text-blue-600 hover:underline">
+                                  Настройки
+                                </Link>
+                              </p>
+                            </div>
+                          </div>
                           <div className="flex gap-2">
-                            <button onClick={saveEditedThought} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Save</button>
-                            <button onClick={() => { setEditingIndex(null); setEditingText(""); }} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Cancel</button>
+                            <button
+                              onClick={saveEditedThought}
+                              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingIndex(null);
+                                setEditingText("");
+                                setEditingTags([]);
+                              }}
+                              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Cancel
+                            </button>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-800 dark:text-gray-200">
-                          {thought.text}
-                        </p>
+                        <p className="text-gray-800 dark:text-gray-200">{thought.text}</p>
                       )}
                     </div>
                   ))
@@ -337,10 +419,7 @@ export default function SermonPage() {
           {/* Right column – Sermon structure */}
           <div className="space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold mb-4">
-                Структура проповеди
-              </h2>
-
+              <h2 className="text-xl font-semibold mb-4">Структура проповеди</h2>
               <div className="space-y-4">
                 <div className="space-y-4">
                   <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
@@ -362,59 +441,38 @@ export default function SermonPage() {
                       <div
                         className="bg-green-600 transition-all duration-500"
                         style={{
-                          width: totalThoughts
-                            ? `${conclusionPercentage}%`
-                            : "0%",
+                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                         }}
                         data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
                       />
                     </div>
                   </div>
-
                   <div className="flex justify-between text-sm">
                     <div className="text-blue-600 text-center">
-                      <div className="text-lg font-bold">
-                        {introPercentage}%
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        Рекомендуется: 20%
-                      </span>
+                      <div className="text-lg font-bold">{introPercentage}%</div>
+                      <span className="text-xs text-gray-500">Рекомендуется: 20%</span>
                     </div>
-
                     <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-
                     <div className="text-purple-600 text-center">
                       <div className="text-lg font-bold">{mainPercentage}%</div>
-                      <span className="text-xs text-gray-500">
-                        Целевой показатель: 60%
-                      </span>
+                      <span className="text-xs text-gray-500">Целевой показатель: 60%</span>
                     </div>
-
                     <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-
                     <div className="text-green-600 text-center">
-                      <div className="text-lg font-bold">
-                        {conclusionPercentage}%
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        Рекомендуется: 20%
-                      </span>
+                      <div className="text-lg font-bold">{conclusionPercentage}%</div>
+                      <span className="text-xs text-gray-500">Рекомендуется: 20%</span>
                     </div>
                   </div>
                 </div>
               </div>
-
               <button className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
                 Сгенерировать структуру
               </button>
             </div>
-
             {sermon.structure && (
               <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
                 <h3 className="font-semibold mb-2">Предпросмотр</h3>
-                <div className="prose dark:prose-invert max-w-none whitespace-pre-line">
-                  {sermon.structure}
-                </div>
+                <div className="prose dark:prose-invert max-w-none whitespace-pre-line">{sermon.structure}</div>
               </div>
             )}
           </div>
