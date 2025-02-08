@@ -1,18 +1,19 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { auth } from "@services/firebaseAuth.service";
+import { auth, checkGuestExpiration } from "@services/firebaseAuth.service";
 
 export function GuestBanner() {
   const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(user => {
-      setIsGuest(user?.isAnonymous || false);
-    });
-    return () => unsubscribe();
+    const user = auth.currentUser;
+    if (user?.isAnonymous && !checkGuestExpiration(user)) {
+      localStorage.removeItem('guestUser');
+      auth.signOut();
+    }
   }, []);
-
+  
   if (!isGuest) return null;
 
   return (

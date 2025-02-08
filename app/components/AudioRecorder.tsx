@@ -104,7 +104,7 @@ export const AudioRecorder = ({
   // - Red with pulse when recording
   // - Green when idle
   const buttonClass = isProcessing
-    ? "bg-blue-600 hover:bg-blue-700 text-white animate-pulse"
+    ? "bg-blue-600 hover:bg-blue-700 text-white animate-pulse cursor-wait"
     : isRecording
     ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
     : "bg-green-600 hover:bg-green-700 text-white";
@@ -114,7 +114,7 @@ export const AudioRecorder = ({
     "Обработка..."
   ) : isRecording ? (
     <>
-      <MicrophoneIcon className="w-5 h-5 shrink-0" fill="white"/>
+      <MicrophoneIcon className="w-5 h-5 shrink-0" fill="white" />
       <span className="flex-1 text-center">Остановить запись</span>
     </>
   ) : (
@@ -122,7 +122,6 @@ export const AudioRecorder = ({
       <MicrophoneIcon className="w-5 h-5 shrink-0" fill="white" />
       <span className="flex-1 text-center">Новая запись</span>
     </>
-
   );
 
   return (
@@ -139,7 +138,6 @@ export const AudioRecorder = ({
             disabled={isProcessing} // Disable button during processing
           >
             {buttonText}
-
           </button>
           <div className="text-sm text-gray-600 dark:text-gray-300">
             {formatTime(recordingTime)} / 1:00
