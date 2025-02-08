@@ -2,10 +2,16 @@ import { Sermon } from '@/models/models';
 import { log } from '@utils/logger';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000';
 
-export const getSermons = async (): Promise<Sermon[]> => {
-  log.info(`getSermons: Initiating fetch from ${API_BASE}/api/sermons`);
+/**
+ * Fetches sermons for a given user.
+ *
+ * @param userId - The UID of the current user (or guest). This must be provided from the client.
+ * @returns A Promise that resolves to an array of Sermon objects.
+ */
+export const getSermons = async (userId: string): Promise<Sermon[]> => {
+  log.info(`getSermons: Initiating fetch for userId: ${userId} from ${API_BASE}/api/sermons`);
   try {
-    const response = await fetch(`${API_BASE}/api/sermons`, {
+    const response = await fetch(`${API_BASE}/api/sermons?userId=${userId}`, {
       cache: "no-store"
     });
     log.info("getSermons: Received response", response);
@@ -15,7 +21,7 @@ export const getSermons = async (): Promise<Sermon[]> => {
     }
     const data = await response.json();
     log.info("getSermons: Sermons fetched successfully", data);
-    // Сортируем проповеди по дате (сначала последние)
+    // Sort sermons by date (latest first)
     return data.sort((a: Sermon, b: Sermon) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
     console.error('getSermons: Error fetching sermons:', error);
@@ -72,4 +78,4 @@ export async function deleteSermon(sermonId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to delete sermon with id ${sermonId}`);
   }
-} 
+}

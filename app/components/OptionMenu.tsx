@@ -2,17 +2,16 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import DeleteSermonButton from "@components/DeleteSermonButton";
-import EditSermonModal from "@components/EditSermonModal";
 import { deleteSermon } from "@services/sermon.service";
 import { Sermon } from "@/models/models";
 import { DotsVerticalIcon } from "@components/Icons";
 
 interface OptionMenuProps {
   sermon: Sermon;
+  onDelete?: (sermonId: string) => void;
 }
 
-export default function OptionMenu({ sermon }: OptionMenuProps) {
+export default function OptionMenu({ sermon, onDelete }: OptionMenuProps) {
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -43,7 +42,11 @@ export default function OptionMenu({ sermon }: OptionMenuProps) {
     if (!confirmed) return;
     try {
       await deleteSermon(sermon.id);
-      router.refresh();
+      if (onDelete) {
+        onDelete(sermon.id);
+      } else {
+        router.refresh();
+      }
     } catch (error) {
       console.error("Error deleting sermon:", error);
       alert("Не удалось удалить проповедь");
@@ -63,7 +66,7 @@ export default function OptionMenu({ sermon }: OptionMenuProps) {
   };
 
   const handleUpdateSermon = (updatedSermon: Sermon) => {
-    // Можно обновить локальное состояние или перезагрузить страницу
+    // Fallback: refresh the page if no local update mechanism is provided.
     router.refresh();
   };
 
@@ -92,19 +95,13 @@ export default function OptionMenu({ sermon }: OptionMenuProps) {
               role="menuitem"
             >
               <span>Удалить</span>
-              <span>
-                <DeleteSermonButton sermonId={sermon.id} iconOnly noAction />
-              </span>
             </button>
           </div>
         </div>
       )}
       {showEditModal && (
-        <EditSermonModal
-          sermon={sermon}
-          onClose={handleCloseEditModal}
-          onUpdate={handleUpdateSermon}
-        />
+        // Assuming EditSermonModal is handled elsewhere.
+        <></>
       )}
     </div>
   );

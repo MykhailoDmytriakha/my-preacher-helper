@@ -7,7 +7,11 @@ import { auth } from '@services/firebaseAuth.service';
 import { Sermon } from '@/models/models';
 import { PlusIcon } from "@components/Icons";
 
-export default function AddSermonModal() {
+interface AddSermonModalProps {
+  onNewSermonCreated?: (newSermon: Sermon) => void;
+}
+
+export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
@@ -16,10 +20,10 @@ export default function AddSermonModal() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const user = auth.currentUser;
-      if (!user) {
-        console.error("User is not authenticated");
-        return;
-      }
+    if (!user) {
+      console.error("User is not authenticated");
+      return;
+    }
     const newSermon = {
       title,
       verse,
@@ -29,9 +33,13 @@ export default function AddSermonModal() {
     };
 
     try {
-      // Call createSermon in the service
-      await createSermon(newSermon as Omit<Sermon, 'id'>);
-      // Optionally, refresh the list of sermons (using Next.js router refresh)
+      // Create the sermon and retrieve the newly created sermon (with its ID)
+      const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
+      // Immediately update parent state if a callback is provided
+      if (onNewSermonCreated) {
+        onNewSermonCreated(createdSermon);
+      }
+      // Optionally refresh the route (if needed)
       router.refresh();
     } catch (error) {
       console.error('Error creating sermon:', error);
@@ -72,7 +80,9 @@ export default function AddSermonModal() {
                   className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Например:<br />"Сила веры в испытаниях"</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Например:<br />"Сила веры в испытаниях"
+                </p>
               </div>
               <div className="mb-6">
                 <label htmlFor="verse" className="block text-sm font-medium text-gray-700">
@@ -112,4 +122,4 @@ export default function AddSermonModal() {
       )}
     </>
   );
-} 
+}
