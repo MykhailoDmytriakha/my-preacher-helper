@@ -2,6 +2,7 @@ import { db } from "app/config/firebaseConfig";
 import { doc, getDoc, deleteDoc, collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { Tag } from "@/models/models";
 import { log } from "@utils/logger";
+import { Sermon } from "@/models/models";
 
 export async function fetchSermonById(id: string) {
   // Create a reference to the document in the "sermons" collection using the provided id.
@@ -17,9 +18,10 @@ export async function fetchSermonById(id: string) {
   }
 
   // Combine the document id with its data.
-  const sermon = { id: docSnap.id, ...docSnap.data() };
-  log.info("Sermon retrieved:", sermon);
+  const sermon = { id: docSnap.id, ...docSnap.data() } as Sermon;
+  log.info(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
   return sermon;
+
 }
 
 export async function deleteSermonById(id: string): Promise<void> {

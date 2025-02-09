@@ -205,19 +205,17 @@ export default function SermonPage() {
   const generateExportContent = async () => {
     if (!sermon) return "";
 
-    const header = `${sermon.title}\n${sermon.verse ? "Текст: " + sermon.verse + "\n" : ""}Дата: ${formatDate(
-      sermon.date
-    )}\n\n`;
+    const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n\n`;
 
     const content = sermon.thoughts
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((thought, index) => {
-        const date = formatDate(thought.date);
-        return `[${date}] ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
+      .map((thought, _) => {
+        return `- ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
       })
       .join("\n");
 
-    return header + content;
+
+    return header + "Размышления:\n" + content;
   };
 
   const handleGenerateTags = async () => {
