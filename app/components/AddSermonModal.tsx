@@ -33,22 +33,19 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
     };
 
     try {
-      // Create the sermon and retrieve the newly created sermon (with its ID)
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
-      // Immediately update parent state if a callback is provided
       if (onNewSermonCreated) {
         onNewSermonCreated(createdSermon);
       }
-      // Optionally refresh the route (if needed)
       router.refresh();
     } catch (error) {
       console.error('Error creating sermon:', error);
     }
     
-    // Reset the form and close the modal
     setTitle('');
     setVerse('');
     setOpen(false);
+
   };
 
   return (

@@ -15,7 +15,6 @@ export async function GET(request: Request) {
     }
     
     log.info(`GET: Fetching sermons for userId: ${userId} from Firestore...`);
-    // Query sermons where the userId matches the current user
     const q = query(collection(db, 'sermons'), where("userId", "==", userId));
     const snapshot = await getDocs(q);
     log.info(`GET: Retrieved ${snapshot.docs.length} sermon(s) from Firestore for userId: ${userId}`);
@@ -43,13 +42,11 @@ export async function POST(request: Request) {
     const sermon = await request.json();
     log.info("Parsed sermon data:", sermon);
 
-    // Extract user id from the sermon data
     const userId = sermon.userId;
     if (!userId) {
       return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    // Write sermon to Firestore
     const docRef = await addDoc(collection(db, 'sermons'), sermon);
     log.info("Sermon written with ID:", docRef.id);
     

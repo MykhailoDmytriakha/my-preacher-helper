@@ -37,7 +37,6 @@ export async function POST(request: Request) {
     const transcriptionText = await createTranscription(file);
     const sermon = await fetchSermonById(sermonId) as Sermon;
     
-    // Generate structured thought using JSON mode
     const thought = await generateThought(transcriptionText, sermon);
     const thoughtWithDate = {
       ...thought,
@@ -89,25 +88,19 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
     }
 
-    // Fetch the sermon document to retrieve current thoughts
     const sermon = await fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
 
-    // Identify the old thought to update; assume the 'date' field uniquely identifies a thought
     const oldThought = sermon.thoughts.find((th) => th.date === updatedThought.date);
     if (!oldThought) {
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
     log.info("Thoughts route: Thought to update:", oldThought);
-
     const sermonDocRef = doc(db, "sermons", sermonId);
 
-    // Remove the old thought from the array
     await updateDoc(sermonDocRef, { thoughts: arrayRemove(oldThought) });
-
-    // Add the updated thought to the array
     await updateDoc(sermonDocRef, { thoughts: arrayUnion(updatedThought) });
 
     log.info("Successfully updated thought.");

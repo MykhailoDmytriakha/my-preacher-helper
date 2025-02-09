@@ -5,19 +5,14 @@ import { log } from "@utils/logger";
 import { Sermon } from "@/models/models";
 
 export async function fetchSermonById(id: string) {
-  // Create a reference to the document in the "sermons" collection using the provided id.
   const docRef = doc(db, "sermons", id);
   log.info(`Firestore: fetching sermon ${id}`);
-
-  // Fetch the document snapshot
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
     console.error(`Sermon with id ${id} not found in Firestore`);
     throw new Error("Sermon not found");
   }
-
-  // Combine the document id with its data.
   const sermon = { id: docSnap.id, ...docSnap.data() } as Sermon;
   log.info(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
   return sermon;
@@ -32,13 +27,13 @@ export async function deleteSermonById(id: string): Promise<void> {
 }
 
 export async function getRequiredTags() {
-  //find all tags with filed required: true
   const tagsCollection = collection(db, "tags");
   const queryForSearch = query(tagsCollection, where("required", "==", true));
   const querySnapshot = await getDocs(queryForSearch);
   const requiredTags = querySnapshot.docs.map((doc) => doc.data());
   return requiredTags;
 }
+
 
 export async function getCustomTags(userId: string) {
   const tagsCollection = collection(db, "tags");

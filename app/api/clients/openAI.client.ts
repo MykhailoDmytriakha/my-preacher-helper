@@ -1,19 +1,13 @@
 import OpenAI from 'openai';
 import { Sermon, Thought } from '@/models/models';
 import { log } from '@utils/logger';
-// Initialize OpenAI client using the API key from environment variables
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
-const gptModel = process.env.OPENAI_GPT_MODEL as string; // Verify that this environment variable is correct
+const gptModel = process.env.OPENAI_GPT_MODEL as string;
 
-/**
- * Transcribes the provided audio file using OpenAI Whisper.
- *
- * @param file - Audio file to transcribe.
- * @returns Transcribed text.
- */
 export async function createTranscription(file: File): Promise<string> {
   log.info('createTranscription: Received file for transcription', file);
   const transcriptionResponse = await openai.audio.transcriptions.create({
@@ -25,35 +19,6 @@ export async function createTranscription(file: File): Promise<string> {
   return transcriptionResponse;
 }
 
-/**
- * Generates a thought analysis based on the sermon content and the transcription,
- * using OpenAI. The expected JSON schema is:
- *
- * {
- *   "text": "Corrected text in Russian (with only minimal corrections) or the original transcription if not relevant",
- *   "tags": ["tag1", "tag2", ...],
- *   "relevant": true | false
- * }
- *
- * IMPORTANT:
- * - If the transcription is not related to the sermon, return the original transcription unchanged,
- *   assign the tag ["not_relevant"], and set "relevant" to false.
- * - If the transcription is relevant, return it in Russian with only minimal corrections—only fix grammar,
- *   punctuation, and obvious transcription errors without rephrasing, shortening, or altering the order of ideas.
- * - The "tags" array must include at least one strict tag ("introduction", "main", or "conclusion").
- * - In addition, if the transcription includes an anecdote or illustrative example, include the tag "example".
- * - Also, if the transcription contains discussion or reflection on key terms from the sermon (for instance,
- *   if it refers to words like "познавать" from the sermon verse), include the tag "explanation".
- * - Additionally, if there is an obvious transcription error where a word is misheard—for example, if the
- *   transcription contains "знание" in a context where "здание" (building) is expected, particularly in relation
- *   to construction—correct it accordingly.
- * - The array may include up to 5 tags.
- * - The output must be a valid JSON object with exactly three keys: "text", "tags", and "relevant". No extra keys are allowed.
- *
- * @param transcription - The transcription text.
- * @param sermon - The sermon object.
- * @returns A Thought object with the corrected text, an array of tags, and a relevance boolean.
- */
 export async function generateThought(
   transcription: string,
   sermon: Sermon
@@ -62,7 +27,6 @@ export async function generateThought(
     log.info('generateThought: Starting thought generation with transcription and sermon content');
     log.info('received transcript', transcription);
 
-    // Обновлённый системный промпт для получения тегов на русском языке.
     const promptSystemMessage = `Анализируйте содержание проповеди и предоставленную транскрипцию.
 Если транскрипция актуальна, верните транскрипцию на русском языке с минимальными исправлениями — исправьте только грамматические ошибки, пунктуацию и очевидные ошибки транскрипции, не перефразируя, не сокращая и не изменяя порядок идей.
 Если транскрипция не актуальна, верните исходную транскрипцию без изменений.
@@ -97,7 +61,6 @@ export async function generateThought(
 }
 Верните JSON строго в указанном формате.`;
 
-    // Call OpenAI Chat Completion API with the system prompt and user message containing sermon content and transcription.
     const response = await openai.chat.completions.create({
       model: gptModel,
       response_format: { type: "json_object" },
@@ -119,13 +82,11 @@ export async function generateThought(
       throw new Error('Invalid JSON structure from OpenAI');
     }
 
-    // Validate the structure: must have a string 'text', an array 'tags', and a boolean 'relevant'
     if (typeof result.text !== 'string' || !Array.isArray(result.tags) || typeof result.relevant !== 'boolean') {
       console.error('generateThought: Invalid JSON structure received', result);
       throw new Error('Invalid JSON structure from OpenAI');
     }
 
-    // Ensure at least one strict tag is present if relevant is true
     const strictTags = ['Вступление', 'Основная часть', 'Заключение'];
     if (result.relevant) {
       const hasStrictTag = result.tags.some((tag: string) => strictTags.includes(tag));
@@ -140,7 +101,6 @@ export async function generateThought(
     return result as Thought;
   } catch (error) {
     console.error('generateThought: OpenAI API Error:', error);
-    // In case of an error, return the original transcription with the tag "not_relevant" and relevant set to false
     return {
       text: transcription,
       tags: ['не_актуально'],

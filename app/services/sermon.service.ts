@@ -2,12 +2,6 @@ import { Sermon } from '@/models/models';
 import { log } from '@utils/logger';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000';
 
-/**
- * Fetches sermons for a given user.
- *
- * @param userId - The UID of the current user (or guest). This must be provided from the client.
- * @returns A Promise that resolves to an array of Sermon objects.
- */
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
   log.info(`getSermons: Initiating fetch for userId: ${userId} from ${API_BASE}/api/sermons`);
   try {
@@ -21,7 +15,6 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
     }
     const data = await response.json();
     log.info("getSermons: Sermons fetched successfully", data);
-    // Sort sermons by date (latest first)
     return data.sort((a: Sermon, b: Sermon) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
     console.error('getSermons: Error fetching sermons:', error);

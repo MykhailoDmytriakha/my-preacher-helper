@@ -13,11 +13,10 @@ import ExportButtons from "@components/ExportButtons";
 import { log } from "@utils/logger";
 import { formatDate } from "@utils/dateFormatter";
 import { TrashIcon, EditIcon } from "@components/Icons";
-import { getTags } from "@services/setting.service"; // Import tag fetching service
-// Force dynamic rendering
+import { getTags } from "@services/setting.service";
+
 export const dynamic = "force-dynamic";
 
-// Dynamic import of the AudioRecorder component with isProcessing prop support
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
   {
@@ -29,32 +28,30 @@ const AudioRecorder = dynamicImport(
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const [sermon, setSermon] = useState<Sermon | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false); // State to track audio processing
+  const [isProcessing, setIsProcessing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<string>("");
 
-  // New state for editing tags and for allowed tags from settings
   const [editingTags, setEditingTags] = useState<string[]>([]);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
 
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Helper function for editing tags: remove tag by index
   const removeEditingTag = (index: number) => {
     setEditingTags((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // When a thought is being edited, fetch the allowed tags from settings
   useEffect(() => {
     async function fetchAllowedTags() {
       if (editingIndex !== null && sermon) {
         try {
           const tagData = await getTags(sermon.userId);
-          // Combine required and custom tags into one list.
           const combinedTags = [
             ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
             ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
           ];
+
           setAllowedTags(combinedTags);
         } catch (error) {
           console.error("Error fetching allowed tags:", error);
@@ -64,7 +61,6 @@ export default function SermonPage() {
     fetchAllowedTags();
   }, [editingIndex, sermon]);
 
-  // Helper function for consistent thought sorting
   const getSortedThoughts = () =>
     sermon ? [...sermon.thoughts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
 
@@ -99,20 +95,14 @@ export default function SermonPage() {
     );
   }
 
-  // Format the sermon date (e.g., "01.02.2025, 11:47")
   const formattedDate = formatDate(sermon.date);
-
   const totalThoughts = sermon.thoughts.length;
-
-  // Calculate tag counts for the progress bar (based on primary tags)
   const tagCounts = {
     Вступление: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0),
-      0
+      (count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0),0
     ),
     "Основная часть": sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0),
-      0
+      (count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0),0
     ),
     Заключение: sermon.thoughts.reduce(
       (count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0),
@@ -130,12 +120,10 @@ export default function SermonPage() {
     ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100)
     : 0;
 
-  // Updated function to handle new audio recording
   const handleNewRecording = async (audioBlob: Blob) => {
     log.info("handleNewRecording: Received audio blob", audioBlob);
-    setIsProcessing(true); // Enable processing state
+    setIsProcessing(true);
     try {
-      // Get the Thought object (includes text and tags) from the transcription service
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
       log.info("handleNewRecording: Transcription successful", thoughtResponse);
       const newThought: Thought = {
@@ -143,17 +131,17 @@ export default function SermonPage() {
         date: new Date().toISOString(),
       };
       log.info("handleNewRecording: New thought created", newThought);
-      // Update the sermon state by appending the new thought
       setSermon((prevSermon: Sermon | null) =>
         prevSermon
           ? { ...prevSermon, thoughts: [newThought, ...prevSermon.thoughts] }
           : prevSermon
       );
+
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
       alert("Ошибка обработки аудио");
     } finally {
-      setIsProcessing(false); // Disable processing state
+      setIsProcessing(false);
     }
   };
 
@@ -251,7 +239,6 @@ export default function SermonPage() {
           </div>
         </div>
 
-        {/* Pass the isProcessing state to the AudioRecorder */}
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

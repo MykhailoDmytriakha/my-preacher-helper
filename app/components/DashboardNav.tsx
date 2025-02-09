@@ -16,20 +16,19 @@ export default function DashboardNav() {
   const handleLogout = async () => {
     try {
       await logOut();
-      // Clear all auth-related data
       localStorage.removeItem('guestUser');
       sessionStorage.clear();
-      // Force full reload to reset all states
       window.location.href = '/';
+
     } catch (error) {
       console.error('Logout failed:', error);
       router.refresh();
     }
   };
 
-  // Add auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+
       setUser(user);
       if (!user) {
         router.push('/');
@@ -38,9 +37,9 @@ export default function DashboardNav() {
     return () => unsubscribe();
   }, [router]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+
       if (!(e.target as Element).closest('.avatar-container')) {
         setShowDropdown(false);
       }
