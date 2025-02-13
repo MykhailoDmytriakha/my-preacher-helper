@@ -83,7 +83,7 @@ export default function SermonPage() {
   const formattedDate = formatDate(sermon.date);
   const totalThoughts = sermon.thoughts.length;
   const tagCounts = {
-    Вступление: sermon.thoughts.reduce(
+    "Вступление": sermon.thoughts.reduce(
       (count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0),
       0
     ),
@@ -91,7 +91,7 @@ export default function SermonPage() {
       (count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0),
       0
     ),
-    Заключение: sermon.thoughts.reduce(
+    "Заключение": sermon.thoughts.reduce(
       (count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0),
       0
     ),
