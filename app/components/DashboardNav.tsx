@@ -11,6 +11,7 @@ import { ChevronIcon } from "@components/Icons";
 export default function DashboardNav() {
   const [user, setUser] = useState<User | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [imgError, setImgError] = useState(false); // state to track image loading errors
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -19,7 +20,6 @@ export default function DashboardNav() {
       localStorage.removeItem('guestUser');
       sessionStorage.clear();
       window.location.href = '/';
-
     } catch (error) {
       console.error('Logout failed:', error);
       router.refresh();
@@ -28,7 +28,6 @@ export default function DashboardNav() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-
       setUser(user);
       if (!user) {
         router.push('/');
@@ -37,9 +36,13 @@ export default function DashboardNav() {
     return () => unsubscribe();
   }, [router]);
 
+  // Reset imgError when user's photoURL changes so that the image is reloaded on re-login
+  useEffect(() => {
+    setImgError(false);
+  }, [user?.photoURL]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-
       if (!(e.target as Element).closest('.avatar-container')) {
         setShowDropdown(false);
       }
@@ -61,11 +64,12 @@ export default function DashboardNav() {
               className="flex items-center gap-2 focus:outline-none"
             >
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white">
-                {user?.photoURL ? (
+                {user?.photoURL && !imgError ? (
                   <img 
                     src={user.photoURL} 
                     alt="Avatar" 
                     className="w-full h-full rounded-full"
+                    onError={() => setImgError(true)}
                   />
                 ) : (
                   <span>{user?.email?.[0]?.toUpperCase() || 'G'}</span>
@@ -103,4 +107,4 @@ export default function DashboardNav() {
       </div>
     </nav>
   );
-} 
+}
