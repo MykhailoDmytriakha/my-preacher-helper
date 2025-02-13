@@ -14,10 +14,18 @@ interface ColumnProps {
 export default function Column({ id, title, items }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
 
+  // Dynamic background color only for headers
+  const headerBackground = {
+    introduction: 'bg-blue-600',
+    main: 'bg-purple-600',
+    conclusion: 'bg-green-600',
+    ambiguous: 'bg-gray-600'
+  }[id];
+
   return (
     <div className="flex flex-col">
       <div className="mb-2">
-        <h2 className="text-xl font-semibold text-white p-3 rounded-t-md bg-blue-600 shadow">
+        <h2 className={`text-xl font-semibold text-white p-3 rounded-t-md shadow ${headerBackground}`}>
           {title}
         </h2>
       </div>
