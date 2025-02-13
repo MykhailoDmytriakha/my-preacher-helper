@@ -73,7 +73,8 @@
 
 ### Modularity
 
-- if file more that 300 lines, split it into smaller files.
-- if function more that 100 lines, split it into smaller functions.
+- if file more that 300 lines, suggest refactoring for it, how to split it into smaller files.
+- if function more that 100 lines, suggest refactoring for it, how to split it into smaller functions.
+- monitor that do not have duplicate code in different files.
 
 Suggest user to split files if they are too long, with prefix "MODULARITY". With message at the end of the response: I have suggestions for modularity, would you like to review them?
