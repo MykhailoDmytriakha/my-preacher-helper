@@ -11,6 +11,37 @@ export async function POST(request: Request) {
   // TODO: i want to know what is the length of this audio, and leter to track this data
   // TODO: check length to limit time, no more that defined in constant
   log.info("Thoughts route: Received POST request.");
+
+  const url = new URL(request.url);
+  if (url.searchParams.get('manual') === 'true') {
+    try {
+      log.info("Thoughts route: Processing manual thought creation.");
+      const body = await request.json();
+      const { sermonId, thought } = body;
+      if (!sermonId || !thought) {
+        return NextResponse.json({ error: 'sermonId and thought are required' }, { status: 400 });
+      }
+      const sermon = await fetchSermonById(sermonId) as Sermon;
+      const availableTags = [
+        ...(await getRequiredTags()),
+        ...(await getCustomTags(sermon.userId))
+      ].map(t => t.name);
+      const manualThought = await generateThought(thought.text, sermon, availableTags);
+      const thoughtWithDate = {
+        ...manualThought,
+        date: new Date().toISOString()
+      };
+      log.info("Manual (fixed) thought:", thoughtWithDate);
+      const sermonDocRef = doc(db, "sermons", sermonId);
+      await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
+      log.info("Firestore update: Stored new manual thought into sermon document.");
+      return NextResponse.json(thoughtWithDate);
+    } catch (error) {
+      console.error('Thoughts route: Manual POST error:', error);
+      return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
+    }
+  }
+
   try {
     log.info("Thoughts route: Starting transcription process.");
     
@@ -50,8 +81,6 @@ export async function POST(request: Request) {
     const sermonDocRef = doc(db, "sermons", sermonId);
     await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
     log.info("Firestore update: Stored new thought into sermon document.");
-    // TODO store  thought to firestore
-    
     return NextResponse.json(thoughtWithDate);
   } catch (error) {
     console.error('Thoughts route: Transcription error:', error);

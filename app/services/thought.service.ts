@@ -94,6 +94,30 @@ export const updateThought = async (
   }
 };
 
+export const createManualThought = async (
+  sermonId: string,
+  thought: Thought
+): Promise<Thought> => {
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const response = await fetch(`${API_BASE}/api/thoughts?manual=true`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sermonId, thought }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create manual thought with status ${response.status}`);
+    }
+    const savedThought = await response.json();
+    return savedThought;
+  } catch (error) {
+    console.error("createManualThought: Error creating thought manually", error);
+    throw error;
+  }
+};
+
 export const generateTags = async (): Promise<any> => {
   try {
     const response = await fetch(`${API_BASE}/api/tags`, {

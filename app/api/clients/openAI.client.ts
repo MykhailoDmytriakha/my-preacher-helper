@@ -21,13 +21,13 @@ export async function createTranscription(file: File): Promise<string> {
 
 /**
  * Generate a Thought by sending the transcription to GPT and returning a structured response.
- * @param transcription Raw transcription text from Whisper
+ * @param thoughtText Raw transcription text from Whisper
  * @param sermon The current sermon context (for reference)
  * @param availableTags List of tags that the user can actually use
  * @returns Thought object with text, tags, relevant, date
  */
 export async function generateThought(
-  transcription: string,
+  thoughtText: string,
   sermon: Sermon,
   availableTags: string[]
 ): Promise<Thought> {
@@ -71,7 +71,7 @@ export async function generateThought(
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: promptSystemMessage },
-        { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${transcription}\n\nДоступные tags: ${availableTags.join(', ')}. Используйте ТОЛЬКО эти tags!` }
+        { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${thoughtText}\n\nДоступные tags: ${availableTags.join(', ')}. Используйте ТОЛЬКО эти tags!` }
       ]
     });
 
@@ -99,12 +99,12 @@ export async function generateThought(
     const labelWidth = 16;
     const transcriptionLabel = '- Transcription:'.padEnd(labelWidth);
     const thoughtLabel = '- Thought:'.padEnd(labelWidth);
-    log.info("\x1b[31m\n\nComparison:\x1b[0m\n%s%o\n%s%o\n\n", transcriptionLabel, transcription, thoughtLabel, result.text);
+    log.info("\x1b[31m\n\nComparison:\x1b[0m\n%s%o\n%s%o\n\n", transcriptionLabel, thoughtText, thoughtLabel, result.text);
     return result as Thought;
   } catch (error) {
     console.error('generateThought: OpenAI API Error:', error);
     return {
-      text: transcription,
+      text: thoughtText,
       tags: [],
       relevant: false,
       date: new Date().toISOString(),

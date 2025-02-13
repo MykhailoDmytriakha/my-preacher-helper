@@ -24,7 +24,7 @@ const columnTitles: Record<string, string> = {
   introduction: "Вступление",
   main: "Основная часть",
   conclusion: "Заключение",
-  ambiguous: "Требует категоризации (Множественные теги)",
+  ambiguous: "Требует категоризации",
 };
 
 // Move the main component logic to a separate component
@@ -78,7 +78,7 @@ function StructurePageContent() {
                     content: thought.text,
                   });
                 }
-              } else if (relevantTags.length > 1) {
+              } else {
                 ambiguous.push({
                   id: `ambiguous-${index}-${Date.now()}`,
                   content: thought.text,

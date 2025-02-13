@@ -16,6 +16,7 @@ import useSermon from "@/hooks/useSermon";
 import useEditThought from "@/hooks/useEditThought";
 import ThoughtCard from "@components/ThoughtCard";
 import { exportSermonContent } from "@/utils/exportContent";
+import AddThoughtManual from "@/components/AddThoughtManual";
 
 export const dynamic = "force-dynamic";
 
@@ -182,6 +183,10 @@ export default function SermonPage() {
     }
   };
 
+  const handleNewManualThought = (newThought: Thought) => {
+    setSermon({ ...sermon, thoughts: [newThought, ...sermon.thoughts] });
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <DashboardNav />
@@ -213,12 +218,7 @@ export default function SermonPage() {
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Все записи</h2>
-                <button
-                  onClick={handleGenerateTags}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  Сгенерировать метки
-                </button>
+                <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
               </div>
               <div className="space-y-4">
                 {sermon.thoughts.length === 0 ? (
@@ -314,7 +314,7 @@ export default function SermonPage() {
                 onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
                 className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
               >
-                Сгенерировать структуру
+                Работать над структурой
               </button>
             </div>
             {sermon.structure && (
