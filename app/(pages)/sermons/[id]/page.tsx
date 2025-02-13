@@ -157,14 +157,45 @@ export default function SermonPage() {
   };
 
   const generateExportContent = async () => {
-    const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n\n`;
-    const content = sermon.thoughts
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((thought) => {
-        return `- ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
-      })
-      .join("\n");
-    return header + "Размышления:\n" + content;
+    const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n`;
+    const sortedThoughts: Thought[] = sermon.thoughts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    const introSection: Thought[] = [];
+    const mainSection: Thought[] = [];
+    const conclusionSection: Thought[] = [];
+    const multiTagSection: Thought[] = [];
+
+    sortedThoughts.forEach((thought) => {
+      if (thought.tags.length >= 2) {
+        multiTagSection.push(thought);
+      } else if (thought.tags.length === 1) {
+        const tag = thought.tags[0];
+        if (tag === "Вступление") {
+          introSection.push(thought);
+        } else if (tag === "Основная часть") {
+          mainSection.push(thought);
+        } else if (tag === "Заключение" || tag === "Заключения") {
+          conclusionSection.push(thought);
+        }
+      }
+    });
+
+    const formatSection = (title: string, thoughts: Thought[], includeTags: boolean = true): string => {
+      if (!thoughts.length) return "";
+      const formattedThoughts = thoughts.map((t: Thought) => {
+        return includeTags ? `- ${t.text}\nТеги: ${t.tags.join(", ")}` : `- ${t.text}`;
+      }).join("\n");
+      return `${title}:\n${formattedThoughts}`;
+    };
+
+    let content = "";
+    content += formatSection("Вступление", introSection, false) + "\n\n";
+    content += formatSection("Основная часть", mainSection, false) + "\n\n";
+    content += formatSection("Заключение", conclusionSection, false) + "\n\n";
+    if (multiTagSection.length > 0) {
+      content += formatSection("Мысли с несколькими метками", multiTagSection, true) + "\n\n";
+    }
+    return header + content;
   };
 
   const handleGenerateTags = async () => {
