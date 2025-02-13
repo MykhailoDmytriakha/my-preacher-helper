@@ -23,21 +23,29 @@ export function ExportButtonsLayout({
     <div className={`flex ${layoutClass} gap-1.5`}>
       <button
         onClick={onTxtClick}
-        className="w-full px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md"
+        className="w-full px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
       >
         TXT
       </button>
       <button
         onClick={onPdfClick}
-        className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md"
+        disabled={true}
+        className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed relative group"
       >
         PDF
+        <span className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-900 text-white rounded-md">
+          Скоро добавим!
+        </span>
       </button>
       <button
         onClick={onWordClick}
-        className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md"
+        disabled={true}
+        className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed relative group"
       >
         Word
+        <span className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-900 text-white rounded-md">
+        Скоро добавим!
+        </span>
       </button>
     </div>
   );
@@ -71,11 +79,17 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
 
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl">
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Экспорт в TXT</h3>
           <button
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
           >
             ✕
@@ -122,7 +136,9 @@ export default function ExportButtons({
   const [exportContent, setExportContent] = useState("");
   const [showTxtModal, setShowTxtModal] = useState(false);
 
-  const handleTxtExport = async () => {
+  const handleTxtExport = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       const content = await getExportContent();
       setExportContent(content);

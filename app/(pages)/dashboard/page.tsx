@@ -9,6 +9,8 @@ import AddSermonModal from "@components/AddSermonModal";
 import OptionMenu from "@components/OptionMenu";
 import { formatDate } from "@utils/dateFormatter";
 import { Sermon } from "@/models/models";
+import type { Thought } from "@/models/models";
+import { exportSermonContent } from "@/utils/exportContent";
 
 export default function DashboardPage() {
   const [sermons, setSermons] = useState<Sermon[]>([]);
@@ -82,9 +84,9 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <ExportButtons 
-                    sermonId={sermon.id} 
+                    sermonId={sermon.id}
                     orientation="vertical"
-                    getExportContent={() => Promise.resolve("sermon.content")}
+                    getExportContent={() => exportSermonContent(sermon)}
                   />
                 </div>
               </div>
