@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { getSermonById } from "@services/sermon.service";
 import { createAudioThought, deleteThought, updateThought, generateTags } from "@services/thought.service";
@@ -27,15 +27,13 @@ const AudioRecorder = dynamicImport(
 
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [sermon, setSermon] = useState<Sermon | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<string>("");
-
   const [editingTags, setEditingTags] = useState<string[]>([]);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
-
-
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const removeEditingTag = (index: number) => {
@@ -51,7 +49,6 @@ export default function SermonPage() {
             ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
             ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
           ];
-
           setAllowedTags(combinedTags);
         } catch (error) {
           console.error("Error fetching allowed tags:", error);
@@ -98,27 +95,14 @@ export default function SermonPage() {
   const formattedDate = formatDate(sermon.date);
   const totalThoughts = sermon.thoughts.length;
   const tagCounts = {
-    Вступление: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0),0
-    ),
-    "Основная часть": sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0),0
-    ),
-    Заключение: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0),
-      0
-    ),
+    Вступление: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Вступление") ? 1 : 0), 0),
+    "Основная часть": sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Основная часть") ? 1 : 0), 0),
+    Заключение: sermon.thoughts.reduce((count, thought) => count + (thought.tags.includes("Заключение") ? 1 : 0), 0),
   };
 
-  const introPercentage = totalThoughts
-    ? Math.round((tagCounts["Вступление"] / totalThoughts) * 100)
-    : 0;
-  const mainPercentage = totalThoughts
-    ? Math.round((tagCounts["Основная часть"] / totalThoughts) * 100)
-    : 0;
-  const conclusionPercentage = totalThoughts
-    ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100)
-    : 0;
+  const introPercentage = totalThoughts ? Math.round((tagCounts["Вступление"] / totalThoughts) * 100) : 0;
+  const mainPercentage = totalThoughts ? Math.round((tagCounts["Основная часть"] / totalThoughts) * 100) : 0;
+  const conclusionPercentage = totalThoughts ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100) : 0;
 
   const handleNewRecording = async (audioBlob: Blob) => {
     log.info("handleNewRecording: Received audio blob", audioBlob);
@@ -132,11 +116,8 @@ export default function SermonPage() {
       };
       log.info("handleNewRecording: New thought created", newThought);
       setSermon((prevSermon: Sermon | null) =>
-        prevSermon
-          ? { ...prevSermon, thoughts: [newThought, ...prevSermon.thoughts] }
-          : prevSermon
+        prevSermon ? { ...prevSermon, thoughts: [newThought, ...prevSermon.thoughts] } : prevSermon
       );
-
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
       alert("Ошибка обработки аудио");
@@ -147,14 +128,10 @@ export default function SermonPage() {
 
   const handleDeleteThought = async (indexToDelete: number) => {
     if (!sermon) return;
-
     const sortedThoughts = getSortedThoughts();
-
     const thoughtToDelete = sortedThoughts[indexToDelete];
-    const confirmed = window.confirm(`Вы уверены, что хотите удалить эту запись?
-        \n${thoughtToDelete.text}`);
+    const confirmed = window.confirm(`Вы уверены, что хотите удалить эту запись?\n${thoughtToDelete.text}`);
     if (!confirmed) return;
-
     log.info("handleDeleteThought: Deleting thought", thoughtToDelete, indexToDelete);
     try {
       await deleteThought(sermon.id, thoughtToDelete);
@@ -176,7 +153,6 @@ export default function SermonPage() {
       text: editingText.trim(),
       tags: editingTags,
     };
-
     try {
       await updateThought(sermon.id, updatedThought);
       sortedThoughts[editingIndex] = updatedThought;
@@ -192,17 +168,13 @@ export default function SermonPage() {
 
   const generateExportContent = async () => {
     if (!sermon) return "";
-
     const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n\n`;
-
     const content = sermon.thoughts
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .map((thought, _) => {
         return `- ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
       })
       .join("\n");
-
-
     return header + "Размышления:\n" + content;
   };
 
@@ -237,6 +209,13 @@ export default function SermonPage() {
               )}
             </div>
           </div>
+          {/* Modified button to include sermonId in query string */}
+          <button 
+            onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
+            className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            Сгенерировать структуру
+          </button>
         </div>
 
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
@@ -283,7 +262,6 @@ export default function SermonPage() {
                             <EditIcon className="w-4 h-4" fill="gray" />
                           </button>
                         </div>
-                        {/* Display tags: iterate over thought.tags and style based on tag value */}
                         {thought.tags && thought.tags.length > 0 && (
                           <div className="flex gap-2">
                             {thought.tags.map((tag) => {
@@ -322,7 +300,6 @@ export default function SermonPage() {
                             onChange={(e) => setEditingText(e.target.value)}
                             className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
                           />
-                          {/* Tag editing section using allowed tags */}
                           <div className="mb-2">
                             <p className="font-medium">Теги:</p>
                             <div className="flex flex-wrap gap-2 mt-1">
@@ -411,23 +388,17 @@ export default function SermonPage() {
                     <div className="absolute inset-0 flex">
                       <div
                         className="bg-blue-600 transition-all duration-500"
-                        style={{
-                          width: totalThoughts ? `${introPercentage}%` : "0%",
-                        }}
+                        style={{ width: totalThoughts ? `${introPercentage}%` : "0%" }}
                         data-tooltip={`Вступление: ${tagCounts["Вступление"]} записей`}
                       />
                       <div
                         className="bg-purple-600 transition-all duration-500"
-                        style={{
-                          width: totalThoughts ? `${mainPercentage}%` : "0%",
-                        }}
+                        style={{ width: totalThoughts ? `${mainPercentage}%` : "0%" }}
                         data-tooltip={`Основная часть: ${tagCounts["Основная часть"]} записей`}
                       />
                       <div
                         className="bg-green-600 transition-all duration-500"
-                        style={{
-                          width: totalThoughts ? `${conclusionPercentage}%` : "0%",
-                        }}
+                        style={{ width: totalThoughts ? `${conclusionPercentage}%` : "0%" }}
                         data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
                       />
                     </div>
@@ -450,7 +421,10 @@ export default function SermonPage() {
                   </div>
                 </div>
               </div>
-              <button className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              <button 
+                onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
+                className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
                 Сгенерировать структуру
               </button>
             </div>
