@@ -42,6 +42,7 @@ export default function SermonPage() {
   } = useEditThought();
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentTag, setCurrentTag] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -380,13 +381,14 @@ export default function SermonPage() {
                               <div className="mt-2">
                                 <select
                                   className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+                                  value={currentTag}
                                   onChange={(e) => {
                                     const selectedTag = e.target.value;
                                     if (selectedTag) {
                                       updateEditingTags(selectedTag);
+                                      setCurrentTag("");
                                     }
                                   }}
-                                  defaultValue=""
                                 >
                                   <option value="" disabled>
                                     Выберите тег для добавления
