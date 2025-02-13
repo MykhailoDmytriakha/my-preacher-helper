@@ -1,51 +1,43 @@
-'use client'; // Required for client-side interactivity
-import { useState, useEffect } from "react";
-import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
-import Image from "next/image";
-import { User, getAuth, onAuthStateChanged } from "firebase/auth";
+'use client';
+import useAuth from "@/hooks/useAuth";
 import { GoogleIcon, UserIcon } from "@components/Icons";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+  const { user, loading, loginWithGoogle, loginAsGuest } = useAuth();
 
-  useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        window.location.href = '/dashboard';
-      } else {
-        const saved = localStorage.getItem('guestUser');
-        setUser(saved ? JSON.parse(saved) : null);
-      }
-      setIsLoading(false);
-    });
+  // If user is already authenticated, redirect to dashboard
+  if (user) {
+    router.push('/dashboard');
+    return null;
+  }
 
-    return () => unsubscribe();
-  }, []);
-
-  const handleLogin = async () => {
-    const userData = await signInWithGoogle();
-    setUser(userData);
-    localStorage.setItem('guestUser', JSON.stringify(userData));
-    window.location.href = '/dashboard';
-  };
-
-  const handleGuestLogin = async () => {
-    const userData = await signInAsGuest();
-    setUser(userData);
-    localStorage.setItem('guestUser', JSON.stringify(userData));
-    window.location.href = '/dashboard';
-  };
-
-  if (isLoading) {
+  if (loading) {
     return <div className="min-h-screen bg-white dark:bg-gray-900" />;
   }
 
+  const handleLogin = async () => {
+    try {
+      await loginWithGoogle();
+      router.push('/dashboard');
+    } catch (error) {
+      console.error("Login error", error);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      await loginAsGuest();
+      router.push('/dashboard');
+    } catch (error) {
+      console.error("Guest login error", error);
+    }
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
+      <main className="flex flex-col gap-8 row-start-2 items-center">
         <div className="flex flex-col items-center text-center mx-auto max-w-2xl px-4">
           <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
             AI-Помощник для Подготовки Проповедей
@@ -100,42 +92,38 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row w-full justify-center">
-          <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Начните использовать
-              </h2>
-            </div>
+        <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
+          <div className="text-center space-y-2 w-full">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Начните использовать
+            </h2>
+          </div>
+          
+          <div className="w-full space-y-3">
+            <button 
+              className="w-full px-6 py-3 bg-gradient-to-r from-blue-200 to-green-200 rounded-lg hover:from-blue-700 hover:to-green-700 transition-all flex items-center justify-center gap-2"
+              onClick={handleLogin}
+            >
+              <GoogleIcon className="w-5 h-5" />
+              Войти через Google
+            </button>
             
-            <div className="w-full space-y-3">
-              <button 
-                className="w-full px-6 py-3 bg-gradient-to-r from-blue-200 to-green-200  rounded-lg 
-                  hover:from-blue-700 hover:to-green-700 transition-all flex items-center justify-center gap-2"
-                onClick={handleLogin}
-              >
-                <GoogleIcon className="w-5 h-5" />
-                Войти через Google
-              </button>
-              
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">или</span>
-                </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
               </div>
-
-              <button
-                className="w-full px-6 py-3 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg
-                  hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2"
-                onClick={handleGuestLogin}
-              >
-                <UserIcon className="w-5 h-5" />
-                Продолжить как гость
-              </button>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">или</span>
+              </div>
             </div>
+
+            <button
+              className="w-full px-6 py-3 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2"
+              onClick={handleGuestLogin}
+            >
+              <UserIcon className="w-5 h-5" />
+              Продолжить как гость
+            </button>
           </div>
         </div>
       </main>
