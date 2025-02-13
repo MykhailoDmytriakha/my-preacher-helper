@@ -104,7 +104,8 @@ export async function generateThought(
     return {
       text: transcription,
       tags: ['не_актуально'],
-      relevant: false
+      relevant: false,
+      date: new Date().toISOString(),
     };
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -27,7 +27,8 @@ const columnTitles: Record<string, string> = {
   ambiguous: "Требует категоризации (Множественные теги)",
 };
 
-export default function StructureBoard() {
+// Move the main component logic to a separate component
+function StructurePageContent() {
   const searchParams = useSearchParams();
   const sermonId = searchParams.get("sermonId");
   const [sermon, setSermon] = useState<any>(null);
@@ -101,7 +102,7 @@ export default function StructureBoard() {
   }, [sermonId]);
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id);
+    setActiveId(String(event.active.id));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -117,8 +118,8 @@ export default function StructureBoard() {
     const activeContainer = event.active.data.current?.container;
     const overContainer =
       event.over?.data.current?.container ||
-      (["introduction", "main", "conclusion", "ambiguous"].includes(over.id)
-        ? over.id
+      (["introduction", "main", "conclusion", "ambiguous"].includes(String(over.id))
+        ? String(over.id)
         : null);
     if (!activeContainer || !overContainer) {
       setActiveId(null);
@@ -248,5 +249,14 @@ export default function StructureBoard() {
         </DragOverlay>
       </DndContext>
     </div>
+  );
+}
+
+// Main export wraps the content in Suspense
+export default function StructurePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StructurePageContent />
+    </Suspense>
   );
 }

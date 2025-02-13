@@ -104,7 +104,7 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {tags.requiredTags.map((tag) => (
               <div
-                key={tag.id}
+                key={tag.name}
                 className="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
               >
                 <div
@@ -149,7 +149,7 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {tags.customTags.map((tag) => (
               <div
-                key={tag.id}
+                key={tag.name}
                 className="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
               >
                 <div
