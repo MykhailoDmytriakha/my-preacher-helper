@@ -14,6 +14,7 @@ import { formatDate } from "@utils/dateFormatter";
 import { TrashIcon, EditIcon } from "@components/Icons";
 import { getTags } from "@services/setting.service";
 import useSermon from "@/hooks/useSermon";
+import useEditThought from "@/hooks/useEditThought";
 
 export const dynamic = "force-dynamic";
 
@@ -28,19 +29,39 @@ const AudioRecorder = dynamicImport(
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { sermon, setSermon, loading, getSortedThoughts, refreshSermon } = useSermon(id);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingText, setEditingText] = useState<string>("");
-  const [editingTags, setEditingTags] = useState<string[]>([]);
+  const { sermon, setSermon, loading, getSortedThoughts } = useSermon(id);
+  const {
+    editingIndex,
+    editingText,
+    editingTags,
+    startEditing,
+    cancelEditing,
+    updateEditingText,
+    updateEditingTags,
+    removeEditingTag,
+  } = useEditThought();
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const removeEditingTag = (index: number) => {
-    setEditingTags((prev) => prev.filter((_, i) => i !== index));
-  };
+  useEffect(() => {
+    async function fetchAllowedTags() {
+      if (editingIndex !== null && sermon) {
+        try {
+          const tagData = await getTags(sermon.userId);
+          const combinedTags = [
+            ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
+            ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
+          ];
+          setAllowedTags(combinedTags);
+        } catch (error) {
+          console.error("Error fetching allowed tags:", error);
+        }
+      }
+    }
+    fetchAllowedTags();
+  }, [editingIndex, sermon]);
 
-  // Adjust the textarea height when editing changes
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -128,9 +149,7 @@ export default function SermonPage() {
       await updateThought(sermon.id, updatedThought);
       sortedThoughts[editingIndex] = updatedThought;
       setSermon({ ...sermon, thoughts: sortedThoughts });
-      setEditingIndex(null);
-      setEditingText("");
-      setEditingTags([]);
+      cancelEditing();
     } catch (error) {
       console.error("Failed to update thought in Firestore", error);
       alert("Ошибка обновления записи в базе данных Firestore");
@@ -219,11 +238,7 @@ export default function SermonPage() {
                             <TrashIcon className="w-4 h-4" fill="gray" />
                           </button>
                           <button
-                            onClick={() => {
-                              setEditingIndex(index);
-                              setEditingText(thought.text);
-                              setEditingTags([...thought.tags]);
-                            }}
+                            onClick={() => startEditing(thought, index)}
                             className="hover:bg-blue-200 text-white p-2 rounded"
                             style={{ marginLeft: "2px" }}
                           >
@@ -265,7 +280,7 @@ export default function SermonPage() {
                           <textarea
                             ref={textareaRef}
                             value={editingText}
-                            onChange={(e) => setEditingText(e.target.value)}
+                            onChange={(e) => updateEditingText(e.target.value)}
                             className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
                           />
                           <div className="mb-2">
@@ -292,8 +307,8 @@ export default function SermonPage() {
                                 className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
                                 onChange={(e) => {
                                   const selectedTag = e.target.value;
-                                  if (selectedTag && !editingTags.includes(selectedTag)) {
-                                    setEditingTags([...editingTags, selectedTag]);
+                                  if (selectedTag) {
+                                    updateEditingTags(selectedTag);
                                   }
                                 }}
                                 defaultValue=""
@@ -325,11 +340,7 @@ export default function SermonPage() {
                               Save
                             </button>
                             <button
-                              onClick={() => {
-                                setEditingIndex(null);
-                                setEditingText("");
-                                setEditingTags([]);
-                              }}
+                              onClick={cancelEditing}
                               className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
                             >
                               Cancel
