@@ -94,3 +94,5 @@
 
 - [ ] internalization
 - [ ] export to pdf and word
+  - [ ] disable those buttons and show hint "it will be available soon"
+- [ ] add thought manualy
