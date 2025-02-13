@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { deleteSermon } from "@services/sermon.service";
 import { Sermon } from "@/models/models";
 import { DotsVerticalIcon } from "@components/Icons";
+import EditSermonModal from "@components/EditSermonModal";
 
 interface OptionMenuProps {
   sermon: Sermon;
@@ -66,7 +67,7 @@ export default function OptionMenu({ sermon, onDelete }: OptionMenuProps) {
   };
 
   const handleUpdateSermon = (updatedSermon: Sermon) => {
-    // Fallback: refresh the page if no local update mechanism is provided.
+    // For now, refresh the page to update the dashboard. You can also update local state if needed.
     router.refresh();
   };
 
@@ -99,9 +100,13 @@ export default function OptionMenu({ sermon, onDelete }: OptionMenuProps) {
           </div>
         </div>
       )}
+
       {showEditModal && (
-        // Assuming EditSermonModal is handled elsewhere.
-        <></>
+        <EditSermonModal
+          sermon={sermon}
+          onClose={handleCloseEditModal}
+          onUpdate={handleUpdateSermon}
+        />
       )}
     </div>
   );
