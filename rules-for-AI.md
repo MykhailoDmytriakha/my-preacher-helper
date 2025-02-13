@@ -70,3 +70,10 @@
 ```json  
 // Full updated code (if dependencies change)  
 ```  
+
+### Modularity
+
+- if file more that 300 lines, split it into smaller files.
+- if function more that 100 lines, split it into smaller functions.
+
+Suggest user to split files if they are too long, with prefix "MODULARITY". With message at the end of the response: I have suggestions for modularity, would you like to review them?

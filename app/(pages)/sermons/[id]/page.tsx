@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { getSermonById } from "@services/sermon.service";
 import { createAudioThought, deleteThought, updateThought, generateTags } from "@services/thought.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
@@ -14,6 +13,7 @@ import { log } from "@utils/logger";
 import { formatDate } from "@utils/dateFormatter";
 import { TrashIcon, EditIcon } from "@components/Icons";
 import { getTags } from "@services/setting.service";
+import useSermon from "@/hooks/useSermon";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,7 @@ const AudioRecorder = dynamicImport(
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [sermon, setSermon] = useState<Sermon | null>(null);
+  const { sermon, setSermon, loading, getSortedThoughts, refreshSermon } = useSermon(id);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<string>("");
@@ -40,35 +40,7 @@ export default function SermonPage() {
     setEditingTags((prev) => prev.filter((_, i) => i !== index));
   };
 
-  useEffect(() => {
-    async function fetchAllowedTags() {
-      if (editingIndex !== null && sermon) {
-        try {
-          const tagData = await getTags(sermon.userId);
-          const combinedTags = [
-            ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
-            ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
-          ];
-          setAllowedTags(combinedTags);
-        } catch (error) {
-          console.error("Error fetching allowed tags:", error);
-        }
-      }
-    }
-    fetchAllowedTags();
-  }, [editingIndex, sermon]);
-
-  const getSortedThoughts = () =>
-    sermon ? [...sermon.thoughts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
-
-  useEffect(() => {
-    const loadSermon = async () => {
-      const data = await getSermonById(id);
-      setSermon(data || null);
-    };
-    loadSermon();
-  }, [id]);
-
+  // Adjust the textarea height when editing changes
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -76,7 +48,7 @@ export default function SermonPage() {
     }
   }, [editingText, editingIndex]);
 
-  if (!sermon) {
+  if (loading || !sermon) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
@@ -127,7 +99,6 @@ export default function SermonPage() {
   };
 
   const handleDeleteThought = async (indexToDelete: number) => {
-    if (!sermon) return;
     const sortedThoughts = getSortedThoughts();
     const thoughtToDelete = sortedThoughts[indexToDelete];
     const confirmed = window.confirm(`Вы уверены, что хотите удалить эту запись?\n${thoughtToDelete.text}`);
@@ -146,7 +117,7 @@ export default function SermonPage() {
   };
 
   const saveEditedThought = async () => {
-    if (!sermon || editingIndex === null) return;
+    if (editingIndex === null) return;
     const sortedThoughts = getSortedThoughts();
     const updatedThought = {
       ...sortedThoughts[editingIndex],
@@ -167,11 +138,10 @@ export default function SermonPage() {
   };
 
   const generateExportContent = async () => {
-    if (!sermon) return "";
     const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n\n`;
     const content = sermon.thoughts
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((thought, _) => {
+      .map((thought) => {
         return `- ${thought.text}\nТеги: ${thought.tags.join(", ")}\n`;
       })
       .join("\n");
@@ -209,7 +179,6 @@ export default function SermonPage() {
               )}
             </div>
           </div>
-          {/* Modified button to include sermonId in query string */}
           <button 
             onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
             className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -221,7 +190,6 @@ export default function SermonPage() {
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left column – Raw entries */}
           <div className="lg:col-span-2 space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
@@ -378,7 +346,6 @@ export default function SermonPage() {
             </div>
           </div>
 
-          {/* Right column – Sermon structure */}
           <div className="space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-semibold mb-4">Структура проповеди</h2>
