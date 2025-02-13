@@ -10,21 +10,14 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
   arrayMove,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useDroppable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getSermonById } from "@services/sermon.service";
-
-// Define the type for an item in the structure board.
-type Item = {
-  id: string;
-  content: string;
-};
+import Column from "@components/Column";
+import SortableItem, { Item } from "@components/SortableItem";
 
 // Mapping for column titles.
 const columnTitles: Record<string, string> = {
@@ -34,90 +27,11 @@ const columnTitles: Record<string, string> = {
   ambiguous: "Требует категоризации (Множественные теги)",
 };
 
-// SortableItem component using dnd‑kit hooks.
-function SortableItem({
-  item,
-  containerId,
-}: {
-  item: Item;
-  containerId: string;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: item.id,
-      data: { container: containerId },
-    });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || "transform 250ms ease-in-out",
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        ...style,
-        willChange: "transform",
-        backfaceVisibility: "hidden",
-      }}
-      {...attributes}
-      {...listeners}
-      className="mb-4 p-4 bg-white rounded-md border border-gray-200 shadow-md hover:shadow-xl"
-    >
-      {item.content}
-    </div>
-  );
-}
-
-// Column component renders a droppable area with sortable items.
-function Column({
-  id,
-  title,
-  items,
-}: {
-  id: string;
-  title: string;
-  items: Item[];
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
-  return (
-    <div className="flex flex-col">
-      <div className="mb-2">
-        <h2 className="text-xl font-semibold text-white p-3 rounded-t-md bg-blue-600 shadow">
-          {title}
-        </h2>
-      </div>
-      <SortableContext items={items} strategy={verticalListSortingStrategy}>
-        <div
-          ref={setNodeRef}
-          className={`min-h-[300px] p-4 bg-white rounded-b-md border border-gray-200 shadow-lg transition-colors ${
-            isOver ? "bg-blue-50" : ""
-          }`}
-        >
-          {items.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300">
-              Drop here
-            </div>
-          ) : (
-            items.map((item) => (
-              <SortableItem key={item.id} item={item} containerId={id} />
-            ))
-          )}
-          {/* Extra dummy element to always provide a drop target */}
-          <div id="dummy-drop-zone" className="h-8" />
-        </div>
-      </SortableContext>
-    </div>
-  );
-}
-
 export default function StructureBoard() {
   const searchParams = useSearchParams();
   const sermonId = searchParams.get("sermonId");
   const [sermon, setSermon] = useState<any>(null);
-  // Combined state for all containers (columns + ambiguous row)
+  // Combined state for all containers (columns plus ambiguous)
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
@@ -129,7 +43,7 @@ export default function StructureBoard() {
   // State for toggling the ambiguous section.
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
 
-  // Fetch sermon data using sermonId and group thoughts.
+  // Fetch sermon data using sermonId and group thoughts by tags.
   useEffect(() => {
     async function fetchSermon() {
       if (sermonId) {
@@ -192,26 +106,24 @@ export default function StructureBoard() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (!over) {
-      return setActiveId(null);
+      setActiveId(null);
+      return;
     }
-
     if (active.id === over.id) {
-      return setActiveId(null);
+      setActiveId(null);
+      return;
     }
-
     const activeContainer = event.active.data.current?.container;
     const overContainer =
       event.over?.data.current?.container ||
       (["introduction", "main", "conclusion", "ambiguous"].includes(over.id)
         ? over.id
         : null);
-
     if (!activeContainer || !overContainer) {
-      return setActiveId(null);
+      setActiveId(null);
+      return;
     }
-
     if (activeContainer === overContainer) {
       const items = containers[activeContainer];
       const oldIndex = items.findIndex((item) => item.id === active.id);
@@ -239,7 +151,6 @@ export default function StructureBoard() {
         [overContainer]: destItems,
       });
     }
-
     setActiveId(null);
   };
 
@@ -276,7 +187,7 @@ export default function StructureBoard() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        {/* Ambiguous section wrapped as a card */}
+        {/* Ambiguous Section */}
         <div className="mt-8">
           <div className="bg-white rounded-md shadow border border-gray-200">
             <div
@@ -297,10 +208,7 @@ export default function StructureBoard() {
             </div>
             {isAmbiguousVisible && (
               <SortableContext items={containers.ambiguous} strategy={verticalListSortingStrategy}>
-                <div
-                  className="min-h-[100px] p-4 grid grid-cols-1 md:grid-cols-3 gap-4"
-                  data-droppable-id="ambiguous"
-                >
+                <div className="min-h-[100px] p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                   {containers.ambiguous.length === 0 ? (
                     <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300 col-span-full">
                       Нет записей с несколькими тегами
@@ -316,7 +224,7 @@ export default function StructureBoard() {
             )}
           </div>
         </div>
-        {/* Three main columns */}
+        {/* Main Columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-8">
           <Column id="introduction" title={columnTitles["introduction"]} items={containers.introduction} />
           <Column id="main" title={columnTitles["main"]} items={containers.main} />
