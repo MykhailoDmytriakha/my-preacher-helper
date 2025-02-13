@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
-import { fetchSermonById } from '@clients/firestore.client';
+import { fetchSermonById, getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { Sermon } from '@/models/models';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
@@ -34,10 +34,14 @@ export async function POST(request: Request) {
       type: 'audio/webm',
     });
 
-    const transcriptionText = await createTranscription(file);
     const sermon = await fetchSermonById(sermonId) as Sermon;
+    const availableTags = [
+      ...(await getRequiredTags()),
+      ...(await getCustomTags(sermon.userId))
+    ].map(t => t.name);
+    const transcriptionText = await createTranscription(file);
     
-    const thought = await generateThought(transcriptionText, sermon);
+    const thought = await generateThought(transcriptionText, sermon, availableTags);
     const thoughtWithDate = {
       ...thought,
       date: new Date().toISOString()

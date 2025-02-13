@@ -187,6 +187,7 @@ export default function SermonPage() {
     const mainSection: Thought[] = [];
     const conclusionSection: Thought[] = [];
     const multiTagSection: Thought[] = [];
+    const otherSection: Thought[] = [];
 
     sortedThoughts.forEach((thought) => {
       if (thought.tags.length >= 2) {
@@ -199,6 +200,8 @@ export default function SermonPage() {
           mainSection.push(thought);
         } else if (tag === "Заключение" || tag === "Заключения") {
           conclusionSection.push(thought);
+        } else {
+          otherSection.push(thought);
         }
       }
     });
@@ -220,14 +223,11 @@ export default function SermonPage() {
     };
 
     let content = "";
-    content += formatSection("Вступление", introSection, false) + "\n\n";
-    content += formatSection("Основная часть", mainSection, false) + "\n\n";
-    content += formatSection("Заключение", conclusionSection, false) + "\n\n";
-    if (multiTagSection.length > 0) {
-      content +=
-        formatSection("Мысли с несколькими метками", multiTagSection, true) +
-        "\n\n";
-    }
+    introSection.length > 0 && (content += formatSection("Вступление", introSection, false) + "\n\n");
+    mainSection.length > 0 && (content += formatSection("Основная часть", mainSection, false) + "\n\n");
+    conclusionSection.length > 0 && (content += formatSection("Заключение", conclusionSection, false) + "\n\n");
+    multiTagSection.length > 0 && (content += formatSection("Мысли с несколькими метками", multiTagSection, true) + "\n\n");
+    otherSection.length > 0 && (content += formatSection("Другие мысли", otherSection, true) + "\n\n");
     return header + content;
   };
 

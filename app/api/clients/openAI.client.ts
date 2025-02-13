@@ -19,14 +19,19 @@ export async function createTranscription(file: File): Promise<string> {
   return transcriptionResponse;
 }
 
+/**
+ * Generate a Thought by sending the transcription to GPT and returning a structured response.
+ * @param transcription Raw transcription text from Whisper
+ * @param sermon The current sermon context (for reference)
+ * @param availableTags List of tags that the user can actually use
+ * @returns Thought object with text, tags, relevant, date
+ */
 export async function generateThought(
   transcription: string,
-  sermon: Sermon
+  sermon: Sermon,
+  availableTags: string[]
 ): Promise<Thought> {
   try {
-    log.info('generateThought: Starting thought generation with transcription and sermon content');
-    log.info('received transcript', transcription);
-
     const promptSystemMessage = `Анализируйте содержание проповеди и предоставленную транскрипцию.
 Если транскрипция актуальна, верните транскрипцию на русском языке с минимальными исправлениями — исправьте только грамматические ошибки, пунктуацию и очевидные ошибки транскрипции, не перефразируя, не сокращая и не изменяя порядок идей.
 Если транскрипция не актуальна, верните исходную транскрипцию без изменений.
@@ -56,7 +61,7 @@ export async function generateThought(
 Если транскрипция не актуальна, выведите:
 {
   "text": "<исходная транскрипция>",
-  "tags": ["не_актуально"],
+  "tags": [],
   "relevant": false
 }
 Верните JSON строго в указанном формате.`;
@@ -66,10 +71,9 @@ export async function generateThought(
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: promptSystemMessage },
-        { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${transcription}` }
+        { role: "user", content: `Содержание проповеди: ${JSON.stringify(sermon)}\n\nТранскрипция: ${transcription}\n\nДоступные tags: ${availableTags.join(', ')}. Используйте ТОЛЬКО эти tags!` }
       ]
     });
-    log.info('generateThought: Received response from OpenAI', response);
 
     const rawJson = response.choices[0].message.content;
     log.info('generateThought: Raw JSON response', rawJson);
@@ -87,23 +91,21 @@ export async function generateThought(
       throw new Error('Invalid JSON structure from OpenAI');
     }
 
-    const strictTags = ['Вступление', 'Основная часть', 'Заключение'];
-    if (result.relevant) {
-      const hasStrictTag = result.tags.some((tag: string) => strictTags.includes(tag));
-      if (!hasStrictTag) {
-        console.warn('generateThought: No strict tag found in tags. Assigning default strict tag "Вступление".');
-        result.tags.unshift('Вступление');
-      }
+    // If relevant is false, force empty tags array
+    if (!result.relevant) {
+      result.tags = [];
     }
 
-    log.info("\x1b[31m received transcrip: %o\x1b[0m", transcription);
-    log.info("\x1b[31m generateThought: Successfully generated thought: %o\x1b[0m", result);
+    const labelWidth = 16;
+    const transcriptionLabel = '- Transcription:'.padEnd(labelWidth);
+    const thoughtLabel = '- Thought:'.padEnd(labelWidth);
+    log.info("\x1b[31m\n\nComparison:\x1b[0m\n%s%o\n%s%o\n\n", transcriptionLabel, transcription, thoughtLabel, result.text);
     return result as Thought;
   } catch (error) {
     console.error('generateThought: OpenAI API Error:', error);
     return {
       text: transcription,
-      tags: ['не_актуально'],
+      tags: [],
       relevant: false,
       date: new Date().toISOString(),
     };
