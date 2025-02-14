@@ -64,6 +64,7 @@ function StructurePageContent() {
   const [loading, setLoading] = useState(true);
   // State for toggling the ambiguous section.
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
+  const [requiredTagColors, setRequiredTagColors] = useState<{introduction?: string, main?: string, conclusion?: string}>({});
 
   // Fetch sermon data and group thoughts by tags.
   useEffect(() => {
@@ -80,6 +81,13 @@ function StructurePageContent() {
             });
             (tagsData.customTags || []).forEach((tag: any) => {
               allTags[tag.name] = tag;
+            });
+
+            // Set the header colors for main columns from required tags
+            setRequiredTagColors({
+              introduction: allTags["Вступление"]?.color,
+              main: allTags["Основная часть"]?.color,
+              conclusion: allTags["Заключение"]?.color,
             });
 
             const intro: Item[] = [];
@@ -165,8 +173,9 @@ function StructurePageContent() {
     let overContainer = event.over?.data.current?.container;
 
     // Дополнительное логирование: выводим boundingClientRect элемента over.
-    if (event.over?.element) {
-      const dataContainer = event.over.element.getAttribute("data-container");
+    if ((event.over as any)?.element) {
+      const element = (event.over as any).element;
+      const dataContainer = element.getAttribute("data-container");
       if (!overContainer && dataContainer === "ambiguous") {
         overContainer = "ambiguous";
       } else if (!overContainer) {
@@ -289,9 +298,24 @@ function StructurePageContent() {
         </div>
         {/* Main Columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-8">
-          <Column id="introduction" title={columnTitles["introduction"]} items={containers.introduction} />
-          <Column id="main" title={columnTitles["main"]} items={containers.main} />
-          <Column id="conclusion" title={columnTitles["conclusion"]} items={containers.conclusion} />
+          <Column
+            id="introduction"
+            title={columnTitles["introduction"]}
+            items={containers.introduction}
+            headerColor={requiredTagColors.introduction}
+          />
+          <Column
+            id="main"
+            title={columnTitles["main"]}
+            items={containers.main}
+            headerColor={requiredTagColors.main}
+          />
+          <Column
+            id="conclusion"
+            title={columnTitles["conclusion"]}
+            items={containers.conclusion}
+            headerColor={requiredTagColors.conclusion}
+          />
         </div>
         <DragOverlay>
           {activeId &&
