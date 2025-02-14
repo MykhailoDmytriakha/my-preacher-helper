@@ -58,6 +58,8 @@ function StructurePageContent() {
             const ambiguous: Item[] = [];
             // Group thoughts based on tags.
             fetchedSermon.thoughts.forEach((thought: any, index: number) => {
+              const customTagNames: string[] = thought.tags.filter((tag: string) => !["Вступление", "Основная часть", "Заключение"].includes(tag));
+              console.log("customTagNames", customTagNames);
               const relevantTags = thought.tags.filter((tag: string) =>
                 ["Вступление", "Основная часть", "Заключение"].includes(tag)
               );
@@ -66,22 +68,26 @@ function StructurePageContent() {
                   intro.push({
                     id: `intro-${index}-${Date.now()}`,
                     content: thought.text,
+                    customTagNames: customTagNames,
                   });
                 } else if (relevantTags[0] === "Основная часть") {
                   main.push({
                     id: `main-${index}-${Date.now()}`,
                     content: thought.text,
+                    customTagNames: customTagNames,
                   });
                 } else if (relevantTags[0] === "Заключение") {
                   concl.push({
                     id: `conclusion-${index}-${Date.now()}`,
                     content: thought.text,
+                    customTagNames: customTagNames,
                   });
                 }
               } else {
                 ambiguous.push({
                   id: `ambiguous-${index}-${Date.now()}`,
                   content: thought.text,
+                  customTagNames: customTagNames,
                 });
               }
             });
