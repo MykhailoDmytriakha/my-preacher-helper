@@ -45,7 +45,7 @@ export default function Column({ id, title, items }: ColumnProps) {
         >
           {items.length === 0 ? (
             <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300">
-              Drop here
+              Нет записей
             </div>
           ) : (
             items.map((item) => (

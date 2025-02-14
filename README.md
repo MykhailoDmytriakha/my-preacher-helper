@@ -93,6 +93,7 @@
 ### TODO
 
 - bug: dashboard page: when you change sermon title, it not displayed after update, only after page refresh
+- on `/structure` page: color columns to tag colors that it matches
 - internalization
 - export to pdf and word
 - Неавтоматизированный гостевой режим:

@@ -4,9 +4,10 @@ import React, { useState, useEffect, Suspense } from "react";
 import {
   DndContext,
   DragOverlay,
-  closestCenter,
+  pointerWithin,
   DragEndEvent,
   DragStartEvent,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -28,7 +29,26 @@ const columnTitles: Record<string, string> = {
   ambiguous: "На рассмотрении",
 };
 
-// Move the main component logic to a separate component
+// Новый компонент для пустой droppable зоны ambiguous.
+function DummyDropZone({ container }: { container: string }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "dummy-drop-zone",
+    data: { container },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      data-container={container}
+      style={{ minHeight: "80px" }}
+      className={`p-4 text-center text-gray-500 border-dashed border-2 border-blue-300 col-span-full ${
+        isOver ? "border-blue-500 border-4" : ""
+      }`}
+    >
+      Нет записей
+    </div>
+  );
+}
+
 function StructurePageContent() {
   const searchParams = useSearchParams();
   const sermonId = searchParams.get("sermonId");
@@ -45,7 +65,7 @@ function StructurePageContent() {
   // State for toggling the ambiguous section.
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
 
-  // Fetch sermon data using sermonId and group thoughts by tags.
+  // Fetch sermon data and group thoughts by tags.
   useEffect(() => {
     async function fetchSermon() {
       if (sermonId) {
@@ -54,7 +74,7 @@ function StructurePageContent() {
           if (fetchedSermon) {
             setSermon(fetchedSermon);
             const tagsData = await getTags(fetchedSermon.userId);
-            const allTags: Record<string, { name: string, color: string }> = {};
+            const allTags: Record<string, { name: string; color: string }> = {};
             (tagsData.requiredTags || []).forEach((tag: any) => {
               allTags[tag.name] = tag;
             });
@@ -68,10 +88,15 @@ function StructurePageContent() {
             const ambiguous: Item[] = [];
             // Group thoughts based on tags.
             fetchedSermon.thoughts.forEach((thought: any, index: number) => {
-              const customTagNames: string[] = thought.tags.filter((tag: string) => !["Вступление", "Основная часть", "Заключение"].includes(tag));
-              // Enrich custom tags with color info
-              const enrichedCustomTags = customTagNames.map(tagName => {
-                return allTags[tagName] ? { name: tagName, color: allTags[tagName].color } : { name: tagName, color: "#4c51bf" };
+              const customTagNames: string[] = thought.tags.filter(
+                (tag: string) =>
+                  !["Вступление", "Основная часть", "Заключение"].includes(tag)
+              );
+              // Enrich custom tags with color info.
+              const enrichedCustomTags = customTagNames.map((tagName) => {
+                return allTags[tagName]
+                  ? { name: tagName, color: allTags[tagName].color }
+                  : { name: tagName, color: "#4c51bf" };
               });
               const relevantTags = thought.tags.filter((tag: string) =>
                 ["Вступление", "Основная часть", "Заключение"].includes(tag)
@@ -128,51 +153,68 @@ function StructurePageContent() {
     const { active, over } = event;
     if (!over) {
       setActiveId(null);
+      setActiveId(null);
       return;
     }
     if (active.id === over.id) {
       setActiveId(null);
       return;
     }
+
     const activeContainer = event.active.data.current?.container;
-    const overContainer =
-      event.over?.data.current?.container ||
-      (['introduction', 'main', 'conclusion', 'ambiguous'].includes(String(over.id))
-        ? String(over.id)
-        : null);
+    let overContainer = event.over?.data.current?.container;
+
+    // Дополнительное логирование: выводим boundingClientRect элемента over.
+    if (event.over?.element) {
+      const dataContainer = event.over.element.getAttribute("data-container");
+      if (!overContainer && dataContainer === "ambiguous") {
+        overContainer = "ambiguous";
+      } else if (!overContainer) {
+        const overId = String(over.id);
+        if (overId === "dummy-drop-zone") {
+          overContainer = "ambiguous";
+        } else if (["introduction", "main", "conclusion", "ambiguous"].includes(overId)) {
+          overContainer = overId;
+        }
+      }
+    }
+
     if (!activeContainer || !overContainer) {
       setActiveId(null);
       return;
     }
-    // Create a copy of the current containers to update
+
     let updatedContainers = { ...containers };
 
     if (activeContainer === overContainer) {
       const items = updatedContainers[activeContainer];
       const oldIndex = items.findIndex((item) => item.id === active.id);
       let newIndex = items.findIndex((item) => item.id === over.id);
-      if (newIndex === -1) {
-        newIndex = items.length;
-      }
       updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
     } else {
+      const allowedTransitions = ["introduction", "main", "conclusion", "ambiguous"];
+      if (!allowedTransitions.includes(overContainer)) {
+        console.error("Invalid target container:", overContainer);
+        return;
+      }
+
       const sourceItems = [...updatedContainers[activeContainer]];
       const destItems = [...updatedContainers[overContainer]];
+
       const activeIndex = sourceItems.findIndex((item) => item.id === active.id);
+
       const [movedItem] = sourceItems.splice(activeIndex, 1);
       let overIndex = destItems.findIndex((item) => item.id === over.id);
       if (overIndex === -1) {
         overIndex = destItems.length;
       }
       destItems.splice(overIndex, 0, movedItem);
+
       updatedContainers[activeContainer] = sourceItems;
       updatedContainers[overContainer] = destItems;
     }
+
     setContainers(updatedContainers);
-    // Auto-collapse ambiguous section only if it was non-empty and now is empty
-    if (containers.ambiguous.length > 0 && updatedContainers.ambiguous.length === 0) {
-      setIsAmbiguousVisible(false);
-    }
     setActiveId(null);
   };
 
@@ -205,13 +247,15 @@ function StructurePageContent() {
         </div>
       </div>
       <DndContext
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         {/* Ambiguous Section */}
         <div className="mt-8">
-          <div className={`bg-white rounded-md shadow border ${containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"}`}>
+          <div className={`bg-white rounded-md shadow border ${
+            containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
+          }`}>
             <div
               className="flex items-center justify-between p-4 cursor-pointer"
               onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
@@ -232,15 +276,12 @@ function StructurePageContent() {
               <SortableContext items={containers.ambiguous} strategy={verticalListSortingStrategy}>
                 <div className="min-h-[100px] p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                   {containers.ambiguous.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300 col-span-full">
-                      Нет записей с несколькими тегами
-                    </div>
+                    <DummyDropZone container="ambiguous" />
                   ) : (
                     containers.ambiguous.map((item) => (
                       <SortableItem key={item.id} item={item} containerId="ambiguous" />
                     ))
                   )}
-                  <div id="dummy-drop-zone" className="h-8" />
                 </div>
               </SortableContext>
             )}
@@ -273,7 +314,6 @@ function StructurePageContent() {
   );
 }
 
-// Main export wraps the content in Suspense
 export default function StructurePage() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
