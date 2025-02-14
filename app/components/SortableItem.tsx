@@ -3,11 +3,16 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { getContrastColor } from "@utils/color";
+export type TagInfo = {
+  name: string;
+  color: string;
+};
 
 export type Item = {
   id: string;
   content: string;
-  customTagNames?: string[];
+  customTagNames?: TagInfo[];
 };
 
 interface SortableItemProps {
@@ -46,12 +51,13 @@ export default function SortableItem({ item, containerId }: SortableItemProps) {
       
       {item.customTagNames && item.customTagNames.length > 0 && (
         <div className="flex flex-wrap gap-1 justify-end mt-2">
-          {item.customTagNames.map((name) => (
+          {item.customTagNames.map((tag) => (
             <span 
-              key={name}
-              className={`text-xs bg-indigo-500 text-white px-2 py-1 rounded-full`}
+              key={tag.name}
+              style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
+              className="text-xs text-white px-2 py-1 rounded-full"
             >
-              {name}
+              {tag.name}
             </span>
           ))}
         </div>

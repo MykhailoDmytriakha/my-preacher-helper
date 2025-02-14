@@ -42,11 +42,8 @@ export async function addCustomTag(tag: Tag) {
 export async function removeCustomTag(userId: string, tagName: string) {
   log.info('removeCustomTag: Removing custom tag', tagName);
   try {
-    const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${tagName}`, {
+    const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
     if (!res.ok) {
       throw new Error('Failed to remove custom tag');

@@ -16,6 +16,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getSermonById } from "@services/sermon.service";
+import { getTags } from "@services/setting.service";
 import Column from "@components/Column";
 import SortableItem, { Item } from "@components/SortableItem";
 
@@ -52,6 +53,15 @@ function StructurePageContent() {
           const fetchedSermon = await getSermonById(sermonId);
           if (fetchedSermon) {
             setSermon(fetchedSermon);
+            const tagsData = await getTags(fetchedSermon.userId);
+            const allTags: Record<string, { name: string, color: string }> = {};
+            (tagsData.requiredTags || []).forEach((tag: any) => {
+              allTags[tag.name] = tag;
+            });
+            (tagsData.customTags || []).forEach((tag: any) => {
+              allTags[tag.name] = tag;
+            });
+
             const intro: Item[] = [];
             const main: Item[] = [];
             const concl: Item[] = [];
@@ -59,7 +69,10 @@ function StructurePageContent() {
             // Group thoughts based on tags.
             fetchedSermon.thoughts.forEach((thought: any, index: number) => {
               const customTagNames: string[] = thought.tags.filter((tag: string) => !["Вступление", "Основная часть", "Заключение"].includes(tag));
-              console.log("customTagNames", customTagNames);
+              // Enrich custom tags with color info
+              const enrichedCustomTags = customTagNames.map(tagName => {
+                return allTags[tagName] ? { name: tagName, color: allTags[tagName].color } : { name: tagName, color: "#4c51bf" };
+              });
               const relevantTags = thought.tags.filter((tag: string) =>
                 ["Вступление", "Основная часть", "Заключение"].includes(tag)
               );
@@ -68,26 +81,26 @@ function StructurePageContent() {
                   intro.push({
                     id: `intro-${index}-${Date.now()}`,
                     content: thought.text,
-                    customTagNames: customTagNames,
+                    customTagNames: enrichedCustomTags,
                   });
                 } else if (relevantTags[0] === "Основная часть") {
                   main.push({
                     id: `main-${index}-${Date.now()}`,
                     content: thought.text,
-                    customTagNames: customTagNames,
+                    customTagNames: enrichedCustomTags,
                   });
                 } else if (relevantTags[0] === "Заключение") {
                   concl.push({
                     id: `conclusion-${index}-${Date.now()}`,
                     content: thought.text,
-                    customTagNames: customTagNames,
+                    customTagNames: enrichedCustomTags,
                   });
                 }
               } else {
                 ambiguous.push({
                   id: `ambiguous-${index}-${Date.now()}`,
                   content: thought.text,
-                  customTagNames: customTagNames,
+                  customTagNames: enrichedCustomTags,
                 });
               }
             });
@@ -181,7 +194,7 @@ function StructurePageContent() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="mb-4">
         <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-          Структура проповеди: {sermon.title}
+          Структура: {sermon.title}
         </h1>
         <div className="text-center">
           <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">

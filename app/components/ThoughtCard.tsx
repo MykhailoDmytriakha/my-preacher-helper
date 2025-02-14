@@ -4,6 +4,7 @@ import { formatDate } from "@utils/dateFormatter";
 import { TrashIcon, EditIcon } from "@components/Icons";
 import { Thought } from "@/models/models";
 import { useEffect, useRef } from "react";
+import { getContrastColor } from "@utils/color";
 
 interface ThoughtCardProps {
   thought: Thought;
@@ -52,18 +53,6 @@ export default function ThoughtCard({
       textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
     }
   }, [editingText, editingIndex, index]);
-
-  const getContrastColor = (bgColor: string): string => {
-    let color = bgColor.replace('#', '');
-    if (color.length === 3) {
-      color = color.split('').map(c => c + c).join('');
-    }
-    const r = parseInt(color.substring(0, 2), 16);
-    const g = parseInt(color.substring(2, 4), 16);
-    const b = parseInt(color.substring(4, 6), 16);
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    return brightness > 150 ? '#000' : '#fff';
-  };
 
   // Renders each tag with its styling
   const renderTags = (tags: string[]) => {
