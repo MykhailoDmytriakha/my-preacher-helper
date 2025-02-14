@@ -117,24 +117,3 @@ export const createManualThought = async (
     throw error;
   }
 };
-
-export const generateTags = async (): Promise<any> => {
-  try {
-    const response = await fetch(`${API_BASE}/api/tags`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        command: "generate",
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tags with status ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("generateTags: Error fetching tags", error);
-    throw error;
-  }
-};

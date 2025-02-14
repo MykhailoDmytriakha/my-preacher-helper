@@ -58,3 +58,25 @@ export async function removeCustomTag(userId: string, tagName: string) {
     throw error;
   }
 }
+
+export async function updateTag(tag: Tag) {
+  log.info('updateTag: Updating tag', tag);
+  try {
+    const res = await fetch(`${API_BASE}/api/tags`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tag)
+    });
+    if (!res.ok) {
+      throw new Error('Failed to update tag');
+    }
+    const data = await res.json();
+    log.info('updateTag: Tag updated successfully', data);
+    return data;
+  } catch (error) {
+    log.error('updateTag: Error updating tag', error);
+    throw error;
+  }
+}

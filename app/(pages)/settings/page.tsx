@@ -5,13 +5,15 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getTags, addCustomTag, removeCustomTag } from "@services/setting.service";
+import { getTags, addCustomTag, removeCustomTag, updateTag } from "@services/setting.service";
 import { Tag } from "@/models/models";
+import ColorPickerModal from "@components/ColorPickerModal";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>({ requiredTags: [], customTags: [] });
   const [newTag, setNewTag] = useState({ name: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0') });
+  const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -69,6 +71,28 @@ export default function SettingsPage() {
     }
   };
 
+  const openColorPicker = (tag: Tag) => {
+    setCurrentTagBeingEdited(tag);
+  };
+
+  const handleUpdateColor = async (newColor: string) => {
+    if (!currentTagBeingEdited || !user?.uid) return;
+    const updatedTag = { ...currentTagBeingEdited, color: newColor };
+    try {
+      await updateTag(updatedTag);
+      const tagsData = await getTags(user.uid);
+      setTags(tagsData);
+    } catch (error) {
+      console.error("Error updating tag color:", error);
+    } finally {
+      setCurrentTagBeingEdited(null);
+    }
+  };
+
+  const handleCancelColorUpdate = () => {
+    setCurrentTagBeingEdited(null);
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="flex items-center gap-2 mb-6">
@@ -112,6 +136,12 @@ export default function SettingsPage() {
                   style={{ backgroundColor: tag.color }}
                 />
                 <span className="text-gray-800 dark:text-gray-200">{tag.name}</span>
+                {/* <button
+                  onClick={() => openColorPicker(tag)}
+                  className="ml-4 p-1 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer"
+                >
+                  Edit Color
+                </button> */}
               </div>
             ))}
           </div>
@@ -158,6 +188,12 @@ export default function SettingsPage() {
                 />
                 <span className="text-gray-800 dark:text-gray-200">{tag.name}</span>
                 <button
+                  onClick={() => openColorPicker(tag)}
+                  className="ml-4 p-1 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer"
+                >
+                  Edit Color
+                </button>
+                <button
                   onClick={() => handleRemoveTag(tag.name)}
                   className="ml-auto text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                   title="Удалить тег"
@@ -181,6 +217,17 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      
+      {/* Render ColorPickerModal when a tag is being edited */}
+      {currentTagBeingEdited && (
+        <ColorPickerModal
+          tagName={currentTagBeingEdited.name}
+          initialColor={currentTagBeingEdited.color}
+          onOk={handleUpdateColor}
+          onCancel={handleCancelColorUpdate}
+        />
+      )}
+
     </div>
   );
 } 

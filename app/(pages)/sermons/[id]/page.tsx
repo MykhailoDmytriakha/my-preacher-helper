@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamicImport from "next/dynamic";
-import { createAudioThought, deleteThought, updateThought, generateTags } from "@services/thought.service";
+import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
@@ -48,7 +48,7 @@ export default function SermonPage() {
 
   useEffect(() => {
     const fetchAllowedTags = async () => {
-      if (editingIndex !== null && sermon) {
+      if (sermon) {
         try {
           const tagData = await getTags(sermon.userId);
           const combinedTags = [
@@ -62,7 +62,7 @@ export default function SermonPage() {
       }
     };
     fetchAllowedTags();
-  }, [editingIndex, sermon]);
+  }, [sermon]);
 
   if (loading || !sermon) {
     return (
@@ -106,6 +106,17 @@ export default function SermonPage() {
   const conclusionPercentage = totalThoughts
     ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100)
     : 0;
+  const notDefinedPercentage = 100 - introPercentage - mainPercentage - conclusionPercentage;
+
+  console.log("tagCounts", tagCounts);
+  console.log("introPercentage", introPercentage);
+  console.log("mainPercentage", mainPercentage);
+  console.log("conclusionPercentage", conclusionPercentage);
+  console.log("notDefinedPercentage", notDefinedPercentage);
+  
+  const introColor = allowedTags.find(t => t.name === "Вступление")?.color || "#2563eb";
+  const mainColor = allowedTags.find(t => t.name === "Основная часть")?.color || "#7e22ce";
+  const conclusionColor = allowedTags.find(t => t.name === "Заключение")?.color || "#16a34a";
 
   const handleNewRecording = async (audioBlob: Blob) => {
     log.info("handleNewRecording: Received audio blob", audioBlob);
@@ -171,17 +182,6 @@ export default function SermonPage() {
   };
 
   const generateExportContent = async () => exportSermonContent(sermon);
-
-  const handleGenerateTags = async () => {
-    try {
-      const tagsData = await generateTags();
-      console.log("Сгенерированные метки:", tagsData);
-      alert("Метки сгенерированы. Проверьте консоль.");
-    } catch (error) {
-      console.error("Ошибка генерации меток:", error);
-      alert("Ошибка генерации меток");
-    }
-  };
 
   const handleNewManualThought = (newThought: Thought) => {
     setSermon({ ...sermon, thoughts: [newThought, ...sermon.thoughts] });
@@ -267,35 +267,38 @@ export default function SermonPage() {
                 <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
                   <div className="absolute inset-0 flex">
                     <div
-                      className="bg-blue-600 transition-all duration-500"
+                      className="transition-all duration-500"
                       style={{
                         width: totalThoughts ? `${introPercentage}%` : "0%",
+                        backgroundColor: introColor
                       }}
                       data-tooltip={`Вступление: ${tagCounts["Вступление"]} записей`}
                     />
                     <div
-                      className="bg-purple-600 transition-all duration-500"
+                      className="transition-all duration-500"
                       style={{
                         width: totalThoughts ? `${mainPercentage}%` : "0%",
+                        backgroundColor: mainColor
                       }}
                       data-tooltip={`Основная часть: ${tagCounts["Основная часть"]} записей`}
                     />
                     <div
-                      className="bg-green-600 transition-all duration-500"
+                      className="transition-all duration-500"
                       style={{
                         width: totalThoughts ? `${conclusionPercentage}%` : "0%",
+                        backgroundColor: conclusionColor
                       }}
                       data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <div className="text-blue-600 text-center">
+                  <div className="text-center" style={{ color: introColor }}>
                     <div className="text-lg font-bold">{introPercentage}%</div>
                     <span className="text-xs text-gray-500">"Вступление" <br /> Рекомендуется: 20%</span>
                   </div>
                   <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-                  <div className="text-purple-600 text-center">
+                  <div className="text-center" style={{ color: mainColor }}>
                     <div className="text-lg font-bold">{mainPercentage}%</div>
                     <span className="text-xs text-gray-500">
                       "Основная часть"
@@ -304,7 +307,7 @@ export default function SermonPage() {
                     </span>
                   </div>
                   <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-                  <div className="text-green-600 text-center">
+                  <div className="text-center" style={{ color: conclusionColor }}>
                     <div className="text-lg font-bold">{conclusionPercentage}%</div>
                     <span className="text-xs text-gray-500">"Заключение" <br /> Рекомендуется: 20%</span>
                   </div>

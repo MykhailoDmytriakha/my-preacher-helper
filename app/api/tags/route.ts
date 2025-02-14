@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRequiredTags, saveTag, getCustomTags, deleteTag } from '@clients/firestore.client'
+import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
 import { log } from '@utils/logger';
 import { Tag } from '@/models/models';
 
@@ -29,13 +29,18 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const tag = await request.json();
-  if (tag.command === 'generate') {
-    const requiredTags = await getRequiredTags();
-    console.log('Received tag:', requiredTags);
-    return NextResponse.json({ message: 'Tag received' });
-  } else {
-    return NextResponse.json({ message: 'Invalid command' }, { status: 400 });
+  try {
+    const tag = await request.json();
+    // Update tag using Firestore client update function
+    console.log('Received tag for update:', tag);
+    if (tag.required) {
+      return NextResponse.json({ message: 'Required tags cannot be updated' });
+    }
+    const updatedTag = await updateTagInDb(tag);
+    return NextResponse.json({ message: 'Tag updated', tag: updatedTag });
+  } catch (error: any) {
+    log.error('PUT: Error updating tag', error);
+    return NextResponse.json({ message: 'Error updating tag', error: error.message });
   }
 }
 

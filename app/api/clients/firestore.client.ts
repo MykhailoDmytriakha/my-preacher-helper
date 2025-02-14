@@ -1,5 +1,5 @@
 import { db } from "app/config/firebaseConfig";
-import { doc, getDoc, deleteDoc, collection, query, where, getDocs, addDoc } from "firebase/firestore";
+import { doc, getDoc, deleteDoc, collection, query, where, getDocs, addDoc, updateDoc } from "firebase/firestore";
 import { Tag } from "@/models/models";
 import { log } from "@utils/logger";
 import { Sermon } from "@/models/models";
@@ -64,6 +64,27 @@ export async function deleteTag(userId: string, tagName: string) {
   const docRef = doc(tagsCollection, querySnapshot.docs[0].id);
   await deleteDoc(docRef);
   log.info(`Firestore: deleted tag ${tagName} for user ${userId}`);
+}
+
+export async function updateTagInDb(tag: Tag) {
+  const tagsCollection = collection(db, 'tags');
+  let q;
+  if (tag.required) {
+    q = query(tagsCollection, where('required', '==', true), where('name', '==', tag.name));
+  } else {
+    q = query(tagsCollection, where('userId', '==', tag.userId), where('name', '==', tag.name));
+  }
+  const querySnapshot = await getDocs(q);
+  if (querySnapshot.empty) {
+    log.error('updateTagInDb: No matching tag found for tag', tag);
+    throw new Error('Tag not found');
+  }
+  const tagDoc = querySnapshot.docs[0];
+  log.info('updateTagInDb: Found tag doc', tagDoc.id, tagDoc.data());
+  await updateDoc(tagDoc.ref, { color: tag.color });
+  const updatedDoc = await getDoc(tagDoc.ref);
+  log.info('updateTagInDb: Updated tag doc', updatedDoc.data());
+  return updatedDoc.data();
 }
 
 

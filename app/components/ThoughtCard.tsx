@@ -53,32 +53,61 @@ export default function ThoughtCard({
     }
   }, [editingText, editingIndex, index]);
 
+  const getContrastColor = (bgColor: string): string => {
+    let color = bgColor.replace('#', '');
+    if (color.length === 3) {
+      color = color.split('').map(c => c + c).join('');
+    }
+    const r = parseInt(color.substring(0, 2), 16);
+    const g = parseInt(color.substring(2, 4), 16);
+    const b = parseInt(color.substring(4, 6), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 150 ? '#000' : '#fff';
+  };
+
   // Renders each tag with its styling
   const renderTags = (tags: string[]) => {
     return tags.map((tag) => {
-      let bgClass, textClass;
-      if (tag === "Вступление") {
-        bgClass = "bg-blue-100 dark:bg-blue-900";
-        textClass = "text-blue-800 dark:text-blue-200";
-      } else if (tag === "Основная часть") {
-        bgClass = "bg-purple-100 dark:bg-purple-900";
-        textClass = "text-purple-800 dark:text-purple-200";
-      } else if (tag === "Заключение") {
-        bgClass = "bg-green-100 dark:bg-green-900";
-        textClass = "text-green-800 dark:text-green-200";
+      const tagInfo = allowedTags.find(t => t.name === tag);
+      if (tagInfo && tagInfo.color) {
+        return (
+          <span
+            key={tag}
+            style={{
+              backgroundColor: tagInfo.color,
+              padding: '0.25rem 0.5rem',
+              borderRadius: '9999px',
+              fontSize: '0.875rem',
+              color: getContrastColor(tagInfo.color)
+            }}
+          >
+            {tag}
+          </span>
+        );
       } else {
-        bgClass = "bg-indigo-100 dark:bg-indigo-900";
-        textClass = "text-indigo-800 dark:text-indigo-200";
+        let bgClass, textClass;
+        if (tag === "Вступление") {
+          bgClass = "bg-blue-100 dark:bg-blue-900";
+          textClass = "text-blue-800 dark:text-blue-200";
+        } else if (tag === "Основная часть") {
+          bgClass = "bg-purple-100 dark:bg-purple-900";
+          textClass = "text-purple-800 dark:text-purple-200";
+        } else if (tag === "Заключение") {
+          bgClass = "bg-green-100 dark:bg-green-900";
+          textClass = "text-green-800 dark:text-green-200";
+        } else {
+          bgClass = "bg-indigo-100 dark:bg-indigo-900";
+          textClass = "text-indigo-800 dark:text-indigo-200";
+        }
+        return (
+          <span
+            key={tag}
+            className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
+          >
+            {tag}
+          </span>
+        );
       }
-
-      return (
-        <span
-          key={tag}
-          className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
-        >
-          {tag}
-        </span>
-      );
     });
   };
 
@@ -105,56 +134,44 @@ export default function ThoughtCard({
           onChange={(e) => onTextChange(e.target.value)}
           className="w-full p-2 border rounded mb-2 dark:bg-gray-800 dark:text-gray-200"
         />
-        {/* Tag Editor */}
+        {/* Tags editing section */}
         <div className="mb-2">
           <p className="font-medium">Теги:</p>
           <div className="flex flex-wrap gap-2 mt-1">
-            {editingTags.map((tag, idx) => (
-              <div
-                key={`${tag}-${idx}`}
-                className="flex items-center bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-1 rounded-full"
-              >
-                <span>{tag}</span>
-                <button
-                  type="button"
+            {editingTags.map((tag, idx) => {
+              const tagInfo = allowedTags.find(t => t.name === tag);
+              return (
+                <div
+                  key={`${tag}-${idx}`}
+                  className="cursor-pointer flex items-center px-2 py-1 rounded-full"
                   onClick={() => onRemoveTag(idx)}
-                  className="ml-1 text-red-500 hover:text-red-700"
+                  style={{ backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0', color: getContrastColor(tagInfo ? tagInfo.color : '#e0e0e0') }}
                 >
-                  &times;
-                </button>
-              </div>
-            ))}
+                  <span>{tag}</span>
+                  <span className="ml-1">×</span>
+                </div>
+              );
+            })}
           </div>
-          <div className="mt-2">
-            <select
-              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
-              value={currentTag}
-              onChange={(e) => {
-                const selectedTag = e.target.value;
-                if (selectedTag) {
-                  onAddTag(selectedTag);
-                  setCurrentTag("");
-                }
-              }}
-            >
-              <option value="" disabled>
-                Выберите тег для добавления
-              </option>
-              {allowedTags
-                .filter((t) => !editingTags.includes(t.name))
-                .map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Если нужный тег отсутствует, перейдите в{" "}
-              <a href="/settings" className="text-blue-600 hover:underline">
-                Настройки
-              </a>
-            </p>
+          <p className="text-xs text-gray-500 mt-2 mb-1">Доступные теги для добавления:</p>
+          <div className="flex flex-wrap gap-2">
+            {allowedTags
+              .filter((t) => !editingTags.includes(t.name))
+              .map((t) => (
+                <div
+                  key={t.name}
+                  className="cursor-pointer flex items-center px-2 py-1 rounded-full"
+                  onClick={() => onAddTag(t.name)}
+                  style={{ backgroundColor: t.color, color: getContrastColor(t.color) }}
+                >
+                  <span>{t.name}</span>
+                </div>
+              ))
+            }
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Если нужный тег отсутствует, перейдите в <a href="/settings" className="text-blue-600 hover:underline">Настройки</a>
+          </p>
         </div>
         {/* Save/Cancel Buttons */}
         <div className="flex gap-2">
