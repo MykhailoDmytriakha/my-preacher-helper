@@ -137,27 +137,27 @@ function StructurePageContent() {
     const activeContainer = event.active.data.current?.container;
     const overContainer =
       event.over?.data.current?.container ||
-      (["introduction", "main", "conclusion", "ambiguous"].includes(String(over.id))
+      (['introduction', 'main', 'conclusion', 'ambiguous'].includes(String(over.id))
         ? String(over.id)
         : null);
     if (!activeContainer || !overContainer) {
       setActiveId(null);
       return;
     }
+    // Create a copy of the current containers to update
+    let updatedContainers = { ...containers };
+
     if (activeContainer === overContainer) {
-      const items = containers[activeContainer];
+      const items = updatedContainers[activeContainer];
       const oldIndex = items.findIndex((item) => item.id === active.id);
       let newIndex = items.findIndex((item) => item.id === over.id);
       if (newIndex === -1) {
         newIndex = items.length;
       }
-      setContainers({
-        ...containers,
-        [activeContainer]: arrayMove(items, oldIndex, newIndex),
-      });
+      updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
     } else {
-      const sourceItems = [...containers[activeContainer]];
-      const destItems = [...containers[overContainer]];
+      const sourceItems = [...updatedContainers[activeContainer]];
+      const destItems = [...updatedContainers[overContainer]];
       const activeIndex = sourceItems.findIndex((item) => item.id === active.id);
       const [movedItem] = sourceItems.splice(activeIndex, 1);
       let overIndex = destItems.findIndex((item) => item.id === over.id);
@@ -165,11 +165,13 @@ function StructurePageContent() {
         overIndex = destItems.length;
       }
       destItems.splice(overIndex, 0, movedItem);
-      setContainers({
-        ...containers,
-        [activeContainer]: sourceItems,
-        [overContainer]: destItems,
-      });
+      updatedContainers[activeContainer] = sourceItems;
+      updatedContainers[overContainer] = destItems;
+    }
+    setContainers(updatedContainers);
+    // Auto-collapse ambiguous section only if it was non-empty and now is empty
+    if (containers.ambiguous.length > 0 && updatedContainers.ambiguous.length === 0) {
+      setIsAmbiguousVisible(false);
     }
     setActiveId(null);
   };
@@ -209,7 +211,7 @@ function StructurePageContent() {
       >
         {/* Ambiguous Section */}
         <div className="mt-8">
-          <div className="bg-white rounded-md shadow border border-gray-200">
+          <div className={`bg-white rounded-md shadow border ${containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"}`}>
             <div
               className="flex items-center justify-between p-4 cursor-pointer"
               onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
