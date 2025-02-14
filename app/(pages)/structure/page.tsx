@@ -25,7 +25,7 @@ const columnTitles: Record<string, string> = {
   introduction: "Вступление",
   main: "Основная часть",
   conclusion: "Заключение",
-  ambiguous: "Требует категоризации",
+  ambiguous: "На рассмотрении",
 };
 
 // Move the main component logic to a separate component

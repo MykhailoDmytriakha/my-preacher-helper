@@ -32,8 +32,15 @@ export default function Column({ id, title, items }: ColumnProps) {
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
         <div
           ref={setNodeRef}
-          className={`min-h-[300px] p-4 bg-white rounded-b-md border border-gray-200 shadow-lg transition-colors ${
-            isOver ? "bg-blue-50" : ""
+          className={`min-h-[300px] p-4 bg-white rounded-b-md border-2 shadow-lg transition-all ${
+            {
+              introduction: "border-blue-200",
+              main: "border-purple-200", 
+              conclusion: "border-green-200",
+              ambiguous: "border-gray-200"
+            }[id]
+          } ${
+            isOver ? "ring-2 ring-blue-400" : ""
           }`}
         >
           {items.length === 0 ? (
