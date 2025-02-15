@@ -111,7 +111,6 @@ export async function DELETE(request: Request) {
   }
 }
 
-// After the DELETE method, add the following PUT method implementation
 export async function PUT(request: Request) {
   log.info("Thoughts route: Received PUT request for updating a thought.");
   try {

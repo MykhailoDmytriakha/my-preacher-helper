@@ -7,11 +7,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
   const requiredTags = await getRequiredTags();
-  log.info('Required tags:', requiredTags.map(tag => tag.name));
+  // log.info('Required tags:', requiredTags.map(tag => tag.name));
   let customTags: Tag[] = [];
   if (userId) {
     customTags = await getCustomTags(userId) as Tag[];
-    log.info('Custom tags:', customTags.map(tag => tag.name));
+    // log.info('Custom tags:', customTags.map(tag => tag.name));
   }
   const tags = {
     requiredTags: requiredTags,
