@@ -25,7 +25,8 @@
       "@services/*": ["./app/services/*"],
       "@api/*": ["./app/api/*"],
       "@clients/*": ["./app/api/clients/*"],
-      "@utils/*": ["./app/utils/*"]
+      "@utils/*": ["./app/utils/*"],
+      "@locales/*": ["./locales/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.js"],

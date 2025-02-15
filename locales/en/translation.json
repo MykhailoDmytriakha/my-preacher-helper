@@ -1,0 +1,8 @@
+{
+  "dashboardNav": {
+    "dashboard": "Dashboard",
+    "guest": "Guest",
+    "settings": "Settings",
+    "logout": "Logout"
+  }
+} 
