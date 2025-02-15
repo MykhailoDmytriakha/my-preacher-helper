@@ -18,8 +18,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
     e.preventDefault();
     const newThought: Thought = {
       text,
-      tags: [], // No tags by default; could extend functionality later
-      relevant: true,
+      tags: [],
       date: new Date().toISOString()
     };
 
