@@ -124,10 +124,7 @@ export default function SermonPage() {
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
       log.info("handleNewRecording: Transcription successful", thoughtResponse);
-      const newThought: Thought = {
-        ...thoughtResponse,
-        date: new Date().toISOString(),
-      };
+      const newThought: Thought = { ...thoughtResponse };
       log.info("handleNewRecording: New thought created", newThought);
       setSermon((prevSermon: Sermon | null) =>
         prevSermon
