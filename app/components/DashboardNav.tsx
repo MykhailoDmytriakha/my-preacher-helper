@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { logOut } from "@services/firebaseAuth.service";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { ChevronIcon } from "@components/Icons";
@@ -24,28 +24,36 @@ export default function DashboardNav() {
     { code: "uk", flag: "🇺🇦", label: "Українська" }
   ];
 
-  const getCookie = (name: string) => {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop()?.split(';').shift()?.trim();
+  const normalizeLang = (lang: string | null | undefined): string => {
+    if (!lang) return 'en';
+    return lang;
+  };
+
+  const getCookie = (name: string): string | null => {
+    const cookies = document.cookie.split('; ');
+    for (let cookie of cookies) {
+      const [cookieName, cookieValue] = cookie.split('=');
+      if (cookieName === name) return cookieValue;
+    }
     return null;
   };
 
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     if (typeof document !== 'undefined') {
-      const lang = getCookie('lang');
-      return lang ? lang : 'en';
+      const lang = normalizeLang(getCookie('lang'));
+      return lang;
     }
     return 'en';
   });
   const [showLangDropdown, setShowLangDropdown] = useState(false);
 
   const handleLocaleChange = (lang: string) => {
-    if (lang === selectedLanguage) return;
-    setSelectedLanguage(lang);
+    const normalizedLang = normalizeLang(lang);
+    if (normalizedLang === selectedLanguage) return;
+    setSelectedLanguage(normalizedLang);
     setShowLangDropdown(false);
-    document.cookie = `lang=${lang}; path=/`;
-    i18n.changeLanguage(lang);
+    document.cookie = `lang=${normalizedLang}; path=/`;
+    i18n.changeLanguage(normalizedLang);
   };
 
   const handleLogout = async () => {
@@ -94,8 +102,11 @@ export default function DashboardNav() {
     return () => document.removeEventListener('click', handleClickOutsideLang);
   }, []);
 
-  useEffect(() => {
-    const lang = getCookie('lang') || 'en';
+  useLayoutEffect(() => {
+    const lang = normalizeLang(getCookie('lang'));
+    if (lang !== i18n.language) {
+      i18n.changeLanguage(lang);
+    }
     if (lang !== selectedLanguage) {
       setSelectedLanguage(lang);
     }
