@@ -24,7 +24,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const updatedData = await request.json();
     const sermonDocRef = doc(db, "sermons", id);
     await updateDoc(sermonDocRef, updatedData);
-    return NextResponse.json({ message: 'Проповедь обновлена', id, updatedData });
+    const updatedSermon = await fetchSermonById(id);
+    return NextResponse.json(updatedSermon);
   } catch (error: any) {
     console.error("Ошибка при обновлении проповеди:", error);
     return NextResponse.json(

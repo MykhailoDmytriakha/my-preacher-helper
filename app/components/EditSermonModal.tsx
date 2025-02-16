@@ -46,8 +46,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
       }
 
       const data = await response.json();
-      const updatedSermon = { ...sermon, ...updatedData };
-      onUpdate(updatedSermon);
+      onUpdate(data);
       onClose();
     } catch (error) {
       console.error("Error updating sermon:", error);

@@ -27,11 +27,18 @@ export async function deleteSermonById(id: string): Promise<void> {
 }
 
 export async function getRequiredTags() {
-  const tagsCollection = collection(db, "tags");
-  const queryForSearch = query(tagsCollection, where("required", "==", true));
-  const querySnapshot = await getDocs(queryForSearch);
-  const requiredTags = querySnapshot.docs.map((doc) => doc.data());
-  return requiredTags;
+  const requiredTagIds = ["intro", "main", "conclusion"];
+  const tagPromises = requiredTagIds.map(async (tagId) => {
+    const docRef = doc(db, "tags", tagId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() };
+    }
+    return null;
+  });
+  
+  const tags = await Promise.all(tagPromises);
+  return tags.filter((tag): tag is NonNullable<typeof tag> => tag !== null);
 }
 
 

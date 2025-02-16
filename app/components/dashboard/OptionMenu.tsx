@@ -10,9 +10,10 @@ import EditSermonModal from "@components/EditSermonModal";
 interface OptionMenuProps {
   sermon: Sermon;
   onDelete?: (sermonId: string) => void;
+  onUpdate?: (updatedSermon: Sermon) => void;
 }
 
-export default function OptionMenu({ sermon, onDelete }: OptionMenuProps) {
+export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuProps) {
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -67,8 +68,11 @@ export default function OptionMenu({ sermon, onDelete }: OptionMenuProps) {
   };
 
   const handleUpdateSermon = (updatedSermon: Sermon) => {
-    // For now, refresh the page to update the dashboard. You can also update local state if needed.
-    router.refresh();
+    if (onUpdate) {
+      onUpdate(updatedSermon);
+    } else {
+      router.refresh();
+    }
   };
 
   return (

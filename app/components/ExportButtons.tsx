@@ -5,7 +5,7 @@ import { log } from "@utils/logger";
 import { createPortal } from "react-dom";
 
 interface ExportButtonsLayoutProps {
-  onTxtClick: () => void;
+  onTxtClick: (e: React.MouseEvent) => void;
   onPdfClick: () => void;
   onWordClick: () => void;
   orientation?: "horizontal" | "vertical";
@@ -33,7 +33,7 @@ export function ExportButtonsLayout({
         className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed relative group"
       >
         PDF
-        <span className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-900 text-white rounded-md">
+        <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
           Скоро добавим!
         </span>
       </button>
@@ -43,8 +43,8 @@ export function ExportButtonsLayout({
         className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed relative group"
       >
         Word
-        <span className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-900 text-white rounded-md">
-        Скоро добавим!
+        <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
+          Скоро добавим!
         </span>
       </button>
     </div>
