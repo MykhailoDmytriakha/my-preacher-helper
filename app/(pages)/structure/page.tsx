@@ -96,7 +96,7 @@ function StructurePageContent() {
             });
 
             // Set allowed tags for editing modal
-            setAllowedTags(Object.values(allTags));
+            setAllowedTags(Object.values(allTags).filter(tag => !['Вступление', 'Основная часть', 'Заключение'].includes(tag.name)));
 
             let intro: Item[] = [];
             let main: Item[] = [];
