@@ -181,6 +181,7 @@ function StructurePageContent() {
               conclusion: concl,
               ambiguous: ambiguous,
             });
+            setIsAmbiguousVisible(ambiguous.length > 0);
           }
         } catch (error) {
           console.error("Error fetching sermon:", error);
