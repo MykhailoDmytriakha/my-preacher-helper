@@ -105,7 +105,7 @@ function StructurePageContent() {
             // Group thoughts based on tags.
             fetchedSermon.thoughts.forEach((thought: any, index: number) => {
               // Ensure every thought has a stable identifier, fallback to a generated id if needed
-              const stableId = thought.id || thought._id || `generated-${index}`;
+              const stableId = thought.id;
               const customTagNames = thought.tags.filter((tag: string) =>
                 !["Вступление", "Основная часть", "Заключение"].includes(tag)
               );
@@ -199,6 +199,9 @@ function StructurePageContent() {
   };
 
   const handleSaveEdit = (updatedText: string, updatedTags: string[]) => {
+    console.log('Save edit clicked on item:', editingItem);
+    console.log('Updated text:', updatedText);
+    console.log('Updated tags:', updatedTags);
     if (editingItem) {
       const updatedItem = {
         ...editingItem,
