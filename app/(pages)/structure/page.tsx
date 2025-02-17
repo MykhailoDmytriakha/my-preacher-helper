@@ -16,10 +16,12 @@ import {
 } from "@dnd-kit/sortable";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getSermonById } from "@services/sermon.service";
+import { getSermonById, updateSermon } from "@services/sermon.service";
 import { getTags } from "@services/setting.service";
 import Column from "@components/Column";
 import SortableItem, { Item } from "@components/SortableItem";
+import { Sermon } from "@/models/models";
+import EditThoughtModal from "@components/EditThoughtModal";
 
 // Mapping for column titles.
 const columnTitles: Record<string, string> = {
@@ -65,6 +67,9 @@ function StructurePageContent() {
   // State for toggling the ambiguous section.
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
   const [requiredTagColors, setRequiredTagColors] = useState<{introduction?: string, main?: string, conclusion?: string}>({});
+  // New states for editing a thought
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
 
   // Fetch sermon data and group thoughts by tags.
   useEffect(() => {
@@ -90,53 +95,86 @@ function StructurePageContent() {
               conclusion: allTags["Заключение"]?.color,
             });
 
-            const intro: Item[] = [];
-            const main: Item[] = [];
-            const concl: Item[] = [];
-            const ambiguous: Item[] = [];
+            // Set allowed tags for editing modal
+            setAllowedTags(Object.values(allTags));
+
+            let intro: Item[] = [];
+            let main: Item[] = [];
+            let concl: Item[] = [];
+            let ambiguous: Item[] = [];
             // Group thoughts based on tags.
             fetchedSermon.thoughts.forEach((thought: any, index: number) => {
-              const customTagNames: string[] = thought.tags.filter(
-                (tag: string) =>
-                  !["Вступление", "Основная часть", "Заключение"].includes(tag)
+              // Ensure every thought has a stable identifier, fallback to a generated id if needed
+              const stableId = thought.id || thought._id || `generated-${index}`;
+              const customTagNames = thought.tags.filter((tag: string) =>
+                !["Вступление", "Основная часть", "Заключение"].includes(tag)
               );
               // Enrich custom tags with color info.
-              const enrichedCustomTags = customTagNames.map((tagName) => {
+              const enrichedCustomTags = customTagNames.map((tagName: string) => {
                 return allTags[tagName]
                   ? { name: tagName, color: allTags[tagName].color }
                   : { name: tagName, color: "#4c51bf" };
               });
+
               const relevantTags = thought.tags.filter((tag: string) =>
                 ["Вступление", "Основная часть", "Заключение"].includes(tag)
               );
               if (relevantTags.length === 1) {
                 if (relevantTags[0] === "Вступление") {
                   intro.push({
-                    id: `intro-${index}-${Date.now()}`,
+                    id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
                   });
                 } else if (relevantTags[0] === "Основная часть") {
                   main.push({
-                    id: `main-${index}-${Date.now()}`,
+                    id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
                   });
                 } else if (relevantTags[0] === "Заключение") {
                   concl.push({
-                    id: `conclusion-${index}-${Date.now()}`,
+                    id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
                   });
                 }
               } else {
                 ambiguous.push({
-                  id: `ambiguous-${index}-${Date.now()}`,
+                  id: stableId,
                   content: thought.text,
                   customTagNames: enrichedCustomTags,
                 });
               }
             });
+
+            // If persisted structure exists, reorder the arrays accordingly
+            if (fetchedSermon.structure) {
+              try {
+                const persistedOrder = JSON.parse(fetchedSermon.structure);
+                const reorder = (arr: Item[], order: string[]): Item[] => {
+                  const ordered = order.map(id => arr.find(item => item.id === id)).filter(item => item) as Item[];
+                  const unordered = arr.filter(item => !order.includes(item.id));
+                  return [...ordered, ...unordered];
+                };
+
+                if (persistedOrder.introduction) {
+                  intro = reorder(intro, persistedOrder.introduction);
+                }
+                if (persistedOrder.main) {
+                  main = reorder(main, persistedOrder.main);
+                }
+                if (persistedOrder.conclusion) {
+                  concl = reorder(concl, persistedOrder.conclusion);
+                }
+                if (persistedOrder.ambiguous) {
+                  ambiguous = reorder(ambiguous, persistedOrder.ambiguous);
+                }
+              } catch (error) {
+                console.error('Error parsing persisted structure:', error);
+              }
+            }
+
             setContainers({
               introduction: intro,
               main: main,
@@ -152,6 +190,46 @@ function StructurePageContent() {
     }
     fetchSermon();
   }, [sermonId]);
+
+  // New functions for editing
+  const handleEdit = (item: Item) => {
+    console.log('Edit clicked on item:', item.id);
+    setEditingItem(item);
+  };
+
+  const handleSaveEdit = (updatedText: string, updatedTags: string[]) => {
+    if (editingItem) {
+      const updatedItem = {
+        ...editingItem,
+        content: updatedText,
+        customTagNames: updatedTags.map(tagName => {
+          const tagInfo = allowedTags.find(t => t.name === tagName);
+          return { name: tagName, color: tagInfo ? tagInfo.color : '#4c51bf' };
+        })
+      };
+      const newContainers = { ...containers };
+      Object.keys(newContainers).forEach(key => {
+        newContainers[key] = newContainers[key].map(item => item.id === updatedItem.id ? updatedItem : item);
+      });
+      setContainers(newContainers);
+
+      if (sermon) {
+        const newThoughts = sermon.thoughts.map((thought: any) => {
+          const thoughtId = thought.id || thought._id;
+          if (thoughtId === updatedItem.id) {
+            return { ...thought, text: updatedText, tags: updatedTags };
+          }
+          return thought;
+        });
+        setSermon({ ...sermon, thoughts: newThoughts });
+      }
+      setEditingItem(null);
+    }
+  };
+
+  const handleCloseEdit = () => {
+    setEditingItem(null);
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(String(event.active.id));
@@ -225,6 +303,23 @@ function StructurePageContent() {
 
     setContainers(updatedContainers);
     setActiveId(null);
+
+    if (sermon) {
+      const newStructure = {
+        introduction: updatedContainers.introduction.map(item => item.id),
+        main: updatedContainers.main.map(item => item.id),
+        conclusion: updatedContainers.conclusion.map(item => item.id),
+        ambiguous: updatedContainers.ambiguous.map(item => item.id),
+      };
+
+      updateSermon({ ...sermon, structure: JSON.stringify(newStructure) })
+        .then((updated: Sermon | null) => {
+          if (updated) {
+            setSermon(updated);
+          }
+        })
+        .catch((err: any) => console.error('Error updating sermon structure:', err));
+    }
   };
 
   if (loading) {
@@ -288,7 +383,7 @@ function StructurePageContent() {
                     <DummyDropZone container="ambiguous" />
                   ) : (
                     containers.ambiguous.map((item) => (
-                      <SortableItem key={item.id} item={item} containerId="ambiguous" />
+                      <SortableItem key={item.id} item={item} containerId="ambiguous" onEdit={handleEdit} />
                     ))
                   )}
                 </div>
@@ -303,18 +398,21 @@ function StructurePageContent() {
             title={columnTitles["introduction"]}
             items={containers.introduction}
             headerColor={requiredTagColors.introduction}
+            onEdit={handleEdit}
           />
           <Column
             id="main"
             title={columnTitles["main"]}
             items={containers.main}
             headerColor={requiredTagColors.main}
+            onEdit={handleEdit}
           />
           <Column
             id="conclusion"
             title={columnTitles["conclusion"]}
             items={containers.conclusion}
             headerColor={requiredTagColors.conclusion}
+            onEdit={handleEdit}
           />
         </div>
         <DragOverlay>
@@ -334,6 +432,16 @@ function StructurePageContent() {
             })()}
         </DragOverlay>
       </DndContext>
+      {/* Render EditThoughtModal if an item is being edited */}
+      {editingItem && (
+        <EditThoughtModal
+          initialText={editingItem.content}
+          initialTags={editingItem.customTagNames ? editingItem.customTagNames.map(tag => tag.name) : []}
+          allowedTags={allowedTags}
+          onSave={handleSaveEdit}
+          onClose={handleCloseEdit}
+        />
+      )}
     </div>
   );
 }

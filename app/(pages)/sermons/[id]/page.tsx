@@ -13,10 +13,10 @@ import { log } from "@utils/logger";
 import { formatDate } from "@utils/dateFormatter";
 import { getTags } from "@services/setting.service";
 import useSermon from "@/hooks/useSermon";
-import useEditThought from "@/hooks/useEditThought";
 import ThoughtCard from "@components/ThoughtCard";
 import { exportSermonContent } from "@/utils/exportContent";
 import AddThoughtManual from "@/components/AddThoughtManual";
+import EditThoughtModal from "@components/EditThoughtModal";
 
 export const dynamic = "force-dynamic";
 
@@ -32,19 +32,10 @@ export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { sermon, setSermon, loading, getSortedThoughts } = useSermon(id);
-  const {
-    editingIndex,
-    editingText,
-    editingTags,
-    startEditing,
-    cancelEditing,
-    updateEditingText,
-    updateEditingTags,
-    removeEditingTag,
-  } = useEditThought();
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTag, setCurrentTag] = useState("");
+  const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
 
   useEffect(() => {
     const fetchAllowedTags = async () => {
@@ -159,21 +150,18 @@ export default function SermonPage() {
     }
   };
 
-  const saveEditedThought = async () => {
-    if (editingIndex === null) return;
+  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[]) => {
+    if (!editingModalData) return;
     const sortedThoughts = getSortedThoughts();
-    const updatedThought = {
-      ...sortedThoughts[editingIndex],
-      text: editingText.trim(),
-      tags: editingTags,
-    };
+    const { index } = editingModalData;
+    const updatedThought = { ...sortedThoughts[index], text: updatedText.trim(), tags: updatedTags };
     try {
       await updateThought(sermon.id, updatedThought);
-      sortedThoughts[editingIndex] = updatedThought;
+      sortedThoughts[index] = updatedThought;
       setSermon({ ...sermon, thoughts: sortedThoughts });
-      cancelEditing();
+      setEditingModalData(null);
     } catch (error) {
-      console.error("Failed to update thought in Firestore", error);
+      console.error("Failed to update thought", error);
       alert("Ошибка обновления записи в базе данных Firestore");
     }
   };
@@ -234,21 +222,21 @@ export default function SermonPage() {
                         key={index}
                         thought={thought}
                         index={index}
-                        editingIndex={editingIndex}
-                        editingText={editingText}
-                        editingTags={editingTags}
+                        editingIndex={null}
+                        editingText={""}
+                        editingTags={[]}
                         hasRequiredTag={hasRequiredTag}
                         allowedTags={allowedTags}
-                        currentTag={currentTag}
+                        currentTag={""}
                         onDelete={handleDeleteThought}
-                        onEditStart={startEditing}
-                        onEditCancel={cancelEditing}
-                        onEditSave={saveEditedThought}
-                        onTextChange={updateEditingText}
-                        onRemoveTag={removeEditingTag}
-                        onAddTag={updateEditingTags}
-                        onTagSelectorChange={setCurrentTag}
-                        setCurrentTag={setCurrentTag}
+                        onEditStart={(thought, index) => setEditingModalData({ thought, index })}
+                        onEditCancel={() => {}}
+                        onEditSave={() => {}}
+                        onTextChange={() => {}}
+                        onRemoveTag={() => {}}
+                        onAddTag={() => {}}
+                        onTagSelectorChange={() => {}}
+                        setCurrentTag={() => {}}
                       />
                     );
                   })
@@ -328,6 +316,15 @@ export default function SermonPage() {
           </div>
         </div>
       </div>
+      {editingModalData && (
+        <EditThoughtModal
+          initialText={editingModalData.thought.text}
+          initialTags={editingModalData.thought.tags}
+          allowedTags={allowedTags}
+          onSave={handleSaveEditedThought}
+          onClose={() => setEditingModalData(null)}
+        />
+      )}
     </div>
   );
 }

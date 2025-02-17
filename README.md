@@ -92,8 +92,10 @@
 
 ### TODO
 
-- bug: dashboard page: when you change sermon title, it not displayed after update, only after page refresh
-- on `/structure` page: color columns to tag colors that it matches
+- fix: folding ambiguous thoughts section if empty, only on page load
+- add `plush sign` on structure page to each section, click on it allow to add thought to this section
+- show edit dialog for each thoght on structure page
+- on structure page, grag and drop to another section should change required tag for thought accordingly and update structure for those sections
 - internalization
 - export to pdf and word
 - Неавтоматизированный гостевой режим:

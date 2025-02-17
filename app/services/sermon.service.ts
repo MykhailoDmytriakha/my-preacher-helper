@@ -72,3 +72,22 @@ export async function deleteSermon(sermonId: string): Promise<void> {
     throw new Error(`Failed to delete sermon with id ${sermonId}`);
   }
 }
+
+export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/sermons/${updatedSermon.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedSermon),
+    });
+    if (!response.ok) {
+      console.error(`updateSermon: Response not ok for id ${updatedSermon.id}, status: ${response.status}`);
+      return null;
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('updateSermon: Error updating sermon', error);
+    return null;
+  }
+};

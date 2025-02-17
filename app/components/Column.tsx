@@ -10,9 +10,10 @@ interface ColumnProps {
   title: string;
   items: Item[];
   headerColor?: string; // optional color for header and border
+  onEdit?: (item: Item) => void;
 }
 
-export default function Column({ id, title, items, headerColor }: ColumnProps) {
+export default function Column({ id, title, items, headerColor, onEdit }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
 
   return (
@@ -55,7 +56,7 @@ export default function Column({ id, title, items, headerColor }: ColumnProps) {
             </div>
           ) : (
             items.map((item) => (
-              <SortableItem key={item.id} item={item} containerId={id} />
+              <SortableItem key={item.id} item={item} containerId={id} onEdit={onEdit} />
             ))
           )}
           {/* Extra dummy element to always provide a drop target */}
