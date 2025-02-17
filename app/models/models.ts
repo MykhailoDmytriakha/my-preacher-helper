@@ -1,4 +1,5 @@
 export interface Thought {
+  id: string;
   text: string;
   tags: string[];
   date: string;

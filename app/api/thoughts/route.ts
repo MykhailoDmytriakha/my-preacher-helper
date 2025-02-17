@@ -27,6 +27,10 @@ export async function POST(request: Request) {
         ...(await getCustomTags(sermon.userId))
       ].map(t => t.name);
       const manualThought = await generateThought(thought.text, sermon, availableTags);
+      //verify that manualThought has everything that is needed
+      if (!manualThought.id || !manualThought.text || !manualThought.tags || !manualThought.date) {
+        return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+      }
       const thoughtWithDate = {
         ...manualThought,
         date: new Date().toISOString()
@@ -73,15 +77,15 @@ export async function POST(request: Request) {
     const transcriptionText = await createTranscription(file);
     
     const thought = await generateThought(transcriptionText, sermon, availableTags);
-    const thoughtWithDate = {
-      ...thought,
-      date: new Date().toISOString()
-    };
-    log.info("Generated thought:", thoughtWithDate);
+    //verify that thought has everything that is needed
+    if (!thought.id || !thought.text || !thought.tags || !thought.date) {
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+    }
+    log.info("Generated thought:", thought);
     const sermonDocRef = doc(db, "sermons", sermonId);
-    await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
+    await updateDoc(sermonDocRef, { thoughts: arrayUnion(thought) });
     log.info("Firestore update: Stored new thought into sermon document.");
-    return NextResponse.json(thoughtWithDate);
+    return NextResponse.json(thought);
   } catch (error) {
     console.error('Thoughts route: Transcription error:', error);
     return NextResponse.json(
@@ -118,6 +122,10 @@ export async function PUT(request: Request) {
     const { sermonId, thought: updatedThought } = body;
     if (!sermonId || !updatedThought) {
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
+    }   
+    // verify that updatedThought has everything that is needed
+    if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
     }
 
     const sermon = await fetchSermonById(sermonId) as Sermon;
@@ -125,7 +133,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
 
-    const oldThought = sermon.thoughts.find((th) => th.date === updatedThought.date);
+    const oldThought = sermon.thoughts.find((th) => th.id === updatedThought.id);
     if (!oldThought) {
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }

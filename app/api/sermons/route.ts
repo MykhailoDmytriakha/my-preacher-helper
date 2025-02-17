@@ -3,6 +3,7 @@ import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
 import { Sermon } from '@/models/models';
 import { log } from '@utils/logger';
+import { v4 as uuidv4 } from 'uuid';
 
 // GET /api/sermons?userId=<uid>
 export async function GET(request: Request) {
@@ -40,6 +41,14 @@ export async function POST(request: Request) {
   log.info("POST request received for creating a sermon");
   try {
     const sermon = await request.json();
+    if (Array.isArray(sermon.thoughts)) {
+      sermon.thoughts = sermon.thoughts.map((thought: any) => {
+        if (!thought.id) {
+          return { ...thought, id: uuidv4() };
+        }
+        return thought;
+      });
+    }
     log.info("Parsed sermon data:", sermon);
 
     const userId = sermon.userId;

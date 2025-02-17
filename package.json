@@ -20,7 +20,8 @@
     "react-dom": "18.2.0",
     "react-i18next": "^15.4.0",
     "react-textarea-autosize": "^8.5.7",
-    "sonner": "^1.7.4"
+    "sonner": "^1.7.4",
+    "uuid": "^11.0.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

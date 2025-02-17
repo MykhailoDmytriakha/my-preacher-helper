@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { Sermon, Thought } from "@/models/models";
 import { log } from "@utils/logger";
 import { promptSystemMessage } from "@/config/prompt";
-
+import { v4 as uuidv4 } from 'uuid';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -83,10 +83,15 @@ export async function generateThought(
       thoughtLabel,
       result.text
     );
-    return result as Thought;
+    return {
+      ...result,
+      id: uuidv4(),
+      date: new Date().toISOString()
+    } as Thought;
   } catch (error) {
     console.error("generateThought: OpenAI API Error:", error);
     return {
+      id: uuidv4(),
       text: thoughtText,
       tags: [],
       date: new Date().toISOString(),
