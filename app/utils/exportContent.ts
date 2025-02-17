@@ -8,21 +8,31 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
   const conclusionSection: Thought[] = [];
   const multiTagSection: Thought[] = [];
   const otherSection: Thought[] = [];
+  const requiredTags = ["Вступление", "Основная часть", "Заключение"];
 
   sortedThoughts.forEach((thought: Thought) => {
-    if (thought.tags.length >= 2) {
-      multiTagSection.push(thought);
-    } else if (thought.tags.length === 1) {
-      const tag = thought.tags[0];
-      if (tag === "Вступление") {
-        introSection.push(thought);
-      } else if (tag === "Основная часть") {
-        mainSection.push(thought);
-      } else if (tag === "Заключение" || tag === "Заключения") {
-        conclusionSection.push(thought);
+    const requiredMatches = thought.tags.filter(tag => requiredTags.includes(tag));
+
+    if (requiredMatches.length === 1) {
+      const extraTags = thought.tags.filter(tag => !requiredTags.includes(tag));
+      const modifiedText = extraTags.length > 0 ? `${thought.text}\nТеги: ${extraTags.join(", ")}` : thought.text;
+      const modifiedThought = { ...thought, text: modifiedText };
+
+      if (requiredMatches[0] === "Вступление") {
+        introSection.push(modifiedThought);
+      } else if (requiredMatches[0] === "Основная часть") {
+        mainSection.push(modifiedThought);
+      } else if (requiredMatches[0] === "Заключение") {
+        conclusionSection.push(modifiedThought);
       } else {
         otherSection.push(thought);
       }
+    } else if (thought.tags.length >= 2) {
+      multiTagSection.push(thought);
+    } else if (thought.tags.length === 1) {
+      otherSection.push(thought);
+    } else {
+      otherSection.push(thought);
     }
   });
 

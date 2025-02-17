@@ -3,6 +3,7 @@ import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } fro
 import { log } from '@utils/logger';
 import { Tag } from '@/models/models';
 
+// GET api/tags?userId=123
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
