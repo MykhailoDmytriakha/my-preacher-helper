@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, User } from "firebase/auth";
 import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
 
 export default function useAuth() {
@@ -50,5 +50,15 @@ export default function useAuth() {
     }
   }, []);
 
-  return { user, loading, loginWithGoogle, loginAsGuest, logoutUser };
+  const loginWithEmailAndPassword = async (email: string, password: string) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      setUser(userCredential.user);
+    } catch (error) {
+      console.error('Email/password login error:', error);
+      throw error;
+    }
+  };
+
+  return { user, loading, loginWithGoogle, loginAsGuest, logoutUser, loginWithEmailAndPassword };
 }

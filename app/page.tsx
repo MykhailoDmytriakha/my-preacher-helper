@@ -1,11 +1,11 @@
 'use client';
-import useAuth from "@/hooks/useAuth";
-import { GoogleIcon, UserIcon } from "@components/Icons";
-import { useRouter } from "next/navigation";
+import useAuth from '@/hooks/useAuth';
+import { GoogleIcon, UserIcon } from '@components/Icons';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const router = useRouter();
-  const { user, loading, loginWithGoogle, loginAsGuest } = useAuth();
+  const { user, loading, loginWithGoogle, loginAsGuest, loginWithEmailAndPassword } = useAuth();
 
   // If user is already authenticated, redirect to dashboard
   if (user) {
@@ -22,7 +22,7 @@ export default function Home() {
       await loginWithGoogle();
       router.push('/dashboard');
     } catch (error) {
-      console.error("Login error", error);
+      console.error('Login error', error);
     }
   };
 
@@ -31,7 +31,16 @@ export default function Home() {
       await loginAsGuest();
       router.push('/dashboard');
     } catch (error) {
-      console.error("Guest login error", error);
+      console.error('Guest login error', error);
+    }
+  };
+
+  const handleTestLogin = async () => {
+    try {
+      await loginWithEmailAndPassword('testuser@example.com', 'TestPassword123');
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Test login failed:', error);
     }
   };
 
@@ -43,7 +52,7 @@ export default function Home() {
             AI-Помощник для Подготовки Проповедей
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">
-            Фиксируйте мысли в процессе размышления, преобразуйте речь в текст<br/>
+            Фиксируйте мысли в процессе размышления, преобразуйте речь в текст<br />
             и автоматически структурируйте проповеди с анализом смысловых пробелов
           </p>
         </div>
@@ -124,6 +133,17 @@ export default function Home() {
               <UserIcon className="w-5 h-5" />
               Продолжить как гость
             </button>
+
+            {/* Add Test User Login Button - Only in Development */}
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                className="w-full px-6 py-3 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-800 transition-all flex items-center justify-center gap-2"
+                onClick={handleTestLogin}
+              >
+                <UserIcon className="w-5 h-5" />
+                Войти как тестовый пользователь
+              </button>
+            )}
           </div>
         </div>
       </main>
