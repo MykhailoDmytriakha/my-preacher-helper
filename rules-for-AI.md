@@ -8,6 +8,7 @@
 
 1. **Full Paths for Files**  
    - Always use **absolute paths** (e.g., `/src/app/components/Button.js`, not `./Button.js`).  
+   - don do like this `// ... (остальной код без изменений)`
 
 2. **Complete File Replacement**  
    - Return the **entire modified file**; never provide partial snippets or line-by-line diffs.  

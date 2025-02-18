@@ -16,7 +16,6 @@ export async function fetchSermonById(id: string) {
   const sermon = { id: docSnap.id, ...docSnap.data() } as Sermon;
   log.info(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
   return sermon;
-
 }
 
 export async function deleteSermonById(id: string): Promise<void> {

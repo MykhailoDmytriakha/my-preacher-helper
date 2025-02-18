@@ -23,6 +23,7 @@ import SortableItem, { Item } from "@components/SortableItem";
 import { Sermon, Thought } from "@/models/models";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { updateThought } from '@/services/thought.service';
+import { updateStructure } from '@/services/structure.service';
 
 // Mapping for column titles.
 const columnTitles: Record<string, string> = {
@@ -358,11 +359,10 @@ function StructurePageContent() {
         ambiguous: updatedContainers.ambiguous.map(item => item.id),
       };
 
-      updateSermon({ ...sermon, structure: JSON.stringify(newStructure) })
-        .then((updated: Sermon | null) => {
-          if (updated) {
-            setSermon(updated);
-          }
+      updateStructure(sermon.id, JSON.stringify(newStructure))
+        .then(() => {
+          // Update the local sermon state with the new structure
+          setSermon({ ...sermon, structure: JSON.stringify(newStructure) });
         })
         .catch((err: any) => console.error('Error updating sermon structure:', err));
     }

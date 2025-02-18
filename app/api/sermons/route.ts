@@ -68,4 +68,5 @@ export async function POST(request: Request) {
     console.error("Error occurred while creating sermon:", error);
     return NextResponse.json({ error: 'Failed to create sermon' }, { status: 500 });
   }
+  
 }
