@@ -272,7 +272,6 @@ function StructurePageContent() {
     const activeContainer = event.active.data.current?.container;
     let overContainer = event.over?.data.current?.container;
 
-    // Дополнительное логирование: выводим boundingClientRect элемента over.
     if ((event.over as any)?.element) {
       const element = (event.over as any).element;
       const dataContainer = element.getAttribute("data-container");
@@ -296,11 +295,13 @@ function StructurePageContent() {
     let updatedContainers = { ...containers };
 
     if (activeContainer === overContainer) {
+      console.log("Moving item within the same container");
       const items = updatedContainers[activeContainer];
       const oldIndex = items.findIndex((item) => item.id === active.id);
       let newIndex = items.findIndex((item) => item.id === over.id);
       updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
-    } else {
+    } else {  
+      console.log("Moving item to a different container");
       const allowedTransitions = ["introduction", "main", "conclusion", "ambiguous"];
       if (!allowedTransitions.includes(overContainer)) {
         console.error("Invalid target container:", overContainer);
@@ -310,9 +311,25 @@ function StructurePageContent() {
       const sourceItems = [...updatedContainers[activeContainer]];
       const destItems = [...updatedContainers[overContainer]];
 
+      console.log('sourceItems:', sourceItems);
+      console.log('destItems:', destItems);
+
       const activeIndex = sourceItems.findIndex((item) => item.id === active.id);
 
       const [movedItem] = sourceItems.splice(activeIndex, 1);
+
+      // Update requiredTags based on the target container using TagInfo objects
+      let requiredTags: string[] = [];
+      if (overContainer === "ambiguous") {
+        requiredTags = [];
+      } else if (overContainer === "introduction") {
+        requiredTags = ["Вступление"];
+      } else if (overContainer === "main") {
+        requiredTags = ["Основная часть"];
+      } else if (overContainer === "conclusion") {
+        requiredTags = ["Заключение"];
+      }
+
       let overIndex = destItems.findIndex((item) => item.id === over.id);
       if (overIndex === -1) {
         overIndex = destItems.length;
@@ -321,6 +338,13 @@ function StructurePageContent() {
 
       updatedContainers[activeContainer] = sourceItems;
       updatedContainers[overContainer] = destItems;
+      const updatedItem: Thought = {
+        ...sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id),
+        tags: [...requiredTags, ...(movedItem.customTagNames || []).map(tag => tag.name)]
+      };
+      if (updatedItem.id) {
+        updateThought(sermon.id, updatedItem);
+      }
     }
 
     setContainers(updatedContainers);

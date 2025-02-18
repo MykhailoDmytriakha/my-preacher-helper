@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { fetchSermonById, getCustomTags, getRequiredTags } from '@clients/firestore.client';
-import { Sermon } from '@/models/models';
+import { Sermon, Thought } from '@/models/models';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
 import { log } from '@utils/logger';
@@ -119,10 +119,22 @@ export async function PUT(request: Request) {
   log.info("Thoughts route: Received PUT request for updating a thought.");
   try {
     const body = await request.json();
-    const { sermonId, thought: updatedThought } = body;
-    if (!sermonId || !updatedThought) {
+    const { sermonId, thought: updatedThoughtNew } = body;
+    if (!sermonId || !updatedThoughtNew) {
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
     }   
+    if (!updatedThoughtNew.id) {
+      return NextResponse.json({ error: "Thought id is required" }, { status: 400 });
+    }
+    console.log("updatedThoughtNew:", updatedThoughtNew);
+    // map updatedThought to the Thought type, only fields that are needed
+    const updatedThought: Thought = {
+      id: updatedThoughtNew.id,
+      text: updatedThoughtNew.text,
+      tags: updatedThoughtNew.tags,
+      date: updatedThoughtNew.date
+    };
+    console.log("updatedThought:", updatedThought);
     // verify that updatedThought has everything that is needed
     if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {
       return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
