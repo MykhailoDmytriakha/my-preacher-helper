@@ -15,6 +15,7 @@ export type Item = {
   id: string;
   content: string;
   customTagNames?: TagInfo[];
+  requiredTags?: TagInfo[];
 };
 
 interface SortableItemProps {

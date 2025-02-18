@@ -17,6 +17,7 @@ interface EditThoughtModalProps {
 export default function EditThoughtModal({ initialText, initialTags, allowedTags, onSave, onClose }: EditThoughtModalProps) {
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
+  const isChanged = text !== initialText || tags.length !== initialTags.length || tags.some((tag, index) => tag !== initialTags[index]);
 
   const handleAddTag = (tag: string) => {
     if (!tags.includes(tag)) {
@@ -83,7 +84,7 @@ export default function EditThoughtModal({ initialText, initialTags, allowedTags
           <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400">
             Отмена
           </button>
-          <button type="button" onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          <button type="button" disabled={!isChanged} onClick={handleSave} className={`px-4 py-2 rounded-md ${isChanged ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-300 text-gray-500 cursor-default"}`}>
             Сохранить
           </button>
         </div>

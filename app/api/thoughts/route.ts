@@ -137,7 +137,7 @@ export async function PUT(request: Request) {
     if (!oldThought) {
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
-    log.info("Thoughts route: Thought to update:", oldThought);
+    log.info("Thoughts route: Thought to update:", updatedThought);
     const sermonDocRef = doc(db, "sermons", sermonId);
 
     await updateDoc(sermonDocRef, { thoughts: arrayRemove(oldThought) });

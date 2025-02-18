@@ -20,8 +20,9 @@ import { getSermonById, updateSermon } from "@services/sermon.service";
 import { getTags } from "@services/setting.service";
 import Column from "@components/Column";
 import SortableItem, { Item } from "@components/SortableItem";
-import { Sermon } from "@/models/models";
+import { Sermon, Thought } from "@/models/models";
 import EditThoughtModal from "@components/EditThoughtModal";
+import { updateThought } from '@/services/thought.service';
 
 // Mapping for column titles.
 const columnTitles: Record<string, string> = {
@@ -53,7 +54,7 @@ function DummyDropZone({ container }: { container: string }) {
 
 function StructurePageContent() {
   const searchParams = useSearchParams();
-  const sermonId = searchParams.get("sermonId");
+  const sermonId = searchParams?.get("sermonId");
   const [sermon, setSermon] = useState<any>(null);
   // Combined state for all containers (columns plus ambiguous)
   const [containers, setContainers] = useState<Record<string, Item[]>>({
@@ -125,18 +126,21 @@ function StructurePageContent() {
                     id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
+                    requiredTags: relevantTags
                   });
                 } else if (relevantTags[0] === "Основная часть") {
                   main.push({
                     id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
+                    requiredTags: relevantTags
                   });
                 } else if (relevantTags[0] === "Заключение") {
                   concl.push({
                     id: stableId,
                     content: thought.text,
                     customTagNames: enrichedCustomTags,
+                    requiredTags: relevantTags
                   });
                 }
               } else {
@@ -144,6 +148,7 @@ function StructurePageContent() {
                   id: stableId,
                   content: thought.text,
                   customTagNames: enrichedCustomTags,
+                  requiredTags: relevantTags
                 });
               }
             });
@@ -194,40 +199,53 @@ function StructurePageContent() {
 
   // New functions for editing
   const handleEdit = (item: Item) => {
-    console.log('Edit clicked on item:', item.id);
+    console.log('Edit clicked on item:', item);
     setEditingItem(item);
   };
 
-  const handleSaveEdit = (updatedText: string, updatedTags: string[]) => {
-    console.log('Save edit clicked on item:', editingItem);
-    console.log('Updated text:', updatedText);
-    console.log('Updated tags:', updatedTags);
-    if (editingItem) {
-      const updatedItem = {
-        ...editingItem,
-        content: updatedText,
-        customTagNames: updatedTags.map(tagName => {
-          const tagInfo = allowedTags.find(t => t.name === tagName);
-          return { name: tagName, color: tagInfo ? tagInfo.color : '#4c51bf' };
-        })
-      };
-      const newContainers = { ...containers };
-      Object.keys(newContainers).forEach(key => {
-        newContainers[key] = newContainers[key].map(item => item.id === updatedItem.id ? updatedItem : item);
-      });
+  const handleSaveEdit = async (updatedText: string, updatedTags: string[]) => {
+    if (!editingItem) return;
+    const updatedItem: Thought = {
+      ...sermon.thoughts.find((thought: Thought) => thought.id === editingItem.id),
+      text: updatedText,
+      tags: [...(editingItem.requiredTags || []), ...updatedTags]
+    };
+
+    try {
+      // Call the service layer to update the thought in the backend
+      await updateThought(sermon.id, updatedItem);
+
+      // Update local containers state
+      const newContainers = Object.keys(containers).reduce((acc, key) => {
+        acc[key] = containers[key].map(item => 
+          item.id === updatedItem.id ? ({ 
+            ...updatedItem, 
+            content: updatedItem.text,
+            customTagNames: updatedTags.map(tagName => {
+              const found = allowedTags.find(tag => tag.name === tagName);
+              return found ? found : { name: tagName, color: "#4c51bf" };
+            }),
+            requiredTags: editingItem.requiredTags
+          } as unknown as Item) : item
+        );
+        return acc;
+      }, {} as typeof containers);
       setContainers(newContainers);
 
+      // Update sermon thoughts if applicable
       if (sermon) {
         const newThoughts = sermon.thoughts.map((thought: any) => {
           const thoughtId = thought.id || thought._id;
-          if (thoughtId === updatedItem.id) {
-            return { ...thought, text: updatedText, tags: updatedTags };
-          }
-          return thought;
+          return thoughtId === updatedItem.id ? { ...thought, text: updatedText, tags: updatedTags } : thought;
         });
         setSermon({ ...sermon, thoughts: newThoughts });
       }
+
+      // Clear editing item since update is complete
       setEditingItem(null);
+    } catch (error) {
+      console.error('Error updating thought:', error);
+      // Optionally, you might want to notify the user about the error here.
     }
   };
 
