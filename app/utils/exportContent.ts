@@ -18,7 +18,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
       const requiredMatches = thought.tags.filter(tag => requiredTags.includes(tag));
       if (requiredMatches.length === 1) {
         const extraTags = thought.tags.filter(tag => !requiredTags.includes(tag));
-        const modifiedText = extraTags.length > 0 ? `${thought.text}\nТеги: ${extraTags.join(", ")}` : thought.text;
+        const modifiedText = extraTags.length > 0 ? `${thought.text}\n  Теги: ${extraTags.join(", ")}` : thought.text;
         thoughtMap[thought.id] = { ...thought, text: modifiedText };
       } else {
         thoughtMap[thought.id] = thought;
