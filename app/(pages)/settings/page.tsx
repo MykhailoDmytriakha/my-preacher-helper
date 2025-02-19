@@ -5,7 +5,7 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getTags, addCustomTag, removeCustomTag, updateTag } from "@services/setting.service";
+import { getTags, addCustomTag, removeCustomTag, updateTag } from "@/services/tag.service";
 import { Tag } from "@/models/models";
 import ColorPickerModal from "@components/ColorPickerModal";
 

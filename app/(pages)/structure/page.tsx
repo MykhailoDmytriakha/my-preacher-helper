@@ -1,31 +1,32 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
   pointerWithin,
   DragEndEvent,
   DragStartEvent,
+  DragOverEvent,
   useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
   verticalListSortingStrategy,
+  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getSermonById, updateSermon } from "@services/sermon.service";
-import { getTags } from "@services/setting.service";
 import Column from "@components/Column";
 import SortableItem, { Item } from "@components/SortableItem";
 import { Sermon, Thought } from "@/models/models";
 import EditThoughtModal from "@components/EditThoughtModal";
-import { updateThought } from '@/services/thought.service';
-import { updateStructure } from '@/services/structure.service';
+import { getTags } from "@/services/tag.service";
+import { getSermonById } from "@/services/sermon.service";
+import { updateThought } from "@/services/thought.service";
+import { updateStructure } from "@/services/structure.service";
 
-// Mapping for column titles.
 const columnTitles: Record<string, string> = {
   introduction: "Вступление",
   main: "Основная часть",
@@ -33,7 +34,6 @@ const columnTitles: Record<string, string> = {
   ambiguous: "На рассмотрении",
 };
 
-// Новый компонент для пустой droppable зоны ambiguous.
 function DummyDropZone({ container }: { container: string }) {
   const { setNodeRef, isOver } = useDroppable({
     id: "dummy-drop-zone",
@@ -56,197 +56,253 @@ function DummyDropZone({ container }: { container: string }) {
 function StructurePageContent() {
   const searchParams = useSearchParams();
   const sermonId = searchParams?.get("sermonId");
-  const [sermon, setSermon] = useState<any>(null);
-  // Combined state for all containers (columns plus ambiguous)
+  const [sermon, setSermon] = useState<Sermon | null>(null);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
     conclusion: [],
     ambiguous: [],
   });
+  // Ref to hold the latest containers state
+  const containersRef = useRef(containers);
+  useEffect(() => {
+    containersRef.current = containers;
+  }, [containers]);
+
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [originalContainer, setOriginalContainer] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // State for toggling the ambiguous section.
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
-  const [requiredTagColors, setRequiredTagColors] = useState<{introduction?: string, main?: string, conclusion?: string}>({});
-  // New states for editing a thought
+  const [requiredTagColors, setRequiredTagColors] = useState<{
+    introduction?: string;
+    main?: string;
+    conclusion?: string;
+  }>({});
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
 
-  // Fetch sermon data and group thoughts by tags.
   useEffect(() => {
-    async function fetchSermon() {
-      if (sermonId) {
-        try {
-          const fetchedSermon = await getSermonById(sermonId);
-          if (fetchedSermon) {
-            setSermon(fetchedSermon);
-            const tagsData = await getTags(fetchedSermon.userId);
-            const allTags: Record<string, { name: string; color: string }> = {};
-            (tagsData.requiredTags || []).forEach((tag: any) => {
-              allTags[tag.name] = tag;
-            });
-            (tagsData.customTags || []).forEach((tag: any) => {
-              allTags[tag.name] = tag;
-            });
-
-            // Set the header colors for main columns from required tags
-            setRequiredTagColors({
-              introduction: allTags["Вступление"]?.color,
-              main: allTags["Основная часть"]?.color,
-              conclusion: allTags["Заключение"]?.color,
-            });
-
-            // Set allowed tags for editing modal
-            setAllowedTags(Object.values(allTags).filter(tag => !['Вступление', 'Основная часть', 'Заключение'].includes(tag.name)));
-
-            let intro: Item[] = [];
-            let main: Item[] = [];
-            let concl: Item[] = [];
-            let ambiguous: Item[] = [];
-            // Group thoughts based on tags.
-            fetchedSermon.thoughts.forEach((thought: any, index: number) => {
-              // Ensure every thought has a stable identifier, fallback to a generated id if needed
-              const stableId = thought.id;
-              const customTagNames = thought.tags.filter((tag: string) =>
-                !["Вступление", "Основная часть", "Заключение"].includes(tag)
-              );
-              // Enrich custom tags with color info.
-              const enrichedCustomTags = customTagNames.map((tagName: string) => {
-                return allTags[tagName]
-                  ? { name: tagName, color: allTags[tagName].color }
-                  : { name: tagName, color: "#4c51bf" };
-              });
-
-              const relevantTags = thought.tags.filter((tag: string) =>
-                ["Вступление", "Основная часть", "Заключение"].includes(tag)
-              );
-              if (relevantTags.length === 1) {
-                if (relevantTags[0] === "Вступление") {
-                  intro.push({
-                    id: stableId,
-                    content: thought.text,
-                    customTagNames: enrichedCustomTags,
-                    requiredTags: relevantTags
-                  });
-                } else if (relevantTags[0] === "Основная часть") {
-                  main.push({
-                    id: stableId,
-                    content: thought.text,
-                    customTagNames: enrichedCustomTags,
-                    requiredTags: relevantTags
-                  });
-                } else if (relevantTags[0] === "Заключение") {
-                  concl.push({
-                    id: stableId,
-                    content: thought.text,
-                    customTagNames: enrichedCustomTags,
-                    requiredTags: relevantTags
-                  });
-                }
-              } else {
-                ambiguous.push({
-                  id: stableId,
-                  content: thought.text,
-                  customTagNames: enrichedCustomTags,
-                  requiredTags: relevantTags
-                });
-              }
-            });
-
-            // If persisted structure exists, reorder the arrays accordingly
-            if (fetchedSermon.structure) {
-              try {
-                const persistedOrder = JSON.parse(fetchedSermon.structure);
-                const reorder = (arr: Item[], order: string[]): Item[] => {
-                  const ordered = order.map(id => arr.find(item => item.id === id)).filter(item => item) as Item[];
-                  const unordered = arr.filter(item => !order.includes(item.id));
-                  return [...ordered, ...unordered];
-                };
-
-                if (persistedOrder.introduction) {
-                  intro = reorder(intro, persistedOrder.introduction);
-                }
-                if (persistedOrder.main) {
-                  main = reorder(main, persistedOrder.main);
-                }
-                if (persistedOrder.conclusion) {
-                  concl = reorder(concl, persistedOrder.conclusion);
-                }
-                if (persistedOrder.ambiguous) {
-                  ambiguous = reorder(ambiguous, persistedOrder.ambiguous);
-                }
-              } catch (error) {
-                console.error('Error parsing persisted structure:', error);
-              }
-            }
-
-            setContainers({
-              introduction: intro,
-              main: main,
-              conclusion: concl,
-              ambiguous: ambiguous,
-            });
-            setIsAmbiguousVisible(ambiguous.length > 0);
-          }
-        } catch (error) {
-          console.error("Error fetching sermon:", error);
-        }
+    async function initializeSermon() {
+      if (!sermonId) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+  
+      try {
+        const fetchedSermon = await getSermonById(sermonId);
+        if (!fetchedSermon) {
+          throw new Error("Failed to fetch sermon");
+        }
+        console.log("fetchedSermon", fetchedSermon);
+        setSermon(fetchedSermon);
+  
+        const tagsData = await getTags(fetchedSermon.userId);
+        const allTags: Record<string, { name: string; color: string }> = {};
+        tagsData.requiredTags.forEach((tag: any) => {
+          const normalizedName = tag.name.trim().toLowerCase();
+          allTags[normalizedName] = { name: tag.name, color: tag.color };
+        });
+        tagsData.customTags.forEach((tag: any) => {
+          const normalizedName = tag.name.trim().toLowerCase();
+          allTags[normalizedName] = { name: tag.name, color: tag.color };
+        });
+        setRequiredTagColors({
+          introduction: allTags["вступление"]?.color,
+          main: allTags["основная часть"]?.color,
+          conclusion: allTags["заключение"]?.color,
+        });
+  
+        setAllowedTags(
+          Object.values(allTags).filter(
+            (tag) =>
+              !["вступление", "основная часть", "заключение"].includes(tag.name.toLowerCase())
+          )
+        );
+  
+        // Create a lookup for all thought items
+        const allThoughtItems: Record<string, Item> = {};
+        fetchedSermon.thoughts.forEach((thought: any) => {
+          const stableId = thought.id;
+          const normalizedTags = thought.tags.map((tag: string) => tag.trim().toLowerCase());
+          const customTagNames = normalizedTags.filter(
+            (tag: string) => !["вступление", "основная часть", "заключение"].includes(tag)
+          );
+          const enrichedCustomTags = customTagNames.map((tagName: string) => {
+            const tagInfo = allTags[tagName];
+            if (!tagInfo) {
+              console.warn(`Tag "${tagName}" not found in allTags, using default color`);
+            }
+            const color = tagInfo?.color || "#4c51bf";
+            return {
+              name: tagInfo?.name || tagName,
+              color: color,
+            };
+          });
+  
+          const relevantTags = normalizedTags.filter((tag: string) =>
+            ["вступление", "основная часть", "заключение"].includes(tag)
+          );
+  
+          const item: Item = {
+            id: stableId,
+            content: thought.text,
+            customTagNames: enrichedCustomTags,
+            requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
+          };
+  
+          allThoughtItems[stableId] = item;
+        });
+  
+        // Prepare arrays for each column
+        let intro: Item[] = [];
+        let main: Item[] = [];
+        let concl: Item[] = [];
+        let ambiguous: Item[] = [];
+        const usedIds = new Set<string>();
+  
+        // If a structure exists, update the thought placements accordingly.
+        if (fetchedSermon.structure) {
+          let structureObj;
+          try {
+            structureObj =
+              typeof fetchedSermon.structure === "string"
+                ? JSON.parse(fetchedSermon.structure)
+                : fetchedSermon.structure;
+          } catch (err) {
+            console.error("Error parsing sermon structure:", err);
+          }
+          if (structureObj) {
+            if (Array.isArray(structureObj.introduction)) {
+              structureObj.introduction.forEach((thoughtId: string) => {
+                const item = allThoughtItems[thoughtId];
+                if (item) {
+                  // Override requiredTags based on structure
+                  item.requiredTags = [columnTitles.introduction];
+                  intro.push(item);
+                  usedIds.add(thoughtId);
+                }
+              });
+            }
+            if (Array.isArray(structureObj.main)) {
+              structureObj.main.forEach((thoughtId: string) => {
+                const item = allThoughtItems[thoughtId];
+                if (item) {
+                  item.requiredTags = [columnTitles.main];
+                  main.push(item);
+                  usedIds.add(thoughtId);
+                }
+              });
+            }
+            if (Array.isArray(structureObj.conclusion)) {
+              structureObj.conclusion.forEach((thoughtId: string) => {
+                const item = allThoughtItems[thoughtId];
+                if (item) {
+                  item.requiredTags = [columnTitles.conclusion];
+                  concl.push(item);
+                  usedIds.add(thoughtId);
+                }
+              });
+            }
+            if (Array.isArray(structureObj.ambiguous)) {
+              structureObj.ambiguous.forEach((thoughtId: string) => {
+                const item = allThoughtItems[thoughtId];
+                if (item) {
+                  ambiguous.push(item);
+                  usedIds.add(thoughtId);
+                }
+              });
+            }
+          }
+        } else {
+          // Fallback: assign thoughts based on their relevant tags
+          Object.values(allThoughtItems).forEach((item) => {
+            if (item.requiredTags.length === 1) {
+              const tagLower = item.requiredTags[0].toLowerCase();
+              if (tagLower === columnTitles.introduction.toLowerCase()) {
+                intro.push(item);
+                usedIds.add(item.id);
+              } else if (tagLower === columnTitles.main.toLowerCase()) {
+                main.push(item);
+                usedIds.add(item.id);
+              } else if (tagLower === columnTitles.conclusion.toLowerCase()) {
+                concl.push(item);
+                usedIds.add(item.id);
+              } else {
+                ambiguous.push(item);
+                usedIds.add(item.id);
+              }
+            } else {
+              ambiguous.push(item);
+              usedIds.add(item.id);
+            }
+          });
+        }
+  
+        // Add any thoughts not included in the structure to ambiguous.
+        Object.keys(allThoughtItems).forEach((id) => {
+          if (!usedIds.has(id)) {
+            ambiguous.push(allThoughtItems[id]);
+          }
+        });
+  
+        setContainers({ introduction: intro, main, conclusion: concl, ambiguous });
+        setIsAmbiguousVisible(ambiguous.length > 0);
+      } catch (error) {
+        console.error("Error initializing sermon:", error);
+      } finally {
+        setLoading(false);
+      }
     }
-    fetchSermon();
+  
+    initializeSermon();
   }, [sermonId]);
+  
 
-  // New functions for editing
   const handleEdit = (item: Item) => {
-    console.log('Edit clicked on item:', item);
     setEditingItem(item);
   };
 
   const handleSaveEdit = async (updatedText: string, updatedTags: string[]) => {
-    if (!editingItem) return;
+    if (!editingItem || !sermon) return;
+
     const updatedItem: Thought = {
-      ...sermon.thoughts.find((thought: Thought) => thought.id === editingItem.id),
+      ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
       text: updatedText,
-      tags: [...(editingItem.requiredTags || []), ...updatedTags]
+      tags: [...(editingItem.requiredTags || []), ...updatedTags],
     };
 
     try {
-      // Call the service layer to update the thought in the backend
-      await updateThought(sermon.id, updatedItem);
+      const updatedThought = await updateThought(sermon.id, updatedItem);
+      const updatedThoughts = sermon.thoughts.map((thought) =>
+        thought.id === updatedItem.id ? updatedThought : thought
+      );
+      setSermon({ ...sermon, thoughts: updatedThoughts });
 
-      // Update local containers state
-      const newContainers = Object.keys(containers).reduce((acc, key) => {
-        acc[key] = containers[key].map(item => 
-          item.id === updatedItem.id ? ({ 
-            ...updatedItem, 
-            content: updatedItem.text,
-            customTagNames: updatedTags.map(tagName => {
-              const found = allowedTags.find(tag => tag.name === tagName);
-              return found ? found : { name: tagName, color: "#4c51bf" };
-            }),
-            requiredTags: editingItem.requiredTags
-          } as unknown as Item) : item
-        );
-        return acc;
-      }, {} as typeof containers);
+      const newContainers = Object.keys(containers).reduce(
+        (acc, key) => {
+          acc[key] = containers[key].map((item) =>
+            item.id === updatedItem.id
+              ? {
+                  ...item,
+                  content: updatedText,
+                  customTagNames: updatedTags.map((tagName) => ({
+                    name: tagName,
+                    color:
+                      allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+                  })),
+                }
+              : item
+          );
+          return acc;
+        },
+        {} as Record<string, Item[]>
+      );
+
       setContainers(newContainers);
-
-      // Update sermon thoughts if applicable
-      if (sermon) {
-        const newThoughts = sermon.thoughts.map((thought: any) => {
-          const thoughtId = thought.id || thought._id;
-          return thoughtId === updatedItem.id ? { ...thought, text: updatedText, tags: updatedTags } : thought;
-        });
-        setSermon({ ...sermon, thoughts: newThoughts });
-      }
-
-      // Clear editing item since update is complete
-      setEditingItem(null);
     } catch (error) {
-      console.error('Error updating thought:', error);
-      // Optionally, you might want to notify the user about the error here.
+      console.error("Error updating thought:", error);
+    } finally {
+      setEditingItem(null);
     }
   };
 
@@ -255,117 +311,140 @@ function StructurePageContent() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
+    const id = String(event.active.id);
+    setActiveId(id);
+    // Capture the original container at the start of the drag
+    const original = Object.keys(containers).find((key) =>
+      containers[key].some((item) => item.id === id)
+    );
+    setOriginalContainer(original || null);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-    if (!over) {
-      setActiveId(null);
-      setActiveId(null);
-      return;
+    if (!over || active.id === over.id) return;
+
+    const activeContainer = active.data.current?.container;
+    let overContainer = over.data.current?.container;
+
+    if (over.id === "dummy-drop-zone") {
+      overContainer = "ambiguous";
+    } else if (!overContainer) {
+      overContainer = String(over.id);
     }
-    if (active.id === over.id) {
+
+    if (
+      !activeContainer ||
+      !overContainer ||
+      activeContainer === overContainer ||
+      !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
+    )
+      return;
+
+    setContainers((prev) => {
+      const sourceItems = [...prev[activeContainer]];
+      const destItems = [...prev[overContainer]];
+      const activeIndex = sourceItems.findIndex((item) => item.id === active.id);
+
+      if (activeIndex === -1) return prev;
+
+      const [movedItem] = sourceItems.splice(activeIndex, 1);
+      const requiredTags =
+        overContainer === "ambiguous" ? [] : [columnTitles[overContainer]];
+
+      destItems.push({ ...movedItem, requiredTags });
+
+      const newState = {
+        ...prev,
+        [activeContainer]: sourceItems,
+        [overContainer]: destItems,
+      };
+      // Update the ref immediately so we have the latest containers
+      containersRef.current = newState;
+      return newState;
+    });
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    console.log("handleDragEnd");
+    const { active, over } = event;
+    if (!over || !sermon) {
       setActiveId(null);
+      setOriginalContainer(null);
       return;
     }
 
-    const activeContainer = event.active.data.current?.container;
-    let overContainer = event.over?.data.current?.container;
+    const activeContainer = originalContainer; // Use the original container
+    let overContainer = over.data.current?.container;
 
-    if ((event.over as any)?.element) {
-      const element = (event.over as any).element;
-      const dataContainer = element.getAttribute("data-container");
-      if (!overContainer && dataContainer === "ambiguous") {
-        overContainer = "ambiguous";
-      } else if (!overContainer) {
-        const overId = String(over.id);
-        if (overId === "dummy-drop-zone") {
-          overContainer = "ambiguous";
-        } else if (["introduction", "main", "conclusion", "ambiguous"].includes(overId)) {
-          overContainer = overId;
+    if (over.id === "dummy-drop-zone") {
+      overContainer = "ambiguous";
+    } else if (!overContainer) {
+      overContainer = String(over.id);
+    }
+
+    if (
+      !activeContainer ||
+      !overContainer ||
+      !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
+    ) {
+      setActiveId(null);
+      setOriginalContainer(null);
+      return;
+    }
+
+    // Prepare a local copy of containers from the ref
+    let updatedContainers = { ...containersRef.current };
+
+    if (activeContainer === overContainer) {
+      console.log("drag over same container");
+      const items = [...updatedContainers[activeContainer]];
+      const oldIndex = items.findIndex((item) => item.id === active.id);
+      const newIndex = items.findIndex((item) => item.id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
+        setContainers(updatedContainers);
+        containersRef.current = updatedContainers;
+      }
+    } else {
+      console.log("drag over different container");
+      // For a different container, the state was already updated in handleDragOver.
+      // Optionally, update the thought on the server.
+      const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
+      if (movedItem) {
+        const updatedItem: Thought = {
+          ...sermon.thoughts.find((thought) => thought.id === movedItem.id)!,
+          tags: [
+            ...movedItem.requiredTags,
+            ...(movedItem.customTagNames || []).map((tag) => tag.name),
+          ],
+        };
+
+        try {
+          const updatedThought = await updateThought(sermon.id, updatedItem);
+          const newThoughts = sermon.thoughts.map((thought) =>
+            thought.id === updatedItem.id ? updatedThought : thought
+          );
+          setSermon({ ...sermon, thoughts: newThoughts });
+        } catch (error) {
+          console.error("Error updating thought:", error);
         }
       }
     }
 
-    if (!activeContainer || !overContainer) {
-      setActiveId(null);
-      return;
-    }
-
-    let updatedContainers = { ...containers };
-
-    if (activeContainer === overContainer) {
-      console.log("Moving item within the same container");
-      const items = updatedContainers[activeContainer];
-      const oldIndex = items.findIndex((item) => item.id === active.id);
-      let newIndex = items.findIndex((item) => item.id === over.id);
-      updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
-    } else {  
-      console.log("Moving item to a different container");
-      const allowedTransitions = ["introduction", "main", "conclusion", "ambiguous"];
-      if (!allowedTransitions.includes(overContainer)) {
-        console.error("Invalid target container:", overContainer);
-        return;
-      }
-
-      const sourceItems = [...updatedContainers[activeContainer]];
-      const destItems = [...updatedContainers[overContainer]];
-
-      console.log('sourceItems:', sourceItems);
-      console.log('destItems:', destItems);
-
-      const activeIndex = sourceItems.findIndex((item) => item.id === active.id);
-
-      const [movedItem] = sourceItems.splice(activeIndex, 1);
-
-      // Update requiredTags based on the target container using TagInfo objects
-      let requiredTags: string[] = [];
-      if (overContainer === "ambiguous") {
-        requiredTags = [];
-      } else if (overContainer === "introduction") {
-        requiredTags = ["Вступление"];
-      } else if (overContainer === "main") {
-        requiredTags = ["Основная часть"];
-      } else if (overContainer === "conclusion") {
-        requiredTags = ["Заключение"];
-      }
-
-      let overIndex = destItems.findIndex((item) => item.id === over.id);
-      if (overIndex === -1) {
-        overIndex = destItems.length;
-      }
-      destItems.splice(overIndex, 0, movedItem);
-
-      updatedContainers[activeContainer] = sourceItems;
-      updatedContainers[overContainer] = destItems;
-      const updatedItem: Thought = {
-        ...sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id),
-        tags: [...requiredTags, ...(movedItem.customTagNames || []).map(tag => tag.name)]
-      };
-      if (updatedItem.id) {
-        updateThought(sermon.id, updatedItem);
-      }
-    }
-
-    setContainers(updatedContainers);
+    // Build newStructure using the up-to-date containers from the ref.
+    const newStructure = {
+      introduction: containersRef.current.introduction.map((item) => item.id),
+      main: containersRef.current.main.map((item) => item.id),
+      conclusion: containersRef.current.conclusion.map((item) => item.id),
+      ambiguous: containersRef.current.ambiguous.map((item) => item.id),
+    };
+    console.log("previous structure", sermon.structure);
+    console.log("newStructure", newStructure);
+    await updateStructure(sermon.id, newStructure);
+    setSermon((prev) => (prev ? { ...prev, structure: JSON.stringify(newStructure) } : prev));
     setActiveId(null);
-
-    if (sermon) {
-      const newStructure = {
-        introduction: updatedContainers.introduction.map(item => item.id),
-        main: updatedContainers.main.map(item => item.id),
-        conclusion: updatedContainers.conclusion.map(item => item.id),
-        ambiguous: updatedContainers.ambiguous.map(item => item.id),
-      };
-
-      updateStructure(sermon.id, JSON.stringify(newStructure))
-        .then(() => {
-          // Update the local sermon state with the new structure
-          setSermon({ ...sermon, structure: JSON.stringify(newStructure) });
-        })
-        .catch((err: any) => console.error('Error updating sermon structure:', err));
-    }
+    setOriginalContainer(null);
   };
 
   if (loading) {
@@ -399,13 +478,15 @@ function StructurePageContent() {
       <DndContext
         collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        {/* Ambiguous Section */}
         <div className="mt-8">
-          <div className={`bg-white rounded-md shadow border ${
-            containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
-          }`}>
+          <div
+            className={`bg-white rounded-md shadow border ${
+              containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
+            }`}
+          >
             <div
               className="flex items-center justify-between p-4 cursor-pointer"
               onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
@@ -423,7 +504,7 @@ function StructurePageContent() {
               </svg>
             </div>
             {isAmbiguousVisible && (
-              <SortableContext items={containers.ambiguous} strategy={verticalListSortingStrategy}>
+              <SortableContext items={containers.ambiguous} strategy={rectSortingStrategy}>
                 <div className="min-h-[100px] p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                   {containers.ambiguous.length === 0 ? (
                     <DummyDropZone container="ambiguous" />
@@ -437,7 +518,6 @@ function StructurePageContent() {
             )}
           </div>
         </div>
-        {/* Main Columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-8">
           <Column
             id="introduction"
@@ -467,22 +547,21 @@ function StructurePageContent() {
               const containerKey = Object.keys(containers).find((key) =>
                 containers[key].some((item) => item.id === activeId)
               );
-              if (!containerKey) return null;
-              const activeItem = containers[containerKey].find((item) => item.id === activeId);
-              if (!activeItem) return null;
-              return (
+              const activeItem = containerKey
+                ? containers[containerKey].find((item) => item.id === activeId)
+                : null;
+              return activeItem ? (
                 <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
                   {activeItem.content}
                 </div>
-              );
+              ) : null;
             })()}
         </DragOverlay>
       </DndContext>
-      {/* Render EditThoughtModal if an item is being edited */}
       {editingItem && (
         <EditThoughtModal
           initialText={editingItem.content}
-          initialTags={editingItem.customTagNames ? editingItem.customTagNames.map(tag => tag.name) : []}
+          initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
           allowedTags={allowedTags}
           onSave={handleSaveEdit}
           onClose={handleCloseEdit}

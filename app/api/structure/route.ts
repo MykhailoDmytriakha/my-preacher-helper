@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
 import { log } from '@utils/logger';
 
@@ -17,6 +17,9 @@ export async function PUT(request: Request) {
     }
 
     const sermonDocRef = doc(db, 'sermons', sermonId);
+    // const sermon = (await getDoc(sermonDocRef)).data();
+    // console.log("previous structure", sermon?.structure);
+    // console.log("new structure", structure);
     await updateDoc(sermonDocRef, { structure });
     log.info(`Structure updated for sermon ${sermonId}`);
     return NextResponse.json({ message: 'Structure updated successfully' });

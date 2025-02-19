@@ -11,7 +11,7 @@ import { GuestBanner } from "@components/GuestBanner";
 import ExportButtons from "@components/ExportButtons";
 import { log } from "@utils/logger";
 import { formatDate } from "@utils/dateFormatter";
-import { getTags } from "@services/setting.service";
+import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
 import ThoughtCard from "@components/ThoughtCard";
 import { exportSermonContent } from "@/utils/exportContent";
