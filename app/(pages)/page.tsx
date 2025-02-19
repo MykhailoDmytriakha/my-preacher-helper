@@ -1,14 +1,18 @@
 'use client';
+import { useState } from 'react';
 import useAuth from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import FeatureCards from '@/components/landing/FeatureCards';
 import LoginOptions from '@/components/landing/LoginOptions';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
+import '@locales/i18n';
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user, loading, loginWithGoogle, loginAsGuest, loginWithEmailAndPassword } = useAuth();
 
-  // If user is already authenticated, redirect to dashboard
   if (user) {
     router.push('/dashboard');
     return null;
@@ -46,15 +50,24 @@ export default function Home() {
   };
 
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center">
-        <div className="flex flex-col items-center text-center mx-auto max-w-2xl px-4">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
-            AI-Помощник для Подготовки Проповедей
+    <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col">
+      {/* Header with the centered title and language switcher */}
+      <header className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-center items-center py-4 relative">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent text-center">
+            {t('landing.title')}
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">
-            Фиксируйте мысли в процессе размышления, преобразуйте речь в текст<br />
-            и автоматически структурируйте проповеди с анализом смысловых пробелов
+          <div className="absolute right-4">
+            <LanguageSwitcher />
+          </div>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-grow flex flex-col items-center justify-center px-4">
+        <div className="w-full max-w-2xl text-center mb-8">
+          <p className="text-lg text-gray-600 dark:text-gray-300">
+            {t('landing.subtitle')}
           </p>
         </div>
         <FeatureCards />

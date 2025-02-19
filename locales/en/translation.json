@@ -4,5 +4,9 @@
     "guest": "Guest",
     "settings": "Settings",
     "logout": "Logout"
+  },
+  "landing": {
+    "title": "AI Assistant for Preaching Preparation",
+    "subtitle": "Capture your thoughts during reflection, convert speech to text, and automatically structure sermons with analysis of conceptual gaps."
   }
 } 
