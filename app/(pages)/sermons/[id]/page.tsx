@@ -8,16 +8,14 @@ import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
-import ExportButtons from "@components/ExportButtons";
 import { log } from "@utils/logger";
-import { formatDate } from "@utils/dateFormatter";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
 import ThoughtCard from "@components/ThoughtCard";
-import { exportSermonContent } from "@/utils/exportContent";
 import AddThoughtManual from "@/components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
-
+import SermonHeader from "@/components/sermon/SermonHeader";
+import StructureStats from "@/components/sermon/StructureStats";
 export const dynamic = "force-dynamic";
 
 const AudioRecorder = dynamicImport(
@@ -30,11 +28,9 @@ const AudioRecorder = dynamicImport(
 
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const { sermon, setSermon, loading, getSortedThoughts } = useSermon(id);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentTag, setCurrentTag] = useState("");
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
 
   useEffect(() => {
@@ -71,7 +67,7 @@ export default function SermonPage() {
     );
   }
 
-  const formattedDate = formatDate(sermon.date);
+
   const totalThoughts = sermon.thoughts.length;
   const tagCounts = {
     "Вступление": sermon.thoughts.reduce(
@@ -87,27 +83,6 @@ export default function SermonPage() {
       0
     ),
   };
-
-  const introPercentage = totalThoughts
-    ? Math.round((tagCounts["Вступление"] / totalThoughts) * 100)
-    : 0;
-  const mainPercentage = totalThoughts
-    ? Math.round((tagCounts["Основная часть"] / totalThoughts) * 100)
-    : 0;
-  const conclusionPercentage = totalThoughts
-    ? Math.round((tagCounts["Заключение"] / totalThoughts) * 100)
-    : 0;
-  const notDefinedPercentage = 100 - introPercentage - mainPercentage - conclusionPercentage;
-
-  console.log("tagCounts", tagCounts);
-  console.log("introPercentage", introPercentage);
-  console.log("mainPercentage", mainPercentage);
-  console.log("conclusionPercentage", conclusionPercentage);
-  console.log("notDefinedPercentage", notDefinedPercentage);
-  
-  const introColor = allowedTags.find(t => t.name === "Вступление")?.color || "#2563eb";
-  const mainColor = allowedTags.find(t => t.name === "Основная часть")?.color || "#7e22ce";
-  const conclusionColor = allowedTags.find(t => t.name === "Заключение")?.color || "#16a34a";
 
   const handleNewRecording = async (audioBlob: Blob) => {
     log.info("handleNewRecording: Received audio blob", audioBlob);
@@ -166,8 +141,6 @@ export default function SermonPage() {
     }
   };
 
-  const generateExportContent = async () => exportSermonContent(sermon);
-
   const handleNewManualThought = (newThought: Thought) => {
     setSermon({ ...sermon, thoughts: [newThought, ...sermon.thoughts] });
   };
@@ -177,24 +150,7 @@ export default function SermonPage() {
       <DashboardNav />
       <GuestBanner />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-4">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                {sermon.title}
-              </h1>
-              <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
-            </div>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
-            <div>
-              {sermon.verse && (
-                <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium">
-                  {sermon.verse}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <SermonHeader sermon={sermon} />
         
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
@@ -245,95 +201,7 @@ export default function SermonPage() {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold mb-4">Структура проповеди</h2>
-              <div className="space-y-4">
-                <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
-                  <div className="absolute inset-0 flex">
-                    <div
-                      className="transition-all duration-500"
-                      style={{
-                        width: totalThoughts ? `${introPercentage}%` : "0%",
-                        backgroundColor: introColor
-                      }}
-                      data-tooltip={`Вступление: ${tagCounts["Вступление"]} записей`}
-                    />
-                    <div
-                      className="transition-all duration-500"
-                      style={{
-                        width: totalThoughts ? `${mainPercentage}%` : "0%",
-                        backgroundColor: mainColor
-                      }}
-                      data-tooltip={`Основная часть: ${tagCounts["Основная часть"]} записей`}
-                    />
-                    <div
-                      className="transition-all duration-500"
-                      style={{
-                        width: totalThoughts ? `${conclusionPercentage}%` : "0%",
-                        backgroundColor: conclusionColor
-                      }}
-                      data-tooltip={`Заключение: ${tagCounts["Заключение"]} записей`}
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <div className="text-center" style={{ color: introColor }}>
-                    <div className="text-lg font-bold">{introPercentage}%</div>
-                    <span className="text-xs text-gray-500">"Вступление" <br /> Рекомендуется: 20%</span>
-                  </div>
-                  <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-                  <div className="text-center" style={{ color: mainColor }}>
-                    <div className="text-lg font-bold">{mainPercentage}%</div>
-                    <span className="text-xs text-gray-500">
-                      "Основная часть"
-                      <br />
-                      Рекомендуется: 60%
-                    </span>
-                  </div>
-                  <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
-                  <div className="text-center" style={{ color: conclusionColor }}>
-                    <div className="text-lg font-bold">{conclusionPercentage}%</div>
-                    <span className="text-xs text-gray-500">"Заключение" <br /> Рекомендуется: 20%</span>
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
-                className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                Работать над структурой
-              </button>
-            </div>
-            {sermon.structure && (
-              <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-                <h3 className="font-semibold mb-2">Предпросмотр</h3>
-                <div className="prose dark:prose-invert max-w-none">
-                  {sermon.structure.introduction && (
-                    <div>
-                      <strong>Вступление:</strong> {sermon.structure.introduction.join(", ")}
-                    </div>
-                  )}
-                  {sermon.structure.main && (
-                    <div>
-                      <strong>Основная часть:</strong> {sermon.structure.main.join(", ")}
-                    </div>
-                  )}
-                  {sermon.structure.conclusion && (
-                    <div>
-                      <strong>Заключение:</strong> {sermon.structure.conclusion.join(", ")}
-                    </div>
-                  )}
-                  {/* Only render ambiguous if it exists */}
-                  {sermon.structure.ambiguous && (
-                    <div>
-                      <strong>На рассмотрении:</strong> {sermon.structure.ambiguous.join(", ")}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
         </div>
       </div>
       {editingModalData && (

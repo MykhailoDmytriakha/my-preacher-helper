@@ -4,13 +4,11 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
   const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n`;
 
   // Parse structure from string if needed
-  const structure = typeof sermon.structure === 'string' 
-    ? JSON.parse(sermon.structure)
-    : sermon.structure;
+  const structure = sermon.structure;
 
-  // console.log('[Structure Export] Sermon:', sermon);
+  console.log('[Structure Export] Sermon:', sermon);
 
-  if (structure && typeof structure === 'object' && !Array.isArray(structure) && Object.keys(structure).length > 0) {
+  if (structure && !Array.isArray(structure) && Object.keys(structure).length > 0) {
     console.log('[Structure Export] Using persisted structure order');
     
     // Build a map of thought IDs to thoughts, applying text modifications if applicable

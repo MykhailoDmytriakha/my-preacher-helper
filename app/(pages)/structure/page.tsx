@@ -237,6 +237,11 @@ function StructurePageContent() {
             }
           });
         }
+
+        console.log("intro", intro);
+        console.log("main", main);
+        console.log("conclusion", concl);
+        console.log("ambiguous", ambiguous);
   
         // Add any thoughts not included in the structure to ambiguous.
         Object.keys(allThoughtItems).forEach((id) => {
