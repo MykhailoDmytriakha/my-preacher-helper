@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useAuth from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import FeatureCards from '@/components/landing/FeatureCards';
@@ -13,10 +13,11 @@ export default function Home() {
   const { t } = useTranslation();
   const { user, loading, loginWithGoogle, loginAsGuest, loginWithEmailAndPassword } = useAuth();
 
-  if (user) {
-    router.push('/dashboard');
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      router.push('/dashboard');
+    }
+  }, [user, router]);
 
   if (loading) {
     return <div className="min-h-screen bg-white dark:bg-gray-900" />;

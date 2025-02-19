@@ -8,21 +8,14 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { ChevronIcon } from "@components/Icons";
 import { useTranslation } from "react-i18next";
-import i18n from "@locales/i18n";
+import LanguageSwitcher from "@components/LanguageSwitcher";
 
 export default function DashboardNav() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
-
-  const languages = [
-    { code: "en", flag: "🇺🇸", label: "English" },
-    { code: "ru", flag: "🇷🇺", label: "Русский" },
-    { code: "uk", flag: "🇺🇦", label: "Українська" }
-  ];
 
   const normalizeLang = (lang: string | null | undefined): string => {
     if (!lang) return 'en';
@@ -38,29 +31,17 @@ export default function DashboardNav() {
     return null;
   };
 
-  const [selectedLanguage, setSelectedLanguage] = useState(() => {
-    if (typeof document !== 'undefined') {
-      const lang = normalizeLang(getCookie('lang'));
-      return lang;
-    }
-    return 'en';
-  });
-  const [showLangDropdown, setShowLangDropdown] = useState(false);
-
-  const handleLocaleChange = (lang: string) => {
-    const normalizedLang = normalizeLang(lang);
-    if (normalizedLang === selectedLanguage) return;
-    setSelectedLanguage(normalizedLang);
-    setShowLangDropdown(false);
-    document.cookie = `lang=${normalizedLang}; path=/`;
-    i18n.changeLanguage(normalizedLang);
-  };
 
   const handleLogout = async () => {
     try {
+      const currentLang = document.cookie.match(/lang=([^;]+)/)?.[1] || 'en';
+      
       await logOut();
       localStorage.removeItem('guestUser');
       sessionStorage.clear();
+
+      await i18n.changeLanguage(currentLang);
+      document.cookie = `lang=${currentLang}; path=/; max-age=2592000`;
       window.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
@@ -92,26 +73,6 @@ export default function DashboardNav() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    const handleClickOutsideLang = (e: MouseEvent) => {
-      if (!(e.target as Element).closest('.language-container')) {
-        setShowLangDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutsideLang);
-    return () => document.removeEventListener('click', handleClickOutsideLang);
-  }, []);
-
-  useLayoutEffect(() => {
-    const lang = normalizeLang(getCookie('lang'));
-    if (lang !== i18n.language) {
-      i18n.changeLanguage(lang);
-    }
-    if (lang !== selectedLanguage) {
-      setSelectedLanguage(lang);
-    }
-  }, []);
-
   return (
     <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -120,30 +81,8 @@ export default function DashboardNav() {
             {t('dashboardNav.dashboard')}
           </Link>
           <div className="flex items-center gap-4">
-            <div className="language-container relative">
-              <button
-                onClick={() => setShowLangDropdown(!showLangDropdown)}
-                className="flex items-center gap-1 focus:outline-none"
-              >
-                <span className="text-xl">
-                  {languages.find(lang => lang.code === selectedLanguage)?.flag}
-                </span>
-                <ChevronIcon className={`${showLangDropdown ? 'rotate-180' : ''}`} />
-              </button>
-              {showLangDropdown && (
-                <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 border border-gray-200 dark:border-gray-700">
-                  {languages.filter(lang => lang.code !== selectedLanguage).map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLocaleChange(lang.code)}
-                      className="w-full text-left px-4 py-2 flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    >
-                      <span>{lang.flag}</span>
-                      <span>{lang.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="language-container">
+              <LanguageSwitcher />
             </div>
             <div className="avatar-container relative flex items-center gap-4">
               <button 

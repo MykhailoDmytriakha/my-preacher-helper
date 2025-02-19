@@ -47,7 +47,6 @@ export const logOut = async (): Promise<void> => {
   try {
     await signOut(auth);
     log.info("User logged out");
-    window.location.href = '/';
   } catch (error) {
     console.error("Error logging out:", error);
     throw error;
