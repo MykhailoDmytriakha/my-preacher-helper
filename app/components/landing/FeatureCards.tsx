@@ -1,6 +1,8 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function FeatureCards() {
+  const { t } = useTranslation();
   return (
     <div className="grid md:grid-cols-3 gap-8 w-full max-w-4xl mb-16">
       <div className="p-8 border rounded-xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all dark:border-gray-700 group">
@@ -9,10 +11,10 @@ export default function FeatureCards() {
             🎙️
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Мгновенная запись
+            {t('featureCards.recordingTitle')}
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            Фиксация мыслей по мере их появления с автоматическим сохранением в облако и преобразованием речи в текст
+            {t('featureCards.recordingDescription')}
           </p>
         </div>
       </div>
@@ -22,10 +24,10 @@ export default function FeatureCards() {
             ✨
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            AI-Структурирование
+            {t('featureCards.structuringTitle')}
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            Автоматическое улучшение текста: удаление повторов, формирование логичного потока и стилистическая правка
+            {t('featureCards.structuringDescription')}
           </p>
         </div>
       </div>
@@ -35,10 +37,10 @@ export default function FeatureCards() {
             🏷️
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Анализ содержания
+            {t('featureCards.analysisTitle')}
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            Интеллектуальное разделение на структурные части с выявлением смысловых пробелов и дисбалансов
+            {t('featureCards.analysisDescription')}
           </p>
         </div>
       </div>

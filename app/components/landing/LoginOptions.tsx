@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { GoogleIcon, UserIcon } from '@components/Icons';
+import { useTranslation } from 'react-i18next';
 
 interface LoginOptionsProps {
   onGoogleLogin: () => void;
@@ -10,11 +11,12 @@ interface LoginOptionsProps {
 }
 
 export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin }: LoginOptionsProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
       <div className="text-center space-y-2 w-full">
         <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Начните использовать
+          {t('loginOptions.heading')}
         </h2>
       </div>
 
@@ -24,7 +26,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           onClick={onGoogleLogin}
         >
           <GoogleIcon className="w-5 h-5" />
-          Войти через Google
+          {t('loginOptions.googleLogin')}
         </button>
 
         <div className="relative">
@@ -32,7 +34,9 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
             <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">или</span>
+            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">
+              {t('loginOptions.or')}
+            </span>
           </div>
         </div>
 
@@ -41,7 +45,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           onClick={onGuestLogin}
         >
           <UserIcon className="w-5 h-5" />
-          Продолжить как гость
+          {t('loginOptions.guestLogin')}
         </button>
 
         {process.env.NODE_ENV === 'development' && (
@@ -50,7 +54,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
             onClick={onTestLogin}
           >
             <UserIcon className="w-5 h-5" />
-            Войти как тестовый пользователь
+            {t('loginOptions.testLogin')}
           </button>
         )}
       </div>

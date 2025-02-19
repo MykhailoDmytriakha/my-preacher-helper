@@ -8,5 +8,20 @@
   "landing": {
     "title": "AI Assistant for Preaching Preparation",
     "subtitle": "Capture your thoughts during reflection, convert speech to text, and automatically structure sermons with analysis of conceptual gaps."
+  },
+  "featureCards": {
+    "recordingTitle": "Instant Recording",
+    "recordingDescription": "Capture thoughts as they occur with automatic cloud saving and speech-to-text conversion.",
+    "structuringTitle": "AI Structuring",
+    "structuringDescription": "Automatically improve your text by removing repetitions, forming a coherent flow, and applying stylistic corrections.",
+    "analysisTitle": "Content Analysis",
+    "analysisDescription": "Intelligently segment content to identify semantic gaps and imbalances."
+  },
+  "loginOptions": {
+    "heading": "Get Started",
+    "googleLogin": "Sign in with Google",
+    "or": "or",
+    "guestLogin": "Continue as Guest",
+    "testLogin": "Sign in as Test User"
   }
 } 
