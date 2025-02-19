@@ -308,8 +308,28 @@ export default function SermonPage() {
             {sermon.structure && (
               <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
                 <h3 className="font-semibold mb-2">Предпросмотр</h3>
-                <div className="prose dark:prose-invert max-w-none whitespace-pre-line">
-                  {sermon.structure}
+                <div className="prose dark:prose-invert max-w-none">
+                  {sermon.structure.introduction && (
+                    <div>
+                      <strong>Вступление:</strong> {sermon.structure.introduction.join(", ")}
+                    </div>
+                  )}
+                  {sermon.structure.main && (
+                    <div>
+                      <strong>Основная часть:</strong> {sermon.structure.main.join(", ")}
+                    </div>
+                  )}
+                  {sermon.structure.conclusion && (
+                    <div>
+                      <strong>Заключение:</strong> {sermon.structure.conclusion.join(", ")}
+                    </div>
+                  )}
+                  {/* Only render ambiguous if it exists */}
+                  {sermon.structure.ambiguous && (
+                    <div>
+                      <strong>На рассмотрении:</strong> {sermon.structure.ambiguous.join(", ")}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
