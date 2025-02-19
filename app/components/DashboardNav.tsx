@@ -159,7 +159,7 @@ export default function DashboardNav() {
                       onError={() => setImgError(true)}
                     />
                   ) : (
-                    <span>{user?.email?.[0]?.toUpperCase() || t('dashboardNav.guest')}</span>
+                    <span>{user?.email?.[0]?.toUpperCase() || t('dashboardNav.guest')[0]}</span>
                   )}
                 </div>
                 <ChevronIcon className={`${showDropdown ? 'rotate-180' : ''}`} />
