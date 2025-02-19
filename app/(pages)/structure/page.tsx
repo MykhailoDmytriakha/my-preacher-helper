@@ -370,8 +370,27 @@ function StructurePageContent() {
     });
   };
 
+  const isStructureChanged = (
+    structurePrev: string | Record<string, any>,
+    structureNew: string | Record<string, any>
+  ): boolean => {
+    const parse = (v: string | object) =>
+      typeof v === "string" ? JSON.parse(v) : v;
+    const prev = parse(structurePrev);
+    const curr = parse(structureNew);
+    const sections = ["introduction", "main", "conclusion", "ambiguous"];
+
+    return sections.some(
+      (section) =>
+        prev[section].length !== curr[section].length ||
+        prev[section].some(
+          (item: string, index: number) => item !== curr[section][index]
+        )
+    );
+  };
+
+
   const handleDragEnd = async (event: DragEndEvent) => {
-    console.log("handleDragEnd");
     const { active, over } = event;
     if (!over || !sermon) {
       setActiveId(null);
@@ -402,7 +421,6 @@ function StructurePageContent() {
     let updatedContainers = { ...containersRef.current };
 
     if (activeContainer === overContainer) {
-      console.log("drag over same container");
       const items = [...updatedContainers[activeContainer]];
       const oldIndex = items.findIndex((item) => item.id === active.id);
       const newIndex = items.findIndex((item) => item.id === over.id);
@@ -412,9 +430,6 @@ function StructurePageContent() {
         containersRef.current = updatedContainers;
       }
     } else {
-      console.log("drag over different container");
-      // For a different container, the state was already updated in handleDragOver.
-      // Optionally, update the thought on the server.
       const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
       if (movedItem) {
         const updatedItem: Thought = {
@@ -444,10 +459,12 @@ function StructurePageContent() {
       conclusion: containersRef.current.conclusion.map((item) => item.id),
       ambiguous: containersRef.current.ambiguous.map((item) => item.id),
     };
-    console.log("previous structure", sermon.structure);
-    console.log("newStructure", newStructure);
-    await updateStructure(sermon.id, newStructure);
-    setSermon((prev) => (prev ? { ...prev, structure: JSON.stringify(newStructure) } : prev));
+    const changesDetected = isStructureChanged(sermon.structure, newStructure);
+    if (changesDetected) {
+      console.log("changes detected, updating structure");
+      await updateStructure(sermon.id, newStructure);
+      setSermon((prev) => (prev ? { ...prev, structure: JSON.stringify(newStructure) } : prev));
+    }
     setActiveId(null);
     setOriginalContainer(null);
   };

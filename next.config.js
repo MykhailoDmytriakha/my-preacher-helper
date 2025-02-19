@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove the experimental.reactCompiler option since it's unrecognized
+  reactStrictMode: false, // Disable Strict Mode
 };
-
 module.exports = nextConfig;
