@@ -93,7 +93,6 @@ function StructurePageContent() {
         if (!fetchedSermon) {
           throw new Error("Failed to fetch sermon");
         }
-        console.log("fetchedSermon", fetchedSermon);
         setSermon(fetchedSermon);
   
         const tagsData = await getTags(fetchedSermon.userId);
@@ -119,7 +118,6 @@ function StructurePageContent() {
           )
         );
   
-        // Create a lookup for all thought items
         const allThoughtItems: Record<string, Item> = {};
         fetchedSermon.thoughts.forEach((thought: any) => {
           const stableId = thought.id;
@@ -129,9 +127,6 @@ function StructurePageContent() {
           );
           const enrichedCustomTags = customTagNames.map((tagName: string) => {
             const tagInfo = allTags[tagName];
-            if (!tagInfo) {
-              console.warn(`Tag "${tagName}" not found in allTags, using default color`);
-            }
             const color = tagInfo?.color || "#4c51bf";
             return {
               name: tagInfo?.name || tagName,
@@ -149,109 +144,65 @@ function StructurePageContent() {
             customTagNames: enrichedCustomTags,
             requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
           };
-  
           allThoughtItems[stableId] = item;
         });
   
-        // Prepare arrays for each column
         let intro: Item[] = [];
         let main: Item[] = [];
         let concl: Item[] = [];
         let ambiguous: Item[] = [];
         const usedIds = new Set<string>();
   
-        // If a structure exists, update the thought placements accordingly.
+        // Step 1: Process structure (skip ambiguous)
         if (fetchedSermon.structure) {
-          let structureObj;
-          try {
-            structureObj =
-              typeof fetchedSermon.structure === "string"
-                ? JSON.parse(fetchedSermon.structure)
-                : fetchedSermon.structure;
-          } catch (err) {
-            console.error("Error parsing sermon structure:", err);
-          }
+          let structureObj = typeof fetchedSermon.structure === "string" ? JSON.parse(fetchedSermon.structure) : fetchedSermon.structure;
           if (structureObj) {
-            if (Array.isArray(structureObj.introduction)) {
-              structureObj.introduction.forEach((thoughtId: string) => {
-                const item = allThoughtItems[thoughtId];
-                if (item) {
-                  // Override requiredTags based on structure
-                  item.requiredTags = [columnTitles.introduction];
-                  intro.push(item);
-                  usedIds.add(thoughtId);
-                }
-              });
-            }
-            if (Array.isArray(structureObj.main)) {
-              structureObj.main.forEach((thoughtId: string) => {
-                const item = allThoughtItems[thoughtId];
-                if (item) {
-                  item.requiredTags = [columnTitles.main];
-                  main.push(item);
-                  usedIds.add(thoughtId);
-                }
-              });
-            }
-            if (Array.isArray(structureObj.conclusion)) {
-              structureObj.conclusion.forEach((thoughtId: string) => {
-                const item = allThoughtItems[thoughtId];
-                if (item) {
-                  item.requiredTags = [columnTitles.conclusion];
-                  concl.push(item);
-                  usedIds.add(thoughtId);
-                }
-              });
-            }
-            if (Array.isArray(structureObj.ambiguous)) {
-              structureObj.ambiguous.forEach((thoughtId: string) => {
-                const item = allThoughtItems[thoughtId];
-                if (item) {
-                  ambiguous.push(item);
-                  usedIds.add(thoughtId);
-                }
-              });
-            }
-          }
-        } else {
-          // Fallback: assign thoughts based on their relevant tags
-          Object.values(allThoughtItems).forEach((item) => {
-            if (item.requiredTags.length === 1) {
-              const tagLower = item.requiredTags[0].toLowerCase();
-              if (tagLower === columnTitles.introduction.toLowerCase()) {
-                intro.push(item);
-                usedIds.add(item.id);
-              } else if (tagLower === columnTitles.main.toLowerCase()) {
-                main.push(item);
-                usedIds.add(item.id);
-              } else if (tagLower === columnTitles.conclusion.toLowerCase()) {
-                concl.push(item);
-                usedIds.add(item.id);
-              } else {
-                ambiguous.push(item);
-                usedIds.add(item.id);
+            // Only process intro, main, concl
+            ["introduction", "main", "conclusion"].forEach((section) => {
+              if (Array.isArray(structureObj[section])) {
+                const target = section === "introduction" ? intro : section === "main" ? main : concl;
+                const tag = columnTitles[section];
+                structureObj[section].forEach((thoughtId) => {
+                  const item = allThoughtItems[thoughtId];
+                  if (item) {
+                    item.requiredTags = [tag];
+                    target.push(item);
+                    usedIds.add(thoughtId);
+                  }
+                });
               }
-            } else {
-              ambiguous.push(item);
-              usedIds.add(item.id);
-            }
-          });
+            });
+            // Do not process ambiguous here
+          }
         }
 
-        console.log("intro", intro);
-        console.log("main", main);
-        console.log("conclusion", concl);
-        console.log("ambiguous", ambiguous);
-  
-        // Add any thoughts not included in the structure to ambiguous.
-        Object.keys(allThoughtItems).forEach((id) => {
-          if (!usedIds.has(id)) {
-            ambiguous.push(allThoughtItems[id]);
+        // Step 2: Process all remaining items by tags
+        Object.values(allThoughtItems).forEach((item) => {
+          if (!usedIds.has(item.id)) {
+            if (item.requiredTags.length === 1) {
+              const tagLower = item.requiredTags[0].toLowerCase();
+              if (tagLower === "вступление") intro.push(item);
+              else if (tagLower === "основная часть") main.push(item);
+              else if (tagLower === "заключение") concl.push(item);
+              else ambiguous.push(item);
+            } else {
+              ambiguous.push(item);
+            }
           }
         });
   
         setContainers({ introduction: intro, main, conclusion: concl, ambiguous });
         setIsAmbiguousVisible(ambiguous.length > 0);
+
+        const structure = {
+          introduction: intro.map((item) => item.id),
+          main: main.map((item) => item.id),
+          conclusion: concl.map((item) => item.id),
+          ambiguous: ambiguous.map((item) => item.id),
+        }
+        if (isStructureChanged(fetchedSermon.structure || {}, structure)) {
+          await updateStructure(sermonId, structure);
+        }
       } catch (error) {
         console.error("Error initializing sermon:", error);
       } finally {
