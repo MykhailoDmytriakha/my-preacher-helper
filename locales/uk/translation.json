@@ -1,5 +1,5 @@
 {
-  "dashboardNav": {
+  "navigation": {
     "dashboard": "Панель управління",
     "guest": "Гість",
     "settings": "Налаштування",
@@ -23,5 +23,115 @@
     "or": "або",
     "guestLogin": "Продовжити як гість",
     "testLogin": "Увійти як тестовий користувач"
+  },
+  "dashboard": {
+    "mySermons": "Мої проповіді"
+  },
+  "addSermon": {
+    "newSermon": "Нова проповідь",
+    "titleLabel": "Тема",
+    "titlePlaceholder": "Введіть тему проповіді",
+    "titleExample": "Наприклад:\n\"Сила віри у випробуваннях\"",
+    "verseLabel": "Вірш з Писання",
+    "versePlaceholder": "Введіть вірш з Писання",
+    "verseExample": "Наприклад:\nЕф 1:15: \"Тому й я, почувши про вашу віру в Христа Ісуса та любов до всіх святих\"",
+    "cancel": "Скасувати",
+    "save": "Зберегти"
+  },
+  "optionMenu": {
+    "edit": "Редагувати",
+    "delete": "Видалити",
+    "deleteConfirm": "Ви впевнені, що хочете видалити проповідь?",
+    "deleteError": "Не вдалося видалити проповідь"
+  },
+  "editSermon": {
+    "editSermon": "Редагувати проповідь",
+    "titleLabel": "Тема",
+    "titlePlaceholder": "Введіть тему проповіді",
+    "verseLabel": "Вірш з Писання",
+    "versePlaceholder": "Введіть вірш з Писання",
+    "updateError": "Помилка оновлення проповіді"
+  },
+  "buttons": {
+    "cancel": "Скасувати",
+    "save": "Зберегти",
+    "saving": "Збереження..."
+  },
+  "export": {
+    "soonAvailable": "Скоро додамо!",
+    "txtTitle": "Експорт у TXT",
+    "copy": "Копіювати",
+    "copied": "Скопійовано!",
+    "downloadTxt": "Завантажити TXT",
+    "prepareError": "Помилка підготовки експорту",
+    "sermonTitle": "Проповідь: ",
+    "scriptureText": "Текст з Писання: ",
+    "tagsLabel": "Теги: ",
+    "multiTagThoughts": "Думки з кількома тегами",
+    "otherThoughts": "Інші думки"
+  },
+  "tags": {
+    "introduction": "Вступ",
+    "mainPart": "Основна частина",
+    "conclusion": "Заключення"
+  },
+  "settings": {
+    "backToDashboard": "Повернутися до панелі керування",
+    "title": "Налаштування",
+    "manageTags": "Управління тегами",
+    "requiredTags": "Обов'язкові теги",
+    "customTags": "Користувацькі теги",
+    "tagNamePlaceholder": "Назва тегу",
+    "addTag": "Додати",
+    "editColor": "Змінити колір",
+    "deleteTag": "Видалити тег"
+  },
+  "sermon": {
+    "notFound": "Проповідь не знайдена",
+    "backToList": "Повернутися до списку",
+    "allThoughts": "Всі записи",
+    "noThoughts": "Немає записів для цієї проповіді",
+    "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цей запис?\n{{text}}"
+  },
+  "errors": {
+    "audioProcessing": "Помилка обробки аудіо",
+    "thoughtDeleteError": "Помилка видалення запису. Будь ласка, спробуйте ще раз.",
+    "thoughtUpdateError": "Помилка оновлення запису в базі даних",
+    "microphoneUnavailable": "Мікрофон недоступний",
+    "addThoughtError": "Помилка додавання запису"
+  },
+  "audio": {
+    "processing": "Обробка...",
+    "stopRecording": "Зупинити запис",
+    "newRecording": "Новий запис"
+  },
+  "manualThought": {
+    "addManual": "Додати запис вручну",
+    "placeholder": "Введіть ваш запис..."
+  },
+  "thought": {
+    "tagsLabel": "Теги:",
+    "availableTags": "Доступні теги для додавання:",
+    "missingTags": "Якщо потрібного тегу немає, перейдіть до {link}",
+    "missingRequiredTag": "Цей запис не містить обов'язковий тег. Не забудьте додати «{{intro}}», «{{main}}» або «{{conclusion}}»!"
+  },
+  "editThought": {
+    "editTitle": "Редагувати запис",
+    "textLabel": "Текст запису",
+    "availableTags": "Доступні теги для додавання:"
+  },
+  "structure": {
+    "title": "Структура проповіді:",
+    "entries": "записів",
+    "recommended": "Рекомендовано: {{percent}}%",
+    "workButton": "Працювати над структурою",
+    "underConsideration": "На розгляді",
+    "loadingSermon": "Завантаження даних проповіді...",
+    "notFound": "Проповідь не знайдено або не вказано sermonId",
+    "backToSermon": "← Назад до проповіді",
+    "noEntries": "Немає записів",
+    "introduction": "Вступ",
+    "mainPart": "Основна частина",
+    "conclusion": "Закінчення"
   }
 } 

@@ -6,8 +6,10 @@ import { auth } from "@services/firebaseAuth.service";
 import AddSermonModal from "@components/AddSermonModal";
 import { Sermon } from "@/models/models";
 import SermonList from "@components/dashboard/SermonList";
+import { useTranslation } from "react-i18next";
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [sermons, setSermons] = useState<Sermon[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +46,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Мои проповеди
+          {t('dashboard.mySermons')}
         </h1>
         <AddSermonModal
           onNewSermonCreated={(newSermon: Sermon) =>

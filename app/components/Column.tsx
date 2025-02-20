@@ -4,6 +4,8 @@ import React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import SortableItem, { Item } from "./SortableItem";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 interface ColumnProps {
   id: string;
@@ -15,7 +17,7 @@ interface ColumnProps {
 
 export default function Column({ id, title, items, headerColor, onEdit }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
-
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col">
       <div className="mb-2">
@@ -52,7 +54,7 @@ export default function Column({ id, title, items, headerColor, onEdit }: Column
         >
           {items.length === 0 ? (
             <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300">
-              Нет записей
+              {t('structure.noEntries')}
             </div>
           ) : (
             items.map((item) => (

@@ -1,9 +1,11 @@
 import type { Sermon, Thought } from "@/models/models";
+import { i18n } from '@locales/i18n';
 
 export function exportSermonContent(sermon: Sermon): Promise<string> {
-  const header = `Проповедь: ${sermon.title}\n${sermon.verse ? "Текст из Библии: " + sermon.verse + "\n" : ""}\n`;
+  const header = `${i18n.t('export.sermonTitle')}${sermon.title}\n${
+    sermon.verse ? i18n.t('export.scriptureText') + sermon.verse + "\n" : ""
+  }\n`;
 
-  // Parse structure from string if needed
   const structure = sermon.structure;
 
   console.log('[Structure Export] Sermon:', sermon);
@@ -18,7 +20,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
       const requiredMatches = thought.tags.filter(tag => requiredTags.includes(tag));
       if (requiredMatches.length === 1) {
         const extraTags = thought.tags.filter(tag => !requiredTags.includes(tag));
-        const modifiedText = extraTags.length > 0 ? `${thought.text}\n  Теги: ${extraTags.join(", ")}` : thought.text;
+        const modifiedText = extraTags.length > 0 ? `${thought.text}\n  ${i18n.t('export.tagsLabel')}${extraTags.join(", ")}` : thought.text;
         thoughtMap[thought.id] = { ...thought, text: modifiedText };
       } else {
         thoughtMap[thought.id] = thought;
@@ -28,28 +30,30 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     const formatSection = (title: string, thoughts: Thought[], includeTags: boolean = true): string => {
       if (!thoughts.length) return "";
       const formattedThoughts = thoughts
-        .map((t: Thought) => includeTags ? `- ${t.text}\nТеги: ${t.tags.join(", ")}` : `- ${t.text}`)
+        .map((t: Thought) => includeTags ? `- ${t.text}${t.tags.length > 0 ? `\n  ${i18n.t('export.tagsLabel')}${t.tags.join(", ")}` : ''}` : `- ${t.text}`)
         .join("\n");
       return `${title}:\n${formattedThoughts}`;
     };
 
     let content = header;
-    // Map structure keys to display headers and includeTags flag
     const sectionMapping: Record<string, { header: string, includeTags: boolean }> = {
-      introduction: { header: "Вступление", includeTags: false },
-      main: { header: "Основная часть", includeTags: false },
-      conclusion: { header: "Заключение", includeTags: false },
-      ambiguous: { header: "Другие мысли", includeTags: true }
+      introduction: { header: i18n.t('tags.introduction'), includeTags: false },
+      main: { header: i18n.t('tags.mainPart'), includeTags: false },
+      conclusion: { header: i18n.t('tags.conclusion'), includeTags: false },
+      ambiguous: { header: i18n.t('export.otherThoughts'), includeTags: true }
     };
 
     console.log('[Structure Export] Raw structure:', JSON.stringify(structure, null, 2));
 
-    Object.keys(structure).forEach((sectionKey: string) => {
+    // Define the desired order of sections
+    const sectionOrder = ['introduction', 'main', 'conclusion', 'ambiguous'];
+    
+    // Process structured sections in the specified order
+    sectionOrder.forEach((sectionKey: string) => {
       const thoughtIds = structure[sectionKey];
-      console.log(`[Structure Export] Processing section ${sectionKey} with ${thoughtIds.length} thoughts`);
+      console.log(`[Structure Export] Processing section ${sectionKey} with ${thoughtIds?.length || 0} thoughts`);
       
-      if (Array.isArray(thoughtIds) && thoughtIds.length > 0) {
-        // Simply map IDs to thoughts in structure order
+      if (thoughtIds && Array.isArray(thoughtIds) && thoughtIds.length > 0) {
         const sectionThoughts = thoughtIds
           .map((id: string) => thoughtMap[id])
           .filter(t => t !== undefined);
@@ -63,8 +67,19 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
         }
       }
     });
+
+    // Include thoughts not assigned to any structured section
+    const structuredThoughtIds = new Set(sectionOrder.flatMap(key => structure[key] || []));
+    const otherThoughts = sermon.thoughts
+      .filter(t => !structuredThoughtIds.has(t.id))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (otherThoughts.length > 0) {
+      content += formatSection(i18n.t('export.otherThoughts'), otherThoughts, true) + "\n\n";
+    }
+
     return Promise.resolve(content);
   } else {
+    // Date-based sorting remains unchanged for this fix
     console.log('[Date Sorting] No structure found, using date-based sorting');
     const thoughts: Thought[] = [...sermon.thoughts].sort((a, b) => {
       const dateA = new Date(a.date).getTime();
@@ -112,17 +127,17 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     const formatSection = (title: string, thoughts: Thought[], includeTags: boolean = true): string => {
       if (!thoughts.length) return "";
       const formattedThoughts = thoughts
-        .map((t: Thought) => includeTags ? `- ${t.text}\nТеги: ${t.tags.join(", ")}` : `- ${t.text}`)
+        .map((t: Thought) => includeTags ? `- ${t.text}\n${i18n.t('export.tagsLabel')} ${t.tags.join(", ")}` : `- ${t.text}`)
         .join("\n");
       return `${title}:\n${formattedThoughts}`;
     };
 
     let content = header;
-    if (introSection.length > 0) content += formatSection("Вступление", introSection, false) + "\n\n";
-    if (mainSection.length > 0) content += formatSection("Основная часть", mainSection, false) + "\n\n";
-    if (conclusionSection.length > 0) content += formatSection("Заключение", conclusionSection, false) + "\n\n";
-    if (multiTagSection.length > 0) content += formatSection("Мысли с несколькими метками", multiTagSection, true) + "\n\n";
-    if (otherSection.length > 0) content += formatSection("Другие мысли", otherSection, true) + "\n\n";
+    if (introSection.length > 0) content += formatSection(i18n.t('tags.introduction'), introSection, false) + "\n\n";
+    if (mainSection.length > 0) content += formatSection(i18n.t('tags.mainPart'), mainSection, false) + "\n\n";
+    if (conclusionSection.length > 0) content += formatSection(i18n.t('tags.conclusion'), conclusionSection, false) + "\n\n";
+    if (multiTagSection.length > 0) content += formatSection(i18n.t('export.multiTagThoughts'), multiTagSection, true) + "\n\n";
+    if (otherSection.length > 0) content += formatSection(i18n.t('export.otherThoughts'), otherSection, true) + "\n\n";
 
     console.log('[Date Sorting] Group counts:', {
       intro: introSection.length,
@@ -134,4 +149,4 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
 
     return Promise.resolve(content);
   }
-} 
+}

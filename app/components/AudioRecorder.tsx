@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { MicrophoneIcon } from "@components/Icons";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -19,6 +21,8 @@ export const AudioRecorder = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const chunks = useRef<Blob[]>([]);
   const prevIsProcessing = useRef(isProcessing);
+  const { t } = useTranslation();
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -39,7 +43,7 @@ export const AudioRecorder = ({
       setIsRecording(true);
     } catch (error) {
       console.error("Error accessing microphone:", error);
-      alert("Микрофон не доступен");
+      alert(t('errors.microphoneUnavailable'));
     }
   };
 
@@ -99,17 +103,17 @@ export const AudioRecorder = ({
     : "bg-green-600 hover:bg-green-700 text-white";
 
   const buttonText = isProcessing ? (
-    "Обработка..."
+    t('audio.processing')
   ) : isRecording ? (
 
     <>
       <MicrophoneIcon className="w-5 h-5 shrink-0" fill="white" />
-      <span className="flex-1 text-center">Остановить запись</span>
+      <span className="flex-1 text-center">{t('audio.stopRecording')}</span>
     </>
   ) : (
     <>
       <MicrophoneIcon className="w-5 h-5 shrink-0" fill="white" />
-      <span className="flex-1 text-center">Новая запись</span>
+      <span className="flex-1 text-center">{t('audio.newRecording')}</span>
     </>
   );
 

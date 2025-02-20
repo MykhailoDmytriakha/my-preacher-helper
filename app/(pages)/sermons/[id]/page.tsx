@@ -8,7 +8,6 @@ import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@components/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
-import { log } from "@utils/logger";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
 import ThoughtCard from "@components/ThoughtCard";
@@ -16,6 +15,8 @@ import AddThoughtManual from "@/components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
 import SermonHeader from "@/components/sermon/SermonHeader";
 import StructureStats from "@/components/sermon/StructureStats";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 export const dynamic = "force-dynamic";
 
 const AudioRecorder = dynamicImport(
@@ -32,6 +33,12 @@ export default function SermonPage() {
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
+  const { t } = useTranslation();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     const fetchAllowedTags = async () => {
@@ -55,13 +62,19 @@ export default function SermonPage() {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold">Проповедь не найдена</h2>
-          <Link
-            href="/dashboard"
-            className="text-blue-600 dark:text-blue-400 hover:underline mt-4 inline-block"
-          >
-            Вернуться к списку
-          </Link>
+          {isMounted ? (
+            <>
+              <h2 className="text-xl font-semibold">{t('sermon.notFound')}</h2>
+              <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline mt-4 inline-block">
+                {t('sermon.backToList')}
+              </Link>
+            </>
+          ) : (
+            <div className="animate-pulse">
+              <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded w-1/3 mb-4"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -85,13 +98,10 @@ export default function SermonPage() {
   };
 
   const handleNewRecording = async (audioBlob: Blob) => {
-    log.info("handleNewRecording: Received audio blob", audioBlob);
     setIsProcessing(true);
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
-      log.info("handleNewRecording: Transcription successful", thoughtResponse);
       const newThought: Thought = { ...thoughtResponse };
-      log.info("handleNewRecording: New thought created", newThought);
       setSermon((prevSermon: Sermon | null) =>
         prevSermon
           ? { ...prevSermon, thoughts: [newThought, ...prevSermon.thoughts] }
@@ -99,7 +109,7 @@ export default function SermonPage() {
       );
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
-      alert("Ошибка обработки аудио");
+      alert(t('errors.audioProcessing'));
     } finally {
       setIsProcessing(false);
     }
@@ -108,11 +118,8 @@ export default function SermonPage() {
   const handleDeleteThought = async (indexToDelete: number) => {
     const sortedThoughts = getSortedThoughts();
     const thoughtToDelete = sortedThoughts[indexToDelete];
-    const confirmed = window.confirm(
-      `Вы уверены, что хотите удалить эту запись?\n${thoughtToDelete.text}`
-    );
+    const confirmed = window.confirm(t('sermon.deleteThoughtConfirm', { text: thoughtToDelete.text }));
     if (!confirmed) return;
-    log.info("handleDeleteThought: Deleting thought", thoughtToDelete, indexToDelete);
     try {
       await deleteThought(sermon.id, thoughtToDelete);
       setSermon({
@@ -121,7 +128,7 @@ export default function SermonPage() {
       });
     } catch (error) {
       console.error("Failed to delete thought", error);
-      alert("Ошибка при удалении записи. Попробуйте еще раз.");
+      alert(t('errors.thoughtDeleteError'));
     }
   };
 
@@ -137,7 +144,7 @@ export default function SermonPage() {
       setEditingModalData(null);
     } catch (error) {
       console.error("Failed to update thought", error);
-      alert("Ошибка обновления записи в базе данных Firestore");
+      alert(t('errors.thoughtUpdateError'));
     }
   };
 
@@ -158,13 +165,13 @@ export default function SermonPage() {
           <div className="lg:col-span-2 space-y-6">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Все записи</h2>
+                <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
                 <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
               </div>
               <div className="space-y-4">
                 {sermon.thoughts.length === 0 ? (
                   <p className="text-gray-500 dark:text-gray-400">
-                    Нет записей для этой проповеди.
+                    {t('sermon.noThoughts')}
                   </p>
                 ) : (
                   getSortedThoughts().map((thought, index) => {

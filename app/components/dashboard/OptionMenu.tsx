@@ -6,6 +6,8 @@ import { deleteSermon } from "@services/sermon.service";
 import { Sermon } from "@/models/models";
 import { DotsVerticalIcon } from "@components/Icons";
 import EditSermonModal from "@components/EditSermonModal";
+import { useTranslation } from "react-i18next";
+import "@locales/i18n";
 
 interface OptionMenuProps {
   sermon: Sermon;
@@ -14,6 +16,7 @@ interface OptionMenuProps {
 }
 
 export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,7 +43,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const handleDelete = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-    const confirmed = window.confirm("Вы уверены, что хотите удалить проповедь?");
+    const confirmed = window.confirm(t('optionMenu.deleteConfirm'));
     if (!confirmed) return;
     try {
       await deleteSermon(sermon.id);
@@ -51,7 +54,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
       }
     } catch (error) {
       console.error("Error deleting sermon:", error);
-      alert("Не удалось удалить проповедь");
+      alert(t('optionMenu.deleteError'));
     }
     setOpen(false);
   };
@@ -92,14 +95,14 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between items-center"
               role="menuitem"
             >
-              <span>Редактировать</span>
+              <span>{t('optionMenu.edit')}</span>
             </button>
             <button
               onClick={handleDelete}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between items-center"
               role="menuitem"
             >
-              <span>Удалить</span>
+              <span>{t('optionMenu.delete')}</span>
             </button>
           </div>
         </div>

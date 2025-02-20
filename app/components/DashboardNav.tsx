@@ -9,6 +9,7 @@ import { auth } from "@services/firebaseAuth.service";
 import { ChevronIcon } from "@components/Icons";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@components/LanguageSwitcher";
+import "@locales/i18n";
 
 export default function DashboardNav() {
   const { t, i18n } = useTranslation();
@@ -16,20 +17,6 @@ export default function DashboardNav() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
-
-  const normalizeLang = (lang: string | null | undefined): string => {
-    if (!lang) return 'en';
-    return lang;
-  };
-
-  const getCookie = (name: string): string | null => {
-    const cookies = document.cookie.split('; ');
-    for (let cookie of cookies) {
-      const [cookieName, cookieValue] = cookie.split('=');
-      if (cookieName === name) return cookieValue;
-    }
-    return null;
-  };
 
 
   const handleLogout = async () => {
@@ -78,7 +65,7 @@ export default function DashboardNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <Link href="/dashboard" className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {t('dashboardNav.dashboard')}
+            {t('navigation.dashboard')}
           </Link>
           <div className="flex items-center gap-4">
             <div className="language-container">
@@ -98,7 +85,7 @@ export default function DashboardNav() {
                       onError={() => setImgError(true)}
                     />
                   ) : (
-                    <span>{user?.email?.[0]?.toUpperCase() || t('dashboardNav.guest')[0]}</span>
+                    <span>{user?.email?.[0]?.toUpperCase() || t('navigation.guest')[0]}</span>
                   )}
                 </div>
                 <ChevronIcon className={`${showDropdown ? 'rotate-180' : ''}`} />
@@ -108,7 +95,7 @@ export default function DashboardNav() {
                 <div className="absolute right-0 top-14 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 border border-gray-200 dark:border-gray-700">
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {user?.displayName || t('dashboardNav.guest')}
+                      {user?.displayName || t('navigation.guest')}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
                       {user?.email || ''}
@@ -118,13 +105,13 @@ export default function DashboardNav() {
                     href="/settings"
                     className="block w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                   >
-                    {t('dashboardNav.settings')}
+                    {t('navigation.settings')}
                   </Link>
                   <button
                     onClick={handleLogout}
                     className="w-full px-4 py-2 text-sm text-left text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
                   >
-                    {t('dashboardNav.logout')}
+                    {t('navigation.logout')}
                   </button>
                 </div>
               )}

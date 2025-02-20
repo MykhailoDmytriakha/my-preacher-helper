@@ -6,12 +6,14 @@ import { createSermon } from '@services/sermon.service';
 import { auth } from '@services/firebaseAuth.service';
 import { Sermon } from '@/models/models';
 import { PlusIcon } from "@components/Icons";
+import { useTranslation } from 'react-i18next';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;
 }
 
 export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
@@ -56,46 +58,45 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
         aria-label="Add new sermon"
       >
         <PlusIcon className="w-5 h-5" />
-        Новая проповедь
+        {t('addSermon.newSermon')}
       </button>
 
       {open && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px]">
-            <h2 className="text-2xl font-bold mb-6">Новая проповедь</h2>
+            <h2 className="text-2xl font-bold mb-6">{t('addSermon.newSermon')}</h2>
             <form onSubmit={handleSubmit}>
               <div className="mb-6">
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                  Тема
+                  {t('addSermon.titleLabel')}
                 </label>
                 <input 
                   type="text" 
                   id="title" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  placeholder="Введите тему проповеди"
+                  placeholder={t('addSermon.titlePlaceholder')}
                   className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Например:<br />"Сила веры в испытаниях"
+                  {t('addSermon.titleExample')}
                 </p>
               </div>
               <div className="mb-6">
                 <label htmlFor="verse" className="block text-sm font-medium text-gray-700">
-                  Стих из Писания
+                  {t('addSermon.verseLabel')}
                 </label>
                 <textarea 
                   id="verse"
                   value={verse}
                   onChange={e => setVerse(e.target.value)}
-                  placeholder="Введите стих из Писания"
+                  placeholder={t('addSermon.versePlaceholder')}
                   className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Например:<br />
-                  Еф 1:15: "Посему и я, услышав о вашей вере во Христа Иисуса и о любви ко всем святым"
+                  {t('addSermon.verseExample')}
                 </p>
               </div>
               <div className="flex justify-end gap-3">
@@ -104,13 +105,13 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
                   onClick={() => setOpen(false)}
                   className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
                 >
-                  Отмена
+                  {t('addSermon.cancel')}
                 </button>
                 <button 
                   type="submit" 
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  Сохранить
+                  {t('addSermon.save')}
                 </button>
               </div>
             </form>

@@ -26,15 +26,11 @@ import { getTags } from "@/services/tag.service";
 import { getSermonById } from "@/services/sermon.service";
 import { updateThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
-
-const columnTitles: Record<string, string> = {
-  introduction: "Вступление",
-  main: "Основная часть",
-  conclusion: "Заключение",
-  ambiguous: "На рассмотрении",
-};
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 function DummyDropZone({ container }: { container: string }) {
+  const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
     id: "dummy-drop-zone",
     data: { container },
@@ -48,7 +44,7 @@ function DummyDropZone({ container }: { container: string }) {
         isOver ? "border-blue-500 border-4" : ""
       }`}
     >
-      Нет записей
+      {t('structure.noEntries')}
     </div>
   );
 }
@@ -80,6 +76,14 @@ function StructurePageContent() {
   }>({});
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
+  const { t } = useTranslation();
+
+  const columnTitles: Record<string, string> = {
+    introduction: t('structure.introduction'),
+    main: t('structure.mainPart'),
+    conclusion: t('structure.conclusion'),
+    ambiguous: t('structure.underConsideration'),
+  };
 
   useEffect(() => {
     async function initializeSermon() {
@@ -423,7 +427,7 @@ function StructurePageContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        Загрузка данных проповеди...
+        {t('structure.loadingSermon')}
       </div>
     );
   }
@@ -431,7 +435,7 @@ function StructurePageContent() {
   if (!sermonId || !sermon) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        Проповедь не найдена или не указан sermonId.
+        {t('structure.notFound')}
       </div>
     );
   }
@@ -440,11 +444,11 @@ function StructurePageContent() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="mb-4">
         <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-          Структура: {sermon.title}
+          {t('structure.title')} {sermon.title}
         </h1>
         <div className="text-center">
           <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
-            ← Назад к проповеди
+            {t('structure.backToSermon')}
           </Link>
         </div>
       </div>

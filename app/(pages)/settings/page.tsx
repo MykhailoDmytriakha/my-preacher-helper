@@ -8,6 +8,8 @@ import Link from "next/link";
 import { getTags, addCustomTag, removeCustomTag, updateTag } from "@/services/tag.service";
 import { Tag } from "@/models/models";
 import ColorPickerModal from "@components/ColorPickerModal";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -15,6 +17,7 @@ export default function SettingsPage() {
   const [newTag, setNewTag] = useState({ name: '', color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0') });
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -113,18 +116,18 @@ export default function SettingsPage() {
               d="M10 19l-7-7m0 0l7-7m-7 7h18"
             />
           </svg>
-          Вернуться к панели управления
+          {t('settings.backToDashboard')}
         </Link>
       </div>
       
-      <h1 className="text-2xl font-bold mb-8">Настройки</h1>
+      <h1 className="text-2xl font-bold mb-8">{t('settings.title')}</h1>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Управление тегами</h2>
+        <h2 className="text-xl font-semibold mb-4">{t('settings.manageTags')}</h2>
         
         {/* Required Tags */}
         <div className="mb-8">
-          <h3 className="text-lg font-medium mb-4">Обязательные теги</h3>
+          <h3 className="text-lg font-medium mb-4">{t('settings.requiredTags')}</h3>
           <div className="space-y-3">
             {tags.requiredTags.map((tag) => (
               <div
@@ -149,7 +152,7 @@ export default function SettingsPage() {
 
         {/* Custom Tags */}
         <div>
-          <h3 className="text-lg font-medium mb-4">Пользовательские теги</h3>
+          <h3 className="text-lg font-medium mb-4">{t('settings.customTags')}</h3>
           
           {/* Add New Tag Form */}
           <div className="flex gap-4 mb-6">
@@ -157,7 +160,7 @@ export default function SettingsPage() {
               type="text"
               value={newTag.name}
               onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
-              placeholder="Название тега"
+              placeholder={t('settings.tagNamePlaceholder')}
               className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
             />
             <input
@@ -171,7 +174,7 @@ export default function SettingsPage() {
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:dark:bg-gray-600"
               disabled={!newTag.name.trim()}
             >
-              Добавить
+              {t('settings.addTag')}
             </button>
           </div>
 
@@ -191,12 +194,12 @@ export default function SettingsPage() {
                   onClick={() => openColorPicker(tag)}
                   className="ml-4 p-1 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer"
                 >
-                  Edit Color
+                  {t('settings.editColor')}
                 </button>
                 <button
                   onClick={() => handleRemoveTag(tag.name)}
                   className="ml-auto text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                  title="Удалить тег"
+                  title={t('settings.deleteTag')}
                 >
                   <svg
                     className="w-5 h-5"

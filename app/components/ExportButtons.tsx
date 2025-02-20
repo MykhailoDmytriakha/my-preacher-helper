@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { log } from "@utils/logger";
 import { createPortal } from "react-dom";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
@@ -17,6 +19,7 @@ export function ExportButtonsLayout({
   onWordClick,
   orientation = "horizontal",
 }: ExportButtonsLayoutProps) {
+  const { t } = useTranslation();
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
 
   return (
@@ -34,7 +37,7 @@ export function ExportButtonsLayout({
       >
         PDF
         <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
-          Скоро добавим!
+          {t('export.soonAvailable')}
         </span>
       </button>
       <button
@@ -44,7 +47,7 @@ export function ExportButtonsLayout({
       >
         Word
         <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
-          Скоро добавим!
+          {t('export.soonAvailable')}
         </span>
       </button>
     </div>
@@ -57,6 +60,7 @@ interface ExportTxtModalProps {
 }
 
 export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
+  const { t } = useTranslation();
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopy = () => {
@@ -84,7 +88,7 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold">Экспорт в TXT</h3>
+          <h3 className="text-xl font-semibold">{t('export.txtTitle')}</h3>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -107,13 +111,13 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
             onClick={handleCopy}
             className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
           >
-            {isCopied ? "Скопировано!" : "Копировать"}
+            {isCopied ? t('export.copied') : t('export.copy')}
           </button>
           <button
             onClick={handleDownload}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            Скачать TXT
+            {t('export.downloadTxt')}
           </button>
         </div>
       </div>
@@ -133,6 +137,7 @@ export default function ExportButtons({
   getExportContent,
   orientation = "horizontal",
 }: ExportButtonsContainerProps) {
+  const { t } = useTranslation();
   const [exportContent, setExportContent] = useState("");
   const [showTxtModal, setShowTxtModal] = useState(false);
 
@@ -145,7 +150,7 @@ export default function ExportButtons({
       setShowTxtModal(true);
     } catch (error) {
       console.error("Error generating export content:", error);
-      alert("Ошибка подготовки текста для экспорта");
+      alert(t('export.prepareError'));
     }
   };
 

@@ -1,5 +1,5 @@
 {
-  "dashboardNav": {
+  "navigation": {
     "dashboard": "Панель управления",
     "guest": "Гость",
     "settings": "Настройки",
@@ -23,5 +23,115 @@
     "or": "или",
     "guestLogin": "Продолжить как гость",
     "testLogin": "Войти как тестовый пользователь"
+  },
+  "dashboard": {
+    "mySermons": "Мои проповеди"
+  },
+  "addSermon": {
+    "newSermon": "Новая проповедь",
+    "titleLabel": "Тема",
+    "titlePlaceholder": "Введите тему проповеди",
+    "titleExample": "Например:\n\"Сила веры в испытаниях\"",
+    "verseLabel": "Стих из Писания",
+    "versePlaceholder": "Введите стих из Писания",
+    "verseExample": "Например:\nЕф 1:15: \"Посему и я, услышав о вашей вере во Христа Иисуса и о любви ко всем святым\"",
+    "cancel": "Отмена",
+    "save": "Сохранить"
+  },
+  "optionMenu": {
+    "edit": "Редактировать",
+    "delete": "Удалить",
+    "deleteConfirm": "Вы уверены, что хотите удалить проповедь?",
+    "deleteError": "Не удалось удалить проповедь"
+  },
+  "editSermon": {
+    "editSermon": "Редактировать проповедь",
+    "titleLabel": "Тема",
+    "titlePlaceholder": "Введите тему проповеди",
+    "verseLabel": "Стих из Писания",
+    "versePlaceholder": "Введите стих из Писания",
+    "updateError": "Ошибка обновления проповеди"
+  },
+  "buttons": {
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "saving": "Сохранение..."
+  },
+  "export": {
+    "soonAvailable": "Скоро добавим!",
+    "txtTitle": "Экспорт в TXT",
+    "copy": "Копировать",
+    "copied": "Скопировано!",
+    "downloadTxt": "Скачать TXT",
+    "prepareError": "Ошибка подготовки экспорта",
+    "sermonTitle": "Проповедь: ",
+    "scriptureText": "Текст из Библии: ",
+    "tagsLabel": "Теги: ",
+    "multiTagThoughts": "Мысли с несколькими метками",
+    "otherThoughts": "Другие мысли"
+  },
+  "tags": {
+    "introduction": "Вступление",
+    "mainPart": "Основная часть",
+    "conclusion": "Заключение"
+  },
+  "settings": {
+    "backToDashboard": "Вернуться к панели управления",
+    "title": "Настройки",
+    "manageTags": "Управление тегами",
+    "requiredTags": "Обязательные теги",
+    "customTags": "Пользовательские теги",
+    "tagNamePlaceholder": "Название тега",
+    "addTag": "Добавить",
+    "editColor": "Изменить цвет",
+    "deleteTag": "Удалить тег"
+  },
+  "sermon": {
+    "notFound": "Проповедь не найдена",
+    "backToList": "Вернуться к списку",
+    "allThoughts": "Все записи",
+    "noThoughts": "Нет записей для этой проповеди",
+    "deleteThoughtConfirm": "Вы уверены, что хотите удалить эту запись?\n{{text}}"
+  },
+  "audio": {
+    "processing": "Обработка...",
+    "stopRecording": "Остановить запись",
+    "newRecording": "Новая запись"
+  },
+  "errors": {
+    "audioProcessing": "Ошибка обработки аудио",
+    "thoughtDeleteError": "Ошибка при удалении записи. Попробуйте еще раз.",
+    "thoughtUpdateError": "Ошибка обновления записи в базе данных",
+    "microphoneUnavailable": "Микрофон не доступен",
+    "addThoughtError": "Ошибка добавления записи"
+  },
+  "manualThought": {
+    "addManual": "Добавить запись вручную",
+    "placeholder": "Введите вашу запись..."
+  },
+  "thought": {
+    "tagsLabel": "Теги:",
+    "availableTags": "Доступные теги для добавления:",
+    "missingTags": "Если нужный тег отсутствует, перейдите в {link}",
+    "missingRequiredTag": "Эта запись не содержит обязательный тег. Не забудьте добавить «{{intro}}», «{{main}}» или «{{conclusion}}»!"
+  },
+  "editThought": {
+    "editTitle": "Редактировать запись",
+    "textLabel": "Текст записи",
+    "availableTags": "Доступные теги для добавления:"
+  },
+  "structure": {
+    "title": "Структура проповеди:",
+    "entries": "записей",
+    "recommended": "Рекомендуется: {{percent}}%",
+    "workButton": "Работать над структурой",
+    "underConsideration": "На рассмотрении",
+    "loadingSermon": "Загрузка данных проповеди...",
+    "notFound": "Проповедь не найдена или не указан sermonId",
+    "backToSermon": "← Назад к проповеди",
+    "noEntries": "Нет записей",
+    "introduction": "Вступление",
+    "mainPart": "Основная часть",
+    "conclusion": "Заключение"
   }
 } 

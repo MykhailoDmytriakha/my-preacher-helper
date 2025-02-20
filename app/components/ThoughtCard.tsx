@@ -5,6 +5,8 @@ import { TrashIcon, EditIcon } from "@components/Icons";
 import { Thought } from "@/models/models";
 import { useEffect, useRef } from "react";
 import { getContrastColor } from "@utils/color";
+import { useTranslation } from 'react-i18next';
+import "@locales/i18n";
 
 interface ThoughtCardProps {
   thought: Thought;
@@ -46,6 +48,7 @@ export default function ThoughtCard({
   setCurrentTag
 }: ThoughtCardProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (editingIndex === index && textareaRef.current) {
@@ -125,7 +128,7 @@ export default function ThoughtCard({
         />
         {/* Tags editing section */}
         <div className="mb-2">
-          <p className="font-medium">Теги:</p>
+          <p className="font-medium">{t('thought.tagsLabel')}</p>
           <div className="flex flex-wrap gap-2 mt-1">
             {editingTags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
@@ -142,7 +145,7 @@ export default function ThoughtCard({
               );
             })}
           </div>
-          <p className="text-xs text-gray-500 mt-2 mb-1">Доступные теги для добавления:</p>
+          <p className="text-xs text-gray-500 mt-2 mb-1">{t('thought.availableTags')}</p>
           <div className="flex flex-wrap gap-2">
             {allowedTags
               .filter((t) => !editingTags.includes(t.name))
@@ -159,7 +162,9 @@ export default function ThoughtCard({
             }
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            Если нужный тег отсутствует, перейдите в <a href="/settings" className="text-blue-600 hover:underline">Настройки</a>
+            {t('thought.missingTags', { 
+              link: `<a href="/settings" className="text-blue-600 hover:underline">${t('settings.title')}</a>`
+            })}
           </p>
         </div>
         {/* Save/Cancel Buttons */}
@@ -168,13 +173,13 @@ export default function ThoughtCard({
             onClick={onEditSave}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
           >
-            Save
+            {t('buttons.save')}
           </button>
           <button
             onClick={onEditCancel}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
-            Cancel
+            {t('buttons.cancel')}
           </button>
         </div>
       </div>
@@ -224,9 +229,11 @@ export default function ThoughtCard({
         {/* Warning if no required tag */}
         {!hasRequiredTag && (
           <p className="text-red-500 text-sm mt-2">
-            Эта запись не содержит обязательный тег.
-            Не забудьте добавить «Вступление», «Основная часть»
-            или «Заключение»!
+            {t('thought.missingRequiredTag', {
+              intro: t('tags.introduction'),
+              main: t('tags.mainPart'), 
+              conclusion: t('tags.conclusion')
+            })}
           </p>
         )}
       </div>
