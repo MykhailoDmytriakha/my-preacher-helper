@@ -46,11 +46,12 @@ export async function POST(request: Request) {
     const userId = sermon.userId;
     const title = sermon.title;
     const verse = sermon.verse;
-    if (!userId || !title || !verse) {
+    const date = sermon.date;
+    if (!userId || !title || !verse || !date) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
-    const docRef = await addDoc(collection(db, 'sermons'), { userId, title, verse });
+    const docRef = await addDoc(collection(db, 'sermons'), { userId, title, verse, date });
     log.info("Sermon written with ID:", docRef.id);
     
     const newSermon = { id: docRef.id, ...sermon };

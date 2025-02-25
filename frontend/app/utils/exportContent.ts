@@ -1,9 +1,12 @@
-import type { Sermon, Thought } from "@/models/models";
+import type { Sermon, Structure, Thought } from "@/models/models";
 import { i18n } from '@locales/i18n';
 
 export function exportSermonContent(sermon: Sermon): Promise<string> {
+  if (sermon.title.trim() === '' || sermon.verse.trim() === '') {
+    return Promise.resolve('');
+  }
   const header = `${i18n.t('export.sermonTitle')}${sermon.title}\n${
-    sermon.verse ? i18n.t('export.scriptureText') + sermon.verse + "\n" : ""
+    sermon.verse ? `${i18n.t('export.scriptureText')}\n${sermon.verse}` + "\n" : ""
   }\n`;
 
   const structure = sermon.structure;
@@ -46,10 +49,10 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     console.log('[Structure Export] Raw structure:', JSON.stringify(structure, null, 2));
 
     // Define the desired order of sections
-    const sectionOrder = ['introduction', 'main', 'conclusion', 'ambiguous'];
+    const sectionOrder: (keyof Structure)[] = ['introduction', 'main', 'conclusion', 'ambiguous'];
     
     // Process structured sections in the specified order
-    sectionOrder.forEach((sectionKey: string) => {
+    sectionOrder.forEach((sectionKey: keyof Structure) => {
       const thoughtIds = structure[sectionKey];
       console.log(`[Structure Export] Processing section ${sectionKey} with ${thoughtIds?.length || 0} thoughts`);
       
@@ -103,7 +106,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
 
       if (requiredMatches.length === 1) {
         const extraTags = thought.tags.filter(tag => !requiredTags.includes(tag));
-        const modifiedText = extraTags.length > 0 ? `${thought.text}\nТеги: ${extraTags.join(", ")}` : thought.text;
+        const modifiedText = extraTags.length > 0 ? `${thought.text}\n${i18n.t('export.tagsLabel')}${extraTags.join(", ")}` : thought.text;
         const modifiedThought = { ...thought, text: modifiedText };
 
         if (requiredMatches[0] === "Вступление") {
@@ -127,7 +130,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     const formatSection = (title: string, thoughts: Thought[], includeTags: boolean = true): string => {
       if (!thoughts.length) return "";
       const formattedThoughts = thoughts
-        .map((t: Thought) => includeTags ? `- ${t.text}\n${i18n.t('export.tagsLabel')} ${t.tags.join(", ")}` : `- ${t.text}`)
+        .map((t: Thought) => includeTags ? `- ${t.text}\n${i18n.t('export.tagsLabel')}${t.tags.join(", ")}` : `- ${t.text}`)
         .join("\n");
       return `${title}:\n${formattedThoughts}`;
     };
