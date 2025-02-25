@@ -21,9 +21,15 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   const { id } = params;
   try {
-    const updatedData = await request.json();
+    const { title, verse } = await request.json();
+    if (!title || !verse) {
+      return NextResponse.json(
+        { error: 'Title and verse are required' },
+        { status: 400 }
+      );
+    }
     const sermonDocRef = doc(db, "sermons", id);
-    await updateDoc(sermonDocRef, updatedData);
+    await updateDoc(sermonDocRef, { title, verse });
     const updatedSermon = await fetchSermonById(id);
     return NextResponse.json(updatedSermon);
   } catch (error: any) {

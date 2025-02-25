@@ -30,7 +30,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
         <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
         <div>
           {sermon.verse && (
-            <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium">
+            <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line">
               {sermon.verse}
             </p>
           )}

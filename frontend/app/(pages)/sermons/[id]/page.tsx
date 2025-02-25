@@ -80,7 +80,9 @@ export default function SermonPage() {
     );
   }
 
-
+  if (!sermon.thoughts) {
+    sermon.thoughts = [];
+  }
   const totalThoughts = sermon.thoughts.length;
   const tagCounts = {
     "Вступление": sermon.thoughts.reduce(

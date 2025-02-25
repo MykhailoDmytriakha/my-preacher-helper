@@ -41,22 +41,16 @@ export async function POST(request: Request) {
   log.info("POST request received for creating a sermon");
   try {
     const sermon = await request.json();
-    if (Array.isArray(sermon.thoughts)) {
-      sermon.thoughts = sermon.thoughts.map((thought: any) => {
-        if (!thought.id) {
-          return { ...thought, id: uuidv4() };
-        }
-        return thought;
-      });
-    }
     log.info("Parsed sermon data:", sermon);
 
     const userId = sermon.userId;
-    if (!userId) {
-      return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+    const title = sermon.title;
+    const verse = sermon.verse;
+    if (!userId || !title || !verse) {
+      return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
-    const docRef = await addDoc(collection(db, 'sermons'), sermon);
+    const docRef = await addDoc(collection(db, 'sermons'), { userId, title, verse });
     log.info("Sermon written with ID:", docRef.id);
     
     const newSermon = { id: docRef.id, ...sermon };

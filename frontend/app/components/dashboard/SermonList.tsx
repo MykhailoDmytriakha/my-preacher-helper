@@ -30,7 +30,7 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                       onUpdate={onUpdate}
                     />
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 break-words">
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 break-words whitespace-pre-line">
                     {sermon.verse}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
