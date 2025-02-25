@@ -23,8 +23,21 @@ export interface Sermon {
 }
 
 export interface Tag {
+  id: string;
   userId: string;
   name: string;
   color: string;
   required: boolean;
+}
+
+export interface TagInfo {
+  name: string;
+  color: string;
+}
+
+export interface Item {
+  id: string;
+  content: string;
+  customTagNames?: TagInfo[];
+  requiredTags?: string[];
 }

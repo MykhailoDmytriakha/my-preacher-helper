@@ -9,6 +9,7 @@ export async function getTags(userId: string) {
       throw new Error('Failed to fetch tags');
     }
     const data = await res.json();
+    console.log("data", data);
     return data;
   } catch (error) {
     log.error('getTags: Error fetching tags', error);

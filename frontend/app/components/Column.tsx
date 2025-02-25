@@ -3,7 +3,8 @@
 import React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import SortableItem, { Item } from "./SortableItem";
+import SortableItem from "./SortableItem";
+import { Item } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 

@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const handleAddTag = async () => {
     if (newTag.name.trim()) {
       const newTagObj: Tag = {
+        id: '',
         userId: user?.uid || '',
         name: newTag.name.trim(),
         color: newTag.color,

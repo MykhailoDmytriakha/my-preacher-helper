@@ -21,6 +21,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newThought: Thought = {
+      id: '',
       text,
       tags: [],
       date: new Date().toISOString()

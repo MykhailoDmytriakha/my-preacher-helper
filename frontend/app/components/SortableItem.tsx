@@ -5,18 +5,9 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getContrastColor } from "@utils/color";
 import { EditIcon } from '@components/Icons';
+import { Item } from "@/models/models";
 
-export type TagInfo = {
-  name: string;
-  color: string;
-};
 
-export type Item = {
-  id: string;
-  content: string;
-  customTagNames?: TagInfo[];
-  requiredTags?: TagInfo[];
-};
 
 interface SortableItemProps {
   item: Item;

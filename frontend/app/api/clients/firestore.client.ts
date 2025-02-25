@@ -37,7 +37,7 @@ export async function getRequiredTags() {
   });
   
   const tags = await Promise.all(tagPromises);
-  return tags.filter((tag): tag is NonNullable<typeof tag> => tag !== null);
+  return tags.filter((tag): tag is NonNullable<typeof tag> => tag !== null) as Tag[];
 }
 
 

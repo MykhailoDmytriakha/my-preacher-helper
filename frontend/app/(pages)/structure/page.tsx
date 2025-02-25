@@ -19,7 +19,8 @@ import {
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Column from "@components/Column";
-import SortableItem, { Item } from "@components/SortableItem";
+import SortableItem from "@components/SortableItem";
+import { Item } from "@/models/models";
 import { Sermon, Thought } from "@/models/models";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { getTags } from "@/services/tag.service";
@@ -46,6 +47,14 @@ function DummyDropZone({ container }: { container: string }) {
     >
       {t('structure.noEntries')}
     </div>
+  );
+}
+
+export default function StructurePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StructurePageContent />
+    </Suspense>
   );
 }
 
@@ -77,6 +86,7 @@ function StructurePageContent() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const { t } = useTranslation();
+  const [isClient, setIsClient] = useState(false);
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -84,6 +94,10 @@ function StructurePageContent() {
     conclusion: t('structure.conclusion'),
     ambiguous: t('structure.underConsideration'),
   };
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     async function initializeSermon() {
@@ -183,7 +197,7 @@ function StructurePageContent() {
         // Step 2: Process all remaining items by tags
         Object.values(allThoughtItems).forEach((item) => {
           if (!usedIds.has(item.id)) {
-            if (item.requiredTags.length === 1) {
+            if (item.requiredTags?.length === 1) {
               const tagLower = item.requiredTags[0].toLowerCase();
               if (tagLower === "вступление") intro.push(item);
               else if (tagLower === "основная часть") main.push(item);
@@ -390,7 +404,7 @@ function StructurePageContent() {
         const updatedItem: Thought = {
           ...sermon.thoughts.find((thought) => thought.id === movedItem.id)!,
           tags: [
-            ...movedItem.requiredTags,
+            ...(movedItem.requiredTags || []),
             ...(movedItem.customTagNames || []).map((tag) => tag.name),
           ],
         };
@@ -414,11 +428,11 @@ function StructurePageContent() {
       conclusion: containersRef.current.conclusion.map((item) => item.id),
       ambiguous: containersRef.current.ambiguous.map((item) => item.id),
     };
-    const changesDetected = isStructureChanged(sermon.structure, newStructure);
+    const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
     if (changesDetected) {
       console.log("changes detected, updating structure");
       await updateStructure(sermon.id, newStructure);
-      setSermon((prev) => (prev ? { ...prev, structure: JSON.stringify(newStructure) } : prev));
+      setSermon((prev) => (prev ? { ...prev, structure: newStructure} : prev));
     }
     setActiveId(null);
     setOriginalContainer(null);
@@ -427,7 +441,7 @@ function StructurePageContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        {t('structure.loadingSermon')}
+        {isClient ? t('structure.loadingSermon') : 'Loading...'}
       </div>
     );
   }
@@ -545,13 +559,5 @@ function StructurePageContent() {
         />
       )}
     </div>
-  );
-}
-
-export default function StructurePage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <StructurePageContent />
-    </Suspense>
   );
 }
