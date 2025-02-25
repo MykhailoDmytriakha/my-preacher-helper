@@ -1,6 +1,6 @@
 import { log } from '@utils/logger';
 import { Tag } from '@/models/models';
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function getTags(userId: string) {
   try {
@@ -9,7 +9,6 @@ export async function getTags(userId: string) {
       throw new Error('Failed to fetch tags');
     }
     const data = await res.json();
-    console.log("data", data);
     return data;
   } catch (error) {
     log.error('getTags: Error fetching tags', error);

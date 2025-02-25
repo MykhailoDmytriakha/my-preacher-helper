@@ -1,7 +1,7 @@
 import { Thought } from "@/models/models";
 import { log } from "@utils/logger";
 import { toast } from 'sonner';
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const createAudioThought = async (
   audioBlob: Blob,
