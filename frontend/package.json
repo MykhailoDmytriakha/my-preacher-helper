@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run debug:directory && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --verbose --coverage"
+    "test": "jest --verbose --coverage",
+    "debug:directory": "echo 'Building in directory:' && pwd && echo 'Directory contents:' && ls -la"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
