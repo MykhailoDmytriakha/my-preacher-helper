@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchSermonById, deleteSermonById } from '@clients/firestore.client';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
+import { adminDb } from 'app/config/firebaseAdminConfig';
 
 // GET /api/sermons/:id
 export async function GET(request: Request, { params }: { params: { id: string } }) {
@@ -28,8 +29,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         { status: 400 }
       );
     }
-    const sermonDocRef = doc(db, "sermons", id);
-    await updateDoc(sermonDocRef, { title, verse });
+    
+    // Use Admin SDK to update the sermon
+    const sermonDocRef = adminDb.collection("sermons").doc(id);
+    await sermonDocRef.update({ title, verse });
+    
     const updatedSermon = await fetchSermonById(id);
     return NextResponse.json(updatedSermon);
   } catch (error: any) {

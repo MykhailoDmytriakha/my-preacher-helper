@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
+import { adminDb } from 'app/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
 // GET /api/sermons?userId=<uid>
@@ -14,8 +15,10 @@ export async function GET(request: Request) {
     }
     
     console.log(`GET: Fetching sermons for userId: ${userId} from Firestore...`);
-    const q = query(collection(db, 'sermons'), where("userId", "==", userId));
-    const snapshot = await getDocs(q);
+    // Use the Admin SDK to query Firestore - this bypasses security rules
+    const sermonsRef = adminDb.collection('sermons');
+    const q = sermonsRef.where("userId", "==", userId);
+    const snapshot = await q.get();
     console.log(`GET: Retrieved ${snapshot.docs.length} sermon(s) from Firestore for userId: ${userId}`);
 
     const sermons: Sermon[] = snapshot.docs.map(doc => {
@@ -49,7 +52,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
-    const docRef = await addDoc(collection(db, 'sermons'), { userId, title, verse, date });
+    // Use the Admin SDK to add a document to Firestore - this bypasses security rules
+    const sermonData = { userId, title, verse, date };
+    const docRef = await adminDb.collection('sermons').add(sermonData);
     console.log("Sermon written with ID:", docRef.id);
     
     const newSermon = { id: docRef.id, ...sermon };
@@ -61,5 +66,4 @@ export async function POST(request: Request) {
     console.error("Error occurred while creating sermon:", error);
     return NextResponse.json({ error: 'Failed to create sermon' }, { status: 500 });
   }
-  
 }
