@@ -133,5 +133,20 @@
     "introduction": "Introduction",
     "mainPart": "Main Part",
     "conclusion": "Conclusion"
+  },
+  "knowledge": {
+    "title": "Sermon Insights",
+    "coveredTopics": "Topics Covered",
+    "relatedVerses": "Related Bible Verses",
+    "possibleDirections": "Possible Directions",
+    "showMore": "Show More",
+    "showLess": "Show Less",
+    "noInsights": "No insights available for this sermon yet.",
+    "generate": "Generate Insights",
+    "generating": "Generating...",
+    "insightsGenerated": "Insights generated!",
+    "refresh": "Refresh insights",
+    "showMoreItems": "Show all",
+    "showLessItems": "Show less"
   }
 } 

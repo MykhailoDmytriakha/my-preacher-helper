@@ -14,6 +14,7 @@ import ThoughtCard from "@components/ThoughtCard";
 import AddThoughtManual from "@/components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
 import SermonHeader from "@/components/sermon/SermonHeader";
+import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import StructureStats from "@/components/sermon/StructureStats";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
@@ -210,7 +211,10 @@ export default function SermonPage() {
             </div>
           </div>
 
-          <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
+          <div className="space-y-6">
+            <KnowledgeSection sermon={sermon} />
+            <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
+          </div>
         </div>
       </div>
       {editingModalData && (

@@ -12,6 +12,12 @@ export interface Structure {
   ambiguous: string[];
 }
 
+export interface Insights {
+  topics: string[];
+  relatedVerses: string[];
+  possibleDirections: string[];
+}
+
 export interface Sermon {
   id: string;
   title: string;
@@ -20,6 +26,7 @@ export interface Sermon {
   thoughts: Thought[];
   structure?: Structure;
   userId: string;
+  insights?: Insights;
 }
 
 export interface Tag {

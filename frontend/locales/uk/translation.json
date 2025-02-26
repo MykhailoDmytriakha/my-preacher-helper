@@ -133,5 +133,20 @@
     "introduction": "Вступ",
     "mainPart": "Основна частина",
     "conclusion": "Закінчення"
+  },
+  "knowledge": {
+    "title": "Роздуми над проповіддю",
+    "coveredTopics": "Охоплені теми",
+    "relatedVerses": "Пов'язані вірші з Біблії",
+    "possibleDirections": "Можливі напрямки",
+    "showMore": "Показати більше",
+    "showLess": "Показати менше",
+    "noInsights": "Для цієї проповіді поки немає аналітики.",
+    "generate": "Згенерувати аналітику",
+    "generating": "Генерація...",
+    "insightsGenerated": "Аналітика згенерована!",
+    "refresh": "Оновити аналітику",
+    "showMoreItems": "Показати всі",
+    "showLessItems": "Показати менше"
   }
 } 

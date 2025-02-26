@@ -133,5 +133,20 @@
     "introduction": "Вступление",
     "mainPart": "Основная часть",
     "conclusion": "Заключение"
+  },
+  "knowledge": {
+    "title": "Размышления над проповедью",
+    "coveredTopics": "Затронутые темы",
+    "relatedVerses": "Связанные стихи из Библии",
+    "possibleDirections": "Возможные направления",
+    "showMore": "Показать больше",
+    "showLess": "Показать меньше",
+    "noInsights": "Для этой проповеди пока нет аналитики.",
+    "generate": "Сгенерировать аналитику",
+    "generating": "Генерация...",
+    "insightsGenerated": "Аналитика сгенерирована!",
+    "refresh": "Обновить аналитику",
+    "showMoreItems": "Показать все",
+    "showLessItems": "Показать меньше"
   }
 } 
