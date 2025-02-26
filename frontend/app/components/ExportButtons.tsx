@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { log } from "@utils/logger";
 import { createPortal } from "react-dom";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
@@ -159,8 +158,8 @@ export default function ExportButtons({
       <ExportButtonsLayout
         orientation={orientation}
         onTxtClick={handleTxtExport}
-        onPdfClick={() => log.info(`Export PDF for sermon ${sermonId}`)}
-        onWordClick={() => log.info(`Export Word for sermon ${sermonId}`)}
+        onPdfClick={() => console.log(`Export PDF for sermon ${sermonId}`)}
+        onWordClick={() => console.log(`Export Word for sermon ${sermonId}`)}
       />
       
       {showTxtModal && (

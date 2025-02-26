@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
-import { log } from '@utils/logger';
 import { Tag } from '@/models/models';
 
 // GET api/tags?userId=123
@@ -8,11 +7,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
   const requiredTags = await getRequiredTags();
-  // log.info('Required tags:', requiredTags.map(tag => tag.name));
   let customTags: Tag[] = [];
   if (userId) {
     customTags = await getCustomTags(userId) as Tag[];
-    // log.info('Custom tags:', customTags.map(tag => tag.name));
   }
   const tags = {
     requiredTags: requiredTags,
@@ -40,7 +37,7 @@ export async function PUT(request: Request) {
     const updatedTag = await updateTagInDb(tag);
     return NextResponse.json({ message: 'Tag updated', tag: updatedTag });
   } catch (error: any) {
-    log.error('PUT: Error updating tag', error);
+    console.error('PUT: Error updating tag', error);
     return NextResponse.json({ message: 'Error updating tag', error: error.message });
   }
 }

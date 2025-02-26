@@ -1,5 +1,4 @@
 import { Thought } from "@/models/models";
-import { log } from "@utils/logger";
 import { toast } from 'sonner';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -8,13 +7,13 @@ export const createAudioThought = async (
   sermonId: string
 ): Promise<Thought> => {
   try {
-    log.info("transcribeAudio: Starting transcription process.");
+    console.log("transcribeAudio: Starting transcription process.");
 
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
     formData.append("sermonId", sermonId);
 
-    log.info(
+    console.log(
       `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
     );
 
@@ -23,7 +22,7 @@ export const createAudioThought = async (
       body: formData,
     });
 
-    log.info("transcribeAudio: Received response:", response);
+    console.log("transcribeAudio: Received response:", response);
     if (!response.ok) {
       console.error(
         "transcribeAudio: Transcription failed with status",
@@ -34,7 +33,7 @@ export const createAudioThought = async (
 
     // Возвращаем полный объект с текстом, тегами и т.д.
     const thought = await response.json();
-    log.info("transcribeAudio: Transcription succeeded. Thought:", thought);
+    console.log("transcribeAudio: Transcription succeeded. Thought:", thought);
     return thought;
   } catch (error) {
     console.error("createAudioThought: Error creating thought", error);

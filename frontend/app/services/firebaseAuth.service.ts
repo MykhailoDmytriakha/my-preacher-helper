@@ -1,6 +1,5 @@
 import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously, setPersistence, browserLocalPersistence } from "firebase/auth";
 import app from "../config/firebaseConfig";
-import { log } from "@utils/logger";
 import { toast } from 'sonner';
 const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);
@@ -35,7 +34,7 @@ export const signInAsGuest = async (): Promise<User | null> => {
 export const signInWithGoogle = async (): Promise<User | null> => {
   try {
     const result = await signInWithPopup(auth, provider);
-    log.info("User:", result.user);
+    console.log("User:", result.user);
     return result.user;
   } catch (error) {
     console.error("Error signing in:", error);
@@ -46,7 +45,7 @@ export const signInWithGoogle = async (): Promise<User | null> => {
 export const logOut = async (): Promise<void> => {
   try {
     await signOut(auth);
-    log.info("User logged out");
+    console.log("User logged out");
   } catch (error) {
     console.error("Error logging out:", error);
     throw error;

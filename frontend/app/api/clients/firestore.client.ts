@@ -1,12 +1,11 @@
 import { db } from "app/config/firebaseConfig";
 import { doc, getDoc, deleteDoc, collection, query, where, getDocs, addDoc, updateDoc } from "firebase/firestore";
 import { Tag } from "@/models/models";
-import { log } from "@utils/logger";
 import { Sermon } from "@/models/models";
 
 export async function fetchSermonById(id: string) {
   const docRef = doc(db, "sermons", id);
-  log.info(`Firestore: fetching sermon ${id}`);
+  console.log(`Firestore: fetching sermon ${id}`);
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
@@ -14,15 +13,15 @@ export async function fetchSermonById(id: string) {
     throw new Error("Sermon not found");
   }
   const sermon = { id: docSnap.id, ...docSnap.data() } as Sermon;
-  log.info(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
+  console.log(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
   return sermon;
 }
 
 export async function deleteSermonById(id: string): Promise<void> {
-  log.info(`Firestore: deleting sermon ${id}`);
+  console.log(`Firestore: deleting sermon ${id}`);
   const docRef = doc(db, "sermons", id);
   await deleteDoc(docRef);
-  log.info(`Firestore: deleted sermon ${id}`);
+  console.log(`Firestore: deleted sermon ${id}`);
 }
 
 export async function getRequiredTags() {
@@ -60,7 +59,7 @@ export async function saveTag(tag: Tag) {
 }
 
 export async function deleteTag(userId: string, tagName: string) {
-  log.info(`Firestore: deleting tag ${tagName} for user ${userId}`);
+  console.log(`Firestore: deleting tag ${tagName} for user ${userId}`);
   const tagsCollection = collection(db, "tags");
   const queryForSearch = query(tagsCollection, where("userId", "==", userId), where("name", "==", tagName));
   const querySnapshot = await getDocs(queryForSearch);
@@ -69,7 +68,7 @@ export async function deleteTag(userId: string, tagName: string) {
   }
   const docRef = doc(tagsCollection, querySnapshot.docs[0].id);
   await deleteDoc(docRef);
-  log.info(`Firestore: deleted tag ${tagName} for user ${userId}`);
+  console.log(`Firestore: deleted tag ${tagName} for user ${userId}`);
 }
 
 export async function updateTagInDb(tag: Tag) {
@@ -82,14 +81,14 @@ export async function updateTagInDb(tag: Tag) {
   }
   const querySnapshot = await getDocs(q);
   if (querySnapshot.empty) {
-    log.error('updateTagInDb: No matching tag found for tag', tag);
+    console.error('updateTagInDb: No matching tag found for tag', tag);
     throw new Error('Tag not found');
   }
   const tagDoc = querySnapshot.docs[0];
-  log.info('updateTagInDb: Found tag doc', tagDoc.id, tagDoc.data());
+  console.log('updateTagInDb: Found tag doc', tagDoc.id, tagDoc.data());
   await updateDoc(tagDoc.ref, { color: tag.color });
   const updatedDoc = await getDoc(tagDoc.ref);
-  log.info('updateTagInDb: Updated tag doc', updatedDoc.data());
+  console.log('updateTagInDb: Updated tag doc', updatedDoc.data());
   return updatedDoc.data();
 }
 

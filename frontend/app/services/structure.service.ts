@@ -1,5 +1,3 @@
-import { log } from '@utils/logger';
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const updateStructure = async (sermonId: string, structure: any): Promise<any> => {
@@ -14,7 +12,7 @@ export const updateStructure = async (sermonId: string, structure: any): Promise
     }
     return await response.json();
   } catch (error) {
-    log.error("Error updating structure:", error);
+    console.error("Error updating structure:", error);
     throw error;
   }
 }; 

@@ -8,6 +8,7 @@ const openai = new OpenAI({
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPENAI_GPT_MODEL as string;
+const isDebugMode = process.env.DEBUG_MODE === 'true';
 
 export async function createTranscription(file: File): Promise<string> {
   log.info("createTranscription: Received file for transcription", file);
@@ -44,8 +45,12 @@ export async function generateThought(
     Транскрипция: ${thoughtText}
     --------------------------------
     `;
-  // console.log("system prompt: ", promptSystemMessage);
-  // console.log("user message: ", userMessage);
+  
+  if (isDebugMode) {
+    console.log("DEBUG MODE: System prompt:", promptSystemMessage);
+    console.log("DEBUG MODE: User message:", userMessage);
+  }
+  
   try {
     const response = await openai.chat.completions.create({
       model: gptModel,
@@ -58,7 +63,10 @@ export async function generateThought(
     });
 
     const rawJson = response.choices[0].message.content;
-    // log.info('generateThought: Raw JSON response', rawJson);
+    
+    if (isDebugMode) {
+      console.log("DEBUG MODE: Raw API response:", rawJson);
+    }
 
     let result;
     try {

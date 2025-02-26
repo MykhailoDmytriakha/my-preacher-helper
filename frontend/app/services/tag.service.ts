@@ -1,5 +1,5 @@
-import { log } from '@utils/logger';
 import { Tag } from '@/models/models';
+import { log } from 'console';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function getTags(userId: string) {
@@ -11,7 +11,7 @@ export async function getTags(userId: string) {
     const data = await res.json();
     return data;
   } catch (error) {
-    log.error('getTags: Error fetching tags', error);
+    console.error('getTags: Error fetching tags', error);
     throw error;
   }
 }
@@ -30,7 +30,7 @@ export async function addCustomTag(tag: Tag) {
     }
     return tag;
   } catch (error) {
-    log.error('addCustomTag: Error adding custom tag', error);
+    console.error('addCustomTag: Error adding custom tag', error);
     throw error;
   }
 }
@@ -45,7 +45,7 @@ export async function removeCustomTag(userId: string, tagName: string) {
     }
     return tagName;
   } catch (error) {
-    log.error('removeCustomTag: Error removing custom tag', error);
+    console.error('removeCustomTag: Error removing custom tag', error);
     throw error;
   }
 }
@@ -65,7 +65,7 @@ export async function updateTag(tag: Tag) {
     const data = await res.json();
     return data;
   } catch (error) {
-    log.error('updateTag: Error updating tag', error);
+    console.error('updateTag: Error updating tag', error);
     throw error;
   }
 }
