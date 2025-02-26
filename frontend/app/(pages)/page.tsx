@@ -56,7 +56,9 @@ export default function Home() {
       <header className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-center items-center py-4 relative">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent text-center">
-            {t('landing.title')}
+            <span suppressHydrationWarning={true}>
+              {t('landing.title')}
+            </span>
           </h1>
           <div className="absolute right-4">
             <LanguageSwitcher />
@@ -68,7 +70,9 @@ export default function Home() {
       <main className="flex-grow flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-2xl text-center mb-8">
           <p className="text-lg text-gray-600 dark:text-gray-300">
-            {t('landing.subtitle')}
+            <span suppressHydrationWarning={true}>
+              {t('landing.subtitle')}
+            </span>
           </p>
         </div>
         <FeatureCards />

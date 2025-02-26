@@ -65,7 +65,9 @@ export default function DashboardNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <Link href="/dashboard" className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {t('navigation.dashboard')}
+            <span suppressHydrationWarning={true}>
+              {t('navigation.dashboard')}
+            </span>
           </Link>
           <div className="flex items-center gap-4">
             <div className="language-container">
@@ -85,7 +87,12 @@ export default function DashboardNav() {
                       onError={() => setImgError(true)}
                     />
                   ) : (
-                    <span>{user?.email?.[0]?.toUpperCase() || t('navigation.guest')[0]}</span>
+                    <span suppressHydrationWarning={true}>
+                      {typeof window !== 'undefined' 
+                        ? (user?.email?.[0]?.toUpperCase() || t('navigation.guest')[0])
+                        : 'G' // Always show English letter on server
+                      }
+                    </span>
                   )}
                 </div>
                 <ChevronIcon className={`${showDropdown ? 'rotate-180' : ''}`} />
@@ -95,7 +102,9 @@ export default function DashboardNav() {
                 <div className="absolute right-0 top-14 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 border border-gray-200 dark:border-gray-700">
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {user?.displayName || t('navigation.guest')}
+                      <span suppressHydrationWarning={true}>
+                        {user?.displayName || t('navigation.guest')}
+                      </span>
                     </p>
                     <p className="text-xs text-gray-500 truncate">
                       {user?.email || ''}
@@ -105,13 +114,17 @@ export default function DashboardNav() {
                     href="/settings"
                     className="block w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                   >
-                    {t('navigation.settings')}
+                    <span suppressHydrationWarning={true}>
+                      {t('navigation.settings')}
+                    </span>
                   </Link>
                   <button
                     onClick={handleLogout}
                     className="w-full px-4 py-2 text-sm text-left text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
                   >
-                    {t('navigation.logout')}
+                    <span suppressHydrationWarning={true}>
+                      {t('navigation.logout')}
+                    </span>
                   </button>
                 </div>
               )}

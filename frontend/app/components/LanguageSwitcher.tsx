@@ -5,6 +5,7 @@ export default function LanguageSwitcher() {
   const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [clientSideLanguage, setClientSideLanguage] = useState('en');
 
   const languages = [
     { code: 'en', name: 'English' },
@@ -12,7 +13,9 @@ export default function LanguageSwitcher() {
     { code: 'uk', name: 'Українська' },
   ];
 
-  const currentLang = languages.find((lang) => lang.code === i18n.language) || languages[0];
+  const currentLang = languages.find((lang) => 
+    lang.code === (typeof window !== 'undefined' ? clientSideLanguage : 'en')
+  ) || languages[0];
 
   const toggleDropdown = () => {
     setOpen((prev) => !prev);
@@ -20,11 +23,25 @@ export default function LanguageSwitcher() {
 
   const changeLanguage = (lang: string) => {
     i18n.changeLanguage(lang);
+    setClientSideLanguage(lang);
     document.cookie = `lang=${lang}; path=/;`;
     setOpen(false);
   };
 
-  // Close the dropdown when clicking outside the component
+  useEffect(() => {
+    setClientSideLanguage(i18n.language);
+    
+    const onLanguageChanged = (lng: string) => {
+      setClientSideLanguage(lng);
+    };
+    
+    i18n.on('languageChanged', onLanguageChanged);
+    
+    return () => {
+      i18n.off('languageChanged', onLanguageChanged);
+    };
+  }, [i18n]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -50,7 +67,7 @@ export default function LanguageSwitcher() {
         className="inline-flex items-center justify-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-label="Change language"
       >
-        <span className="mr-2">🌐</span> {currentLang.name}
+        <span className="mr-2">🌐</span> <span suppressHydrationWarning={true}>{currentLang.name}</span>
         <svg
           className="ml-2 h-5 w-5 text-gray-500"
           xmlns="http://www.w3.org/2000/svg"
@@ -69,14 +86,14 @@ export default function LanguageSwitcher() {
         <div className="origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10">
           <div className="py-1">
             {languages
-              .filter((lang) => lang.code !== i18n.language)
+              .filter((lang) => lang.code !== clientSideLanguage)
               .map((lang) => (
                 <button
                   key={lang.code}
                   onClick={() => changeLanguage(lang.code)}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  {lang.name}
+                  <span suppressHydrationWarning={true}>{lang.name}</span>
                 </button>
               ))}
           </div>

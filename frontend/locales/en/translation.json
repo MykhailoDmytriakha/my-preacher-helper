@@ -84,7 +84,13 @@
     "tagNamePlaceholder": "Tag name",
     "addTag": "Add",
     "editColor": "Edit Color",
-    "deleteTag": "Delete tag"
+    "deleteTag": "Delete tag",
+    "userSettings": "User Settings",
+    "email": "Email",
+    "displayName": "Display Name",
+    "noDisplayName": "No display name set",
+    "moreSettingsSoon": "More user settings options will be available soon",
+    "loadingUserData": "Loading user data..."
   },
   "sermon": {
     "notFound": "Sermon not found",

@@ -11,10 +11,14 @@ export default function FeatureCards() {
             🎙️
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {t('featureCards.recordingTitle')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.recordingTitle')}
+            </span>
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            {t('featureCards.recordingDescription')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.recordingDescription')}
+            </span>
           </p>
         </div>
       </div>
@@ -24,23 +28,31 @@ export default function FeatureCards() {
             ✨
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {t('featureCards.structuringTitle')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.structuringTitle')}
+            </span>
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            {t('featureCards.structuringDescription')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.structuringDescription')}
+            </span>
           </p>
         </div>
       </div>
       <div className="p-8 border rounded-xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all dark:border-gray-700 group">
         <div className="space-y-4">
-          <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-green-600 to-cyan-500 flex items-center justify-center text-2xl text-white">
-            🏷️
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-green-500 to-teal-400 flex items-center justify-center text-2xl text-white">
+            🔍
           </div>
           <h3 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {t('featureCards.analysisTitle')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.analysisTitle')}
+            </span>
           </h3>
           <p className="text-gray-500 dark:text-gray-400">
-            {t('featureCards.analysisDescription')}
+            <span suppressHydrationWarning={true}>
+              {t('featureCards.analysisDescription')}
+            </span>
           </p>
         </div>
       </div>

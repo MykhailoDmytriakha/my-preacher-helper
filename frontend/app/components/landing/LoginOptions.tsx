@@ -16,7 +16,9 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
     <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
       <div className="text-center space-y-2 w-full">
         <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          {t('loginOptions.heading')}
+          <span suppressHydrationWarning={true}>
+            {t('loginOptions.heading')}
+          </span>
         </h2>
       </div>
 
@@ -26,7 +28,9 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           onClick={onGoogleLogin}
         >
           <GoogleIcon className="w-5 h-5" />
-          {t('loginOptions.googleLogin')}
+          <span suppressHydrationWarning={true}>
+            {t('loginOptions.googleLogin')}
+          </span>
         </button>
 
         <div className="relative">
@@ -34,7 +38,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
             <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">
+            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500" suppressHydrationWarning={true}>
               {t('loginOptions.or')}
             </span>
           </div>
@@ -45,16 +49,19 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           onClick={onGuestLogin}
         >
           <UserIcon className="w-5 h-5" />
-          {t('loginOptions.guestLogin')}
+          <span suppressHydrationWarning={true}>
+            {t('loginOptions.guestLogin')}
+          </span>
         </button>
 
         {process.env.NODE_ENV === 'development' && (
           <button
-            className="w-full px-6 py-3 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-800 transition-all flex items-center justify-center gap-2"
+            className="w-full px-6 py-3 bg-yellow-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-yellow-400 dark:border-yellow-600 rounded-lg hover:bg-yellow-100 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2"
             onClick={onTestLogin}
           >
-            <UserIcon className="w-5 h-5" />
-            {t('loginOptions.testLogin')}
+            <span suppressHydrationWarning={true}>
+              {t('loginOptions.testLogin')}
+            </span>
           </button>
         )}
       </div>
