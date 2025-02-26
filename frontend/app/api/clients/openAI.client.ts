@@ -44,8 +44,8 @@ export async function generateThought(
     Транскрипция: ${thoughtText}
     --------------------------------
     `;
-  log.info("system prompt: ", promptSystemMessage);
-  log.info("user message: ", userMessage);
+  // console.log("system prompt: ", promptSystemMessage);
+  // console.log("user message: ", userMessage);
   try {
     const response = await openai.chat.completions.create({
       model: gptModel,
@@ -76,8 +76,8 @@ export async function generateThought(
     const labelWidth = 16;
     const transcriptionLabel = "- Transcription:".padEnd(labelWidth);
     const thoughtLabel = "- Thought:".padEnd(labelWidth);
-    log.info(
-      "\x1b[31m\n\nComparison:\x1b[0m\n%s%o\n%s%o\n\n",
+    console.log(
+      "Comparison:\n%s%o\n%s%o\n\n",
       transcriptionLabel,
       thoughtText,
       thoughtLabel,
