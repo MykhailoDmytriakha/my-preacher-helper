@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import { Sermon, Thought } from "@/models/models";
-import { log } from "@utils/logger";
 import { promptSystemMessage } from "@/config/prompt";
 import { v4 as uuidv4 } from 'uuid';
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -11,13 +11,13 @@ const gptModel = process.env.OPENAI_GPT_MODEL as string;
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 
 export async function createTranscription(file: File): Promise<string> {
-  log.info("createTranscription: Received file for transcription", file);
+  console.log("createTranscription: Received file for transcription", file);
   const transcriptionResponse = await openai.audio.transcriptions.create({
     file,
     model: audioModel,
     response_format: "text",
   });
-  log.info(
+  console.log(
     "createTranscription: Transcription response received",
     transcriptionResponse
   );
@@ -82,15 +82,9 @@ export async function generateThought(
     }
 
     const labelWidth = 16;
-    const transcriptionLabel = "- Transcription:".padEnd(labelWidth);
-    const thoughtLabel = "- Thought:".padEnd(labelWidth);
-    console.log(
-      "Comparison:\n%s%o\n%s%o\n\n",
-      transcriptionLabel,
-      thoughtText,
-      thoughtLabel,
-      result.text
-    );
+    const transcriptionLabel = "- Transcription:";
+    const thoughtLabel = "- Thought:";
+    console.log(`${transcriptionLabel} ${thoughtText}\n${thoughtLabel} ${result.text}`);
     return {
       ...result,
       id: uuidv4(),

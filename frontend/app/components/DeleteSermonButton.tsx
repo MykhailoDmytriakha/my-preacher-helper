@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteSermon } from "@services/sermon.service";
-import { log } from "@utils/logger";
 
 interface DeleteSermonButtonProps {
   sermonId: string;
@@ -16,18 +15,18 @@ export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: Del
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
-    log.info(`DeleteSermonButton: handleDelete triggered for sermonId: ${sermonId}`);
+    console.log(`DeleteSermonButton: handleDelete triggered for sermonId: ${sermonId}`);
     const confirmed = window.confirm("Вы уверены, что хотите удалить проповедь?");
     if (!confirmed) {
-      log.info(`DeleteSermonButton: deletion cancelled for sermonId: ${sermonId}`);
+      console.log(`DeleteSermonButton: deletion cancelled for sermonId: ${sermonId}`);
       return;
     }
-    log.info(`DeleteSermonButton: deletion confirmed for sermonId: ${sermonId}`);
+    console.log(`DeleteSermonButton: deletion confirmed for sermonId: ${sermonId}`);
     setIsDeleting(true);
     try {
-      log.info(`DeleteSermonButton: calling deleteSermon for sermonId: ${sermonId}`);
+      console.log(`DeleteSermonButton: calling deleteSermon for sermonId: ${sermonId}`);
       await deleteSermon(sermonId);
-      log.info(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
+      console.log(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
       // Redirect to dashboard immediately after deletion
       window.location.href = '/dashboard';
     } catch (error) {

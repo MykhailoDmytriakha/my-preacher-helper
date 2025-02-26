@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
-import { log } from '@utils/logger';
 
 export async function PUT(request: Request) {
   try {
@@ -21,10 +20,10 @@ export async function PUT(request: Request) {
     // console.log("previous structure", sermon?.structure);
     // console.log("new structure", structure);
     await updateDoc(sermonDocRef, { structure });
-    log.info(`Structure updated for sermon ${sermonId}`);
+    console.log(`Structure updated for sermon ${sermonId}`);
     return NextResponse.json({ message: 'Structure updated successfully' });
   } catch (error) {
-    log.error('Error updating structure:', error);
+    console.error('Error updating structure:', error);
     return NextResponse.json({ error: 'Failed to update structure' }, { status: 500 });
   }
 } 
