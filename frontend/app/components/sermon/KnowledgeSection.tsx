@@ -169,13 +169,12 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       )}
       
       <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">{t('knowledge.title')}</h2>
+        <div className="flex items-center gap-2 flex-shrink-0 max-w-[70%]">
           {hasInsights && (
             <button 
               onClick={handleGenerateInsights}
               disabled={isGenerating}
-              className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
+              className="p-1 flex-shrink-0 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
               aria-label={t('knowledge.refresh')}
               title={t('knowledge.refresh')}
             >
@@ -191,11 +190,12 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               )}
             </button>
           )}
+          <h2 className="text-xl font-semibold break-words">{t('knowledge.title')}</h2>
         </div>
         {hasInsights ? (
           <button 
             onClick={() => setExpanded(!expanded)}
-            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ml-4 flex-shrink-0"
             aria-expanded={expanded}
             aria-label={expanded ? t('knowledge.showLess') : t('knowledge.showMore')}
           >
@@ -213,8 +213,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       </div>
       
       {!hasInsights ? (
-        <div className="flex flex-col items-center justify-center py-6">
-          <p className="text-gray-500 dark:text-gray-400 mb-4 text-center">
+        <div className="py-6 px-2">
+          <p className="text-gray-500 dark:text-gray-400 mb-4 text-left">
             {t('knowledge.noInsights')}
           </p>
           <button
