@@ -4,6 +4,8 @@ import { fetchSermonById, getCustomTags, getRequiredTags } from '@clients/firest
 import { Sermon, Thought } from '@/models/models';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from 'app/config/firebaseConfig';
+import { adminDb } from 'app/config/firebaseAdminConfig';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -35,8 +37,13 @@ export async function POST(request: Request) {
         date: new Date().toISOString()
       };
       console.log("Manual (fixed) thought:", thoughtWithDate);
-      const sermonDocRef = doc(db, "sermons", sermonId);
-      await updateDoc(sermonDocRef, { thoughts: arrayUnion(thoughtWithDate) });
+      
+      // Use Admin SDK instead of client SDK
+      const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+      await sermonDocRef.update({
+        thoughts: FieldValue.arrayUnion(thoughtWithDate)
+      });
+      
       console.log("Firestore update: Stored new manual thought into sermon document.");
       return NextResponse.json(thoughtWithDate);
     } catch (error) {
@@ -81,8 +88,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
     }
     console.log("Generated thought:", thought);
-    const sermonDocRef = doc(db, "sermons", sermonId);
-    await updateDoc(sermonDocRef, { thoughts: arrayUnion(thought) });
+    
+    // Use Admin SDK instead of client SDK
+    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+    await sermonDocRef.update({
+      thoughts: FieldValue.arrayUnion(thought)
+    });
+    
     console.log("Firestore update: Stored new thought into sermon document.");
     return NextResponse.json(thought);
   } catch (error) {
@@ -104,8 +116,13 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
     }
     console.log("Thoughts route: Deleting thought:", thought);
-    const sermonDocRef = doc(db, "sermons", sermonId);
-    await updateDoc(sermonDocRef, { thoughts: arrayRemove(thought) });
+    
+    // Use Admin SDK instead of client SDK
+    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+    await sermonDocRef.update({
+      thoughts: FieldValue.arrayRemove(thought)
+    });
+    
     console.log("Successfully deleted thought.");
     return NextResponse.json({ message: "Thought deleted successfully." });
   } catch (error) {
@@ -149,10 +166,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
     console.log("Thoughts route: Thought to update:", updatedThought);
-    const sermonDocRef = doc(db, "sermons", sermonId);
-
-    await updateDoc(sermonDocRef, { thoughts: arrayRemove(oldThought) });
-    await updateDoc(sermonDocRef, { thoughts: arrayUnion(updatedThought) });
+    
+    // Use Admin SDK instead of client SDK
+    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+    await sermonDocRef.update({
+      thoughts: FieldValue.arrayRemove(oldThought)
+    });
+    await sermonDocRef.update({
+      thoughts: FieldValue.arrayUnion(updatedThought)
+    });
 
     console.log("Successfully updated thought.");
     return NextResponse.json(updatedThought);
