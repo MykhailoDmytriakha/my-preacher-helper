@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from 'app/config/firebaseConfig';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 

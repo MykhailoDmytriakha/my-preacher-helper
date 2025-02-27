@@ -1,6 +1,4 @@
-import { db } from "app/config/firebaseConfig";
 import { adminDb } from "app/config/firebaseAdminConfig";
-import { doc, getDoc, deleteDoc, collection, query, where, getDocs, addDoc, updateDoc } from "firebase/firestore";
 import { Tag } from "@/models/models";
 import { Sermon } from "@/models/models";
 

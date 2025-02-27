@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { fetchSermonById, deleteSermonById } from '@clients/firestore.client';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from 'app/config/firebaseConfig';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 
 // GET /api/sermons/:id

@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { fetchSermonById, getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { Sermon, Thought } from '@/models/models';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { db } from 'app/config/firebaseConfig';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
 
