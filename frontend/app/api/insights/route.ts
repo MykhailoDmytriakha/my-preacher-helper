@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { fetchSermonById } from '@clients/firestore.client';
 import { Sermon, Insights } from '@/models/models';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from 'app/config/firebaseConfig';
+import { adminDb } from 'app/config/firebaseAdminConfig';
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -38,9 +37,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to generate insights" }, { status: 500 });
     }
     
-    // Update the sermon with insights
-    const sermonDocRef = doc(db, "sermons", sermonId);
-    await updateDoc(sermonDocRef, { insights });
+    // Update the sermon with insights using adminDb instead of client-side db
+    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+    await sermonDocRef.update({ insights });
     console.log("Insights route: Updated sermon with generated insights");
     
     return NextResponse.json({ insights });
