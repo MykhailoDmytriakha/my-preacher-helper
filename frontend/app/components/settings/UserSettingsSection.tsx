@@ -29,6 +29,13 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
             
             <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-8 pb-4 border-b border-gray-200 dark:border-gray-700">
               <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
+                <span suppressHydrationWarning={true}>{t('settings.userId')}</span>:
+              </span>
+              <span className="text-gray-900 dark:text-gray-100 break-all">{user.uid}</span>
+            </div>
+            
+            <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-8 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
                 <span suppressHydrationWarning={true}>{t('settings.displayName')}</span>:
               </span>
               <span className="text-gray-900 dark:text-gray-100">

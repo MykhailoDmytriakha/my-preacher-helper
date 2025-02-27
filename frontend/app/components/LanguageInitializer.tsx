@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import useAuth from '@/hooks/useAuth';
 import { initializeLanguageFromDB } from '@/../../frontend/locales/getInitialLang';
 import { useTranslation } from 'react-i18next';
+import { getCookieLanguage } from '@/services/userSettings.service';
 
 /**
  * Component that initializes language settings from the database
@@ -19,9 +20,15 @@ export default function LanguageInitializer() {
         // Initialize language from database for authenticated users
         initializeLanguageFromDB()
           .catch((error: Error) => console.error('Failed to initialize language from DB:', error));
+      } else {
+        // For guest users, ensure the cookie language is applied
+        const cookieLang = getCookieLanguage();
+        if (cookieLang !== i18n.language) {
+          i18n.changeLanguage(cookieLang);
+        }
       }
     }
-  }, [user, loading]);
+  }, [user, loading, i18n]);
   
   // This is a utility component that doesn't render anything
   return null;

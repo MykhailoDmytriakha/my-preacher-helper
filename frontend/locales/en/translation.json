@@ -1,7 +1,7 @@
 {
   "navigation": {
     "dashboard": "Dashboard",
-    "guest": "Guest",
+    "guest": "Guest User",
     "settings": "Settings",
     "logout": "Logout"
   },
@@ -87,6 +87,7 @@
     "deleteTag": "Delete tag",
     "userSettings": "User Settings",
     "email": "Email",
+    "userId": "User ID",
     "displayName": "Display Name",
     "noDisplayName": "No display name set",
     "moreSettingsSoon": "More user settings options will be available soon",

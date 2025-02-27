@@ -8,6 +8,7 @@ import TagsSection from "@components/settings/TagsSection";
 import UserSettingsSection from "@components/settings/UserSettingsSection";
 import SettingsLayout from "@components/settings/SettingsLayout";
 import SettingsNav from "@components/settings/SettingsNav";
+import LanguageInitializer from "@components/LanguageInitializer";
 import "@locales/i18n";
 
 export default function SettingsPage() {
@@ -69,19 +70,22 @@ export default function SettingsPage() {
 
   // Отображаем содержимое страницы настроек
   return (
-    <SettingsLayout title={pageTitle}>
-      <div className="flex flex-col md:flex-row gap-8">
-        <div className="md:w-64 flex-shrink-0">
-          <SettingsNav
-            activeSection={activeSection}
-            onSectionChange={setActiveSection}
-          />
+    <>
+      <LanguageInitializer />
+      <SettingsLayout title={pageTitle}>
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="md:w-64 flex-shrink-0">
+            <SettingsNav
+              activeSection={activeSection}
+              onSectionChange={setActiveSection}
+            />
+          </div>
+          
+          <div className="flex-1 transition-opacity duration-200 ease-in-out">
+            {renderActiveSection()}
+          </div>
         </div>
-        
-        <div className="flex-1 transition-opacity duration-200 ease-in-out">
-          {renderActiveSection()}
-        </div>
-      </div>
-    </SettingsLayout>
+      </SettingsLayout>
+    </>
   );
 } 

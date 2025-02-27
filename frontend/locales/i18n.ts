@@ -1,12 +1,13 @@
 import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { getInitialLanguage } from './getInitialLang';
+import { DEFAULT_LANGUAGE } from './constants';
 import enTranslation from './en/translation.json';
 import ruTranslation from './ru/translation.json';
 import ukTranslation from './uk/translation.json';
 
-// Default language
-export const DEFAULT_LANGUAGE = 'en';
+// Get initial language before configuring i18n
+const initialLanguage = typeof window !== 'undefined' ? getInitialLanguage() : DEFAULT_LANGUAGE;
 
 // Create a reusable configuration
 const i18nConfig = {
@@ -15,7 +16,7 @@ const i18nConfig = {
     ru: { translation: ruTranslation },
     uk: { translation: ukTranslation }
   },
-  lng: DEFAULT_LANGUAGE, // Start with default language
+  lng: initialLanguage, // Use initial language from cookie
   fallbackLng: DEFAULT_LANGUAGE,
   interpolation: {
     escapeValue: false
@@ -35,18 +36,12 @@ export const i18n = createInstance(i18nConfig);
 // Initialize with React
 i18n.use(initReactI18next).init();
 
-// Client-side initialization using cookie value
-if (typeof window !== 'undefined') {
-  // Get initial language from cookie (fast, synchronous access)
-  const cookieLanguage = getInitialLanguage();
-  
-  // Only change language if not the default
-  if (cookieLanguage !== DEFAULT_LANGUAGE) {
-    // Use setTimeout to avoid hydration issues
-    setTimeout(() => {
-      i18n.changeLanguage(cookieLanguage);
-    }, 0);
-  }
+// Client-side initialization to ensure hydration is consistent
+if (typeof window !== 'undefined' && initialLanguage !== i18n.language) {
+  // This should rarely happen, but just in case
+  setTimeout(() => {
+    i18n.changeLanguage(initialLanguage);
+  }, 0);
 }
 
 export default i18n; 

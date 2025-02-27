@@ -1,8 +1,5 @@
 import { UserSettings } from '@/models/models';
-import { DEFAULT_LANGUAGE } from '@/../../frontend/locales/i18n';
-
-const COOKIE_LANG_KEY = 'lang';
-const COOKIE_MAX_AGE = 2592000; // 30 days
+import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../frontend/locales/constants';
 
 /**
  * Get user language preference - optimized approach
