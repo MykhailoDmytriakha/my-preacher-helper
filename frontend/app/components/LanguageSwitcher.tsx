@@ -1,46 +1,43 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { updateUserLanguage } from '@/services/userSettings.service';
+import useAuth from '@/hooks/useAuth';
+
+// List of supported languages
+const SUPPORTED_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'uk', name: 'Українська' },
+];
 
 export default function LanguageSwitcher() {
   const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [clientSideLanguage, setClientSideLanguage] = useState('en');
+  const { user } = useAuth();
 
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'ru', name: 'Русский' },
-    { code: 'uk', name: 'Українська' },
-  ];
-
-  const currentLang = languages.find((lang) => 
-    lang.code === (typeof window !== 'undefined' ? clientSideLanguage : 'en')
-  ) || languages[0];
+  const currentLang = SUPPORTED_LANGUAGES.find((lang) => 
+    lang.code === i18n.language
+  ) || SUPPORTED_LANGUAGES[0];
 
   const toggleDropdown = () => {
     setOpen((prev) => !prev);
   };
 
-  const changeLanguage = (lang: string) => {
-    i18n.changeLanguage(lang);
-    setClientSideLanguage(lang);
-    document.cookie = `lang=${lang}; path=/;`;
-    setOpen(false);
+  const changeLanguage = async (lang: string) => {
+    try {
+      // Update language in i18n
+      i18n.changeLanguage(lang);
+      
+      // Update language in DB or cookie via service
+      await updateUserLanguage(user?.uid || '', lang);
+      
+      setOpen(false);
+    } catch (error) {
+      console.error('Failed to update language preference:', error);
+      // UI is already updated via i18n, so no need for explicit fallback
+    }
   };
-
-  useEffect(() => {
-    setClientSideLanguage(i18n.language);
-    
-    const onLanguageChanged = (lng: string) => {
-      setClientSideLanguage(lng);
-    };
-    
-    i18n.on('languageChanged', onLanguageChanged);
-    
-    return () => {
-      i18n.off('languageChanged', onLanguageChanged);
-    };
-  }, [i18n]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -85,8 +82,8 @@ export default function LanguageSwitcher() {
       {open && (
         <div className="origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10">
           <div className="py-1">
-            {languages
-              .filter((lang) => lang.code !== clientSideLanguage)
+            {SUPPORTED_LANGUAGES
+              .filter((lang) => lang.code !== i18n.language)
               .map((lang) => (
                 <button
                   key={lang.code}

@@ -48,3 +48,10 @@ export interface Item {
   customTagNames?: TagInfo[];
   requiredTags?: string[];
 }
+
+export interface UserSettings {
+  id: string;
+  userId: string;
+  language: string;
+  // Other future user settings can be added here
+}

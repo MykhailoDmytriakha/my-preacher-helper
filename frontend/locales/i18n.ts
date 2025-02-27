@@ -5,35 +5,46 @@ import enTranslation from './en/translation.json';
 import ruTranslation from './ru/translation.json';
 import ukTranslation from './uk/translation.json';
 
-export const i18n = createInstance({
+// Default language
+export const DEFAULT_LANGUAGE = 'en';
+
+// Create a reusable configuration
+const i18nConfig = {
   resources: {
     en: { translation: enTranslation },
     ru: { translation: ruTranslation },
     uk: { translation: ukTranslation }
   },
-  lng: 'en', // Всегда начинаем с английского на сервере
-  fallbackLng: 'en',
+  lng: DEFAULT_LANGUAGE, // Start with default language
+  fallbackLng: DEFAULT_LANGUAGE,
   interpolation: {
     escapeValue: false
   },
   react: {
     useSuspense: false,
-    // Отключаем предупреждения о гидратации
+    // Disable hydration warnings
     transWrapTextNodes: 'span',
     transSupportBasicHtmlNodes: true,
     transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'p']
   }
-});
+};
 
+// Create i18n instance
+export const i18n = createInstance(i18nConfig);
+
+// Initialize with React
 i18n.use(initReactI18next).init();
 
-// Функция для чтения языка из cookie на клиенте
+// Client-side initialization using cookie value
 if (typeof window !== 'undefined') {
-  const clientLang = getInitialLanguage();
-  if (clientLang !== 'en') {
-    // Только после гидратации меняем язык на клиенте
+  // Get initial language from cookie (fast, synchronous access)
+  const cookieLanguage = getInitialLanguage();
+  
+  // Only change language if not the default
+  if (cookieLanguage !== DEFAULT_LANGUAGE) {
+    // Use setTimeout to avoid hydration issues
     setTimeout(() => {
-      i18n.changeLanguage(clientLang);
+      i18n.changeLanguage(cookieLanguage);
     }, 0);
   }
 }
