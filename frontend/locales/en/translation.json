@@ -6,8 +6,9 @@
     "logout": "Logout"
   },
   "landing": {
-    "title": "AI Assistant for Preaching Preparation",
-    "subtitle": "Capture your thoughts during reflection, convert speech to text, and automatically structure sermons with analysis of conceptual gaps."
+    "title": "Assistant for Preaching Preparation",
+    "subtitle": "Capture your thoughts during reflection, convert speech to text, and automatically structure sermons with analysis of conceptual gaps.",
+    "welcome": "Welcome to Preacher Helper"
   },
   "featureCards": {
     "recordingTitle": "Instant Recording",
