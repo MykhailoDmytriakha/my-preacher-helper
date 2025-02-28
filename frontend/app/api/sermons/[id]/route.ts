@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { fetchSermonById, deleteSermonById } from '@clients/firestore.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 
 // GET /api/sermons/:id
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const { id } = params;
   try {
-    const sermon = await fetchSermonById(id);
+    const sermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(sermon);
   } catch (error: any) {
     if (error.message === "Sermon not found") {
@@ -32,7 +32,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const sermonDocRef = adminDb.collection("sermons").doc(id);
     await sermonDocRef.update({ title, verse });
     
-    const updatedSermon = await fetchSermonById(id);
+    const updatedSermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(updatedSermon);
   } catch (error: any) {
     console.error("Ошибка при обновлении проповеди:", error);
@@ -47,11 +47,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   const { id } = params;
   try {
-    const sermon = await fetchSermonById(id);
+    const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
       return NextResponse.json({ message: 'Проповедь уже отсутствует' }, { status: 200 });
     }
-    await deleteSermonById(id);
+    await sermonsRepository.deleteSermonById(id);
     return NextResponse.json({ message: 'Проповедь успешно удалена' }, { status: 200 });
   } catch (error: any) {
     console.error(`Ошибка при удалении проповеди ${id}:`, error);

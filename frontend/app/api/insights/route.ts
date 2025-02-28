@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchSermonById } from '@clients/firestore.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Insights } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import OpenAI from "openai";
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
     
     // Fetch the sermon data
-    const sermon = await fetchSermonById(sermonId) as Sermon;
+    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       console.error(`Insights route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });

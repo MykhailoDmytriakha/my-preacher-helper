@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
-import { fetchSermonById, getCustomTags, getRequiredTags } from '@clients/firestore.client';
+import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Thought } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
       if (!sermonId || !thought) {
         return NextResponse.json({ error: 'sermonId and thought are required' }, { status: 400 });
       }
-      const sermon = await fetchSermonById(sermonId) as Sermon;
+      const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
       const availableTags = [
         ...(await getRequiredTags()),
         ...(await getCustomTags(sermon.userId))
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
       type: 'audio/webm',
     });
 
-    const sermon = await fetchSermonById(sermonId) as Sermon;
+    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     const availableTags = [
       ...(await getRequiredTags()),
       ...(await getCustomTags(sermon.userId))
@@ -154,7 +155,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
     }
 
-    const sermon = await fetchSermonById(sermonId) as Sermon;
+    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
