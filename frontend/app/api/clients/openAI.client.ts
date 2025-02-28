@@ -40,7 +40,7 @@ export async function generateThought(
     Контекст проповеди:
     Название проповеди: ${sermon.title}
     Текст проповеди: ${sermon.verse}
-    Доступные tags: ${availableTags.join(", ")}. Используйте ТОЛЬКО эти tags!
+    Доступные tags: ${availableTags.join(", ")}. ИСПОЛЬЗУЙТЕ ТОЛЬКО ЭТИ tags!
     --------------------------------
     Транскрипция: ${thoughtText}
     --------------------------------
@@ -58,8 +58,7 @@ export async function generateThought(
       messages: [
         { role: "system", content: promptSystemMessage },
         { role: "user", content: userMessage },
-      ],
-      max_completion_tokens: 500
+      ]
     });
 
     const rawJson = response.choices[0].message.content;

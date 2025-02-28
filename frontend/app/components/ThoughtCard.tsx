@@ -224,7 +224,7 @@ export default function ThoughtCard({
           )}
         </div>
         {/* Thought Text */}
-        <p className="text-gray-800 dark:text-gray-200">{thought.text}</p>
+        <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{thought.text}</div>
 
         {/* Warning if no required tag */}
         {!hasRequiredTag && (

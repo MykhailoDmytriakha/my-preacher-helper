@@ -96,10 +96,17 @@
 
 ### TODO
 
+Structure page:
+
 - add `plush sign` on structure page to each section, click on it allow to add thought to this section
 - on structure page, grag and drop to another section should change required tag for thought accordingly and update structure for those sections
-- internalization
+
+Export:
+
 - export to pdf and word
+
+Guest mode:
+
 - Неавтоматизированный гостевой режим:
   Есть риск, что в Firebase будут бесконечно накапливаться данные от гостевых пользователей. Нужно либо явно пояснить, что данные гостя удаляются (и реализовать auto-cleanup), либо стимулировать пользователя конвертироваться в постоянного (Google) пользователя.
 - Улучшение логики гостевого режима
@@ -107,3 +114,7 @@
   - Добавить баннер: «Вы вошли как гость, ваши данные будут храниться 5 дней» и кнопку «Привязать к Google-аккаунту».
   - Реализовать Firebase Cloud Function/cron-задачу для автоудаления гостевых данных, которым более 5 дней.
   - Ожидаемый результат: Более прозрачная политика хранения, уменьшение «мусорных» данных в Firestore.
+
+Transciption:
+
+- елси произошла ошибка при записи то нужно вернуть текст пользователю, если это возмножно

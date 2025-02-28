@@ -3,6 +3,9 @@
   "functions": {
     "app/api/insights/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/thoughts/route.ts": {
+      "maxDuration": 60
     }
   }
 } 

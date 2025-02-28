@@ -65,7 +65,7 @@ export default function SermonPage() {
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
           {isMounted ? (
             <>
-              <h2 className="text-xl font-semibold">{t('sermon.notFound')}</h2>
+              <h2 className="text-xl font-semibold">{t('settings.loading')}</h2>
               <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline mt-4 inline-block">
                 {t('sermon.backToList')}
               </Link>
