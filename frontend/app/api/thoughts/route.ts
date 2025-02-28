@@ -134,14 +134,18 @@ export async function PUT(request: Request) {
   console.log("Thoughts route: Received PUT request for updating a thought.");
   try {
     const body = await request.json();
+    
     const { sermonId, thought: updatedThoughtNew } = body;
+    
     if (!sermonId || !updatedThoughtNew) {
+      console.error("Thoughts route: Missing sermonId or thought");
       return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
     }   
     if (!updatedThoughtNew.id) {
+      console.error("Thoughts route: Missing thought.id");
       return NextResponse.json({ error: "Thought id is required" }, { status: 400 });
     }
-    console.log("updatedThoughtNew:", updatedThoughtNew);
+    
     // map updatedThought to the Thought type, only fields that are needed
     const updatedThought: Thought = {
       id: updatedThoughtNew.id,
@@ -149,36 +153,40 @@ export async function PUT(request: Request) {
       tags: updatedThoughtNew.tags,
       date: updatedThoughtNew.date
     };
-    console.log("updatedThought:", updatedThought);
+    
     // verify that updatedThought has everything that is needed
     if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {
+      console.error("Thoughts route: Thought is missing required fields");
       return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
     }
 
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
+      console.error("Thoughts route: Sermon not found");
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
 
     const oldThought = sermon.thoughts.find((th) => th.id === updatedThought.id);
     if (!oldThought) {
+      console.error("Thoughts route: Thought not found in sermon. Looking for thought with ID:", updatedThought.id);
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
-    console.log("Thoughts route: Thought to update:", updatedThought);
+    console.log("Thoughts route: Thought to update:", JSON.stringify(oldThought));
+    console.log("Thoughts route: Updated thought:", JSON.stringify(updatedThought));
     
     // Use Admin SDK instead of client SDK
     const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
     await sermonDocRef.update({
       thoughts: FieldValue.arrayRemove(oldThought)
     });
+    
     await sermonDocRef.update({
       thoughts: FieldValue.arrayUnion(updatedThought)
     });
 
-    console.log("Successfully updated thought.");
     return NextResponse.json(updatedThought);
   } catch (error) {
-    console.error("Error updating thought:", error);
+    console.error("Thoughts route: Error updating thought:", error);
     return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
   }
 }

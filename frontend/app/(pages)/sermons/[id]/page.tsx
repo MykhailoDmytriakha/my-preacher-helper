@@ -181,16 +181,24 @@ export default function SermonPage() {
     }
   };
 
-  const handleDeleteThought = async (indexToDelete: number) => {
+  const handleDeleteThought = async (indexToDelete: number, thoughtId: string) => {
     const sortedThoughts = getSortedThoughts();
-    const thoughtToDelete = sortedThoughts[indexToDelete];
+    // Find the thought by ID rather than using the index directly
+    const thoughtIndex = sortedThoughts.findIndex(t => t.id === thoughtId);
+    if (thoughtIndex === -1) {
+      console.error("Could not find thought with ID:", thoughtId);
+      alert(t('errors.thoughtDeleteError'));
+      return;
+    }
+    
+    const thoughtToDelete = sortedThoughts[thoughtIndex];
     const confirmed = window.confirm(t('sermon.deleteThoughtConfirm', { text: thoughtToDelete.text }));
     if (!confirmed) return;
     try {
       await deleteThought(sermon.id, thoughtToDelete);
       setSermon({
         ...sermon,
-        thoughts: sortedThoughts.filter((_, index) => index !== indexToDelete),
+        thoughts: sortedThoughts.filter(t => t.id !== thoughtId),
       });
     } catch (error) {
       console.error("Failed to delete thought", error);
@@ -201,11 +209,21 @@ export default function SermonPage() {
   const handleSaveEditedThought = async (updatedText: string, updatedTags: string[]) => {
     if (!editingModalData) return;
     const sortedThoughts = getSortedThoughts();
-    const { index } = editingModalData;
-    const updatedThought = { ...sortedThoughts[index], text: updatedText.trim(), tags: updatedTags };
+    const { thought: originalThought } = editingModalData;
+    
+    // Find the thought by ID instead of using index
+    const thoughtIndex = sortedThoughts.findIndex(t => t.id === originalThought.id);
+    if (thoughtIndex === -1) {
+      console.error("Could not find thought with ID:", originalThought.id);
+      alert(t('errors.thoughtUpdateError'));
+      return;
+    }
+    
+    const thoughtToUpdate = sortedThoughts[thoughtIndex];
+    const updatedThought = { ...thoughtToUpdate, text: updatedText.trim(), tags: updatedTags };
     try {
       await updateThought(sermon.id, updatedThought);
-      sortedThoughts[index] = updatedThought;
+      sortedThoughts[thoughtIndex] = updatedThought;
       setSermon({ ...sermon, thoughts: sortedThoughts });
       setEditingModalData(null);
     } catch (error) {
@@ -451,7 +469,7 @@ export default function SermonPage() {
                           hasRequiredTag={hasRequiredTag}
                           allowedTags={allowedTags}
                           currentTag={""}
-                          onDelete={handleDeleteThought}
+                          onDelete={(indexToDelete) => handleDeleteThought(indexToDelete, thought.id)}
                           onEditStart={(thought, index) => setEditingModalData({ thought, index })}
                           onEditCancel={() => {}}
                           onEditSave={() => {}}
@@ -477,6 +495,7 @@ export default function SermonPage() {
       </div>
       {editingModalData && (
         <EditThoughtModal
+          thoughtId={editingModalData.thought.id}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
           allowedTags={allowedTags}

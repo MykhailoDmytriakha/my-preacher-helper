@@ -75,16 +75,22 @@ export const updateThought = async (
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
+    
+    const requestBody = JSON.stringify({ sermonId, thought });
     const response = await fetch(`${API_BASE}/api/thoughts`, {
       method: "PUT",
       headers,
-      body: JSON.stringify({ sermonId, thought }),
+      body: requestBody,
     });
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("thought.service: Server error response:", errorText);
       throw new Error(
-        `Failed to update thought with status ${response.status}`
+        `Failed to update thought with status ${response.status}: ${errorText}`
       );
     }
+    
     const updatedThought = await response.json();
     return updatedThought;
   } catch (error) {

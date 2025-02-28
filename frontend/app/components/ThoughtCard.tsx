@@ -17,7 +17,7 @@ interface ThoughtCardProps {
   hasRequiredTag: boolean;
   allowedTags: { name: string; color: string }[];
   currentTag: string;
-  onDelete: (index: number) => void;
+  onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onEditCancel: () => void;
   onEditSave: () => void;
@@ -118,6 +118,9 @@ export default function ThoughtCard({
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {formatDate(thought.date)}
             </span>
+            <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
+              ID: {thought.id.substring(0, 8)}...
+            </span>
           </div>
         </div>
         <textarea
@@ -201,7 +204,7 @@ export default function ThoughtCard({
             </span>
             {/* Delete Button */}
             <button
-              onClick={() => onDelete(index)}
+              onClick={() => onDelete(index, thought.id)}
               className="hover:bg-red-200 text-white p-2 rounded"
               style={{ marginLeft: "2px" }}
             >
@@ -209,7 +212,9 @@ export default function ThoughtCard({
             </button>
             {/* Edit Button */}
             <button
-              onClick={() => onEditStart(thought, index)}
+              onClick={() => {
+                onEditStart(thought, index);
+              }}
               className="hover:bg-blue-200 text-white p-2 rounded"
               style={{ marginLeft: "2px" }}
             >

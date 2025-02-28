@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
 interface EditThoughtModalProps {
+  thoughtId?: string;
   initialText: string;
   initialTags: string[];
   allowedTags: { name: string; color: string }[];
@@ -16,7 +17,7 @@ interface EditThoughtModalProps {
   onClose: () => void;
 }
 
-export default function EditThoughtModal({ initialText, initialTags, allowedTags, onSave, onClose }: EditThoughtModalProps) {
+export default function EditThoughtModal({ thoughtId, initialText, initialTags, allowedTags, onSave, onClose }: EditThoughtModalProps) {
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const isChanged = text !== initialText || tags.length !== initialTags.length || tags.some((tag, index) => tag !== initialTags[index]);
