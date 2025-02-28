@@ -101,11 +101,11 @@
     "tagColor": "Колір тегу"
   },
   "sermon": {
-    "notFound": "Проповідь не знайдена",
-    "backToList": "Повернутися до списку",
-    "allThoughts": "Всі записи",
-    "noThoughts": "Немає записів для цієї проповіді",
-    "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цей запис?\n{{text}}"
+    "notFound": "Проповідь не знайдено",
+    "backToList": "Назад до списку",
+    "allThoughts": "Всі думки",
+    "noThoughts": "Немає думок для цієї проповіді",
+    "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цю думку?\n{{text}}"
   },
   "errors": {
     "audioProcessing": "Помилка обробки аудіо",
@@ -162,5 +162,22 @@
     "refresh": "Оновити аналітику",
     "showMoreItems": "Показати всі",
     "showLessItems": "Показати менше"
+  },
+  "filters": {
+    "filter": "Фільтр",
+    "all": "Всі думки",
+    "missingTags": "Без обов'язкових тегів",
+    "byStructure": "Фільтр за структурою",
+    "byTags": "Фільтр за тегами",
+    "allStructure": "Всі частини структури",
+    "viewOptions": "Параметри перегляду",
+    "selectTags": "Виберіть теги",
+    "reset": "Скинути",
+    "apply": "Застосувати",
+    "clear": "Очистити фільтри",
+    "noMatchingThoughts": "Немає думок, які відповідають вашим фільтрам",
+    "resetFilters": "Скинути всі фільтри",
+    "searchThoughts": "Пошук у думках",
+    "activeFilters": "Активні фільтри"
   }
 } 

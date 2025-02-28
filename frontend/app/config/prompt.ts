@@ -33,7 +33,6 @@ For sermon-related content:
 - Only use tags from the provided list in userMessage
 - Assign tags based on content type and sermon structure position
 - Common section tags: "Вступление", "Основная часть", "Заключение"
-- Common content tags may include: "Иллюстрация", "Объяснение", etc.
 
 // 5. RESPONSE FORMAT
 Always return a JSON object with:

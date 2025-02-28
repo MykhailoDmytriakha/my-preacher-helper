@@ -101,6 +101,23 @@
     "noThoughts": "No thoughts for this sermon",
     "deleteThoughtConfirm": "Are you sure you want to delete this thought?\n{{text}}"
   },
+  "filters": {
+    "filter": "Filter",
+    "all": "All thoughts",
+    "missingTags": "Missing required tags",
+    "byStructure": "Filter by structure",
+    "byTags": "Filter by tags",
+    "allStructure": "All structure parts",
+    "viewOptions": "View options",
+    "selectTags": "Select tags",
+    "reset": "Reset",
+    "apply": "Apply",
+    "clear": "Clear filters",
+    "noMatchingThoughts": "No thoughts match your current filters",
+    "resetFilters": "Reset all filters",
+    "searchThoughts": "Search in thoughts",
+    "activeFilters": "Active filters"
+  },
   "audio": {
     "processing": "Processing...",
     "stopRecording": "Stop Recording",

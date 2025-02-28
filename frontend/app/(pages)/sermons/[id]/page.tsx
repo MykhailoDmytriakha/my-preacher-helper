@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
@@ -12,12 +12,13 @@ import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
 import ThoughtCard from "@components/ThoughtCard";
 import AddThoughtManual from "@/components/AddThoughtManual";
-import EditThoughtModal from "@components/EditThoughtModal";
+import EditThoughtModal from "@/components/EditThoughtModal";
 import SermonHeader from "@/components/sermon/SermonHeader";
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import StructureStats from "@/components/sermon/StructureStats";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { getContrastColor } from "@utils/color";
 export const dynamic = "force-dynamic";
 
 const AudioRecorder = dynamicImport(
@@ -36,6 +37,30 @@ export default function SermonPage() {
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
   const { t } = useTranslation();
   const [isMounted, setIsMounted] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [viewFilter, setViewFilter] = useState('all');
+  const [structureFilter, setStructureFilter] = useState('all');
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [activeCount, setActiveCount] = useState<number>(0);
+
+  // Create a ref for the filter dropdown
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  // Handle clicks outside the filter dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    }
+    
+    // Add event listener
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      // Remove event listener on cleanup
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [filterRef]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -58,6 +83,44 @@ export default function SermonPage() {
     };
     fetchAllowedTags();
   }, [sermon]);
+
+  // Filter thoughts based on selected filters
+  const getFilteredThoughts = () => {
+    const sortedThoughts = getSortedThoughts();
+    
+    return sortedThoughts.filter(thought => {
+      // Get required tags - these match the constants used elsewhere in the app
+      const requiredTags = ["Вступление", "Основная часть", "Заключение"];
+      const hasRequiredTag = thought.tags.some(tag => requiredTags.includes(tag));
+      
+      // Check missing required tags filter - if this filter is active,
+      // we only want to show thoughts that are missing required tags
+      if (viewFilter === 'missingTags' && hasRequiredTag) {
+        return false;
+      }
+      
+      // If structure filter is active, check if it matches
+      if (structureFilter !== 'all' && !thought.tags.includes(structureFilter)) {
+        return false;
+      }
+      
+      // If tag filters are active, check if any match
+      // Only apply tag filters if they're set
+      if (tagFilters.length > 0 && !tagFilters.some(tag => thought.tags.includes(tag))) {
+        return false;
+      }
+      
+      // If we got here, all active filters matched
+      return true;
+    });
+  };
+
+  // Update active count whenever filters change
+  useEffect(() => {
+    if (sermon && sermon.thoughts) {
+      setActiveCount(getFilteredThoughts().length);
+    }
+  }, [sermon, viewFilter, structureFilter, tagFilters]);
 
   if (loading || !sermon) {
     return (
@@ -155,6 +218,20 @@ export default function SermonPage() {
     setSermon({ ...sermon, thoughts: [newThought, ...sermon.thoughts] });
   };
 
+  const toggleTagFilter = (tag: string) => {
+    setTagFilters(prevFilters =>
+      prevFilters.includes(tag)
+        ? prevFilters.filter(t => t !== tag)
+        : [...prevFilters, tag]
+    );
+  };
+
+  const resetFilters = () => {
+    setViewFilter('all');
+    setStructureFilter('all');
+    setTagFilters([]);
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <DashboardNav />
@@ -171,12 +248,166 @@ export default function SermonPage() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
                   <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                    {totalThoughts}
+                    {activeCount} / {totalThoughts}
                   </span>
+                  
+                  <div className="relative ml-3">
+                    <button
+                      onClick={() => setIsFilterOpen(!isFilterOpen)}
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      {t('filters.filter')}
+                      {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0) && (
+                        <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
+                      )}
+                      <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    
+                    {isFilterOpen && (
+                      <div 
+                        ref={filterRef}
+                        className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10"
+                      >
+                        <div className="py-1 divide-y divide-gray-200 dark:divide-gray-700">
+                          {/* View options */}
+                          <div className="px-4 py-2">
+                            <div className="flex justify-between items-center mb-2">
+                              <h3 className="text-sm font-medium">{t('filters.viewOptions')}</h3>
+                              <button 
+                                onClick={() => resetFilters()}
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                              >
+                                {t('filters.reset')}
+                              </button>
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              <label className="flex items-center">
+                                <input
+                                  type="radio"
+                                  name="viewFilter"
+                                  value="all"
+                                  checked={viewFilter === 'all'}
+                                  onChange={() => setViewFilter('all')}
+                                  className="h-4 w-4 text-blue-600"
+                                />
+                                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.all')}</span>
+                              </label>
+                              <label className="flex items-center">
+                                <input
+                                  type="radio"
+                                  name="viewFilter"
+                                  value="missingTags"
+                                  checked={viewFilter === 'missingTags'}
+                                  onChange={() => setViewFilter('missingTags')}
+                                  className="h-4 w-4 text-blue-600"
+                                />
+                                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.missingTags')}</span>
+                              </label>
+                            </div>
+                          </div>
+                          
+                          {/* Structure filter */}
+                          <div className="px-4 py-2">
+                            <h3 className="text-sm font-medium">{t('filters.byStructure')}</h3>
+                            <div className="mt-2 space-y-2">
+                              <label className="flex items-center">
+                                <input
+                                  type="radio"
+                                  name="structureFilter"
+                                  value="all"
+                                  checked={structureFilter === 'all'}
+                                  onChange={() => setStructureFilter('all')}
+                                  className="h-4 w-4 text-blue-600"
+                                />
+                                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.allStructure')}</span>
+                              </label>
+                              {["Вступление", "Основная часть", "Заключение"].map(tag => (
+                                <label key={tag} className="flex items-center">
+                                  <input
+                                    type="radio"
+                                    name="structureFilter"
+                                    value={tag}
+                                    checked={structureFilter === tag}
+                                    onChange={() => setStructureFilter(tag)}
+                                    className="h-4 w-4 text-blue-600"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t(`tags.${tag.toLowerCase()}`)}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Tag filter */}
+                          <div className="px-4 py-2">
+                            <h3 className="text-sm font-medium">{t('filters.byTags')}</h3>
+                            <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                              {allowedTags.map(tag => (
+                                <label key={tag.name} className="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={tagFilters.includes(tag.name)}
+                                    onChange={() => toggleTagFilter(tag.name)}
+                                    className="h-4 w-4 text-blue-600"
+                                  />
+                                  <span className="ml-2 text-sm" style={{ color: tag.color }}>{tag.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
               </div>
               <div className="space-y-5">
+                {/* Active filters indicator */}
+                {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0) && (
+                  <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      {t('filters.activeFilters')}:
+                    </span>
+                    
+                    {viewFilter === 'missingTags' && (
+                      <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
+                        {t('filters.missingTags')}
+                      </span>
+                    )}
+                    
+                    {structureFilter !== 'all' && (
+                      <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+                        {t(`tags.${structureFilter.toLowerCase()}`)}
+                      </span>
+                    )}
+                    
+                    {tagFilters.map(tag => {
+                      const tagInfo = allowedTags.find(t => t.name === tag);
+                      return (
+                        <span 
+                          key={tag}
+                          className="px-2 py-1 text-xs rounded-full"
+                          style={{ 
+                            backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
+                            color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                    
+                    <button 
+                      onClick={resetFilters}
+                      className="ml-auto px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
+                    >
+                      {t('filters.clear')}
+                    </button>
+                  </div>
+                )}
+                
                 {sermon.thoughts.length === 0 ? (
                   <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -187,35 +418,52 @@ export default function SermonPage() {
                     </p>
                   </div>
                 ) : (
-                  getSortedThoughts().map((thought, index) => {
-                    const requiredTags = ["Вступление", "Основная часть", "Заключение"];
-                    const hasRequiredTag = thought.tags.some((tag) =>
-                      requiredTags.includes(tag)
-                    );
+                  getFilteredThoughts().length === 0 ? (
+                    <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <p className="mt-2 text-gray-500 dark:text-gray-400">
+                        {t('filters.noMatchingThoughts')}
+                      </p>
+                      <button 
+                        onClick={resetFilters}
+                        className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        {t('filters.resetFilters')}
+                      </button>
+                    </div>
+                  ) : (
+                    getFilteredThoughts().map((thought, index) => {
+                      const requiredTags = ["Вступление", "Основная часть", "Заключение"];
+                      const hasRequiredTag = thought.tags.some((tag) =>
+                        requiredTags.includes(tag)
+                      );
 
-                    return (
-                      <ThoughtCard
-                        key={index}
-                        thought={thought}
-                        index={index}
-                        editingIndex={null}
-                        editingText={""}
-                        editingTags={[]}
-                        hasRequiredTag={hasRequiredTag}
-                        allowedTags={allowedTags}
-                        currentTag={""}
-                        onDelete={handleDeleteThought}
-                        onEditStart={(thought, index) => setEditingModalData({ thought, index })}
-                        onEditCancel={() => {}}
-                        onEditSave={() => {}}
-                        onTextChange={() => {}}
-                        onRemoveTag={() => {}}
-                        onAddTag={() => {}}
-                        onTagSelectorChange={() => {}}
-                        setCurrentTag={() => {}}
-                      />
-                    );
-                  })
+                      return (
+                        <ThoughtCard
+                          key={index}
+                          thought={thought}
+                          index={index}
+                          editingIndex={null}
+                          editingText={""}
+                          editingTags={[]}
+                          hasRequiredTag={hasRequiredTag}
+                          allowedTags={allowedTags}
+                          currentTag={""}
+                          onDelete={handleDeleteThought}
+                          onEditStart={(thought, index) => setEditingModalData({ thought, index })}
+                          onEditCancel={() => {}}
+                          onEditSave={() => {}}
+                          onTextChange={() => {}}
+                          onRemoveTag={() => {}}
+                          onAddTag={() => {}}
+                          onTagSelectorChange={() => {}}
+                          setCurrentTag={() => {}}
+                        />
+                      );
+                    })
+                  )
                 )}
               </div>
             </div>

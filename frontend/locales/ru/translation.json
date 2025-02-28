@@ -102,10 +102,27 @@
   },
   "sermon": {
     "notFound": "Проповедь не найдена",
-    "backToList": "Вернуться к списку",
-    "allThoughts": "Все записи",
-    "noThoughts": "Нет записей для этой проповеди",
-    "deleteThoughtConfirm": "Вы уверены, что хотите удалить эту запись?\n{{text}}"
+    "backToList": "Назад к списку",
+    "allThoughts": "Все мысли",
+    "noThoughts": "Нет мыслей для этой проповеди",
+    "deleteThoughtConfirm": "Вы уверены, что хотите удалить эту мысль?\n{{text}}"
+  },
+  "filters": {
+    "filter": "Фильтр",
+    "all": "Все мысли",
+    "missingTags": "Без обязательных тегов",
+    "byStructure": "Фильтр по структуре",
+    "byTags": "Фильтр по тегам",
+    "allStructure": "Все части структуры",
+    "viewOptions": "Параметры просмотра",
+    "selectTags": "Выберите теги",
+    "reset": "Сбросить",
+    "apply": "Применить",
+    "clear": "Очистить фильтры",
+    "noMatchingThoughts": "Нет мыслей, соответствующих вашим фильтрам",
+    "resetFilters": "Сбросить все фильтры",
+    "searchThoughts": "Поиск в мыслях",
+    "activeFilters": "Активные фильтры"
   },
   "audio": {
     "processing": "Обработка...",
