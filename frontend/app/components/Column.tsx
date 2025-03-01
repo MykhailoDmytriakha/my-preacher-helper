@@ -4,7 +4,7 @@ import React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import SortableItem from "./SortableItem";
-import { Item } from "@/models/models";
+import { Item, OutlinePoint } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
@@ -14,9 +14,10 @@ interface ColumnProps {
   items: Item[];
   headerColor?: string; // optional color for header and border
   onEdit?: (item: Item) => void;
+  outlinePoints?: OutlinePoint[]; // New prop for outline points
 }
 
-export default function Column({ id, title, items, headerColor, onEdit }: ColumnProps) {
+export default function Column({ id, title, items, headerColor, onEdit, outlinePoints = [] }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   return (
@@ -36,6 +37,17 @@ export default function Column({ id, title, items, headerColor, onEdit }: Column
           style={headerColor ? { backgroundColor: headerColor } : {}}
         >
           {title}
+          
+          {/* Outline points display */}
+          {outlinePoints && outlinePoints.length > 0 && (
+            <div className="mt-2 text-sm font-normal text-white/90 border-t border-white/20 pt-2">
+              <ul className="list-disc pl-4 space-y-1">
+                {outlinePoints.map((point) => (
+                  <li key={point.id}>{point.text}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </h2>
       </div>
       <SortableContext items={items} strategy={verticalListSortingStrategy}>

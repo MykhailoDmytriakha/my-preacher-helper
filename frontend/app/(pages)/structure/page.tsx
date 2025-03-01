@@ -18,17 +18,17 @@ import {
 } from "@dnd-kit/sortable";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Column from "@components/Column";
-import SortableItem from "@components/SortableItem";
-import { Item } from "@/models/models";
-import { Sermon, Thought } from "@/models/models";
-import EditThoughtModal from "@components/EditThoughtModal";
+import Column from "@/components/Column";
+import SortableItem from "@/components/SortableItem";
+import { Item, Sermon, Structure, OutlinePoint, Thought } from "@/models/models";
+import EditThoughtModal from "@/components/EditThoughtModal";
 import { getTags } from "@/services/tag.service";
 import { getSermonById } from "@/services/sermon.service";
 import { updateThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { getSermonOutline } from "@/services/outline.service";
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -67,6 +67,15 @@ function StructurePageContent() {
     main: [],
     conclusion: [],
     ambiguous: [],
+  });
+  const [outlinePoints, setOutlinePoints] = useState<{
+    introduction: OutlinePoint[];
+    main: OutlinePoint[];
+    conclusion: OutlinePoint[];
+  }>({
+    introduction: [],
+    main: [],
+    conclusion: [],
   });
   // Ref to hold the latest containers state
   const containersRef = useRef(containers);
@@ -221,6 +230,21 @@ function StructurePageContent() {
         if (isStructureChanged(fetchedSermon.structure || {}, structure)) {
           await updateStructure(sermonId, structure);
         }
+
+        // Fetch outline data
+        try {
+          const outlineData = await getSermonOutline(sermonId);
+          console.log(`Outline data: ${JSON.stringify(outlineData)}`);
+          if (outlineData) {
+            setOutlinePoints({
+              introduction: outlineData.introduction || [],
+              main: outlineData.main || [],
+              conclusion: outlineData.conclusion || [],
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching sermon outline:", error);
+        }
       } catch (error) {
         console.error("Error initializing sermon:", error);
       } finally {
@@ -350,11 +374,16 @@ function StructurePageContent() {
     const sections = ["introduction", "main", "conclusion", "ambiguous"];
 
     return sections.some(
-      (section) =>
-        prev[section].length !== curr[section].length ||
-        prev[section].some(
-          (item: string, index: number) => item !== curr[section][index]
-        )
+      (section) => {
+        // Handle cases where a section might not exist
+        const prevSection = prev[section] || [];
+        const currSection = curr[section] || [];
+        
+        return prevSection.length !== currSection.length ||
+          prevSection.some(
+            (item: string, index: number) => item !== currSection[index]
+          );
+      }
     );
   };
 
@@ -516,6 +545,7 @@ function StructurePageContent() {
             items={containers.introduction}
             headerColor={requiredTagColors.introduction}
             onEdit={handleEdit}
+            outlinePoints={outlinePoints.introduction}
           />
           <Column
             id="main"
@@ -523,6 +553,7 @@ function StructurePageContent() {
             items={containers.main}
             headerColor={requiredTagColors.main}
             onEdit={handleEdit}
+            outlinePoints={outlinePoints.main}
           />
           <Column
             id="conclusion"
@@ -530,6 +561,7 @@ function StructurePageContent() {
             items={containers.conclusion}
             headerColor={requiredTagColors.conclusion}
             onEdit={handleEdit}
+            outlinePoints={outlinePoints.conclusion}
           />
         </div>
         <DragOverlay>
