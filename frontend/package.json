@@ -10,7 +10,6 @@
     "test": "cross-env NODE_ENV=test jest --verbose --coverage",
     "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
     "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
-    "test:watch": "cross-env NODE_ENV=test jest --verbose --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },

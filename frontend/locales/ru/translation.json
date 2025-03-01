@@ -69,7 +69,8 @@
     "scriptureText": "Текст из Библии: ",
     "tagsLabel": "Теги: ",
     "multiTagThoughts": "Мысли с несколькими метками",
-    "otherThoughts": "Другие мысли"
+    "otherThoughts": "Другие мысли",
+    "exportTo": "Экспорт в"
   },
   "tags": {
     "introduction": "Вступление",
@@ -167,7 +168,10 @@
     "conclusion": "Заключение",
     "preview": "Предварительный просмотр структуры",
     "focusMode": "Режим фокуса",
-    "normalMode": "Обычный режим"
+    "normalMode": "Обычный режим",
+    "outlinePoints": "Пункты плана",
+    "content": "Содержание",
+    "tags": "Теги"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

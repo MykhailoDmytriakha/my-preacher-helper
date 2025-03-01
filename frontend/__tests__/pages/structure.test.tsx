@@ -44,6 +44,18 @@ jest.mock('@/services/tag.service', () => ({
   getTags: jest.fn().mockResolvedValue([]),
 }));
 
+// Mock ExportButtons component
+jest.mock('@/components/ExportButtons', () => ({
+  __esModule: true,
+  default: (props: any) => (
+    <div data-testid="export-buttons">
+      <button onClick={() => props.getExportContent()} data-testid="export-txt-button">
+        Export TXT
+      </button>
+    </div>
+  ),
+}));
+
 // Mock react-i18next
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -102,12 +114,19 @@ jest.mock('@/components/Column', () => ({
 // Create a simplified mock version of the StructurePageContent component
 const MockStructurePageContent = () => {
   const [focusedColumn, setFocusedColumn] = React.useState<string | null>(null);
+  const [exportContent, setExportContent] = React.useState<string>('');
   
   const containers = {
-    introduction: [{ id: 'intro1', content: 'Intro point 1' }],
-    main: [{ id: 'main1', content: 'Main point 1' }],
-    conclusion: [{ id: 'concl1', content: 'Conclusion point 1' }],
-    ambiguous: [{ id: 'amb1', content: 'Ambiguous point 1' }],
+    introduction: [{ id: 'intro1', content: 'Intro point 1', customTagNames: [{name: 'tag1', color: '#123456'}] }],
+    main: [{ id: 'main1', content: 'Main point 1', customTagNames: [] }],
+    conclusion: [{ id: 'concl1', content: 'Conclusion point 1', customTagNames: [{name: 'tag2', color: '#654321'}] }],
+    ambiguous: [{ id: 'amb1', content: 'Ambiguous point 1', customTagNames: [] }],
+  };
+
+  const outlinePoints = {
+    introduction: [{ id: 'outline1', text: 'Introduction outline point' }],
+    main: [{ id: 'outline2', text: 'Main outline point' }],
+    conclusion: [{ id: 'outline3', text: 'Conclusion outline point' }],
   };
 
   const handleFocus = (columnId: string) => {
@@ -118,16 +137,70 @@ const MockStructurePageContent = () => {
     setFocusedColumn(null);
   };
 
+  const getExportContentForFocusedColumn = async () => {
+    if (!focusedColumn || !containers[focusedColumn as keyof typeof containers]) {
+      return '';
+    }
+    
+    const items = containers[focusedColumn as keyof typeof containers];
+    const title = focusedColumn === 'introduction' ? 'Introduction' : 
+                 focusedColumn === 'main' ? 'Main Part' : 
+                 focusedColumn === 'conclusion' ? 'Conclusion' : 'Under Consideration';
+    let content = `# ${title}\n\n`;
+    
+    if (focusedColumn !== 'ambiguous' && 
+        (focusedColumn === 'introduction' || focusedColumn === 'main' || focusedColumn === 'conclusion') && 
+        outlinePoints[focusedColumn as keyof typeof outlinePoints]?.length > 0) {
+      content += '## Outline Points\n';
+      outlinePoints[focusedColumn as keyof typeof outlinePoints].forEach((point) => {
+        content += `- ${point.text}\n`;
+      });
+      content += '\n';
+    }
+    
+    content += '## Content\n';
+    if (items.length === 0) {
+      content += 'No entries\n';
+    } else {
+      items.forEach((item, index) => {
+        content += `${index + 1}. ${item.content}\n`;
+        if (item.customTagNames && item.customTagNames.length > 0) {
+          // Extract tag names from the customTagNames objects
+          const tagNames = item.customTagNames.map(tag => tag.name);
+          content += `   Tags: ${tagNames.join(', ')}\n`;
+        }
+        content += '\n';
+      });
+    }
+    
+    setExportContent(content);
+    return content;
+  };
+
   return (
     <div>
       <div className={`w-full ${focusedColumn ? 'max-w-7xl mx-auto' : ''}`}>
         {focusedColumn && (
-          <button 
-            data-testid="normal-mode-btn"
-            onClick={handleNormalMode}
-          >
-            Normal Mode
-          </button>
+          <div className="flex justify-between items-center mb-4">
+            <button 
+              data-testid="normal-mode-btn"
+              onClick={handleNormalMode}
+            >
+              Normal Mode
+            </button>
+            
+            <div data-testid="export-section">
+              {/* Mock ExportButtons component */}
+              <div data-testid="export-buttons">
+                <button 
+                  onClick={() => getExportContentForFocusedColumn()} 
+                  data-testid="export-txt-button"
+                >
+                  Export TXT
+                </button>
+              </div>
+            </div>
+          </div>
         )}
         
         <div className="flex flex-wrap">
@@ -179,6 +252,13 @@ const MockStructurePageContent = () => {
             ))}
           </div>
         </div>
+
+        {/* Hidden div to expose export content for testing */}
+        {exportContent && (
+          <div data-testid="export-content-preview" style={{ display: 'none' }}>
+            {exportContent}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -263,5 +343,35 @@ describe('Structure Page Focus Mode', () => {
     // In focus mode, ambiguous section should still be visible
     expect(screen.getByTestId('ambiguous-section')).toBeInTheDocument();
     expect(screen.getByText('Under Consideration')).toBeInTheDocument();
+  });
+
+  it('shows export button in focus mode and exports only the focused column content', async () => {
+    render(<MockStructurePageContent />);
+    
+    // Check that export section is not visible in normal mode
+    expect(screen.queryByTestId('export-section')).not.toBeInTheDocument();
+    
+    // Enter focus mode for introduction
+    fireEvent.click(screen.getByTestId('focus-btn-introduction'));
+    
+    // Export section should be visible in focus mode
+    expect(screen.getByTestId('export-section')).toBeInTheDocument();
+    expect(screen.getByTestId('export-txt-button')).toBeInTheDocument();
+    
+    // Click export button
+    fireEvent.click(screen.getByTestId('export-txt-button'));
+    
+    // Check that export content contains introduction data
+    const exportContentElement = screen.getByTestId('export-content-preview');
+    expect(exportContentElement.textContent).toContain('# Introduction');
+    expect(exportContentElement.textContent).toContain('## Outline Points');
+    expect(exportContentElement.textContent).toContain('- Introduction outline point');
+    expect(exportContentElement.textContent).toContain('## Content');
+    expect(exportContentElement.textContent).toContain('1. Intro point 1');
+    expect(exportContentElement.textContent).toContain('Tags: tag1');
+    
+    // It should not contain content from other sections
+    expect(exportContentElement.textContent).not.toContain('Main point 1');
+    expect(exportContentElement.textContent).not.toContain('Conclusion point 1');
   });
 }); 

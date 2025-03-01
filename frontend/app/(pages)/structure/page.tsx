@@ -22,6 +22,7 @@ import Column from "@/components/Column";
 import SortableItem from "@/components/SortableItem";
 import { Item, Sermon, Structure, OutlinePoint, Thought } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
+import ExportButtons from "@/components/ExportButtons";
 import { getTags } from "@/services/tag.service";
 import { getSermonById } from "@/services/sermon.service";
 import { updateThought } from "@/services/thought.service";
@@ -651,6 +652,50 @@ function StructurePageContent() {
     }
   };
 
+  const getExportContentForFocusedColumn = async () => {
+    if (!focusedColumn || !containers[focusedColumn]) {
+      return '';
+    }
+    
+    const items = containers[focusedColumn];
+    const title = columnTitles[focusedColumn];
+    let content = `# ${title}\n\n`;
+    
+    // Add outline points if available
+    if (focusedColumn !== 'ambiguous' && 
+        (focusedColumn === 'introduction' || focusedColumn === 'main' || focusedColumn === 'conclusion') && 
+        outlinePoints[focusedColumn as keyof typeof outlinePoints]?.length > 0) {
+      content += `## ${t('structure.outlinePoints')}\n`;
+      outlinePoints[focusedColumn as keyof typeof outlinePoints].forEach((point: OutlinePoint) => {
+        content += `- ${point.text}\n`;
+      });
+      content += '\n';
+    }
+    
+    // Add items
+    content += `## ${t('structure.content')}\n`;
+    if (items.length === 0) {
+      content += `${t('structure.noEntries')}\n`;
+    } else {
+      items.forEach((item, index) => {
+        content += `${index + 1}. ${item.content}\n`;
+        if (item.customTagNames && item.customTagNames.length > 0) {
+          // Extract tag names from the tag objects before joining
+          const tagNames = item.customTagNames.map(tag => 
+            typeof tag === 'string' ? tag : tag.name
+          ).filter(Boolean);
+          
+          if (tagNames.length > 0) {
+            content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
+          }
+        }
+        content += '\n';
+      });
+    }
+    
+    return content;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -680,6 +725,21 @@ function StructurePageContent() {
             </Link>
           </div>
         </div>
+        
+        {/* Export Button in Focus Mode */}
+        {focusedColumn && (
+          <div className="flex justify-end items-center mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700">{t('export.exportTo')}:</span>
+              <ExportButtons 
+                sermonId={sermon.id}
+                getExportContent={getExportContentForFocusedColumn}
+                orientation="horizontal"
+              />
+            </div>
+          </div>
+        )}
+        
         <DndContext
           collisionDetection={pointerWithin}
           onDragStart={handleDragStart}

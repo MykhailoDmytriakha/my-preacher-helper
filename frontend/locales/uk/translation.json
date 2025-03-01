@@ -69,7 +69,8 @@
     "scriptureText": "Текст з Писання: ",
     "tagsLabel": "Теги: ",
     "multiTagThoughts": "Думки з кількома тегами",
-    "otherThoughts": "Інші думки"
+    "otherThoughts": "Інші думки",
+    "exportTo": "Експорт в"
   },
   "tags": {
     "introduction": "Вступ",
@@ -150,7 +151,10 @@
     "conclusion": "Закінчення",
     "preview": "Попередній перегляд структури",
     "focusMode": "Режим фокусу",
-    "normalMode": "Звичайний режим"
+    "normalMode": "Звичайний режим",
+    "outlinePoints": "Пункти плану",
+    "content": "Зміст",
+    "tags": "Теги"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

@@ -69,7 +69,8 @@
     "scriptureText": "Scripture Text: ",
     "tagsLabel": "Tags: ",
     "multiTagThoughts": "Thoughts with Multiple Tags",
-    "otherThoughts": "Other Thoughts"
+    "otherThoughts": "Other Thoughts",
+    "exportTo": "Export to"
   },
   "tags": {
     "introduction": "Introduction",
@@ -161,7 +162,10 @@
     "conclusion": "Conclusion",
     "preview": "Structure Preview",
     "focusMode": "Focus Mode",
-    "normalMode": "Normal Mode"
+    "normalMode": "Normal Mode",
+    "outlinePoints": "Outline Points",
+    "content": "Content",
+    "tags": "Tags"
   },
   "knowledge": {
     "title": "Sermon Insights",
