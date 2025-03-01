@@ -5,7 +5,7 @@ import { Thought } from '@/models/models';
 import ThoughtCard from '@/components/ThoughtCard';
 
 // Mock dependencies
-jest.mock('@utils/dateFormatter', () => ({
+jest.mock('@/utils/dateFormatter', () => ({
   formatDate: jest.fn().mockReturnValue('01/01/2023'),
 }));
 

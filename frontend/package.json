@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run debug:directory && npm test && next build",
+    "build": "npm run debug:directory && cross-env NODE_ENV=test npm test && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --verbose --coverage",
-    "test:components": "jest --verbose --testPathPattern=__tests__/components",
-    "test:utils": "jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
-    "test:watch": "jest --verbose --watch",
-    "test:coverage": "jest --verbose --coverage",
+    "test": "cross-env NODE_ENV=test jest --verbose --coverage",
+    "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
+    "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
+    "test:watch": "cross-env NODE_ENV=test jest --verbose --watch",
+    "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },
   "dependencies": {
@@ -44,6 +44,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-jest": "^29.7.0",
+    "cross-env": "^7.0.3",
     "cypress": "^13.6.6",
     "eslint": "^9",
     "eslint-config-next": "15.1.6",

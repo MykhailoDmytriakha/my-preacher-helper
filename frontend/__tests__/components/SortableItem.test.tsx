@@ -1,18 +1,20 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import SortableItem from '@/components/SortableItem';
 import '@testing-library/jest-dom';
+import SortableItem from '@/components/SortableItem';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Item } from '@/models/models';
 
 // Mock the useSortable hook
 jest.mock('@dnd-kit/sortable', () => ({
-  useSortable: () => ({
-    attributes: { 'data-test': 'sortable-item' },
-    listeners: { 'data-testid': 'drag-handle' },
+  useSortable: jest.fn().mockReturnValue({
+    attributes: { role: 'button' },
+    listeners: { onKeyDown: jest.fn() },
     setNodeRef: jest.fn(),
     transform: { x: 0, y: 0, scaleX: 1, scaleY: 1 },
-    transition: 'transform 250ms ease',
-    isDragging: false,
+    transition: 'transform 250ms ease-in-out',
+    isDragging: false
   }),
 }));
 
@@ -20,13 +22,13 @@ jest.mock('@dnd-kit/sortable', () => ({
 jest.mock('@dnd-kit/utilities', () => ({
   CSS: {
     Transform: {
-      toString: jest.fn().mockReturnValue('translate3d(0px, 0px, 0)'),
+      toString: jest.fn(),
     },
   },
 }));
 
 // Mock the getContrastColor function
-jest.mock('@utils/color', () => ({
+jest.mock('@/utils/color', () => ({
   getContrastColor: jest.fn().mockReturnValue('#ffffff'),
 }));
 
