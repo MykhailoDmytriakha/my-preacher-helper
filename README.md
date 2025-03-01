@@ -96,6 +96,11 @@
 
 ### TODO
 
+AI:
+
+- we could Gemini API: it is cheper and first 'X' amount requirest are free
+  - we need to compare price for useing openAI gpt-4o and Gemini 2.O
+
 Structure page:
 
 - add `plush sign` on structure page to each section, click on it allow to add thought to this section

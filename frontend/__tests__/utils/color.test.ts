@@ -27,5 +27,13 @@ describe('Color Utilities', () => {
       expect(getContrastColor('#808080')).toBe('#fff'); // Mid gray returns white
       expect(getContrastColor('#888888')).toBe('#fff');
     });
+    
+    test('handles 3-character hex colors', () => {
+      // Test 3-character hex colors are expanded correctly
+      expect(getContrastColor('#000')).toBe('#fff'); // #000 -> #000000 (dark)
+      expect(getContrastColor('#fff')).toBe('#000'); // #fff -> #ffffff (light)
+      expect(getContrastColor('#f00')).toBe('#fff'); // #f00 -> #ff0000 (red)
+      expect(getContrastColor('#0f0')).toBe('#fff'); // #0f0 -> #00ff00 (green) - returns white based on the brightness calculation
+    });
   });
 }); 
