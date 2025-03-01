@@ -53,7 +53,7 @@ export class SermonsRepository {
 
       const sermon = docSnap.data() as Sermon;
       console.log(`Sermon outline retrieved for sermon id ${sermonId}`);
-      return sermon.outline;
+      return sermon.outline || {};
     } catch (error) {
       console.error(`Error fetching sermon outline with id ${sermonId}:`, error);
       throw error;
