@@ -1,15 +1,26 @@
-// Import Jest DOM extensions
+// Learn more: https://github.com/testing-library/jest-dom
 require('@testing-library/jest-dom');
 
-// Mock next/navigation hooks
+// Mock Next.js router
 jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(() => ({
+  useRouter: () => ({
     push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
     back: jest.fn(),
-    forward: jest.fn(),
-  })),
-  useSearchParams: jest.fn(() => ({
-    get: jest.fn(),
-  })),
-  usePathname: jest.fn(),
+  }),
+  usePathname: () => '/',
+  useParams: () => ({}),
+}));
+
+// Mock i18next
+jest.mock('react-i18next', () => ({
+  useTranslation: () => {
+    return {
+      t: (key) => key,
+      i18n: {
+        changeLanguage: jest.fn(),
+      },
+    };
+  },
 })); 

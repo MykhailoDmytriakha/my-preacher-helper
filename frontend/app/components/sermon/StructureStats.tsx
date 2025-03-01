@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import type { Sermon } from "@/models/models";
+import type { Sermon, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
@@ -22,6 +22,24 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   const router = useRouter();
   const { id } = useParams() as { id: string };
   const { t } = useTranslation();
+  const [animateStats, setAnimateStats] = useState(false);
+  
+  // Set animation state after component mounts
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimateStats(true);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Function to find thought text by ID
+  const getThoughtTextById = (thoughtId: string): string => {
+    if (!sermon.thoughts) return thoughtId;
+    
+    const thought = sermon.thoughts.find((t: Thought) => t.id === thoughtId);
+    return thought ? thought.text : thoughtId;
+  };
 
   const intro = tagCounts["Вступление"] || 0;
   const main = tagCounts["Основная часть"] || 0;
@@ -110,32 +128,73 @@ const StructureStats: React.FC<StructureStatsProps> = ({
         </button>
       </div>
       {sermon.structure && (
-        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold mb-2">{t('structure.preview')}</h3>
-          <div className="prose dark:prose-invert max-w-none">
-            {sermon.structure.introduction && (
-              <div>
-                <strong>{t('tags.introduction')}:</strong>{" "}
-                {sermon.structure.introduction.join(", ")}
+        <div className={`p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 transition-all hover:shadow-lg ${animateStats ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: '400ms' }}>
+          <h3 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
+            {t('structure.preview')}
+          </h3>
+          
+          <div className="space-y-4">
+            {sermon.structure.introduction && sermon.structure.introduction.length > 0 && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 hover:shadow-md transition-all">
+                <div className="flex items-center mb-2">
+                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: introColor }}></div>
+                  <strong className="text-blue-700 dark:text-blue-400">{t('tags.introduction')}</strong>
+                </div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
+                  {sermon.structure.introduction.map((item, index) => (
+                    <span key={`intro-${index}`} className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-800/40 rounded m-0.5">
+                      {getThoughtTextById(item)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-            {sermon.structure.main && (
-              <div>
-                <strong>{t('tags.mainPart')}:</strong>{" "}
-                {sermon.structure.main.join(", ")}
+            
+            {sermon.structure.main && sermon.structure.main.length > 0 && (
+              <div className="p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg border border-violet-100 dark:border-violet-800 hover:shadow-md transition-all">
+                <div className="flex items-center mb-2">
+                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: mainColor }}></div>
+                  <strong className="text-violet-700 dark:text-violet-400">{t('tags.mainPart')}</strong>
+                </div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
+                  {sermon.structure.main.map((item, index) => (
+                    <span key={`main-${index}`} className="inline-block px-2 py-0.5 bg-violet-100 dark:bg-violet-800/40 rounded m-0.5">
+                      {getThoughtTextById(item)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-            {sermon.structure.conclusion && (
-              <div>
-                <strong>{t('tags.conclusion')}:</strong>{" "}
-                {sermon.structure.conclusion.join(", ")}
+            
+            {sermon.structure.conclusion && sermon.structure.conclusion.length > 0 && (
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800 hover:shadow-md transition-all">
+                <div className="flex items-center mb-2">
+                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: conclusionColor }}></div>
+                  <strong className="text-green-700 dark:text-green-400">{t('tags.conclusion')}</strong>
+                </div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
+                  {sermon.structure.conclusion.map((item, index) => (
+                    <span key={`conclusion-${index}`} className="inline-block px-2 py-0.5 bg-green-100 dark:bg-green-800/40 rounded m-0.5">
+                      {getThoughtTextById(item)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-            {/* Only render ambiguous if it exists */}
-            {sermon.structure.ambiguous && (
-              <div>
-                <strong>{t('structure.underConsideration')}:</strong>{" "}
-                {sermon.structure.ambiguous.join(", ")}
+            
+            {sermon.structure.ambiguous && sermon.structure.ambiguous.length > 0 && (
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
+                <div className="flex items-center mb-2">
+                  <div className="w-3 h-3 rounded-full mr-2 bg-gray-400"></div>
+                  <strong className="text-gray-700 dark:text-gray-300">{t('structure.underConsideration')}</strong>
+                </div>
+                <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
+                  {sermon.structure.ambiguous.map((item, index) => (
+                    <span key={`ambiguous-${index}`} className="inline-block px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded m-0.5">
+                      {getThoughtTextById(item)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
