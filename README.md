@@ -118,3 +118,5 @@ Guest mode:
 Transciption:
 
 - елси произошла ошибка при записи то нужно вернуть текст пользователю, если это возмножно
+- insights only available after 20 thoughts, it should be message with countdown
+- плывет layout на маленьких эранах (мобильное приложение)

@@ -99,7 +99,8 @@
     "backToList": "Back to list",
     "allThoughts": "All Thoughts",
     "noThoughts": "No thoughts for this sermon",
-    "deleteThoughtConfirm": "Are you sure you want to delete this thought?\n{{text}}"
+    "deleteThoughtConfirm": "Are you sure you want to delete this thought?\n{{text}}",
+    "outline": "Sermon Outline"
   },
   "filters": {
     "filter": "Filter",
@@ -173,5 +174,15 @@
     "refresh": "Refresh insights",
     "showMoreItems": "Show all",
     "showLessItems": "Show less"
+  },
+  "common": {
+    "comingSoon": "Coming Soon",
+    "implementedSoon": "Will be implemented soon",
+    "addPoint": "Add a point",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "edit": "Edit",
+    "delete": "Delete",
+    "add": "Add"
   }
 } 

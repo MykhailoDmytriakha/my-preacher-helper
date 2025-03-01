@@ -105,7 +105,8 @@
     "backToList": "Назад до списку",
     "allThoughts": "Всі думки",
     "noThoughts": "Немає думок для цієї проповіді",
-    "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цю думку?\n{{text}}"
+    "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цю думку?\n{{text}}",
+    "outline": "План проповіді"
   },
   "errors": {
     "audioProcessing": "Помилка обробки аудіо",
@@ -179,5 +180,15 @@
     "resetFilters": "Скинути всі фільтри",
     "searchThoughts": "Пошук у думках",
     "activeFilters": "Активні фільтри"
+  },
+  "common": {
+    "comingSoon": "Скоро буде доступно",
+    "implementedSoon": "Буде реалізовано найближчим часом",
+    "addPoint": "Додати пункт",
+    "moveUp": "Перемістити вгору",
+    "moveDown": "Перемістити вниз",
+    "edit": "Редагувати",
+    "delete": "Видалити",
+    "add": "Додати"
   }
 } 

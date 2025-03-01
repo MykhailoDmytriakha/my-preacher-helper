@@ -220,6 +220,10 @@ export default function ThoughtCard({
             >
               <EditIcon className="w-4 h-4" fill="gray" />
             </button>
+            {/* Show thought ID for debugging */}
+            <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
+              ID: {thought.id}
+            </span>
           </div>
           {/* Tags */}
           {thought.tags && thought.tags.length > 0 && (

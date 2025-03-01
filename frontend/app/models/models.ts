@@ -5,6 +5,17 @@ export interface Thought {
   date: string;
 }
 
+export interface OutlinePoint {
+  id: string;
+  text: string;
+}
+
+export interface Outline {
+  introduction: OutlinePoint[];
+  main: OutlinePoint[];
+  conclusion: OutlinePoint[];
+}
+
 export interface Structure {
   introduction: string[];
   main: string[];
@@ -24,6 +35,7 @@ export interface Sermon {
   verse: string;
   date: string;
   thoughts: Thought[];
+  outline: OutlinePoint;
   structure?: Structure;
   userId: string;
   insights?: Insights;

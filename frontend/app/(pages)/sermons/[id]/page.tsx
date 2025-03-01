@@ -16,6 +16,7 @@ import EditThoughtModal from "@/components/EditThoughtModal";
 import SermonHeader from "@/components/sermon/SermonHeader";
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import StructureStats from "@/components/sermon/StructureStats";
+import SermonOutline from "@/components/sermon/SermonOutline";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { getContrastColor } from "@utils/color";
@@ -489,6 +490,7 @@ export default function SermonPage() {
 
           <div className="space-y-6">
             <KnowledgeSection sermon={sermon} />
+            <SermonOutline sermon={sermon} />
             <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
           </div>
         </div>
