@@ -316,6 +316,12 @@ function StructurePageContent() {
       containers[key].some((item) => item.id === id)
     );
     setOriginalContainer(original || null);
+    
+    // Log drag start
+    const item = containers[original || ""]?.find(item => item.id === id);
+    console.log(`[DnD] Drag started - Item ID: ${id}`);
+    console.log(`[DnD] Starting container: ${original}`);
+    console.log(`[DnD] Item content: ${item?.content?.substring(0, 30)}${item?.content && item.content.length > 30 ? '...' : ''}`);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -325,10 +331,18 @@ function StructurePageContent() {
     const activeContainer = active.data.current?.container;
     let overContainer = over.data.current?.container;
 
+    console.log(`[DnD] DETAIL - Active ID: ${active.id}, Type: ${typeof active.id}`);
+    console.log(`[DnD] DETAIL - Over ID: ${over.id}, Type: ${typeof over.id}`);
+    console.log(`[DnD] DETAIL - Over data:`, over.data.current);
+    console.log(`[DnD] DETAIL - Active container: ${activeContainer}`);
+    console.log(`[DnD] DETAIL - Initial over container: ${overContainer}`);
+
     if (over.id === "dummy-drop-zone") {
       overContainer = "ambiguous";
+      console.log(`[DnD] DETAIL - Over dummy-drop-zone, setting overContainer to ambiguous`);
     } else if (!overContainer) {
       overContainer = String(over.id);
+      console.log(`[DnD] DETAIL - No overContainer, setting to over.id: ${over.id}`);
     }
 
     if (
@@ -336,9 +350,36 @@ function StructurePageContent() {
       !overContainer ||
       activeContainer === overContainer ||
       !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
-    )
+    ) {
+      console.log(`[DnD] DETAIL - Early return conditions: !activeContainer=${!activeContainer}, !overContainer=${!overContainer}, activeContainer===overContainer=${activeContainer === overContainer}, invalid container=${!["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)}`);
       return;
+    }
 
+    console.log(`[DnD] Dragging over - Item ID: ${active.id}`);
+    console.log(`[DnD] Source container: ${activeContainer}`);
+    console.log(`[DnD] Target container: ${overContainer}`);
+    console.log(`[DnD] Target item ID in container: ${over.id}`);
+    console.log(`[DnD] DETAIL - Is over.id equal to overContainer? ${over.id === overContainer}`);
+    
+    // Find the index of the target item in the destination container
+    let targetIndex = -1;
+    
+    // IMPROVED: First, check if we're over a specific item in the container
+    if (over.id !== overContainer) {
+      // We're over a specific item, find its index
+      targetIndex = containers[overContainer].findIndex(item => item.id === over.id);
+      console.log(`[DnD] DETAIL - Dragging over a specific item in ${overContainer}, found at index ${targetIndex}`);
+      
+      // LOG the insertion position intent
+      console.log(`[DnD] INTENT - Will insert BEFORE the item at index ${targetIndex}`);
+    } else {
+      // We're over the container itself
+      console.log(`[DnD] DETAIL - Dragging over the container ${overContainer} itself, not a specific item`);
+    }
+
+    // Log container state BEFORE the change
+    console.log(`[DnD] BEFORE - ${overContainer} container items:`, containers[overContainer].map(item => ({ id: item.id, content: item.content?.substring(0, 15) })));
+    
     setContainers((prev) => {
       const sourceItems = [...prev[activeContainer]];
       const destItems = [...prev[overContainer]];
@@ -350,13 +391,35 @@ function StructurePageContent() {
       const requiredTags =
         overContainer === "ambiguous" ? [] : [columnTitles[overContainer]];
 
-      destItems.push({ ...movedItem, requiredTags });
-
+      const updatedItem = { ...movedItem, requiredTags };
+      
+      // Insert at the appropriate position
+      if (targetIndex !== -1) {
+        // FIX: Insert BEFORE the target item instead of after it
+        // This matches the visual preview behavior better
+        console.log(`[DnD] IMPROVED: Inserting at position ${targetIndex} in ${overContainer}`);
+        destItems.splice(targetIndex, 0, updatedItem);
+        console.log(`[DnD] DETAIL - Item inserted BEFORE index ${targetIndex}, new destItems length: ${destItems.length}`);
+      } else {
+        // If we're over the container itself or no valid target was found
+        console.log(`[DnD] Inserting at the end of ${overContainer} (container-level drop)`);
+        destItems.push(updatedItem);
+        console.log(`[DnD] DETAIL - Item pushed to end, new destItems length: ${destItems.length}`);
+      }
+      
+      console.log(`[DnD] Item moved during drag - From index ${activeIndex} in ${activeContainer} to position ${
+        targetIndex !== -1 ? targetIndex : destItems.length - 1
+      } in ${overContainer}`);
+      
       const newState = {
         ...prev,
         [activeContainer]: sourceItems,
         [overContainer]: destItems,
       };
+
+      // Log the new destItems array AFTER the change
+      console.log(`[DnD] AFTER - ${overContainer} container items:`, destItems.map(item => ({ id: item.id, content: item.content?.substring(0, 15) })));
+      
       // Update the ref immediately so we have the latest containers
       containersRef.current = newState;
       return newState;
@@ -390,26 +453,57 @@ function StructurePageContent() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    
+    console.log(`[DnD] Drag ended - Item ID: ${active.id}`);
+    console.log(`[DnD] Original container: ${originalContainer}`);
+    
     if (!over || !sermon) {
+      console.log(`[DnD] No valid drop target - drag cancelled`);
       setActiveId(null);
       setOriginalContainer(null);
       return;
     }
 
+    console.log(`[DnD] DETAIL - Over ID: ${over.id}, Type: ${typeof over.id}`);
+    console.log(`[DnD] DETAIL - Over data:`, over.data.current);
+
     const activeContainer = originalContainer; // Use the original container
     let overContainer = over.data.current?.container;
 
+    console.log(`[DnD] DETAIL - Initial over container: ${overContainer}`);
+
     if (over.id === "dummy-drop-zone") {
       overContainer = "ambiguous";
+      console.log(`[DnD] DETAIL - Over dummy-drop-zone, setting overContainer to ambiguous`);
     } else if (!overContainer) {
       overContainer = String(over.id);
+      console.log(`[DnD] DETAIL - No overContainer, setting to over.id: ${over.id}`);
     }
 
+    console.log(`[DnD] Drop target container: ${overContainer}`);
+    console.log(`[DnD] Drop target ID: ${over.id}`);
+    console.log(`[DnD] DETAIL - Is over.id equal to overContainer? ${over.id === overContainer}`);
+    
+    // Find the index of the target item in the destination container
+    let targetItemIndex = -1;
+    let droppedOnItem = false;
+    
+    if (over.id !== overContainer) {
+      // We're dropping onto a specific item, not just the container
+      droppedOnItem = true;
+      targetItemIndex = containersRef.current[overContainer].findIndex(item => item.id === over.id);
+      console.log(`[DnD] DETAIL - Dropped on specific item at index ${targetItemIndex} in ${overContainer}`);
+      console.log(`[DnD] Intended drop position: BEFORE item at index ${targetItemIndex} in ${overContainer}`);
+    } else {
+      console.log(`[DnD] DETAIL - Dropped on container ${overContainer} itself, not a specific item`);
+    }
+    
     if (
       !activeContainer ||
       !overContainer ||
       !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
     ) {
+      console.log(`[DnD] Invalid container - drag operation cancelled`);
       setActiveId(null);
       setOriginalContainer(null);
       return;
@@ -418,18 +512,78 @@ function StructurePageContent() {
     // Prepare a local copy of containers from the ref
     let updatedContainers = { ...containersRef.current };
 
+    // Log container state BEFORE any changes in handleDragEnd
+    console.log(`[DnD] DRAGEND BEFORE - ${overContainer} container items:`, updatedContainers[overContainer].map(item => 
+      ({ id: item.id, content: item.content?.substring(0, 15) })
+    ));
+
     if (activeContainer === overContainer) {
       const items = [...updatedContainers[activeContainer]];
       const oldIndex = items.findIndex((item) => item.id === active.id);
       const newIndex = items.findIndex((item) => item.id === over.id);
+      
+      console.log(`[DnD] Reordering within same container: ${activeContainer}`);
+      console.log(`[DnD] Moving from index ${oldIndex} to index ${newIndex}`);
+      
       if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
         setContainers(updatedContainers);
         containersRef.current = updatedContainers;
+        console.log(`[DnD] Reordering complete - item now at position ${newIndex}`);
       }
     } else {
+      // For cross-container movement
+      const newPositionIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
+      console.log(`[DnD] Actual placement: item is now at index ${newPositionIndex} in ${overContainer}`);
+      
+      // Log the actual items and their order
+      console.log(`[DnD] ACTUAL ITEMS in ${overContainer}:`, updatedContainers[overContainer].map((item, idx) => 
+        `${idx}: ${item.id.substring(0, 6)}... - ${item.content?.substring(0, 15)}`
+      ));
+      
+      // FINAL POSITIONING FIX: If the drop target was a specific item but our item ended up elsewhere,
+      // reposition it to the correct place
+      if (droppedOnItem && targetItemIndex !== -1 && newPositionIndex !== targetItemIndex && 
+          newPositionIndex !== -1) {
+        console.log(`[DnD] FINAL FIX: Repositioning item from index ${newPositionIndex} to BEFORE target at index ${targetItemIndex}`);
+        console.log(`[DnD] DETAIL - Conditions that triggered fix:`);
+        console.log(`  - droppedOnItem: ${droppedOnItem}`);
+        console.log(`  - targetItemIndex !== -1: ${targetItemIndex !== -1}`);
+        console.log(`  - newPositionIndex !== targetItemIndex: ${newPositionIndex !== targetItemIndex}`);
+        console.log(`  - newPositionIndex !== -1: ${newPositionIndex !== -1}`);
+        
+        // Remove from current position
+        const items = [...updatedContainers[overContainer]];
+        const [itemToMove] = items.splice(newPositionIndex, 1);
+        
+        // Insert BEFORE the target item
+        items.splice(targetItemIndex, 0, itemToMove);
+        
+        updatedContainers[overContainer] = items;
+        setContainers(updatedContainers);
+        containersRef.current = updatedContainers;
+        console.log(`[DnD] Item repositioned successfully`);
+        
+        // Log after repositioning
+        console.log(`[DnD] AFTER REPOSITIONING - ${overContainer} items:`, updatedContainers[overContainer].map((item, idx) => 
+          `${idx}: ${item.id.substring(0, 6)}... - ${item.content?.substring(0, 15)}`
+        ));
+      } else if (droppedOnItem && targetItemIndex !== -1 && newPositionIndex !== targetItemIndex) {
+        console.log(`[DnD] REPOSITIONING SKIPPED - Conditions not met:`);
+        console.log(`  - droppedOnItem: ${droppedOnItem}`);
+        console.log(`  - targetItemIndex !== -1: ${targetItemIndex !== -1}`);
+        console.log(`  - newPositionIndex !== targetItemIndex: ${newPositionIndex !== targetItemIndex}`);
+        console.log(`  - newPositionIndex !== -1: ${newPositionIndex !== -1}`);
+      }
+      
       const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
+      
+      console.log(`[DnD] Moving between containers: ${activeContainer} → ${overContainer}`);
+      
       if (movedItem) {
+        const itemContent = movedItem.content?.substring(0, 30) + (movedItem.content?.length > 30 ? '...' : '');
+        console.log(`[DnD] Item content: ${itemContent}`);
+        
         const updatedItem: Thought = {
           ...sermon.thoughts.find((thought) => thought.id === movedItem.id)!,
           tags: [
@@ -444,8 +598,9 @@ function StructurePageContent() {
             thought.id === updatedItem.id ? updatedThought : thought
           );
           setSermon({ ...sermon, thoughts: newThoughts });
+          console.log(`[DnD] Updated thought tags in database`);
         } catch (error) {
-          console.error("Error updating thought:", error);
+          console.error("[DnD] Error updating thought:", error);
         }
       }
     }
@@ -457,12 +612,30 @@ function StructurePageContent() {
       conclusion: containersRef.current.conclusion.map((item) => item.id),
       ambiguous: containersRef.current.ambiguous.map((item) => item.id),
     };
+    
+    // Log final state of the container
+    console.log(`[DnD] FINAL STATE - ${overContainer} container items:`, 
+      containersRef.current[overContainer].map((item, idx) => 
+        `${idx}: ${item.id.substring(0, 6)}... - ${item.content?.substring(0, 15)}`
+      )
+    );
+    
+    console.log(`[DnD] Final structure after drag operation:`);
+    console.log(`[DnD] - Introduction: ${newStructure.introduction.length} items`);
+    console.log(`[DnD] - Main: ${newStructure.main.length} items`);
+    console.log(`[DnD] - Conclusion: ${newStructure.conclusion.length} items`);
+    console.log(`[DnD] - Ambiguous: ${newStructure.ambiguous.length} items`);
+    
     const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
     if (changesDetected) {
-      console.log("changes detected, updating structure");
+      console.log("[DnD] Structure changes detected, updating in database");
       await updateStructure(sermon.id, newStructure);
       setSermon((prev) => (prev ? { ...prev, structure: newStructure} : prev));
+      console.log("[DnD] Structure updated successfully");
+    } else {
+      console.log("[DnD] No structure changes detected");
     }
+    
     setActiveId(null);
     setOriginalContainer(null);
   };
