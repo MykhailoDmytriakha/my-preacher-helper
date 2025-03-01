@@ -8,6 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest --verbose --coverage",
+    "test:components": "jest --verbose --testPathPattern=__tests__/components",
+    "test:utils": "jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
+    "test:watch": "jest --verbose --watch",
+    "test:coverage": "jest --verbose --coverage",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },
   "dependencies": {

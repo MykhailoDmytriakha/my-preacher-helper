@@ -14,7 +14,12 @@ const config: Config.InitialOptions = {
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', { configFile: './babel.config.js' }]
   },
-  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  testMatch: [
+    '**/__tests__/**/*.test.ts', 
+    '**/__tests__/**/*.test.tsx',
+    '**/app/**/__tests__/**/*.test.ts',
+    '**/app/**/__tests__/**/*.test.tsx'
+  ],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
@@ -29,7 +34,16 @@ const config: Config.InitialOptions = {
       tsconfig: 'tsconfig.json',
       isolatedModules: true
     }
-  }
+  },
+  collectCoverageFrom: [
+    'app/**/*.{ts,tsx}',
+    '!app/**/*.d.ts',
+    '!app/_app.tsx',
+    '!app/_document.tsx',
+    '!app/api/**/*',
+    '!**/node_modules/**',
+    '!**/.next/**'
+  ],
 }
 
 export default config 
