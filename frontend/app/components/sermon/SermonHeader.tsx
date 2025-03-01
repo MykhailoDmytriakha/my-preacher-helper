@@ -27,7 +27,12 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
           </h1>
           <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
         </div>
-        <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
+          <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
+            ID: {sermon.id}
+          </span>
+        </div>
         <div>
           {sermon.verse && (
             <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line">

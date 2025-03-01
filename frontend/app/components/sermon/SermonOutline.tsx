@@ -1,14 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Sermon } from '@/models/models';
+import type { Sermon, Outline, OutlinePoint } from '@/models/models';
+import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 
 interface SermonOutlineProps {
   sermon: Sermon;
-}
-
-interface OutlinePoint {
-  id: string;
-  text: string;
 }
 
 // Define valid section types
@@ -16,31 +12,150 @@ type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
 const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
   const { t } = useTranslation();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saveQueue, setSaveQueue] = useState<number>(0);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Initial mock data
+  // State for outline data
   const [sectionPoints, setSectionPoints] = useState<Record<SectionType, OutlinePoint[]>>({
-    introduction: [
-      { id: '1', text: 'Приветсвие' },
-      { id: '2', text: 'Молитва' },
-      { id: '3', text: 'Чтение текста' },
-      { id: '4', text: 'Контекст' },
-    ],
-    mainPart: [
-      { id: '5', text: 'Скиния' },
-      { id: '6', text: 'Эдем' },
-      { id: '7', text: 'Храм' },
-      { id: '8', text: 'Голгофа' },
-      { id: '9', text: 'Дух Святой' },
-      { id: '10', text: 'Новый Завет' },
-      { id: '11', text: 'Октровение' },
-    ],
-    conclusion: [
-      { id: '12', text: 'Повторение' },
-      { id: '13', text: 'Связть со Христом' },
-      { id: '14', text: 'Призыв' },
-      { id: '15', text: 'ТГГ' },
-    ],
+    introduction: [],
+    mainPart: [],
+    conclusion: [],
   });
+  
+  // Fetch outline data when the component mounts or sermon changes
+  useEffect(() => {
+    const fetchOutline = async () => {
+      if (!sermon || !sermon.id) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const outlineData = await getSermonOutline(sermon.id);
+        
+        if (outlineData) {
+          // Map the API response to our component state structure
+          const mappedOutline = {
+            introduction: outlineData.introduction || [],
+            mainPart: outlineData.main || [], // Note the field name difference
+            conclusion: outlineData.conclusion || [],
+          };
+          
+          setSectionPoints(mappedOutline);
+        } else {
+          // Initialize with empty arrays if no data is returned
+          setSectionPoints({
+            introduction: [],
+            mainPart: [],
+            conclusion: [],
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching sermon outline:", err);
+        setError(t('errors.fetchOutlineError'));
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchOutline();
+  }, [sermon, t]);
+  
+  // Handlers for managing points
+  const addPoint = async (section: SectionType) => {
+    if (!newPointTexts[section].trim()) return;
+    
+    const newPoint = {
+      id: Date.now().toString(),
+      text: newPointTexts[section].trim(),
+    };
+    
+    // Create new points array for this section
+    const updatedSectionArray = [...sectionPoints[section], newPoint];
+    
+    // Create a new object instead of modifying the existing one
+    const updatedSectionPoints = {
+      ...sectionPoints,
+      [section]: updatedSectionArray,
+    };
+    
+    // Clear input and reset adding state before state update
+    setNewPointTexts({
+      ...newPointTexts,
+      [section]: '',
+    });
+    setAddingNewToSection(null);
+    
+    // Make sure section is expanded when adding a new point
+    if (!expandedSections[section]) {
+      setExpandedSections({
+        ...expandedSections,
+        [section]: true,
+      });
+    }
+    
+    // Update state
+    setSectionPoints(updatedSectionPoints);
+    
+    // Directly pass the updated data to saveOutlineChanges
+    directlySaveOutlineChanges(updatedSectionPoints);
+  };
+  
+  // Direct save function that takes the updated points to save
+  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, OutlinePoint[]>) => {
+    // Clear any existing timeout to debounce saves
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    
+    // Increment save queue to track pending saves
+    setSaveQueue(prev => prev + 1);
+    
+    // Ensure we have the latest state by delaying the save
+    saveTimeoutRef.current = setTimeout(async () => {
+      if (!sermon || !sermon.id) {
+        console.error('Cannot save outline: sermon or sermon.id is undefined');
+        setSaveQueue(prev => Math.max(0, prev - 1));
+        return;
+      }
+      
+      if (saving) {
+        // Retry after the current save is done
+        saveTimeoutRef.current = setTimeout(() => directlySaveOutlineChanges(pointsToSave), 500);
+        return;
+      }
+      
+      setSaving(true);
+      setError(null);
+      
+      try {
+        // Convert our component state structure to the API expected format
+        // Important: Using the explicitly passed data, not relying on state
+        const outlineToSave: Outline = {
+          introduction: pointsToSave.introduction,
+          main: pointsToSave.mainPart, // Map mainPart to main for API
+          conclusion: pointsToSave.conclusion,
+        };
+        
+        const result = await updateSermonOutline(sermon.id, outlineToSave);
+      } catch (err) {
+        console.error("Error saving sermon outline:", err);
+        setError(t('errors.saveOutlineError'));
+      } finally {
+        setSaving(false);
+        setSaveQueue(prev => Math.max(0, prev - 1));
+      }
+    }, 100); // Shorter timeout since we're using direct data
+  };
+  
+  // Original save function now just passes current state
+  const saveOutlineChanges = () => {
+    directlySaveOutlineChanges(sectionPoints);
+  };
   
   // Track expanded sections - all expanded by default
   const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>({
@@ -86,56 +201,42 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
     }
   }, [addingNewToSection]);
   
-  // Handlers for managing points
-  const addPoint = (section: SectionType) => {
-    if (!newPointTexts[section].trim()) return;
+  const updatePoint = async (section: SectionType, pointId: string, newText: string) => {
+    // Create updated points array for this section
+    const updatedSectionArray = sectionPoints[section].map(point => 
+      point.id === pointId ? { ...point, text: newText } : point
+    );
     
-    const newPoint = {
-      id: Date.now().toString(),
-      text: newPointTexts[section].trim(),
+    const updatedSectionPoints = {
+      ...sectionPoints,
+      [section]: updatedSectionArray,
     };
     
-    setSectionPoints({
-      ...sectionPoints,
-      [section]: [...sectionPoints[section], newPoint],
-    });
-    
-    // Clear input
-    setNewPointTexts({
-      ...newPointTexts,
-      [section]: '',
-    });
-
-    // Make sure section is expanded when adding a new point
-    if (!expandedSections[section]) {
-      setExpandedSections({
-        ...expandedSections,
-        [section]: true,
-      });
-    }
-    
-    // Reset adding state
-    setAddingNewToSection(null);
-  };
-  
-  const updatePoint = (section: SectionType, pointId: string, newText: string) => {
-    setSectionPoints({
-      ...sectionPoints,
-      [section]: sectionPoints[section].map(point => 
-        point.id === pointId ? { ...point, text: newText } : point
-      ),
-    });
+    // Update state and reset editing
+    setSectionPoints(updatedSectionPoints);
     setEditingPointId(null);
+    
+    // Save changes directly with the updated data
+    directlySaveOutlineChanges(updatedSectionPoints);
   };
   
-  const deletePoint = (section: SectionType, pointId: string) => {
-    setSectionPoints({
+  const deletePoint = async (section: SectionType, pointId: string) => {
+    // Create updated points array for this section
+    const updatedSectionArray = sectionPoints[section].filter(point => point.id !== pointId);
+    
+    const updatedSectionPoints = {
       ...sectionPoints,
-      [section]: sectionPoints[section].filter(point => point.id !== pointId),
-    });
+      [section]: updatedSectionArray,
+    };
+    
+    // Update state
+    setSectionPoints(updatedSectionPoints);
+    
+    // Save changes directly with the updated data
+    directlySaveOutlineChanges(updatedSectionPoints);
   };
   
-  const movePoint = (section: SectionType, pointId: string, direction: 'up' | 'down') => {
+  const movePoint = async (section: SectionType, pointId: string, direction: 'up' | 'down') => {
     const points = [...sectionPoints[section]];
     const index = points.findIndex(point => point.id === pointId);
     
@@ -147,10 +248,16 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
       [points[index], points[index + 1]] = [points[index + 1], points[index]];
     }
     
-    setSectionPoints({
+    const updatedSectionPoints = {
       ...sectionPoints,
       [section]: points,
-    });
+    };
+    
+    // Update state
+    setSectionPoints(updatedSectionPoints);
+    
+    // Save changes directly with the updated data
+    directlySaveOutlineChanges(updatedSectionPoints);
   };
   
   const renderSection = (section: SectionType, title: string, icon: React.ReactNode) => (
@@ -177,7 +284,13 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
       {/* Section content - conditionally displayed */}
       {expandedSections[section] && (
         <div className="p-4">
-          {sectionPoints[section].length > 0 ? (
+          {loading ? (
+            <div className="py-3 space-y-2 animate-pulse">
+              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
+            </div>
+          ) : sectionPoints[section].length > 0 ? (
             <ul className="space-y-2 mb-4">
               {sectionPoints[section].map((point, index) => (
                 <li key={point.id} className="group flex items-start gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
@@ -211,7 +324,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           onClick={() => updatePoint(section, point.id, point.text)}
                           className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
-                          {t('buttons.save')}
+                          {saving ? t('common.saving') : t('buttons.save')}
                         </button>
                         <button 
                           onClick={() => setEditingPointId(null)}
@@ -276,6 +389,24 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
             </div>
           )}
           
+          {/* Error message if saving/loading failed */}
+          {error && (
+            <div className="mb-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-sm rounded">
+              {error}
+            </div>
+          )}
+          
+          {/* Save status indicator */}
+          {saveQueue > 0 && (
+            <div className="mb-4 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-sm rounded flex items-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {t('common.savingChanges')} ({saveQueue})
+            </div>
+          )}
+          
           {/* Minimalist approach for adding new points - now section-specific */}
           {addingNewToSection === section ? (
             <div className="mt-2" ref={addInputRef}>
@@ -310,10 +441,10 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                       addPoint(section);
                     }
                   }}
-                  disabled={!newPointTexts[section].trim()}
+                  disabled={!newPointTexts[section].trim() || saving}
                   className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:text-gray-400 disabled:dark:text-gray-600"
                 >
-                  {t('common.add')}
+                  {saving ? t('common.saving') : t('common.add')}
                 </button>
               </div>
             </div>
