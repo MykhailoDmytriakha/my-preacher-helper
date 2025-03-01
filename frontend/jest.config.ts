@@ -11,12 +11,14 @@ const config: Config.InitialOptions = {
     '^@utils/(.*)$': '<rootDir>/app/utils/$1',
   },
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
+    '^.+\\.tsx?$': ['babel-jest', { configFile: './babel.config.js' }],
+    '^.+\\.ts?$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
-      jsx: 'react'
+      isolatedModules: true
     }]
   },
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   globals: {}
 }
 

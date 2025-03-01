@@ -29,7 +29,7 @@
       "@utils/*": ["./app/utils/*"],
       "@locales/*": ["./locales/*"]
     },
-    "types": ["cypress", "node"]
+    "types": ["cypress", "node", "jest", "@testing-library/jest-dom"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.js", "cypress/**/*.ts"],
   "exclude": ["node_modules"]
