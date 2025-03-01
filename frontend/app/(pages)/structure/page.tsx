@@ -96,6 +96,7 @@ function StructurePageContent() {
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
+  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -640,6 +641,16 @@ function StructurePageContent() {
     setOriginalContainer(null);
   };
 
+  const handleToggleFocusMode = (columnId: string) => {
+    if (focusedColumn === columnId) {
+      // If the same column is clicked, exit focus mode
+      setFocusedColumn(null);
+    } else {
+      // Otherwise, enter focus mode for the clicked column
+      setFocusedColumn(columnId);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -658,111 +669,142 @@ function StructurePageContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="mb-4">
-        <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-          {t('structure.title')} {sermon.title}
-        </h1>
-        <div className="text-center">
-          <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
-            {t('structure.backToSermon')}
-          </Link>
-        </div>
-      </div>
-      <DndContext
-        collisionDetection={pointerWithin}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="mt-8">
-          <div
-            className={`bg-white rounded-md shadow border ${
-              containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
-            }`}
-          >
-            <div
-              className="flex items-center justify-between p-4 cursor-pointer"
-              onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
-            >
-              <h2 className="text-xl font-semibold">{columnTitles["ambiguous"]}</h2>
-              <svg
-                className={`w-6 h-6 transform transition-transform duration-200 ${
-                  isAmbiguousVisible ? "rotate-0" : "-rotate-90"
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-            {isAmbiguousVisible && (
-              <SortableContext items={containers.ambiguous} strategy={rectSortingStrategy}>
-                <div className="min-h-[100px] p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {containers.ambiguous.length === 0 ? (
-                    <DummyDropZone container="ambiguous" />
-                  ) : (
-                    containers.ambiguous.map((item) => (
-                      <SortableItem key={item.id} item={item} containerId="ambiguous" onEdit={handleEdit} />
-                    ))
-                  )}
-                </div>
-              </SortableContext>
-            )}
+      <div className={`${focusedColumn ? 'max-w-7xl mx-auto' : 'w-full'}`}>
+        <div className="mb-4">
+          <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+            {t('structure.title')} {sermon.title}
+          </h1>
+          <div className="text-center">
+            <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
+              {t('structure.backToSermon')}
+            </Link>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-8">
-          <Column
-            id="introduction"
-            title={columnTitles["introduction"]}
-            items={containers.introduction}
-            headerColor={requiredTagColors.introduction}
-            onEdit={handleEdit}
-            outlinePoints={outlinePoints.introduction}
-          />
-          <Column
-            id="main"
-            title={columnTitles["main"]}
-            items={containers.main}
-            headerColor={requiredTagColors.main}
-            onEdit={handleEdit}
-            outlinePoints={outlinePoints.main}
-          />
-          <Column
-            id="conclusion"
-            title={columnTitles["conclusion"]}
-            items={containers.conclusion}
-            headerColor={requiredTagColors.conclusion}
-            onEdit={handleEdit}
-            outlinePoints={outlinePoints.conclusion}
-          />
-        </div>
-        <DragOverlay>
-          {activeId &&
-            (() => {
-              const containerKey = Object.keys(containers).find((key) =>
-                containers[key].some((item) => item.id === activeId)
-              );
-              const activeItem = containerKey
-                ? containers[containerKey].find((item) => item.id === activeId)
-                : null;
-              return activeItem ? (
-                <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
-                  {activeItem.content}
+        <DndContext
+          collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          {/* Only show ambiguous section if not in focus mode or if it has content */}
+          {(!focusedColumn || containers.ambiguous.length > 0) && (
+            <div className="mt-8">
+              <div
+                className={`bg-white rounded-md shadow border ${
+                  containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
+                }`}
+              >
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer"
+                  onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
+                >
+                  <h2 className="text-xl font-semibold">{columnTitles["ambiguous"]}</h2>
+                  <svg
+                    className={`w-6 h-6 transform transition-transform duration-200 ${
+                      isAmbiguousVisible ? "rotate-0" : "-rotate-90"
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-              ) : null;
-            })()}
-        </DragOverlay>
-      </DndContext>
-      {editingItem && (
-        <EditThoughtModal
-          initialText={editingItem.content}
-          initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
-          allowedTags={allowedTags}
-          onSave={handleSaveEdit}
-          onClose={handleCloseEdit}
-        />
-      )}
+                {isAmbiguousVisible && (
+                  <SortableContext items={containers.ambiguous} strategy={focusedColumn ? verticalListSortingStrategy : rectSortingStrategy}>
+                    <div className={`min-h-[100px] p-4 ${
+                      !focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'space-y-3'
+                    }`}>
+                      {containers.ambiguous.length === 0 ? (
+                        <DummyDropZone container="ambiguous" />
+                      ) : (
+                        containers.ambiguous.map((item) => (
+                          <SortableItem key={item.id} item={item} containerId="ambiguous" onEdit={handleEdit} />
+                        ))
+                      )}
+                    </div>
+                  </SortableContext>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className={`${!focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'flex flex-col'} w-full mt-8`}>
+            {/* Introduction column - only show if not in focus mode or if it's the focused column */}
+            {(!focusedColumn || focusedColumn === "introduction") && (
+              <Column
+                id="introduction"
+                title={columnTitles["introduction"]}
+                items={containers.introduction}
+                headerColor={requiredTagColors.introduction}
+                onEdit={handleEdit}
+                outlinePoints={outlinePoints.introduction}
+                showFocusButton={containers.ambiguous.length === 0}
+                isFocusMode={focusedColumn === "introduction"}
+                onToggleFocusMode={handleToggleFocusMode}
+                className={focusedColumn === "introduction" ? "w-full" : ""}
+              />
+            )}
+            
+            {/* Main column - only show if not in focus mode or if it's the focused column */}
+            {(!focusedColumn || focusedColumn === "main") && (
+              <Column
+                id="main"
+                title={columnTitles["main"]}
+                items={containers.main}
+                headerColor={requiredTagColors.main}
+                onEdit={handleEdit}
+                outlinePoints={outlinePoints.main}
+                showFocusButton={containers.ambiguous.length === 0}
+                isFocusMode={focusedColumn === "main"}
+                onToggleFocusMode={handleToggleFocusMode}
+                className={focusedColumn === "main" ? "w-full" : ""}
+              />
+            )}
+            
+            {/* Conclusion column - only show if not in focus mode or if it's the focused column */}
+            {(!focusedColumn || focusedColumn === "conclusion") && (
+              <Column
+                id="conclusion"
+                title={columnTitles["conclusion"]}
+                items={containers.conclusion}
+                headerColor={requiredTagColors.conclusion}
+                onEdit={handleEdit}
+                outlinePoints={outlinePoints.conclusion}
+                showFocusButton={containers.ambiguous.length === 0}
+                isFocusMode={focusedColumn === "conclusion"}
+                onToggleFocusMode={handleToggleFocusMode}
+                className={focusedColumn === "conclusion" ? "w-full" : ""}
+              />
+            )}
+          </div>
+          <DragOverlay>
+            {activeId &&
+              (() => {
+                const containerKey = Object.keys(containers).find((key) =>
+                  containers[key].some((item) => item.id === activeId)
+                );
+                const activeItem = containerKey
+                  ? containers[containerKey].find((item) => item.id === activeId)
+                  : null;
+                return activeItem ? (
+                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
+                    {activeItem.content}
+                  </div>
+                ) : null;
+              })()}
+          </DragOverlay>
+        </DndContext>
+        {editingItem && (
+          <EditThoughtModal
+            initialText={editingItem.content}
+            initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
+            allowedTags={allowedTags}
+            onSave={handleSaveEdit}
+            onClose={handleCloseEdit}
+          />
+        )}
+      </div>
     </div>
   );
 }

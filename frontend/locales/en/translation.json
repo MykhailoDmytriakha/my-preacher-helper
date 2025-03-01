@@ -159,7 +159,9 @@
     "introduction": "Introduction",
     "mainPart": "Main Part",
     "conclusion": "Conclusion",
-    "preview": "Structure Preview"
+    "preview": "Structure Preview",
+    "focusMode": "Focus Mode",
+    "normalMode": "Normal Mode"
   },
   "knowledge": {
     "title": "Sermon Insights",
