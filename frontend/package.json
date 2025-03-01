@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run debug:directory && next build",
+    "build": "npm run debug:directory && npm test && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest --verbose --coverage",
@@ -28,6 +28,8 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
     "@types/cypress": "^0.1.6",
     "@types/jest": "^29.5.14",
     "@types/node": "^20",
