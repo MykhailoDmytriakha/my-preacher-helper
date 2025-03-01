@@ -26,7 +26,8 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
       console.error("User is not authenticated");
       return;
     }
-    const newSermon = {
+    const newSermon: Sermon = {
+      id: '',
       title,
       verse,
       date: new Date().toISOString(),

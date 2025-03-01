@@ -35,7 +35,7 @@ export interface Sermon {
   verse: string;
   date: string;
   thoughts: Thought[];
-  outline: OutlinePoint;
+  outline?: Outline;
   structure?: Structure;
   userId: string;
   insights?: Insights;

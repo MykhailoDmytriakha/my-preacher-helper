@@ -293,8 +293,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
           ) : sectionPoints[section].length > 0 ? (
             <ul className="space-y-2 mb-4">
               {sectionPoints[section].map((point, index) => (
-                <li key={point.id} className="group flex items-start gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-                  <span className="font-medium text-gray-600 dark:text-gray-300 mt-0.5">{index + 1}.</span>
+                <li key={point.id} className="group flex items-start gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors relative overflow-hidden">
+                  <span className="font-medium text-gray-600 dark:text-gray-300 mt-0.5 shrink-0">{index + 1}.</span>
                   
                   {editingPointId === point.id ? (
                     <div className="flex-1">
@@ -336,12 +336,18 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                     </div>
                   ) : (
                     <>
-                      <p className="flex-1 text-gray-700 dark:text-gray-300">{point.text}</p>
-                      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <p className="flex-1 text-gray-700 dark:text-gray-300 min-w-0 pr-2">{point.text}</p>
+                      <div 
+                        className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute right-2 top-1/2 transform -translate-y-1/2 rounded p-0.5"
+                        style={{ backgroundColor: 'inherit' }}
+                      >
                         <button 
-                          onClick={() => movePoint(section, point.id, 'up')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            movePoint(section, point.id, 'up');
+                          }}
                           disabled={index === 0}
-                          className={`p-1 rounded ${index === 0 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                          className={`p-1 rounded ${index === 0 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400'}`}
                           title={t('common.moveUp')}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -349,9 +355,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           </svg>
                         </button>
                         <button 
-                          onClick={() => movePoint(section, point.id, 'down')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            movePoint(section, point.id, 'down');
+                          }}
                           disabled={index === sectionPoints[section].length - 1}
-                          className={`p-1 rounded ${index === sectionPoints[section].length - 1 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                          className={`p-1 rounded ${index === sectionPoints[section].length - 1 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400'}`}
                           title={t('common.moveDown')}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -359,8 +368,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           </svg>
                         </button>
                         <button 
-                          onClick={() => setEditingPointId(point.id)}
-                          className="p-1 text-blue-600 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingPointId(point.id);
+                          }}
+                          className="p-1 text-blue-600 rounded"
                           title={t('common.edit')}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -368,8 +380,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           </svg>
                         </button>
                         <button 
-                          onClick={() => deletePoint(section, point.id)}
-                          className="p-1 text-red-600 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deletePoint(section, point.id);
+                          }}
+                          className="p-1 text-red-600 rounded"
                           title={t('common.delete')}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
