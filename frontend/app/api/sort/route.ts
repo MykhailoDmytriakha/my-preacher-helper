@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 /**
  * Uses AI to sort items in a logical sequence
  */
-export async function sortItemsWithAI(
+async function sortItemsWithAI(
   columnId: string, 
   items: Item[], 
   sermon: Sermon, 
