@@ -11,6 +11,7 @@
     "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
     "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
     "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
+    "test:summary": "node show-total-coverage.js",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },
   "dependencies": {

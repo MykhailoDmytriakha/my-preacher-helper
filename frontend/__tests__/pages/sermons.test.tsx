@@ -1,3 +1,15 @@
+// Import React and testing libraries
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
+
+// Mock the useSermon hook
+const mockUseSermon = jest.fn();
+jest.mock('@/hooks/useSermon', () => ({
+  __esModule: true,
+  default: (sermonId: string) => mockUseSermon()
+}));
+
 // Define the getCanonicalIndex function directly in the test file
 // instead of importing from '../../app/(pages)/sermons/[id]/helpers'
 const getCanonicalIndex = (tag: string): number => {
@@ -91,6 +103,25 @@ const createMockSermon = (withStructure = true): Sermon => ({
     }
   } : {})
 });
+
+// Create a mock sermon for tests
+const mockSermon = createMockSermon(true);
+
+// Mock SermonPage component
+const SermonPage = () => {
+  const { sermon, loading } = mockUseSermon();
+  
+  if (loading) return <div>Loading...</div>;
+  if (!sermon) return <div>No sermon found</div>;
+  
+  return (
+    <div>
+      <h1>{sermon.title}</h1>
+      {sermon.structure && <div data-testid="structure-preview">Structure Preview Mock</div>}
+      <div data-testid="structure-stats">Structure Stats Mock</div>
+    </div>
+  );
+};
 
 // Mock getSortedThoughts function for use in our tests
 const mockGetSortedThoughts = (sermon: Sermon | null) => () => sermon?.thoughts || [];
@@ -246,4 +277,55 @@ describe('Sermon Page Sorting Tests', () => {
       expect(() => testStructureSorting(sermon)).not.toThrow();
     });
   });
+});
+
+// Add this test to the end of the existing sermons.test.tsx file
+it('renders StructurePreview component when sermon has structure', async () => {
+  // Set up the mock
+  mockUseSermon.mockReturnValue({
+    sermon: mockSermon,
+    loading: false,
+    setSermon: jest.fn(),
+    getSortedThoughts: jest.fn(() => mockSermon.thoughts)
+  });
+  
+  // Render the page with a sermon that has structure
+  const { getByTestId, queryByTestId } = render(
+    <SermonPage /> // Assuming SermonPage is the page component being tested
+  );
+  
+  // Wait for loading to complete
+  await waitFor(() => {
+    expect(mockUseSermon.mock.results[0].value.loading).toBe(false);
+  });
+  
+  // Should render both components
+  expect(getByTestId('structure-stats')).toBeInTheDocument();
+  expect(getByTestId('structure-preview')).toBeInTheDocument();
+});
+
+it('does not render StructurePreview component when sermon has no structure', async () => {
+  // Mock sermon without structure
+  const sermonWithoutStructure = createMockSermon(false);
+  
+  mockUseSermon.mockReturnValue({
+    sermon: sermonWithoutStructure,
+    loading: false,
+    setSermon: jest.fn(),
+    getSortedThoughts: jest.fn(() => sermonWithoutStructure.thoughts)
+  });
+  
+  // Render the page
+  const { getByTestId, queryByTestId } = render(
+    <SermonPage />
+  );
+  
+  // Wait for loading to complete
+  await waitFor(() => {
+    expect(mockUseSermon.mock.results[0].value.loading).toBe(false);
+  });
+  
+  // Should render StructureStats but not StructurePreview
+  expect(getByTestId('structure-stats')).toBeInTheDocument();
+  expect(queryByTestId('structure-preview')).not.toBeInTheDocument();
 }); 

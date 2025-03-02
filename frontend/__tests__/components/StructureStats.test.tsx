@@ -22,11 +22,9 @@ jest.mock('react-i18next', () => ({
     t: (key: string, options?: any) => {
       const translations: { [key: string]: string } = {
         'structure.title': 'Sermon Structure',
-        'structure.preview': 'Structure Preview',
         'structure.entries': 'entries',
         'structure.recommended': `Recommended: ${options?.percent || 0}%`,
         'structure.workButton': 'Work on Structure',
-        'structure.underConsideration': 'Under Consideration',
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
         'tags.conclusion': 'Conclusion',
@@ -58,14 +56,6 @@ const MockStructureStats: React.FC<{
   const conclusionPercentage = totalThoughts
     ? Math.round((conclusion / totalThoughts) * 100)
     : 0;
-
-  // Helper function to find thought text by ID
-  const getThoughtTextById = (thoughtId: string): string => {
-    if (!sermon.thoughts) return thoughtId;
-    
-    const thought = sermon.thoughts.find((t: Thought) => t.id === thoughtId);
-    return thought ? thought.text : thoughtId;
-  };
     
   return (
     <div data-testid="structure-stats">
@@ -83,65 +73,6 @@ const MockStructureStats: React.FC<{
           Work on Structure
         </button>
       </div>
-      
-      {sermon.structure && (
-        <div>
-          <h3>Structure Preview</h3>
-          <div>
-            {sermon.structure.introduction && sermon.structure.introduction.length > 0 && (
-              <div>
-                <strong>Introduction</strong>
-                <div>
-                  {sermon.structure.introduction.map((item, index) => (
-                    <span key={`intro-${index}`}>
-                      {getThoughtTextById(item)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {sermon.structure.main && sermon.structure.main.length > 0 && (
-              <div>
-                <strong>Main Part</strong>
-                <div>
-                  {sermon.structure.main.map((item, index) => (
-                    <span key={`main-${index}`}>
-                      {getThoughtTextById(item)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {sermon.structure.conclusion && sermon.structure.conclusion.length > 0 && (
-              <div>
-                <strong>Conclusion</strong>
-                <div>
-                  {sermon.structure.conclusion.map((item, index) => (
-                    <span key={`conclusion-${index}`}>
-                      {getThoughtTextById(item)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {sermon.structure.ambiguous && sermon.structure.ambiguous.length > 0 && (
-              <div>
-                <strong>Under Consideration</strong>
-                <div>
-                  {sermon.structure.ambiguous.map((item, index) => (
-                    <span key={`ambiguous-${index}`}>
-                      {getThoughtTextById(item)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -212,7 +143,7 @@ describe('StructureStats Component', () => {
     expect(recommendedMain.length).toBe(1);
   });
 
-  it('renders structure preview with correct thought texts', () => {
+  it('navigates to structure page when button is clicked', () => {
     render(
       <MockStructureStats 
         sermon={mockSermon} 
@@ -221,114 +152,27 @@ describe('StructureStats Component', () => {
       />
     );
 
-    // Check if all section titles are rendered
-    expect(screen.getByText('Structure Preview')).toBeInTheDocument();
-    expect(screen.getByText('Introduction')).toBeInTheDocument();
-    expect(screen.getByText('Main Part')).toBeInTheDocument();
-    expect(screen.getByText('Conclusion')).toBeInTheDocument();
-    expect(screen.getByText('Under Consideration')).toBeInTheDocument();
+    // Find and click the structure button
+    const structureButton = screen.getByText('Work on Structure');
+    fireEvent.click(structureButton);
 
-    // Check if thought texts are displayed correctly
-    expect(screen.getByText('Introduction thought')).toBeInTheDocument();
-    expect(screen.getByText('Main part thought')).toBeInTheDocument();
-    expect(screen.getByText('Conclusion thought')).toBeInTheDocument();
-    expect(screen.getByText('Ambiguous thought')).toBeInTheDocument();
+    // Check if navigation was triggered
+    expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
   });
 
-  it('does not render structure preview when sermon has no structure', () => {
-    const sermonWithoutStructure = { ...mockSermon, structure: undefined };
+  it('handles empty thoughts correctly', () => {
+    const emptySermon = { ...mockSermon, thoughts: [] };
+    const emptyTagCounts = { 'Вступление': 0, 'Основная часть': 0, 'Заключение': 0 };
     
     render(
       <MockStructureStats 
-        sermon={sermonWithoutStructure} 
-        tagCounts={mockTagCounts} 
-        totalThoughts={totalThoughts} 
-      />
-    );
-
-    // Should not find the structure preview section
-    expect(screen.queryByText('Structure Preview')).not.toBeInTheDocument();
-  });
-
-  it('renders empty section when section array is empty', () => {
-    const sermonWithEmptySections = { 
-      ...mockSermon,
-      structure: {
-        introduction: [],
-        main: ['thought2'],
-        conclusion: ['thought3'],
-        ambiguous: [],
-      }
-    };
-    
-    render(
-      <MockStructureStats 
-        sermon={sermonWithEmptySections} 
-        tagCounts={mockTagCounts} 
-        totalThoughts={totalThoughts} 
-      />
-    );
-
-    // Should not find the Introduction and Ambiguous sections
-    expect(screen.queryByText('Introduction')).not.toBeInTheDocument();
-    expect(screen.queryByText('Under Consideration')).not.toBeInTheDocument();
-    
-    // Should still find Main Part and Conclusion
-    expect(screen.getByText('Main Part')).toBeInTheDocument();
-    expect(screen.getByText('Conclusion')).toBeInTheDocument();
-  });
-
-  it('falls back to ID when thought is not found', () => {
-    const sermonWithMissingThought = { 
-      ...mockSermon,
-      structure: {
-        introduction: ['non-existent-id'],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      }
-    };
-    
-    render(
-      <MockStructureStats 
-        sermon={sermonWithMissingThought} 
-        tagCounts={mockTagCounts} 
-        totalThoughts={totalThoughts} 
-      />
-    );
-
-    // Should display the ID itself as fallback
-    expect(screen.getByText('non-existent-id')).toBeInTheDocument();
-  });
-
-  it('calculates percentages correctly with zero thoughts', () => {
-    render(
-      <MockStructureStats 
-        sermon={mockSermon} 
-        tagCounts={mockTagCounts} 
+        sermon={emptySermon} 
+        tagCounts={emptyTagCounts} 
         totalThoughts={0} 
       />
     );
 
-    // All percentages should be 0%
-    const percentages = screen.getAllByText('0%');
-    expect(percentages.length).toBe(3);
-  });
-
-  it('tests the work button navigation', () => {
-    render(
-      <MockStructureStats 
-        sermon={mockSermon} 
-        tagCounts={mockTagCounts} 
-        totalThoughts={totalThoughts} 
-      />
-    );
-    
-    // Find and click the work button
-    const workButton = screen.getByText('Work on Structure');
-    fireEvent.click(workButton);
-    
-    // Verify the router.push was called with the correct path
-    expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
+    // Check if the percentages are all 0%
+    expect(screen.getAllByText('0%').length).toBe(3);
   });
 }); 

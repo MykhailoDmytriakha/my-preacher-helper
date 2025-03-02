@@ -54,6 +54,17 @@ const config: Config.InitialOptions = {
     '!**/types/**',
     '!**/.next/**'
   ],
+  coverageReporters: [
+    "json",
+    "lcov",
+    "text",
+    "text-summary",
+    "json-summary"
+  ],
+  reporters: [
+    "default",
+    "<rootDir>/test-summary.js"
+  ],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
