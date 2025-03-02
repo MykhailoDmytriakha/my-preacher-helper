@@ -6,6 +6,9 @@
     },
     "app/api/thoughts/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/sort/route.ts": {
+      "maxDuration": 60
     }
   }
 } 
