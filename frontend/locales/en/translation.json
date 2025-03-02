@@ -198,6 +198,7 @@
     "moveDown": "Move down",
     "edit": "Edit",
     "delete": "Delete",
-    "add": "Add"
+    "add": "Add",
+    "saving": "Saving..."
   }
 } 
