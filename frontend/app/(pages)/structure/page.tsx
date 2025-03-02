@@ -942,7 +942,7 @@ function StructurePageContent() {
                   ? containers[containerKey].find((item) => item.id === activeId)
                   : null;
                 return activeItem ? (
-                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
+                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md whitespace-pre-wrap">
                     {activeItem.content}
                   </div>
                 ) : null;
