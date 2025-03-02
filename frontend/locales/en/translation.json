@@ -130,7 +130,8 @@
     "thoughtDeleteError": "Error deleting thought. Please try again.",
     "thoughtUpdateError": "Error updating thought in database",
     "microphoneUnavailable": "Microphone unavailable",
-    "addThoughtError": "Error adding thought"
+    "addThoughtError": "Error adding thought",
+    "aiSortingError": "Error sorting items with AI. Please try again."
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -165,7 +166,9 @@
     "normalMode": "Normal Mode",
     "outlinePoints": "Outline Points",
     "content": "Content",
-    "tags": "Tags"
+    "tags": "Tags",
+    "sortButton": "Sort ✨",
+    "sorting": "Sorting..."
   },
   "knowledge": {
     "title": "Sermon Insights",

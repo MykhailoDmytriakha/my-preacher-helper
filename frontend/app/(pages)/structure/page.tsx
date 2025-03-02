@@ -30,6 +30,8 @@ import { updateStructure } from "@/services/structure.service";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { getSermonOutline } from "@/services/outline.service";
+import { sortItemsWithAI } from "@/services/sortAI.service";
+import { toast } from 'sonner';
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -98,6 +100,7 @@ function StructurePageContent() {
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
+  const [isSorting, setIsSorting] = useState(false);
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -696,6 +699,91 @@ function StructurePageContent() {
     return content;
   };
 
+  const handleAiSort = async (columnId: string) => {
+    if (!sermonId || !columnId) return;
+    
+    try {
+      setIsSorting(true);
+      const columnItems = containers[columnId];
+      
+      if (columnItems.length <= 1) {
+        // No need to sort 0 or 1 items
+        console.log(`handleAiSort: Not enough items (${columnItems.length}) to sort in ${columnId}`);
+        setIsSorting(false);
+        return;
+      }
+      
+      console.log(`handleAiSort: Starting AI sort for ${columnItems.length} items in ${columnId}`);
+      // Pass the outline points for the specific column
+      const sortedItems = await sortItemsWithAI(
+        columnId, 
+        columnItems, 
+        sermonId, 
+        outlinePoints[columnId as keyof typeof outlinePoints]
+      );
+
+      // Verify we received valid sorted items
+      if (!sortedItems || !Array.isArray(sortedItems) || sortedItems.length !== columnItems.length) {
+        console.error(`handleAiSort: Invalid sorted items returned. Expected ${columnItems.length} items, got ${sortedItems?.length || 0}`);
+        toast.error(t('errors.aiSortingError') || "Error sorting items with AI. The AI couldn't properly organize your content.");
+        setIsSorting(false);
+        return;
+      }
+
+      // Log sorted items for debugging
+      console.log(`handleAiSort: Sorted items in ${columnId}:`);
+      for (const item of sortedItems) {
+        console.log(item.content.substring(0, 50) + (item.content.length > 50 ? '...' : ''));
+      }
+      
+      // Update the containers state with the sorted items and save to database in the same operation
+      setContainers(prev => {
+        const newContainers = {
+          ...prev,
+          [columnId]: sortedItems
+        };
+        
+        // Update the reference for onDragEnd
+        containersRef.current = newContainers;
+        
+        // Build the new structure for the database update within the callback
+        const newStructure = {
+          introduction: newContainers.introduction.map((item) => item.id),
+          main: newContainers.main.map((item) => item.id),
+          conclusion: newContainers.conclusion.map((item) => item.id),
+          ambiguous: newContainers.ambiguous.map((item) => item.id),
+        };
+        
+        // Save the updated structure to the database
+        // We use a timeout to ensure this doesn't block the state update
+        setTimeout(async () => {
+          try {
+            console.log(`handleAiSort: Saving structure to database for ${columnId}`, newStructure);
+            const response = await updateStructure(sermonId, newStructure);
+            console.log(`handleAiSort: Database update response:`, response);
+            
+            // Update the sermon state with the new structure
+            setSermon((prev) => (prev ? { ...prev, structure: newStructure } : prev));
+            
+            console.log(`handleAiSort: Successfully sorted and saved ${columnId} structure`);
+          } catch (dbError) {
+            console.error("handleAiSort: Error saving structure to database:", dbError);
+            toast.error(t('errors.savingError') || "Error saving sorted items. Please try again.");
+            setIsSorting(false);
+          }
+        }, 0);
+        
+        return newContainers;
+      });
+      
+    } catch (error) {
+      console.error("handleAiSort: Error sorting items with AI:", error);
+      toast.error(t('errors.aiSortingError') || "Error sorting items with AI. Please try again.");
+    } finally {
+      setIsSorting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -802,6 +890,8 @@ function StructurePageContent() {
                 showFocusButton={containers.ambiguous.length === 0}
                 isFocusMode={focusedColumn === "introduction"}
                 onToggleFocusMode={handleToggleFocusMode}
+                onAiSort={() => handleAiSort("introduction")}
+                isLoading={isSorting && focusedColumn === "introduction"}
                 className={focusedColumn === "introduction" ? "w-full" : ""}
               />
             )}
@@ -818,6 +908,8 @@ function StructurePageContent() {
                 showFocusButton={containers.ambiguous.length === 0}
                 isFocusMode={focusedColumn === "main"}
                 onToggleFocusMode={handleToggleFocusMode}
+                onAiSort={() => handleAiSort("main")}
+                isLoading={isSorting && focusedColumn === "main"}
                 className={focusedColumn === "main" ? "w-full" : ""}
               />
             )}
@@ -834,6 +926,8 @@ function StructurePageContent() {
                 showFocusButton={containers.ambiguous.length === 0}
                 isFocusMode={focusedColumn === "conclusion"}
                 onToggleFocusMode={handleToggleFocusMode}
+                onAiSort={() => handleAiSort("conclusion")}
+                isLoading={isSorting && focusedColumn === "conclusion"}
                 className={focusedColumn === "conclusion" ? "w-full" : ""}
               />
             )}
