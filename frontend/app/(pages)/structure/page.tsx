@@ -32,6 +32,7 @@ import "@locales/i18n";
 import { getSermonOutline } from "@/services/outline.service";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
+import { getContrastColor } from '@/utils/color';
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -944,6 +945,20 @@ function StructurePageContent() {
                 return activeItem ? (
                   <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md whitespace-pre-wrap">
                     {activeItem.content}
+                    
+                    {activeItem.customTagNames && activeItem.customTagNames.length > 0 && (
+                      <div className="flex flex-wrap gap-1 justify-end mt-2">
+                        {activeItem.customTagNames.map((tag) => (
+                          <span 
+                            key={tag.name}
+                            style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
+                            className="text-xs text-white px-2 py-1 rounded-full"
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : null;
               })()}
