@@ -66,7 +66,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
         
         const { header: sectionHeader, includeTags } = sectionMapping[sectionKey] || { header: sectionKey, includeTags: true };
         if (sectionThoughts.length > 0) {
-          content += formatSection(sectionHeader, sectionThoughts, includeTags) + "\n\n";
+          content += formatSection(sectionHeader, sectionThoughts, includeTags) + "\n\n" + "----------------------------------" + "\n\n";
         }
       }
     });
@@ -77,7 +77,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
       .filter(t => !structuredThoughtIds.has(t.id))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     if (otherThoughts.length > 0) {
-      content += formatSection(i18n.t('export.otherThoughts'), otherThoughts, true) + "\n\n";
+      content += formatSection(i18n.t('export.otherThoughts'), otherThoughts, true) + "\n\n" + "----------------------------------" + "\n\n";
     }
 
     return Promise.resolve(content);
@@ -136,11 +136,11 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     };
 
     let content = header;
-    if (introSection.length > 0) content += formatSection(i18n.t('tags.introduction'), introSection, false) + "\n\n";
-    if (mainSection.length > 0) content += formatSection(i18n.t('tags.mainPart'), mainSection, false) + "\n\n";
-    if (conclusionSection.length > 0) content += formatSection(i18n.t('tags.conclusion'), conclusionSection, false) + "\n\n";
-    if (multiTagSection.length > 0) content += formatSection(i18n.t('export.multiTagThoughts'), multiTagSection, true) + "\n\n";
-    if (otherSection.length > 0) content += formatSection(i18n.t('export.otherThoughts'), otherSection, true) + "\n\n";
+    if (introSection.length > 0) content += formatSection(i18n.t('tags.introduction'), introSection, false) + "\n\n" + "----------------------------------" + "\n\n";
+    if (mainSection.length > 0) content += formatSection(i18n.t('tags.mainPart'), mainSection, false) + "\n\n" + "----------------------------------" + "\n\n";
+    if (conclusionSection.length > 0) content += formatSection(i18n.t('tags.conclusion'), conclusionSection, false) + "\n\n" + "----------------------------------" + "\n\n";
+    if (multiTagSection.length > 0) content += formatSection(i18n.t('export.multiTagThoughts'), multiTagSection, true) + "\n\n" + "----------------------------------" + "\n\n";
+    if (otherSection.length > 0) content += formatSection(i18n.t('export.otherThoughts'), otherSection, true) + "\n\n" + "----------------------------------" + "\n\n";
 
     console.log('[Date Sorting] Group counts:', {
       intro: introSection.length,
