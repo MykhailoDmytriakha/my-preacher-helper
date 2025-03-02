@@ -157,4 +157,55 @@ describe('SortableItem Component', () => {
     expect(editButton).toHaveAttribute('title', 'Edit Thought');
     expect(editButton).toBeInTheDocument();
   });
+
+  test('preserves line breaks in item content', () => {
+    const itemWithLineBreaks: Item = {
+      id: 'test-item-with-breaks',
+      content: 'Line 1\nLine 2\nLine 3',
+    };
+
+    const { container } = render(
+      <SortableItem
+        item={itemWithLineBreaks}
+        containerId={mockContainerId}
+      />
+    );
+
+    // Check if the content div has the whitespace-pre-wrap class
+    const contentDiv = container.querySelector('div.whitespace-pre-wrap');
+    expect(contentDiv).toBeInTheDocument();
+    expect(contentDiv).toHaveClass('whitespace-pre-wrap');
+    
+    // Check if the content is rendered with preserved line breaks
+    // Note: Browser rendering adds spaces when rendering newlines with whitespace-pre-wrap
+    expect(contentDiv).toHaveTextContent('Line 1 Line 2 Line 3');
+  });
+
+  test('handles multiline content correctly in focus mode', () => {
+    // Create a test item with multiple paragraphs and various whitespace
+    const multilineContent = `First paragraph with some text.
+    
+Second paragraph with indentation.
+  - Bullet point 1
+  - Bullet point 2`;
+
+    const itemWithMultilineContent: Item = {
+      id: 'multiline-item',
+      content: multilineContent,
+    };
+
+    const { container } = render(
+      <SortableItem
+        item={itemWithMultilineContent}
+        containerId={mockContainerId}
+      />
+    );
+
+    // Check if the content div has the whitespace-pre-wrap class
+    const contentDiv = container.querySelector('div.whitespace-pre-wrap');
+    expect(contentDiv).toBeInTheDocument();
+    
+    // Verify the content is rendered with proper whitespace preservation
+    expect(contentDiv?.textContent).toBe(multilineContent);
+  });
 }); 

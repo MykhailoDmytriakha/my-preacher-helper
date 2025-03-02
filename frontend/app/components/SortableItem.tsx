@@ -40,7 +40,7 @@ export default function SortableItem({ item, containerId, onEdit }: SortableItem
       {...listeners}
       className="relative group mb-4 p-4 bg-white rounded-md border border-gray-200 shadow-md hover:shadow-xl"
     >
-      <div className="pr-20">
+      <div className="pr-20 whitespace-pre-wrap">
         {item.content}
       </div>
       
