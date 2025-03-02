@@ -118,7 +118,12 @@
     "noMatchingThoughts": "No thoughts match your current filters",
     "resetFilters": "Reset all filters",
     "searchThoughts": "Search in thoughts",
-    "activeFilters": "Active filters"
+    "activeFilters": "Active filters",
+    "sortOrder": "Sort Order",
+    "sortByDate": "By Date (Newest First)",
+    "sortByStructure": "By Structure (Intro → Main → Conclusion)",
+    "noStructureTagsPresent": "No structure tags present",
+    "requiresStructureTags": "Requires structure tags"
   },
   "audio": {
     "processing": "Processing...",

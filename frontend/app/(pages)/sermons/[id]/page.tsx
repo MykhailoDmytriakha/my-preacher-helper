@@ -43,6 +43,7 @@ export default function SermonPage() {
   const [structureFilter, setStructureFilter] = useState('all');
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [activeCount, setActiveCount] = useState<number>(0);
+  const [sortOrder, setSortOrder] = useState('date');
 
   // Create a ref for the filter dropdown
   const filterRef = useRef<HTMLDivElement>(null);
@@ -84,12 +85,24 @@ export default function SermonPage() {
     };
     fetchAllowedTags();
   }, [sermon]);
+  
+  // Check if any structure tags are present in thoughts
+  const hasStructureTags = sermon?.thoughts ? (
+    sermon.thoughts.some(thought => 
+      thought.tags.includes("Вступление") || 
+      thought.tags.includes("Основная часть") || 
+      thought.tags.includes("Заключение") ||
+      thought.tags.includes("Вступ") ||
+      thought.tags.includes("Основна частина") ||
+      thought.tags.includes("Висновок")
+    )
+  ) : false;
 
   // Filter thoughts based on selected filters
   const getFilteredThoughts = () => {
     const sortedThoughts = getSortedThoughts();
     
-    return sortedThoughts.filter(thought => {
+    const filteredThoughts = sortedThoughts.filter(thought => {
       // Get required tags - these match the constants used elsewhere in the app
       const requiredTags = ["Вступление", "Основная часть", "Заключение"];
       const hasRequiredTag = thought.tags.some(tag => requiredTags.includes(tag));
@@ -114,6 +127,67 @@ export default function SermonPage() {
       // If we got here, all active filters matched
       return true;
     });
+
+    // Apply structure sorting if needed
+    if (sortOrder === 'structure') {
+      return filteredThoughts.sort((a, b) => {
+        // Define structure order based on multiple languages (Russian and Ukrainian)
+        const structureOrder = ["Вступление", "Основная часть", "Заключение", "Вступ", "Основна частина", "Висновок"];
+        
+        // Use sermon.structure if available for precise ordering
+        if (sermon && sermon.structure) {
+          // Get all thought IDs in order from the structure
+          const structuredIds = [
+            ...(sermon.structure.introduction || []),
+            ...(sermon.structure.main || []),
+            ...(sermon.structure.conclusion || [])
+          ];
+          
+          // If both thoughts are in the structure, use that order
+          const aIndex = structuredIds.indexOf(a.id);
+          const bIndex = structuredIds.indexOf(b.id);
+          
+          if (aIndex !== -1 && bIndex !== -1) {
+            return aIndex - bIndex;
+          }
+          
+          // If only one is in the structure, prioritize it
+          if (aIndex !== -1) return -1;
+          if (bIndex !== -1) return 1;
+        }
+        
+        // Fall back to tag-based sorting if structure doesn't include these thoughts
+        // Get the first structure tag for each thought
+        const aStructureTag = a.tags.find(tag => structureOrder.includes(tag));
+        const bStructureTag = b.tags.find(tag => structureOrder.includes(tag));
+        
+        // If both have structure tags
+        if (aStructureTag && bStructureTag) {
+          // Map to canonical order (intro = 0, main = 1, conclusion = 2)
+          const getCanonicalIndex = (tag: string) => {
+            if (tag === "Вступление" || tag === "Вступ") return 0;
+            if (tag === "Основная часть" || tag === "Основна частина") return 1;
+            if (tag === "Заключение" || tag === "Висновок") return 2;
+            return -1;
+          };
+          
+          const aCanonicalIndex = getCanonicalIndex(aStructureTag);
+          const bCanonicalIndex = getCanonicalIndex(bStructureTag);
+          
+          if (aCanonicalIndex !== bCanonicalIndex) return aCanonicalIndex - bCanonicalIndex;
+        }
+        
+        // If only one has a structure tag, prioritize it
+        if (aStructureTag && !bStructureTag) return -1;
+        if (!aStructureTag && bStructureTag) return 1;
+        
+        // If neither has a structure tag or they have the same structure tag,
+        // maintain date sorting as a secondary sort
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+    }
+    
+    return filteredThoughts;
   };
 
   // Update active count whenever filters change
@@ -122,6 +196,18 @@ export default function SermonPage() {
       setActiveCount(getFilteredThoughts().length);
     }
   }, [sermon, viewFilter, structureFilter, tagFilters]);
+
+  // Reset structure filter and sort order when no structure tags are present
+  useEffect(() => {
+    if (!hasStructureTags) {
+      if (structureFilter !== 'all') {
+        setStructureFilter('all');
+      }
+      if (sortOrder === 'structure') {
+        setSortOrder('date');
+      }
+    }
+  }, [hasStructureTags, structureFilter, sortOrder]);
 
   if (loading || !sermon) {
     return (
@@ -249,6 +335,7 @@ export default function SermonPage() {
     setViewFilter('all');
     setStructureFilter('all');
     setTagFilters([]);
+    setSortOrder('date');
   };
 
   return (
@@ -276,7 +363,7 @@ export default function SermonPage() {
                       className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                     >
                       {t('filters.filter')}
-                      {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0) && (
+                      {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
                         <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
                       )}
                       <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -329,9 +416,16 @@ export default function SermonPage() {
                           
                           {/* Structure filter */}
                           <div className="px-4 py-2">
-                            <h3 className="text-sm font-medium">{t('filters.byStructure')}</h3>
+                            <h3 className="text-sm font-medium">
+                              {t('filters.byStructure')}
+                              {!hasStructureTags && (
+                                <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
+                                  ({t('filters.noStructureTagsPresent') || 'No structure tags present'})
+                                </span>
+                              )}
+                            </h3>
                             <div className="mt-2 space-y-2">
-                              <label className="flex items-center">
+                              <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                 <input
                                   type="radio"
                                   name="structureFilter"
@@ -339,11 +433,12 @@ export default function SermonPage() {
                                   checked={structureFilter === 'all'}
                                   onChange={() => setStructureFilter('all')}
                                   className="h-4 w-4 text-blue-600"
+                                  disabled={!hasStructureTags}
                                 />
                                 <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.allStructure')}</span>
                               </label>
                               {["Вступление", "Основная часть", "Заключение"].map(tag => (
-                                <label key={tag} className="flex items-center">
+                                <label key={tag} className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                   <input
                                     type="radio"
                                     name="structureFilter"
@@ -351,10 +446,48 @@ export default function SermonPage() {
                                     checked={structureFilter === tag}
                                     onChange={() => setStructureFilter(tag)}
                                     className="h-4 w-4 text-blue-600"
+                                    disabled={!hasStructureTags}
                                   />
                                   <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t(`tags.${tag.toLowerCase()}`)}</span>
                                 </label>
                               ))}
+                            </div>
+                          </div>
+                          
+                          {/* Sort order */}
+                          <div className="px-4 py-2">
+                            <h3 className="text-sm font-medium">{t('filters.sortOrder') || 'Sort Order'}</h3>
+                            <div className="mt-2 space-y-2">
+                              <label className="flex items-center">
+                                <input
+                                  type="radio"
+                                  name="sortOrder"
+                                  value="date"
+                                  checked={sortOrder === 'date'}
+                                  onChange={() => setSortOrder('date')}
+                                  className="h-4 w-4 text-blue-600"
+                                />
+                                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
+                              </label>
+                              <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <input
+                                  type="radio"
+                                  name="sortOrder"
+                                  value="structure"
+                                  checked={sortOrder === 'structure'}
+                                  onChange={() => setSortOrder('structure')}
+                                  className="h-4 w-4 text-blue-600"
+                                  disabled={!hasStructureTags}
+                                />
+                                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                                  {t('filters.sortByStructure') || 'By Structure (Intro → Main → Conclusion)'}
+                                  {!hasStructureTags && (
+                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                      ({t('filters.requiresStructureTags') || 'Requires structure tags'})
+                                    </span>
+                                  )}
+                                </span>
+                              </label>
                             </div>
                           </div>
                           
@@ -384,7 +517,7 @@ export default function SermonPage() {
               </div>
               <div className="space-y-5">
                 {/* Active filters indicator */}
-                {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0) && (
+                {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
                   <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                       {t('filters.activeFilters')}:
@@ -399,6 +532,12 @@ export default function SermonPage() {
                     {structureFilter !== 'all' && (
                       <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
                         {t(`tags.${structureFilter.toLowerCase()}`)}
+                      </span>
+                    )}
+                    
+                    {sortOrder === 'structure' && (
+                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+                        {t('filters.sortByStructure') || 'Sorted by Structure'}
                       </span>
                     )}
                     

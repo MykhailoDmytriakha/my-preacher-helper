@@ -124,7 +124,12 @@
     "noMatchingThoughts": "Нет мыслей, соответствующих вашим фильтрам",
     "resetFilters": "Сбросить все фильтры",
     "searchThoughts": "Поиск в мыслях",
-    "activeFilters": "Активные фильтры"
+    "activeFilters": "Активные фильтры",
+    "sortOrder": "Порядок сортировки",
+    "sortByDate": "По дате (сначала новые)",
+    "sortByStructure": "По структуре (вступление → основная часть → заключение)",
+    "noStructureTagsPresent": "Нет тегов структуры",
+    "requiresStructureTags": "Требуются теги структуры"
   },
   "audio": {
     "processing": "Обработка...",

@@ -189,7 +189,12 @@
     "noMatchingThoughts": "Немає думок, які відповідають вашим фільтрам",
     "resetFilters": "Скинути всі фільтри",
     "searchThoughts": "Пошук у думках",
-    "activeFilters": "Активні фільтри"
+    "activeFilters": "Активні фільтри",
+    "sortOrder": "Порядок сортування",
+    "sortByDate": "За датою (спочатку нові)",
+    "sortByStructure": "За структурою (вступ → основна частина → висновок)",
+    "noStructureTagsPresent": "Немає тегів структури",
+    "requiresStructureTags": "Потрібні теги структури"
   },
   "common": {
     "comingSoon": "Скоро буде доступно",
