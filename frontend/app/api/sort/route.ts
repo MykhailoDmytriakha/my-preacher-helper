@@ -36,6 +36,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
     
+    // Log item IDs for easier tracking
+    console.log("Sort route: Items to sort (IDs):", items.map((item: Item) => item.id.slice(0, 4)).join(', '));
+    
     // Perform the AI sorting
     const sortedItems = await sortItemsWithAI(columnId, items, sermon, outlinePoints);
     
@@ -52,7 +55,13 @@ export async function POST(request: Request) {
 }
 
 /**
- * Uses AI to sort items in a logical sequence
+ * Uses AI to sort items in a logical sequence based on the provided outline points.
+ * 
+ * @param columnId - The ID of the column being sorted (e.g., "introduction", "main", "conclusion").
+ * @param items - The list of items to sort.
+ * @param sermon - The sermon object containing title and scripture for context.
+ * @param outlinePoints - Optional outline points to guide the sorting.
+ * @returns A promise that resolves to the sorted list of items.
  */
 async function sortItemsWithAI(
   columnId: string, 
@@ -69,6 +78,21 @@ async function sortItemsWithAI(
       return items; // No need to sort 0 or 1 items
     }
     
+    // Create a mapping of keys (first 4 chars of ID) to items for reference and logging
+    const itemsMapByKey: Record<string, Item> = {};
+    const keyToIndex: Record<string, number> = {};
+    items.forEach((item, index) => {
+      const key = item.id.slice(0, 4);
+      itemsMapByKey[key] = item;
+      keyToIndex[key] = index;
+    });
+    
+    // Log the mapping for debugging
+    console.log("Sort AI: Item key to ID mapping:");
+    Object.entries(itemsMapByKey).forEach(([key, item]) => {
+      console.log(`  Key ${key} -> ID: ${item.id.slice(0, 4)}, Content preview: "${item.content.substring(0, 30)}..."`);
+    });
+    
     const sectionNames: Record<string, string> = {
       introduction: "Introduction (opening thoughts)",
       main: "Main Part (core message)",
@@ -78,10 +102,11 @@ async function sortItemsWithAI(
     
     const sectionName = sectionNames[columnId] || columnId;
     
-    // Create the items list without using arrow functions in the template string
+    // Create the items list using the item key (first 4 characters of ID) for clarity in the prompt
     let itemsList = "";
-    for (let i = 0; i < items.length; i++) {
-      itemsList += `${i+1}. ${items[i].content}\n`;
+    for (const item of items) {
+      const key = item.id.slice(0,4);
+      itemsList += `key: ${key}, content: ${item.content}\n`;
     }
     
     // Add outline points information if available
@@ -115,20 +140,19 @@ async function sortItemsWithAI(
       IMPORTANT: Return a JSON object in this format:
       {
         "sortedItems": [
-          {"index": 2, "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
-          {"index": 0, "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
+          {"key": "b086", "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
+          {"key": "ee77", "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
           ...
         ]
       }
       
-      The "index" should be the original position (0-based) of the item in the list.
+      The "key" should be the first 4 characters of the original item ID.
       The "outlinePoint" should indicate which outline point this item corresponds to.
       The "content" should be the first 5-10 words of the item to confirm you understand what you're sorting.
       ${!outlinePointsText ? "If no outline points are provided, use \"General\" for the outlinePoint field." : ""}
       
-      CRITICAL INSTRUCTION: You MUST include ALL ${items.length} items in your response without skipping any. Every index from 0 to ${items.length - 1} must be included exactly once in your sortedItems array.
-      Your "sortedItems" array MUST contain exactly ${items.length} objects, one for each item (indices 0 to ${items.length - 1}).
-      Double-check that you've included all indices from 0 to ${items.length - 1} before submitting your response.
+      CRITICAL INSTRUCTION: You MUST include ALL ${items.length} items in your response without skipping any. Every item key present in the input must be included exactly once in the sortedItems array.
+      Double-check that you've included all keys before submitting your response.
     `;
     
     if (isDebugMode) {
@@ -141,7 +165,7 @@ async function sortItemsWithAI(
       messages: [
         { 
           role: "system", 
-          content: "You are a sermon organization assistant. Your job is to arrange sermon notes in a logical sequence that follows the provided outline structure exactly. You must carefully consider the actual content of each item being sorted and explicitly connect each item to the specific outline point it best relates to. Think deeply about how each sermon item fits into the overall structure. For each item you sort, include the original index, the outline point it matches, and a brief content preview to demonstrate you truly understand what you're organizing. This explicit matching helps ensure the sermon maintains a coherent theological flow. VERY IMPORTANT: You MUST include ALL items in your response. Do not leave any items out!"
+          content: "You are a sermon organization assistant. Your job is to arrange sermon notes in a logical sequence that follows the provided outline structure exactly. For each item you sort, include the key (first 4 characters of the original item ID), the outline point it matches, and a brief content preview. VERY IMPORTANT: You MUST include ALL items in your response. Do not leave any items out!"
         },
         { role: "user", content: userMessage },
       ]
@@ -157,146 +181,167 @@ async function sortItemsWithAI(
     try {
       result = JSON.parse(rawJson || "{}");
       
-      // Add enhanced debug logging here, after result is defined
-      if (isDebugMode && result.sortedItems && Array.isArray(result.sortedItems)) {
-        // Group items by outline point for better visualization
-        const groupedByOutline: Record<string, Array<{index: number, content: string}>> = {};
+      // Log original item order for comparison
+      const originalItemKeys = items.map((item: Item) => item.id.slice(0, 4));
+      console.log("DEBUG: Original item keys:", originalItemKeys.join(','));
+      
+      // Validate and extract keys from the AI response
+      if (!result.sortedItems || !Array.isArray(result.sortedItems)) {
+        console.error("Invalid response format from AI:", result);
+        return items; // Return original order if malformed
+      }
+      
+      const extractedKeys: string[] = [];
+      result.sortedItems.forEach((item: any, pos: number) => {
+        if (item && typeof item.key === 'string') {
+          extractedKeys.push(item.key);
+          const originalItem = itemsMapByKey[item.key];
+          console.log(`DEBUG: Raw API response item ${pos}: key=${item.key}, maps to ID=${originalItem ? originalItem.id.slice(0,4) : 'INVALID'}, content="${originalItem ? originalItem.content.substring(0, 30) : 'INVALID'}..."`);
+        }
+      });
+      console.log("DEBUG: All keys extracted from raw API response:", extractedKeys);
+      
+      // Grouping by outline points if in debug mode
+      if (isDebugMode && result.sortedItems.length > 0) {
+        const groupedByOutline: Record<string, Array<{key: string, content: string}>> = {};
+        const includedKeys = new Set<string>();
         
-        // Track which indices were included in the response
-        const includedIndices = new Set<number>();
-        
-        result.sortedItems.forEach((item: {index: number, outlinePoint?: string, content: string}) => {
-          if (item && typeof item.index === 'number') {
-            includedIndices.add(item.index);
+        result.sortedItems.forEach((item: {key: string, outlinePoint?: string, content: string}) => {
+          if (item && typeof item.key === 'string') {
+            includedKeys.add(item.key);
             const outlineKey = item.outlinePoint || 'Unspecified';
             if (!groupedByOutline[outlineKey]) {
               groupedByOutline[outlineKey] = [];
             }
             groupedByOutline[outlineKey].push({
-              index: item.index,
-              content: item.content || items[item.index]?.content?.substring(0, 30) || 'Unknown content'
+              key: item.key,
+              content: item.content || (itemsMapByKey[item.key]?.content.substring(0, 30) || 'Unknown content')
             });
           }
         });
         
-        // Find missing indices
-        const missingIndices: number[] = [];
-        for (let i = 0; i < items.length; i++) {
-          if (!includedIndices.has(i)) {
-            missingIndices.push(i);
+        // Check for missing keys
+        const missingKeys: string[] = [];
+        for (const key of Object.keys(itemsMapByKey)) {
+          if (!includedKeys.has(key)) {
+            missingKeys.push(key);
           }
         }
         
         console.log("DEBUG MODE: Items grouped by outline points:");
-        Object.entries(groupedByOutline).forEach(([outlinePoint, items]) => {
-          console.log(`  ${outlinePoint} (${items.length} items):`);
-          items.forEach(item => {
-            console.log(`    - Index ${item.index}: "${item.content}"`);
+        Object.entries(groupedByOutline).forEach(([outline, arr]) => {
+          console.log(`  ${outline} (${arr.length} items):`);
+          arr.forEach(item => {
+            console.log(`    - Key ${item.key}: "${item.content}"`);
           });
         });
         
-        // Log information about missing indices
-        if (missingIndices.length > 0) {
-          console.log(`DEBUG MODE: WARNING - ${missingIndices.length} indices missing from AI response:`);
-          console.log(`  Missing indices: ${missingIndices.join(', ')}`);
-          
-          // Show content of the missing items
-          console.log("  Missing items content preview:");
-          missingIndices.forEach(index => {
-            const content = items[index]?.content?.substring(0, 50) || 'Unknown';
-            console.log(`    - Index ${index}: "${content}..."`);
+        if (missingKeys.length > 0) {
+          console.log(`DEBUG MODE: WARNING - ${missingKeys.length} keys missing from AI response:`);
+          console.log(`  Missing keys: ${missingKeys.join(', ')}`);
+          missingKeys.forEach(key => {
+            const content = itemsMapByKey[key]?.content.substring(0, 50) || 'Unknown';
+            console.log(`    - Key ${key}: "${content}..."`);
           });
         } else {
-          console.log("DEBUG MODE: All indices included in AI response. Great!");
+          console.log("DEBUG MODE: All keys included in AI response.");
         }
       }
     } catch (jsonError) {
       console.error("sortItemsWithAI: JSON parsing error:", jsonError);
       console.error("sortItemsWithAI: Raw JSON was:", rawJson);
-      return items; // Return original order if there's a parsing issue
+      return items; // Return original order if parsing fails
     }
     
-    if (!result.sortedItems || !Array.isArray(result.sortedItems)) {
-      console.error("Invalid response format from AI:", result);
-      return items; // Return original order if there's an issue
+    // Extract and validate keys from the AI response
+    const aiSortedKeys = result.sortedItems
+      .map((aiItem: any) => {
+        if (aiItem && typeof aiItem.key === 'string') {
+          let key = aiItem.key;
+          if (!itemsMapByKey[key] && key.length > 4) {
+            // Attempt to correct the key by taking the last 4 characters
+            const correctedKey = key.substring(key.length - 4);
+            if (itemsMapByKey[correctedKey]) {
+              console.log(`AI sorted: Corrected key from ${key} to ${correctedKey}`);
+              key = correctedKey;
+            } else {
+              console.log(`AI sorted: Key ${key} is invalid even after correction attempt.`);
+              return null;
+            }
+          } else if (!itemsMapByKey[key]) {
+            console.log(`AI sorted: Invalid key ${key} -> Not found in itemsMapByKey`);
+            return null;
+          }
+          const originalItem = itemsMapByKey[key];
+          console.log(`AI sorted: Valid key ${key} -> ID: ${originalItem.id.slice(0, 4)}, Content: "${originalItem.content.substring(0, 30)}..."`);
+          return key;
+        }
+        return null;
+      })
+      .filter((key: string | null): key is string => key !== null);
+
+    // Remove duplicates, keeping the first occurrence
+    const uniqueKeys: string[] = [];
+    const seenKeys = new Set<string>();
+    
+    for (const key of aiSortedKeys) {
+      if (!seenKeys.has(key)) {
+        uniqueKeys.push(key);
+        seenKeys.add(key);
+      } else {
+        console.log(`AI sorted: Skipping duplicate key ${key} -> ID: ${itemsMapByKey[key].id.slice(0, 4)}`);
+      }
     }
     
-    // Extract the indices from the sortedItems array
-    let order = result.sortedItems.map((item: { index: number; outlinePoint?: string; content: string }) => {
-      // Log some information about each sorted item
-      if (item && typeof item.index === 'number' && typeof item.content === 'string') {
-        const outlinePointInfo = item.outlinePoint ? `, Outline: "${item.outlinePoint}"` : '';
-        console.log(`AI sorted: Index ${item.index}${outlinePointInfo}, Content: "${item.content}"`);
-        return item.index;
+    console.log("Sort AI: Unique sorted keys after removing duplicates:", uniqueKeys);
+
+    // Detect missing keys
+    const includedKeysSet = new Set(uniqueKeys);
+    const missingKeys: string[] = [];
+    
+    Object.keys(itemsMapByKey).forEach(key => {
+      if (!includedKeysSet.has(key)) {
+        missingKeys.push(key);
+        console.log(`AI sorted: Missing key ${key} -> ID: ${key}, Content: "${itemsMapByKey[key].content.substring(0, 30)}..."`);
       }
-      return null;
-    }).filter((index: number | null) => index !== null);
-    
-    // Validate and fix the order array to ensure it contains valid indices
-    order = order.filter((index: number) => 
-      typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < items.length
-    );
-    
-    // Step 2: Add any missing indices in their original order
-    const usedIndices = new Set(order);
-    const missingIndices = [];
-    
-    for (let i = 0; i < items.length; i++) {
-      if (!usedIndices.has(i)) {
-        missingIndices.push(i);
-      }
-    }
-    
-    // If we have missing indices, append them to maintain all items
-    if (missingIndices.length > 0) {
-      console.log(`Found ${missingIndices.length} missing indices, appending them:`, missingIndices);
-      
-      // Also log the content of missing items to help debug
-      if (isDebugMode) {
-        console.log("Content preview of missing items:");
-        missingIndices.forEach(index => {
-          console.log(`  Index ${index}: "${items[index]?.content?.substring(0, 30)}..."`);
-        });
-      }
-      
-      order = [...order, ...missingIndices];
-    }
-    
-    // Step 3: Handle duplicate indices by keeping only the first occurrence
-    const seenIndices = new Set();
-    order = order.filter((index: number) => {
-      if (seenIndices.has(index)) {
-        return false;
-      }
-      seenIndices.add(index);
-      return true;
     });
     
-    // Step 4: Ensure we have exactly the right number of indices
-    if (order.length !== items.length) {
-      console.error("Invalid order after cleanup, returning original order:", order);
-      return items;
+    // Create final order of keys by appending missing keys
+    const finalKeysOrder = [...uniqueKeys, ...missingKeys];
+    if (finalKeysOrder.length !== items.length) {
+      console.error(`CRITICAL ERROR: Final keys order has ${finalKeysOrder.length} items, but expected ${items.length}. Adjusting...`);
+      while (finalKeysOrder.length > items.length) {
+        const removed = finalKeysOrder.pop();
+        console.error(`Removed extra key: ${removed}`);
+      }
+      Object.keys(itemsMapByKey).forEach(key => {
+        if (!finalKeysOrder.includes(key)) {
+          finalKeysOrder.push(key);
+          console.error(`Added missing key: ${key}`);
+        }
+      });
     }
     
-    // Reorder the items based on the cleaned-up AI's suggestion
-    const sortedItems = order.map((index: number) => items[index]);
+    console.log("Sort AI: Final order of keys:", finalKeysOrder);
     
-    // Calculate execution time
+    // Map keys to items to form the sortedItems
+    const sortedItems = finalKeysOrder.map(key => itemsMapByKey[key]);
+    
+    // Log final sorted order with IDs
+    console.log("Sort AI: Final sorted order (IDs):", sortedItems.map(item => item.id.slice(0, 4)).join(', '));
+    
+    // Calculate and log execution time
     const executionTime = Date.now() - startTime;
     console.log(`SortItemsWithAI: AI sorting completed in ${executionTime}ms for ${items.length} items`);
     
-    // Log the reordering without using map in the template string
-    let originalIds = "";
-    let newIds = "";
-    for (let i = 0; i < items.length; i++) {
-      originalIds += (i > 0 ? ',' : '') + items[i].id.slice(0, 4);
-      newIds += (i > 0 ? ',' : '') + sortedItems[i].id.slice(0, 4);
-    }
+    // Log before/after comparison
+    const originalIds = items.map(item => item.id.slice(0, 4)).join(',');
+    const newIds = sortedItems.map(item => item.id.slice(0, 4)).join(',');
     console.log(`SortItemsWithAI: Reordered from [${originalIds}] to [${newIds}]`);
     
     return sortedItems;
   } catch (error) {
     console.error("Error in AI sorting:", error);
-    return items; // Return original order if there's an error
+    return items; // Return original order if an error occurs
   }
-} 
+}
