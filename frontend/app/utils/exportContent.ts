@@ -1,6 +1,20 @@
 import type { Sermon, Structure, Thought } from "@/models/models";
 import { i18n } from '@locales/i18n';
 
+// Debug flag - can be turned on/off as needed, or controlled via environment variable
+const DEBUG_EXPORT = false;
+
+// Centralized debug logger
+const debugLog = (message: string, data?: any) => {
+  if (DEBUG_EXPORT) {
+    if (data) {
+      console.log(`[Export] ${message}`, data);
+    } else {
+      console.log(`[Export] ${message}`);
+    }
+  }
+};
+
 export function exportSermonContent(sermon: Sermon): Promise<string> {
   if (sermon.title.trim() === '' || sermon.verse.trim() === '') {
     return Promise.resolve('');
@@ -11,10 +25,10 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
 
   const structure = sermon.structure;
 
-  console.log('[Structure Export] Sermon:', sermon);
+  debugLog("Starting sermon export", { id: sermon.id, title: sermon.title });
 
   if (structure && !Array.isArray(structure) && Object.keys(structure).length > 0) {
-    console.log('[Structure Export] Using persisted structure order');
+    debugLog("Using persisted structure order");
     
     // Build a map of thought IDs to thoughts, applying text modifications if applicable
     const requiredTags = ["Вступление", "Основная часть", "Заключение"];
@@ -46,7 +60,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
       ambiguous: { header: i18n.t('export.otherThoughts'), includeTags: true }
     };
 
-    console.log('[Structure Export] Raw structure:', JSON.stringify(structure, null, 2));
+    debugLog("Structure format", { structureKeys: Object.keys(structure) });
 
     // Define the desired order of sections
     const sectionOrder: (keyof Structure)[] = ['introduction', 'main', 'conclusion', 'ambiguous'];
@@ -54,15 +68,12 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     // Process structured sections in the specified order
     sectionOrder.forEach((sectionKey: keyof Structure) => {
       const thoughtIds = structure[sectionKey];
-      console.log(`[Structure Export] Processing section ${sectionKey} with ${thoughtIds?.length || 0} thoughts`);
+      debugLog(`Processing section ${sectionKey}`, { count: thoughtIds?.length || 0 });
       
       if (thoughtIds && Array.isArray(thoughtIds) && thoughtIds.length > 0) {
         const sectionThoughts = thoughtIds
           .map((id: string) => thoughtMap[id])
           .filter(t => t !== undefined);
-
-        console.log(`[Structure Export] Section ${sectionKey} ordered thoughts:`, 
-          sectionThoughts.map(t => `${t.id} (${new Date(t.date).toISOString()})`));
         
         const { header: sectionHeader, includeTags } = sectionMapping[sectionKey] || { header: sectionKey, includeTags: true };
         if (sectionThoughts.length > 0) {
@@ -76,6 +87,9 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     const otherThoughts = sermon.thoughts
       .filter(t => !structuredThoughtIds.has(t.id))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    debugLog("Unstructured thoughts", { count: otherThoughts.length });
+    
     if (otherThoughts.length > 0) {
       content += formatSection(i18n.t('export.otherThoughts'), otherThoughts, true) + "\n\n" + "----------------------------------" + "\n\n";
     }
@@ -83,16 +97,14 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     return Promise.resolve(content);
   } else {
     // Date-based sorting remains unchanged for this fix
-    console.log('[Date Sorting] No structure found, using date-based sorting');
+    debugLog("No structure found, using date-based sorting");
     const thoughts: Thought[] = [...sermon.thoughts].sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
-      console.log(`[Date Sorting] Comparing ${a.id} (${a.date}) vs ${b.id} (${b.date}) => ${dateA - dateB}`);
       return dateA - dateB;
     });
 
-    console.log('[Date Sorting] Final sorted order:',
-      thoughts.map(t => `${t.id} (${t.date})`));
+    debugLog("Sorted thoughts by date", { count: thoughts.length });
 
     const introSection: Thought[] = [];
     const mainSection: Thought[] = [];
@@ -142,7 +154,7 @@ export function exportSermonContent(sermon: Sermon): Promise<string> {
     if (multiTagSection.length > 0) content += formatSection(i18n.t('export.multiTagThoughts'), multiTagSection, true) + "\n\n" + "----------------------------------" + "\n\n";
     if (otherSection.length > 0) content += formatSection(i18n.t('export.otherThoughts'), otherSection, true) + "\n\n" + "----------------------------------" + "\n\n";
 
-    console.log('[Date Sorting] Group counts:', {
+    debugLog("Section counts", {
       intro: introSection.length,
       main: mainSection.length,
       conclusion: conclusionSection.length,

@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run debug:directory && cross-env NODE_ENV=test npm test && next build",
+    "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:clean && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "cross-env NODE_ENV=test jest --verbose --coverage",
+    "test:clean": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --coverage",
     "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
     "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
     "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",

@@ -11,39 +11,121 @@ const portalRoot = document.createElement('div');
 portalRoot.setAttribute('id', 'portal-root');
 document.body.appendChild(portalRoot);
 
-// Mock for React 18's createRoot API
-jest.mock('react-dom/client', () => ({
-  createRoot: (container) => {
-    // Ensure we have a valid container for createRoot
-    let validContainer = container;
-    if (!container || typeof container.appendChild !== 'function') {
-      // If container is invalid, create a new div to use as container
-      console.warn('Invalid container provided to createRoot, creating a fallback container');
-      validContainer = document.createElement('div');
-      document.body.appendChild(validContainer);
-    }
+// Store original console methods
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+  debug: console.debug,
+};
 
-    return {
-      render: (element) => {
-        // Use the actual ReactDOM.render for tests
-        const ReactDOM = require('react-dom');
-        ReactDOM.render(element, validContainer);
-      },
-      unmount: () => {
-        const ReactDOM = require('react-dom');
-        ReactDOM.unmountComponentAtNode(validContainer);
-        if (validContainer !== container) {
-          // Clean up our fallback container if we created one
-          validContainer.parentNode?.removeChild(validContainer);
-        }
+// Only show console output if JEST_SHOW_LOGS environment variable is set
+const shouldShowLogs = process.env.JEST_SHOW_LOGS === 'true';
+
+// We need to allow tests to temporarily replace console methods for assertions
+// while still providing the clean output capabilities
+// Track if a test has overridden the console methods
+global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
+
+// Replace console methods with no-op or filtered versions
+if (!shouldShowLogs) {
+  // For each console method, check if it's been overridden by a test
+  const createConsoleMock = (method, originalMethod) => {
+    return (...args) => {
+      // If test has explicitly overridden the console method, respect that
+      if (global.__CONSOLE_OVERRIDDEN_BY_TEST__) {
+        return;
+      }
+      
+      // Otherwise use the silent implementation
+      if (shouldShowLogs) {
+        originalMethod(...args);
       }
     };
+  };
+  
+  console.log = createConsoleMock('log', originalConsole.log);
+  console.error = createConsoleMock('error', originalConsole.error);
+  console.warn = createConsoleMock('warn', originalConsole.warn);
+  console.info = createConsoleMock('info', originalConsole.info);
+  console.debug = createConsoleMock('debug', originalConsole.debug);
+}
+
+// When a test overrides console.error or other methods, it should call this first
+beforeEach(() => {
+  global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
+});
+
+// Restore console after tests
+afterEach(() => {
+  // If a test has overridden the console methods, restore them after the test
+  if (global.__CONSOLE_OVERRIDDEN_BY_TEST__) {
+    console.log = originalConsole.log;
+    console.error = originalConsole.error;
+    console.warn = originalConsole.warn;
+    console.info = originalConsole.info;
+    console.debug = originalConsole.debug;
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
   }
-}));
+});
+
+// Final cleanup after all tests
+afterAll(() => {
+  console.log = originalConsole.log;
+  console.error = originalConsole.error;
+  console.warn = originalConsole.warn;
+  console.info = originalConsole.info;
+  console.debug = originalConsole.debug;
+});
+
+// Mock for React 18's createRoot API
+jest.mock('react-dom/client', () => {
+  // Store created roots to avoid recreating them
+  const rootsMap = new Map();
+  
+  return {
+    createRoot: (container) => {
+      // Ensure we have a valid container for createRoot
+      let validContainer = container;
+      if (!container || typeof container.appendChild !== 'function') {
+        // If container is invalid, create a new div to use as container
+        console.warn('Invalid container provided to createRoot, creating a fallback container');
+        validContainer = document.createElement('div');
+        document.body.appendChild(validContainer);
+      }
+
+      // Check if a root already exists for this container
+      if (rootsMap.has(validContainer)) {
+        return rootsMap.get(validContainer);
+      }
+
+      // Use React 18's ReactDOM to create an actual root
+      const ReactDOMClient = jest.requireActual('react-dom/client');
+      const root = ReactDOMClient.createRoot(validContainer);
+      
+      // Store the root for reuse
+      const mockRoot = {
+        render: (element) => {
+          root.render(element);
+        },
+        unmount: () => {
+          root.unmount();
+          // Remove from roots map after unmounting
+          rootsMap.delete(validContainer);
+        }
+      };
+      
+      rootsMap.set(validContainer, mockRoot);
+      return mockRoot;
+    }
+  };
+});
 
 // Mock for React's createPortal - helps testing-library find portal content
 jest.mock('react-dom', () => {
   const originalModule = jest.requireActual('react-dom');
+  const clientModule = jest.requireActual('react-dom/client');
   
   // Create a mock implementation that renders children directly to the DOM
   // This is needed for older versions of testing-library
@@ -57,8 +139,9 @@ jest.mock('react-dom', () => {
     portalElement.setAttribute('data-testid', 'portal-content');
     targetContainer.appendChild(portalElement);
     
-    // Use ReactDOM to render the children into the portal element
-    originalModule.render(children, portalElement);
+    // Use React 18's createRoot to render the children into the portal element
+    const root = clientModule.createRoot(portalElement);
+    root.render(children);
     
     // Return a React element that represents the portal
     return React.createElement('div', { 
@@ -69,7 +152,15 @@ jest.mock('react-dom', () => {
   
   return {
     ...originalModule,
-    createPortal: mockCreatePortal
+    createPortal: mockCreatePortal,
+    // Add a legacy render method for backward compatibility with testing-library
+    render: (element, container) => {
+      const root = clientModule.createRoot(container);
+      root.render(element);
+      return {
+        unmount: () => root.unmount()
+      };
+    }
   };
 });
 

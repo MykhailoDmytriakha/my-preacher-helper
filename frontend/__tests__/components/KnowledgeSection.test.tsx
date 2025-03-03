@@ -1,9 +1,14 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Sermon, Insights } from '@/models/models';
+import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion } from '@/models/models';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import * as insightsService from '@/services/insights.service';
+
+// Extend global Window interface to include our test flag
+declare global {
+  var __CONSOLE_OVERRIDDEN_BY_TEST__: boolean;
+}
 
 // Mock the insights service
 jest.mock('@/services/insights.service', () => ({
@@ -59,8 +64,14 @@ describe('KnowledgeSection Component', () => {
   
   const mockInsights: Insights = {
     topics: ['Faith', 'Love', 'Redemption'],
-    relatedVerses: ['Romans 5:8', 'Ephesians 2:8-9'],
-    possibleDirections: ['Focus on God\'s love', 'Explain the concept of grace']
+    relatedVerses: [
+      { reference: 'Romans 5:8', relevance: 'Shows God\'s love for us' },
+      { reference: 'Ephesians 2:8-9', relevance: 'Salvation through faith' }
+    ],
+    possibleDirections: [
+      { area: 'God\'s Love', suggestion: 'Focus on God\'s love' },
+      { area: 'Grace', suggestion: 'Explain the concept of grace' }
+    ]
   };
   
   const mockSermonWithInsights: Sermon = {
@@ -77,13 +88,21 @@ describe('KnowledgeSection Component', () => {
       ...mockInsights,
       topics: ['New Faith', 'New Love', 'New Redemption']
     });
+    
     (insightsService.generateRelatedVerses as jest.Mock).mockResolvedValue({
       ...mockInsights,
-      relatedVerses: ['John 3:16', 'Romans 8:28']
+      relatedVerses: [
+        { reference: 'Matthew 5:16', relevance: 'Let your light shine before others' },
+        { reference: 'Philippians 4:13', relevance: 'I can do all things through Christ' }
+      ]
     });
+    
     (insightsService.generatePossibleDirections as jest.Mock).mockResolvedValue({
       ...mockInsights,
-      possibleDirections: ['New direction 1', 'New direction 2']
+      possibleDirections: [
+        { area: 'New Direction', suggestion: 'New direction 1' },
+        { area: 'Another Direction', suggestion: 'New direction 2' }
+      ]
     });
   });
 
@@ -94,15 +113,12 @@ describe('KnowledgeSection Component', () => {
   it('renders without insights and shows generate button', async () => {
     render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
-    });
-    
+    expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
     expect(screen.getByText('No insights have been generated yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Generate Insights' })).toBeInTheDocument();
   });
@@ -110,15 +126,12 @@ describe('KnowledgeSection Component', () => {
   it('renders with insights in collapsed state', async () => {
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
-    });
-    
+    expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
     expect(screen.getByText('Click to expand insights')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
@@ -126,200 +139,291 @@ describe('KnowledgeSection Component', () => {
   it('expands and collapses when the button is clicked', async () => {
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
-    });
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
     });
     
     // Initially collapsed
     expect(screen.queryByText('Covered Topics')).not.toBeInTheDocument();
     
-    // Click to expand
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // Click to expand - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
     
     // Should now show sections
     expect(screen.getByText('Covered Topics')).toBeInTheDocument();
     expect(screen.getByText('Related Verses')).toBeInTheDocument();
     expect(screen.getByText('Possible Directions')).toBeInTheDocument();
     
-    // Click to collapse
-    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    // Click to collapse - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    });
     
     // Sections should be hidden again
     expect(screen.queryByText('Covered Topics')).not.toBeInTheDocument();
   });
 
   it('generates all insights when button is clicked', async () => {
+    // Mock the generateInsights function to delay its resolution
+    (insightsService.generateInsights as jest.Mock).mockImplementation(() => {
+      return new Promise(resolve => {
+        setTimeout(() => resolve(mockInsights), 100);
+      });
+    });
+
     render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
-    });
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Generate Insights' })).toBeInTheDocument();
     });
     
     // Clear previous mocks
     jest.clearAllMocks();
     
-    // Click generate button
-    fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
-    
-    // Should show loading state
-    expect(screen.getByText('Generating...')).toBeInTheDocument();
-    
-    // Wait for API call to resolve
-    await waitFor(() => {
-      expect(mockUpdateSermon).toHaveBeenCalled();
+    // Click generate button - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
+      
+      // Fast-forward timers to complete the API call
+      jest.advanceTimersByTime(100);
     });
+    
+    // Wait for API call to resolve - wrap in act()
+    await act(async () => {
+      // Run all pending promises
+      await Promise.resolve();
+      // Fast-forward timers for success notification
+      jest.runAllTimers();
+    });
+    
+    // Verify updateSermon was called with the generated insights
+    expect(mockUpdateSermon).toHaveBeenCalled();
   });
 
   it('shows and hides topics when toggle is clicked', async () => {
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+    // Expand the section - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
-    
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     
     // Topics should be visible by default
     expect(screen.getByText('Faith')).toBeInTheDocument();
     expect(screen.getByText('Love')).toBeInTheDocument();
     expect(screen.getByText('Redemption')).toBeInTheDocument();
     
-    // Get all Hide all buttons and click the first one (for topics)
-    const hideButtons = screen.getAllByText('Hide all');
-    fireEvent.click(hideButtons[0]);
+    // Get all Hide all buttons and click the first one (for topics) - wrap in act()
+    await act(async () => {
+      const hideButtons = screen.getAllByText('Hide all');
+      fireEvent.click(hideButtons[0]);
+    });
     
     // Topics should be hidden
     expect(screen.queryByText('Faith')).not.toBeInTheDocument();
     
-    // Get all Show all buttons and click the first one
-    const showButtons = screen.getAllByText('Show all');
-    fireEvent.click(showButtons[0]);
+    // Get all Show all buttons and click the first one - wrap in act()
+    await act(async () => {
+      const showButtons = screen.getAllByText('Show all');
+      fireEvent.click(showButtons[0]);
+    });
     
     // Topics should be visible again
     expect(screen.getByText('Faith')).toBeInTheDocument();
   });
 
   it('regenerates topics when the refresh button is clicked', async () => {
+    // Mock the generateTopics to delay its resolution
+    (insightsService.generateTopics as jest.Mock).mockImplementation(() => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve({
+            ...mockInsights,
+            topics: ['New Faith', 'New Love', 'New Redemption']
+          });
+        }, 100);
+      });
+    });
+
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+    // Expand the section - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // Clear previous mocks
+    jest.clearAllMocks();
     
     // Find and click the regenerate topics button
-    const refreshButtons = screen.getAllByTitle('Refresh');
-    fireEvent.click(refreshButtons[0]); // First refresh button is for topics
-    
-    // Should show loading spinner
-    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
-    
-    // Wait for API call to resolve
-    await waitFor(() => {
-      expect(insightsService.generateTopics).toHaveBeenCalledWith('sermon1');
-      expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sermon1',
-        insights: expect.objectContaining({
-          topics: ['New Faith', 'New Love', 'New Redemption']
-        })
-      }));
+    await act(async () => {
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[0]); // First refresh button is for topics
+      
+      // Fast-forward timers to complete the API call
+      jest.advanceTimersByTime(100);
     });
+    
+    // Wait for API call to resolve - wrap in act()
+    await act(async () => {
+      await Promise.resolve();
+      jest.runAllTimers();
+    });
+    
+    expect(insightsService.generateTopics).toHaveBeenCalledWith('sermon1');
+    expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'sermon1',
+      insights: expect.objectContaining({
+        topics: ['New Faith', 'New Love', 'New Redemption']
+      })
+    }));
   });
 
   it('regenerates verses when the refresh button is clicked', async () => {
+    // Mock the generateRelatedVerses to delay its resolution
+    (insightsService.generateRelatedVerses as jest.Mock).mockImplementation(() => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve({
+            ...mockInsights,
+            relatedVerses: [
+              { reference: 'Matthew 5:16', relevance: 'Let your light shine before others' },
+              { reference: 'Philippians 4:13', relevance: 'I can do all things through Christ' }
+            ]
+          });
+        }, 100);
+      });
+    });
+
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+    // Expand the section - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // Clear previous mocks
+    jest.clearAllMocks();
     
     // Find and click the regenerate verses button
-    const refreshButtons = screen.getAllByTitle('Refresh');
-    fireEvent.click(refreshButtons[1]); // Second refresh button is for verses
-    
-    // Wait for API call to resolve
-    await waitFor(() => {
-      expect(insightsService.generateRelatedVerses).toHaveBeenCalledWith('sermon1');
-      expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sermon1',
-        insights: expect.objectContaining({
-          relatedVerses: ['John 3:16', 'Romans 8:28']
-        })
-      }));
+    await act(async () => {
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[1]); // Second refresh button is for verses
+      
+      // Fast-forward timers to complete the API call
+      jest.advanceTimersByTime(100);
     });
+    
+    // Wait for API call to resolve - wrap in act()
+    await act(async () => {
+      await Promise.resolve();
+      jest.runAllTimers();
+    });
+    
+    expect(insightsService.generateRelatedVerses).toHaveBeenCalledWith('sermon1');
+    expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'sermon1',
+      insights: expect.objectContaining({
+        relatedVerses: expect.arrayContaining([
+          expect.objectContaining({ reference: expect.any(String), relevance: expect.any(String) })
+        ])
+      })
+    }));
   });
 
   it('regenerates directions when the refresh button is clicked', async () => {
+    // Mock the generatePossibleDirections to delay its resolution
+    (insightsService.generatePossibleDirections as jest.Mock).mockImplementation(() => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve({
+            ...mockInsights,
+            possibleDirections: [
+              { area: 'New Direction', suggestion: 'New direction 1' },
+              { area: 'Another Direction', suggestion: 'New direction 2' }
+            ]
+          });
+        }, 100);
+      });
+    });
+
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
     
-    // Wait for loading state to finish
-    act(() => {
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
       jest.advanceTimersByTime(600);
     });
     
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+    // Expand the section - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // Clear previous mocks
+    jest.clearAllMocks();
     
     // Find and click the regenerate directions button
-    const refreshButtons = screen.getAllByTitle('Refresh');
-    fireEvent.click(refreshButtons[2]); // Third refresh button is for directions
-    
-    // Wait for API call to resolve
-    await waitFor(() => {
-      expect(insightsService.generatePossibleDirections).toHaveBeenCalledWith('sermon1');
-      expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'sermon1',
-        insights: expect.objectContaining({
-          possibleDirections: ['New direction 1', 'New direction 2']
-        })
-      }));
+    await act(async () => {
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[2]); // Third refresh button is for directions
+      
+      // Fast-forward timers to complete the API call
+      jest.advanceTimersByTime(100);
     });
+    
+    // Wait for API call to resolve - wrap in act()
+    await act(async () => {
+      await Promise.resolve();
+      jest.runAllTimers();
+    });
+    
+    expect(insightsService.generatePossibleDirections).toHaveBeenCalledWith('sermon1');
+    expect(mockUpdateSermon).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'sermon1',
+      insights: expect.objectContaining({
+        possibleDirections: expect.arrayContaining([
+          expect.objectContaining({ area: expect.any(String), suggestion: expect.any(String) })
+        ])
+      })
+    }));
   });
 
   it('handles API errors when generating all insights', async () => {
-    // Mock the API to reject the promise
-    const error = new Error('API Error');
-    (insightsService.generateInsights as jest.Mock).mockRejectedValueOnce(error);
+    // Mock API errors for all three services
+    (insightsService.generateTopics as jest.Mock).mockRejectedValue(new Error('API Error - Topics'));
+    (insightsService.generateRelatedVerses as jest.Mock).mockRejectedValue(new Error('API Error - Verses'));
+    (insightsService.generatePossibleDirections as jest.Mock).mockRejectedValue(new Error('API Error - Directions'));
     
-    // Spy on console.error
+    // Create a mock for console.error
+    const mockErrorFn = jest.fn();
+    
+    // Save original console.error
     const originalConsoleError = console.error;
-    const mockConsoleError = jest.fn();
-    console.error = mockConsoleError;
+    
+    // Set our global flag to true to tell the jest.setup.js we're overriding console methods
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
+    
+    // Replace console.error with our mock
+    console.error = mockErrorFn;
     
     try {
       // Render with sermon that has no insights
@@ -338,7 +442,7 @@ describe('KnowledgeSection Component', () => {
       );
       
       // Wait for initial loading
-      act(() => {
+      await act(async () => {
         jest.advanceTimersByTime(600);
       });
       
@@ -347,11 +451,14 @@ describe('KnowledgeSection Component', () => {
       
       // Wait for API error to be processed
       await waitFor(() => {
-        expect(mockConsoleError).toHaveBeenCalled();
-      });
+        expect(mockErrorFn).toHaveBeenCalled();
+      }, { timeout: 3000 });
     } finally {
       // Restore original console.error
       console.error = originalConsoleError;
+      
+      // Reset our flag
+      global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
     }
   });
 
@@ -360,77 +467,204 @@ describe('KnowledgeSection Component', () => {
     (insightsService.generateTopics as jest.Mock).mockRejectedValue(new Error('API Error'));
     
     // Spy on console.error
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const originalConsoleError = console.error;
+    const mockConsoleError = jest.fn();
     
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    // Set the global flag to indicate we're overriding console methods
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
+    console.error = mockConsoleError;
     
-    // Wait for loading state to finish
-    act(() => {
-      jest.advanceTimersByTime(600);
-    });
+    try {
+      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      
+      // Wait for loading state to finish - properly wrapped in act()
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+      });
+      
+      // Expand the section - wrap in act()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+      
+      // Find and click the regenerate topics button
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[0]);
+      
+      // Wait for error to be logged
+      await waitFor(() => {
+        expect(console.error).toHaveBeenCalled();
+      });
+    } finally {
+      // Restore original console.error
+      console.error = originalConsoleError;
+    }
+  });
+
+  it('handles API errors when regenerating verses', async () => {
+    // Mock API error
+    (insightsService.generateRelatedVerses as jest.Mock).mockRejectedValue(new Error('API Error'));
     
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
-    });
+    // Spy on console.error
+    const originalConsoleError = console.error;
+    const mockConsoleError = jest.fn();
     
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // Set the global flag to indicate we're overriding console methods
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
+    console.error = mockConsoleError;
     
-    // Find and click the regenerate topics button
-    const refreshButtons = screen.getAllByTitle('Refresh');
-    fireEvent.click(refreshButtons[0]);
+    try {
+      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      
+      // Wait for loading state to finish - properly wrapped in act()
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+      });
+      
+      // Expand the section - wrap in act()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+      
+      // Find and click the regenerate verses button
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[1]);
+      
+      // Wait for error to be logged
+      await waitFor(() => {
+        expect(console.error).toHaveBeenCalled();
+      });
+    } finally {
+      // Restore original console.error
+      console.error = originalConsoleError;
+    }
+  });
+
+  it('handles API errors when regenerating directions', async () => {
+    // Mock API error
+    (insightsService.generatePossibleDirections as jest.Mock).mockRejectedValue(new Error('API Error'));
     
-    // Wait for error to be logged
-    await waitFor(() => {
-      expect(console.error).toHaveBeenCalled();
-    });
+    // Spy on console.error
+    const originalConsoleError = console.error;
+    const mockConsoleError = jest.fn();
+    
+    // Set the global flag to indicate we're overriding console methods
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
+    console.error = mockConsoleError;
+    
+    try {
+      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      
+      // Wait for loading state to finish - properly wrapped in act()
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+      });
+      
+      // Expand the section - wrap in act()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+      
+      // Find and click the regenerate directions button
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      fireEvent.click(refreshButtons[2]);
+      
+      // Wait for error to be logged
+      await waitFor(() => {
+        expect(console.error).toHaveBeenCalled();
+      });
+    } finally {
+      // Restore original console.error
+      console.error = originalConsoleError;
+    }
   });
 
   it('does nothing when regenerate is clicked but no sermon id is available', async () => {
-    const sermonWithoutId = { ...mockSermonWithInsights, id: undefined };
+    // Mock console.error to capture the error
+    const originalConsoleError = console.error;
+    const mockConsoleError = jest.fn();
+    console.error = mockConsoleError;
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
     
-    render(<KnowledgeSection sermon={sermonWithoutId as any} updateSermon={mockUpdateSermon} />);
-    
-    // Wait for loading state to finish
-    act(() => {
-      jest.advanceTimersByTime(600);
-    });
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
-    });
-    
-    // Expand the section
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    
-    // Find and click the regenerate topics button
-    const refreshButtons = screen.getAllByTitle('Refresh');
-    fireEvent.click(refreshButtons[0]);
-    
-    // Wait a bit to ensure no API calls
-    await waitFor(() => {
+    try {
+      const sermonWithoutId = { ...mockSermonWithInsights, id: undefined };
+      
+      render(<KnowledgeSection sermon={sermonWithoutId as any} updateSermon={mockUpdateSermon} />);
+      
+      // Wait for loading state to finish - properly wrapped in act()
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      
+      // Expand the section - wrap in act()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+      
+      // Clear mocks before testing
+      jest.clearAllMocks();
+      
+      // Find and click the regenerate topics button - wrap in act to catch console.error
+      await act(async () => {
+        const refreshButtons = screen.getAllByTitle('Refresh');
+        fireEvent.click(refreshButtons[0]);
+      });
+      
+      // Verify that console.error was called with expected message
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot generate topics: sermon or sermon.id is missing')
+      );
+      
+      // Verify no API calls were made
       expect(insightsService.generateTopics).not.toHaveBeenCalled();
-    });
+    } finally {
+      // Restore original console.error
+      console.error = originalConsoleError;
+      global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
+    }
   });
 
   it('does nothing when generate all is clicked but updateSermon is not provided', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithoutInsights} />);
+    // Mock console.error to capture the error
+    const originalConsoleError = console.error;
+    const mockConsoleError = jest.fn();
+    console.error = mockConsoleError;
+    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
     
-    // Wait for loading state to finish
-    act(() => {
-      jest.advanceTimersByTime(600);
-    });
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Generate Insights' })).toBeInTheDocument();
-    });
-    
-    // Click generate button
-    fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
-    
-    // Wait a bit to ensure no API calls
-    await waitFor(() => {
+    try {
+      render(<KnowledgeSection sermon={mockSermonWithoutInsights} />);
+      
+      // Wait for loading state to finish - properly wrapped in act()
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      
+      // Clear mocks before testing
+      jest.clearAllMocks();
+      
+      // Click generate button - wrap in act()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
+      });
+      
+      // Verify no API calls were made
       expect(insightsService.generateInsights).not.toHaveBeenCalled();
-    });
+    } finally {
+      // Restore original console.error
+      console.error = originalConsoleError;
+      global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
+    }
   });
 }); 

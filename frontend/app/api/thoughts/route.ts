@@ -5,6 +5,7 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Thought } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
+import { v4 as uuidv4 } from 'uuid';
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -27,24 +28,30 @@ export async function POST(request: Request) {
         ...(await getCustomTags(sermon.userId))
       ].map(t => t.name);
       const manualThought = await generateThought(thought.text, sermon, availableTags);
-      //verify that manualThought has everything that is needed
-      if (!manualThought.id || !manualThought.text || !manualThought.tags || !manualThought.date) {
-        return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
-      }
-      const thoughtWithDate = {
-        ...manualThought,
+      
+      // Add id and date to the thought
+      const thoughtWithId: Thought = {
+        id: uuidv4(),
+        text: manualThought.text,
+        tags: manualThought.tags,
         date: new Date().toISOString()
       };
-      console.log("Manual (fixed) thought:", thoughtWithDate);
+      
+      //verify that thought has everything that is needed
+      if (!thoughtWithId.id || !thoughtWithId.text || !thoughtWithId.tags || !thoughtWithId.date) {
+        return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+      }
+      
+      console.log("Manual (fixed) thought:", thoughtWithId);
       
       // Use Admin SDK instead of client SDK
       const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
       await sermonDocRef.update({
-        thoughts: FieldValue.arrayUnion(thoughtWithDate)
+        thoughts: FieldValue.arrayUnion(thoughtWithId)
       });
       
       console.log("Firestore update: Stored new manual thought into sermon document.");
-      return NextResponse.json(thoughtWithDate);
+      return NextResponse.json(thoughtWithId);
     } catch (error) {
       console.error('Thoughts route: Manual POST error:', error);
       return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
@@ -81,7 +88,16 @@ export async function POST(request: Request) {
     ].map(t => t.name);
     const transcriptionText = await createTranscription(file);
     
-    const thought = await generateThought(transcriptionText, sermon, availableTags);
+    const generatedThought = await generateThought(transcriptionText, sermon, availableTags);
+    
+    // Add id and date to the thought
+    const thought: Thought = {
+      id: uuidv4(),
+      text: generatedThought.text,
+      tags: generatedThought.tags,
+      date: new Date().toISOString()
+    };
+    
     //verify that thought has everything that is needed
     if (!thought.id || !thought.text || !thought.tags || !thought.date) {
       return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
