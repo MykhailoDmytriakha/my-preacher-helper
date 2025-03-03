@@ -1,4 +1,4 @@
-export const promptSystemMessage = 
+export const generateThoughtPromptSystemMessage = 
 `
 // Purpose: Analyze sermon transcriptions and return formatted JSON with edited text and tags
 

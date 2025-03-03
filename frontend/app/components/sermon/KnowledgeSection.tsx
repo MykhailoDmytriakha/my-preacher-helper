@@ -18,9 +18,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [successNotification, setSuccessNotification] = useState(false);
-  const [visibleTopics, setVisibleTopics] = useState(5); // Start with showing 5 topics
-  const [visibleVerses, setVisibleVerses] = useState(5); // Start with showing 5 verses
-  const [visibleDirections, setVisibleDirections] = useState(5); // Start with showing 5 directions
+  const [showAllTopics, setShowAllTopics] = useState(true); // Changed to show all by default
+  const [showAllVerses, setShowAllVerses] = useState(true); // Changed to show all by default
+  const [showAllDirections, setShowAllDirections] = useState(true); // Changed to show all by default
   
   // Extract sermon themes and key topics from the thoughts
   const extractTopics = () => {
@@ -86,10 +86,10 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         }
       }
       
-      // Reset visibility counters when generating new insights
-      setVisibleTopics(5);
-      setVisibleVerses(5);
-      setVisibleDirections(5);
+      // Reset visibility states when generating new insights
+      setShowAllTopics(true);
+      setShowAllVerses(true);
+      setShowAllDirections(true);
       
       // Show success notification
       setSuccessNotification(true);
@@ -103,27 +103,27 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     }
   };
 
-  // Toggle showing more/less items
-  const toggleMoreTopics = () => {
-    setVisibleTopics(visibleTopics === 5 ? 10 : 5);
+  // Toggle showing all/hiding items
+  const toggleTopicsVisibility = () => {
+    setShowAllTopics(!showAllTopics);
   };
   
-  const toggleMoreVerses = () => {
-    setVisibleVerses(visibleVerses === 5 ? 10 : 5);
+  const toggleVersesVisibility = () => {
+    setShowAllVerses(!showAllVerses);
   };
   
-  const toggleMoreDirections = () => {
-    setVisibleDirections(visibleDirections === 5 ? 10 : 5);
+  const toggleDirectionsVisibility = () => {
+    setShowAllDirections(!showAllDirections);
   };
 
   // Hide success notification when sermon changes
   useEffect(() => {
     setSuccessNotification(false);
     
-    // Reset visibility counters when sermon changes
-    setVisibleTopics(5);
-    setVisibleVerses(5);
-    setVisibleDirections(5);
+    // Reset visibility states when sermon changes
+    setShowAllTopics(true);
+    setShowAllVerses(true);
+    setShowAllDirections(true);
   }, [sermon.id]);
 
   useEffect(() => {
@@ -154,11 +154,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const topics = extractTopics();
   const relatedVerses = getRelatedVerses();
   const possibleDirections = getPossibleDirections();
-
-  // Determine if items have "more" to show
-  const hasMoreTopics = topics.length > 5;
-  const hasMoreVerses = relatedVerses.length > 5;
-  const hasMoreDirections = possibleDirections.length > 5;
 
   return (
     <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 relative">
@@ -237,73 +232,80 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         </div>
       ) : (
         <div className="space-y-6">
+          {expanded ? (
+          <>
           <div>
             <div className="flex justify-between items-center mb-2">
               <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.coveredTopics')}</h3>
-              {hasMoreTopics && (
+              {topics.length > 0 && (
                 <button 
-                  onClick={toggleMoreTopics}
+                  onClick={toggleTopicsVisibility}
                   className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
                 >
-                  {visibleTopics === 5 ? t('knowledge.showMoreItems') : t('knowledge.showLessItems')}
+                  {showAllTopics ? t('knowledge.hideAll') : t('knowledge.showAll')}
                 </button>
               )}
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
-              {topics.slice(0, visibleTopics).map((topic, index) => (
+              {showAllTopics ? topics.map((topic, index) => (
                 <span 
                   key={index}
                   className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-sm rounded-md"
                 >
                   {topic}
                 </span>
-              ))}
+              )) : null}
             </div>
           </div>
           
-          {expanded && (
-            <>
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.relatedVerses')}</h3>
-                  {hasMoreVerses && (
-                    <button 
-                      onClick={toggleMoreVerses}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
-                    >
-                      {visibleVerses === 5 ? t('knowledge.showMoreItems') : t('knowledge.showLessItems')}
-                    </button>
-                  )}
+          {/* Related verses section */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.relatedVerses')}</h3>
+              {relatedVerses.length > 0 && (
+                <button 
+                  onClick={toggleVersesVisibility}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                >
+                  {showAllVerses ? t('knowledge.hideAll') : t('knowledge.showAll')}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2 text-gray-600 dark:text-gray-300 mt-2">
+              {showAllVerses ? relatedVerses.map((verse, index) => (
+                <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  {verse}
                 </div>
-                <div className="space-y-2 text-gray-600 dark:text-gray-300 mt-2">
-                  {relatedVerses.slice(0, visibleVerses).map((verse, index) => (
-                    <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                      {verse}
-                    </div>
-                  ))}
+              )) : null}
+            </div>
+          </div>
+          
+          {/* Possible directions section */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.possibleDirections')}</h3>
+              {possibleDirections.length > 0 && (
+                <button 
+                  onClick={toggleDirectionsVisibility}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                >
+                  {showAllDirections ? t('knowledge.hideAll') : t('knowledge.showAll')}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2 mt-2">
+              {showAllDirections ? possibleDirections.map((direction, index) => (
+                <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  {direction}
                 </div>
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.possibleDirections')}</h3>
-                  {hasMoreDirections && (
-                    <button 
-                      onClick={toggleMoreDirections}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
-                    >
-                      {visibleDirections === 5 ? t('knowledge.showMoreItems') : t('knowledge.showLessItems')}
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2 mt-2">
-                  {possibleDirections.slice(0, visibleDirections).map((direction, index) => (
-                    <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                      {direction}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
+              )) : null}
+            </div>
+          </div>
+          </>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
+              {t('knowledge.clickToExpand')}
+            </p>
           )}
         </div>
       )}

@@ -194,7 +194,10 @@
     "insightsGenerated": "Аналитика сгенерирована!",
     "refresh": "Обновить аналитику",
     "showMoreItems": "Показать все",
-    "showLessItems": "Показать меньше"
+    "showLessItems": "Показать меньше",
+    "showAll": "Показать все",
+    "hideAll": "Скрыть все",
+    "clickToExpand": "Нажмите на стрелку выше, чтобы просмотреть аналитику"
   },
   "common": {
     "comingSoon": "Скоро будет доступно",

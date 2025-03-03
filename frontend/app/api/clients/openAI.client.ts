@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { Sermon, Thought } from "@/models/models";
-import { promptSystemMessage } from "@/config/prompt";
+import { generateThoughtPromptSystemMessage } from "@/config/prompt";
 import { v4 as uuidv4 } from 'uuid';
 
 const openai = new OpenAI({
@@ -47,7 +47,7 @@ export async function generateThought(
     `;
   
   if (isDebugMode) {
-    console.log("DEBUG MODE: System prompt:", promptSystemMessage);
+    console.log("DEBUG MODE: System prompt:", generateThoughtPromptSystemMessage);
     console.log("DEBUG MODE: User message:", userMessage);
   }
   
@@ -56,7 +56,7 @@ export async function generateThought(
       model: gptModel,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: promptSystemMessage },
+        { role: "system", content: generateThoughtPromptSystemMessage },
         { role: "user", content: userMessage },
       ]
     });

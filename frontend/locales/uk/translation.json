@@ -172,7 +172,10 @@
     "insightsGenerated": "Аналітика згенерована!",
     "refresh": "Оновити аналітику",
     "showMoreItems": "Показати всі",
-    "showLessItems": "Показати менше"
+    "showLessItems": "Показати менше",
+    "showAll": "Показати всі",
+    "hideAll": "Сховати всі",
+    "clickToExpand": "Натисніть на стрілку вище, щоб переглянути аналітику"
   },
   "filters": {
     "filter": "Фільтр",

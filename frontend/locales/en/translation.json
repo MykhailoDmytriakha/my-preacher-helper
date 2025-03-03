@@ -188,7 +188,10 @@
     "insightsGenerated": "Insights generated!",
     "refresh": "Refresh insights",
     "showMoreItems": "Show all",
-    "showLessItems": "Show less"
+    "showLessItems": "Show less",
+    "showAll": "Show all",
+    "hideAll": "Hide all",
+    "clickToExpand": "Click the arrow above to view insights"
   },
   "common": {
     "comingSoon": "Coming Soon",
