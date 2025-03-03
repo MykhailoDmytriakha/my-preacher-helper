@@ -150,10 +150,14 @@ export async function PUT(request: Request) {
     const updatedThought: Thought = {
       id: updatedThoughtNew.id,
       text: updatedThoughtNew.text,
-      tags: updatedThoughtNew.tags,
+      tags: updatedThoughtNew.tags || [],
       date: updatedThoughtNew.date,
-      outlinePointId: updatedThoughtNew.outlinePointId
     };
+    
+    // Only add outlinePointId if it exists and is not undefined
+    if (updatedThoughtNew.outlinePointId) {
+      updatedThought.outlinePointId = updatedThoughtNew.outlinePointId;
+    }
     
     // verify that updatedThought has everything that is needed
     if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {

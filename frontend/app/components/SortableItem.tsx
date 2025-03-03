@@ -40,6 +40,15 @@ export default function SortableItem({ item, containerId, onEdit }: SortableItem
       {...listeners}
       className="relative group mb-4 p-4 bg-white rounded-md border border-gray-200 shadow-md hover:shadow-xl"
     >
+      {/* Display outline point if available */}
+      {item.outlinePoint && (
+        <div className="mb-2">
+          <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800">
+            {item.outlinePoint.section}: {item.outlinePoint.text}
+          </span>
+        </div>
+      )}
+      
       <div className="pr-20 whitespace-pre-wrap">
         {item.content}
       </div>

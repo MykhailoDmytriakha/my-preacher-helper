@@ -352,7 +352,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             <div className="space-y-2 text-gray-600 dark:text-gray-300 mt-2">
               {showAllVerses ? relatedVerses.map((verse, index) => (
                 <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                  {verse}
+                  <div className="font-medium mb-1">{verse.reference}</div>
+                  {verse.relevance && <div className="text-sm">{verse.relevance}</div>}
                 </div>
               )) : null}
             </div>
@@ -387,7 +388,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             <div className="space-y-2 mt-2">
               {showAllDirections ? possibleDirections.map((direction, index) => (
                 <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                  {direction}
+                  <div className="font-medium mb-1">{direction.area}</div>
+                  <div className="text-sm">{direction.suggestion}</div>
                 </div>
               )) : null}
             </div>

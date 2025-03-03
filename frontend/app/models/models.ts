@@ -24,10 +24,21 @@ export interface Structure {
   ambiguous: string[];
 }
 
+export interface DirectionSuggestion {
+  area: string;
+  suggestion: string;
+  id?: string;
+}
+
 export interface Insights {
   topics: string[];
-  relatedVerses: string[];
-  possibleDirections: string[];
+  relatedVerses: VerseWithRelevance[];
+  possibleDirections: DirectionSuggestion[];
+}
+
+export interface VerseWithRelevance {
+  reference: string;
+  relevance: string;
 }
 
 export interface Sermon {
@@ -60,6 +71,8 @@ export interface Item {
   content: string;
   customTagNames?: TagInfo[];
   requiredTags?: string[];
+  outlinePoint?: { text: string; section: string };
+  outlinePointId?: string;
 }
 
 export interface UserSettings {

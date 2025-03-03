@@ -15,6 +15,7 @@ interface EditThoughtModalProps {
   initialOutlinePointId?: string;
   allowedTags: { name: string; color: string }[];
   sermonOutline?: Outline;
+  containerSection?: string;
   onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
   onClose: () => void;
 }
@@ -26,6 +27,7 @@ export default function EditThoughtModal({
   initialOutlinePointId,
   allowedTags, 
   sermonOutline,
+  containerSection,
   onSave, 
   onClose 
 }: EditThoughtModalProps) {
@@ -86,6 +88,25 @@ export default function EditThoughtModal({
   // Find the selected outline point text for display
   const selectedPointInfo = allOutlinePoints.find(point => point.id === selectedOutlinePointId);
 
+  // Determine which outline points to show based on containerSection
+  let filteredOutlinePoints: Record<string, OutlinePoint[]> = {};
+  
+  if (sermonOutline) {
+    if (containerSection === 'introduction' || containerSection === 'main' || containerSection === 'conclusion') {
+      // Only show points from current section
+      filteredOutlinePoints = {
+        [containerSection]: sermonOutline[containerSection as keyof Outline]
+      };
+    } else {
+      // If in ambiguous section or containerSection is unknown, show all points
+      filteredOutlinePoints = {
+        introduction: sermonOutline.introduction,
+        main: sermonOutline.main,
+        conclusion: sermonOutline.conclusion
+      };
+    }
+  }
+
   const availableTags = allowedTags.filter(t => !tags.includes(t.name));
 
   const modalContent = (
@@ -113,28 +134,14 @@ export default function EditThoughtModal({
               <option value="">{t('editThought.noOutlinePoint') || 'No outline point selected'}</option>
               
               {/* Group outline points by section */}
-              {sermonOutline.introduction.length > 0 && (
-                <optgroup label={t('outline.introduction') || 'Introduction'}>
-                  {sermonOutline.introduction.map(point => (
-                    <option key={point.id} value={point.id}>{point.text}</option>
-                  ))}
-                </optgroup>
-              )}
-              
-              {sermonOutline.main.length > 0 && (
-                <optgroup label={t('outline.mainPoints') || 'Main Points'}>
-                  {sermonOutline.main.map(point => (
-                    <option key={point.id} value={point.id}>{point.text}</option>
-                  ))}
-                </optgroup>
-              )}
-              
-              {sermonOutline.conclusion.length > 0 && (
-                <optgroup label={t('outline.conclusion') || 'Conclusion'}>
-                  {sermonOutline.conclusion.map(point => (
-                    <option key={point.id} value={point.id}>{point.text}</option>
-                  ))}
-                </optgroup>
+              {Object.entries(filteredOutlinePoints).map(([section, points]) => 
+                points.length > 0 ? (
+                  <optgroup key={section} label={t(`outline.${section === 'main' ? 'mainPoints' : section}`) || section}>
+                    {points.map(point => (
+                      <option key={point.id} value={point.id}>{point.text}</option>
+                    ))}
+                  </optgroup>
+                ) : null
               )}
             </select>
             

@@ -171,11 +171,36 @@ function StructurePageContent() {
             ["вступление", "основная часть", "заключение"].includes(tag)
           );
   
+          // Find associated outline point if available
+          let outlinePoint;
+          if (thought.outlinePointId && fetchedSermon.outline) {
+            // Check in each section
+            const outlineSections = ['introduction', 'main', 'conclusion'] as const;
+            const sectionTranslations: Record<string, string> = {
+              'introduction': t('outline.introduction') || 'Introduction',
+              'main': t('outline.mainPoints') || 'Main Points',
+              'conclusion': t('outline.conclusion') || 'Conclusion'
+            };
+            
+            for (const section of outlineSections) {
+              const point = fetchedSermon.outline[section]?.find((p: OutlinePoint) => p.id === thought.outlinePointId);
+              if (point) {
+                outlinePoint = {
+                  text: point.text,
+                  section: sectionTranslations[section]
+                };
+                break;
+              }
+            }
+          }
+
           const item: Item = {
             id: stableId,
             content: thought.text,
             customTagNames: enrichedCustomTags,
             requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
+            outlinePoint: outlinePoint,
+            outlinePointId: thought.outlinePointId
           };
           allThoughtItems[stableId] = item;
         });
@@ -266,13 +291,14 @@ function StructurePageContent() {
     setEditingItem(item);
   };
 
-  const handleSaveEdit = async (updatedText: string, updatedTags: string[]) => {
+  const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!editingItem || !sermon) return;
 
     const updatedItem: Thought = {
       ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
       text: updatedText,
       tags: [...(editingItem.requiredTags || []), ...updatedTags],
+      outlinePointId: outlinePointId
     };
 
     try {
@@ -281,6 +307,28 @@ function StructurePageContent() {
         thought.id === updatedItem.id ? updatedThought : thought
       );
       setSermon({ ...sermon, thoughts: updatedThoughts });
+
+      // Find outline point info if available
+      let outlinePoint: { text: string; section: string } | undefined;
+      if (outlinePointId && sermon.outline) {
+        const sections = ['introduction', 'main', 'conclusion'] as const;
+        const sectionTranslations: Record<string, string> = {
+          'introduction': t('outline.introduction') || 'Introduction',
+          'main': t('outline.mainPoints') || 'Main Points',
+          'conclusion': t('outline.conclusion') || 'Conclusion'
+        };
+        
+        for (const section of sections) {
+          const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
+          if (point) {
+            outlinePoint = {
+              text: point.text,
+              section: sectionTranslations[section]
+            };
+            break;
+          }
+        }
+      }
 
       const newContainers = Object.keys(containers).reduce(
         (acc, key) => {
@@ -294,6 +342,8 @@ function StructurePageContent() {
                     color:
                       allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
                   })),
+                  outlinePointId: outlinePointId,
+                  outlinePoint: outlinePoint
                 }
               : item
           );
@@ -944,6 +994,15 @@ function StructurePageContent() {
                   : null;
                 return activeItem ? (
                   <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md whitespace-pre-wrap">
+                    {/* Display outline point if available */}
+                    {activeItem.outlinePoint && (
+                      <div className="mb-2">
+                        <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200">
+                          {activeItem.outlinePoint.section}: {activeItem.outlinePoint.text}
+                        </span>
+                      </div>
+                    )}
+                    
                     {activeItem.content}
                     
                     {activeItem.customTagNames && activeItem.customTagNames.length > 0 && (
@@ -966,9 +1025,15 @@ function StructurePageContent() {
         </DndContext>
         {editingItem && (
           <EditThoughtModal
+            thoughtId={editingItem.id}
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
+            initialOutlinePointId={editingItem.outlinePointId}
             allowedTags={allowedTags}
+            sermonOutline={sermon?.outline}
+            containerSection={Object.keys(containers).find(key => 
+              containers[key].some(item => item.id === editingItem.id)
+            )}
             onSave={handleSaveEdit}
             onClose={handleCloseEdit}
           />

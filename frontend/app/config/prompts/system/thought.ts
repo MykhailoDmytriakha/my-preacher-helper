@@ -1,4 +1,4 @@
-export const generateThoughtPromptSystemMessage = 
+export const thoughtSystemPrompt = 
 `
 // Purpose: Analyze sermon transcriptions and return formatted JSON with edited text and tags
 
@@ -40,4 +40,4 @@ Always return a JSON object with:
 - "tags": Array of applicable tags (only from available tags list)
 
 Return only the JSON object, no explanations.
-`;
+`; 
