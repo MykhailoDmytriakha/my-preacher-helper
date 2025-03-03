@@ -48,11 +48,19 @@ export default function SermonPage() {
 
   // Create a ref for the filter dropdown
   const filterRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
 
   // Handle clicks outside the filter dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+      // Only close the dropdown if click is outside both the dropdown and the toggle button
+      if (
+        isFilterOpen && 
+        filterRef.current && 
+        !filterRef.current.contains(event.target as Node) &&
+        filterButtonRef.current && 
+        !filterButtonRef.current.contains(event.target as Node)
+      ) {
         setIsFilterOpen(false);
       }
     }
@@ -63,7 +71,7 @@ export default function SermonPage() {
       // Remove event listener on cleanup
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [filterRef]);
+  }, [filterRef, filterButtonRef, isFilterOpen]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -294,7 +302,7 @@ export default function SermonPage() {
     }
   };
 
-  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[]) => {
+  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!editingModalData) return;
     const sortedThoughts = getSortedThoughts();
     const { thought: originalThought } = editingModalData;
@@ -308,7 +316,12 @@ export default function SermonPage() {
     }
     
     const thoughtToUpdate = sortedThoughts[thoughtIndex];
-    const updatedThought = { ...thoughtToUpdate, text: updatedText.trim(), tags: updatedTags };
+    const updatedThought = { 
+      ...thoughtToUpdate, 
+      text: updatedText.trim(), 
+      tags: updatedTags,
+      outlinePointId
+    };
     try {
       await updateThought(sermon.id, updatedThought);
       sortedThoughts[thoughtIndex] = updatedThought;
@@ -360,7 +373,11 @@ export default function SermonPage() {
                   
                   <div className="relative ml-3">
                     <button
-                      onClick={() => setIsFilterOpen(!isFilterOpen)}
+                      ref={filterButtonRef}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Stop propagation to prevent the event from reaching the document
+                        setIsFilterOpen(!isFilterOpen);
+                      }}
                       className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                     >
                       {t('filters.filter')}
@@ -375,6 +392,7 @@ export default function SermonPage() {
                     {isFilterOpen && (
                       <div 
                         ref={filterRef}
+                        onClick={(e) => e.stopPropagation()}
                         className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10"
                       >
                         <div className="py-1 divide-y divide-gray-200 dark:divide-gray-700">
@@ -610,6 +628,7 @@ export default function SermonPage() {
                           hasRequiredTag={hasRequiredTag}
                           allowedTags={allowedTags}
                           currentTag={""}
+                          sermonOutline={sermon.outline}
                           onDelete={(indexToDelete) => handleDeleteThought(indexToDelete, thought.id)}
                           onEditStart={(thought, index) => setEditingModalData({ thought, index })}
                           onEditCancel={() => {}}
@@ -641,7 +660,9 @@ export default function SermonPage() {
           thoughtId={editingModalData.thought.id}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
+          initialOutlinePointId={editingModalData.thought.outlinePointId}
           allowedTags={allowedTags}
+          sermonOutline={sermon.outline}
           onSave={handleSaveEditedThought}
           onClose={() => setEditingModalData(null)}
         />

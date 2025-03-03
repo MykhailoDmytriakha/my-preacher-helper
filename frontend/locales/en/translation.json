@@ -203,5 +203,10 @@
     "delete": "Delete",
     "add": "Add",
     "saving": "Saving..."
+  },
+  "outline": {
+    "introduction": "Introduction",
+    "mainPoints": "Main Points",
+    "conclusion": "Conclusion"
   }
 } 

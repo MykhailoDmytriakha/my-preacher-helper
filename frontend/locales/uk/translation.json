@@ -209,5 +209,10 @@
     "delete": "Видалити",
     "add": "Додати",
     "saving": "Збереження..."
+  },
+  "outline": {
+    "introduction": "Вступ",
+    "mainPoints": "Основна частина",
+    "conclusion": "Висновок"
   }
 } 

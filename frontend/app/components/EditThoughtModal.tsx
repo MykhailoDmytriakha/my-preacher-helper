@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
 import { getContrastColor } from '@utils/color';
-import { Thought } from '@/models/models';
+import { Thought, OutlinePoint, Outline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
@@ -12,15 +12,30 @@ interface EditThoughtModalProps {
   thoughtId?: string;
   initialText: string;
   initialTags: string[];
+  initialOutlinePointId?: string;
   allowedTags: { name: string; color: string }[];
-  onSave: (updatedText: string, updatedTags: string[]) => void;
+  sermonOutline?: Outline;
+  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
   onClose: () => void;
 }
 
-export default function EditThoughtModal({ thoughtId, initialText, initialTags, allowedTags, onSave, onClose }: EditThoughtModalProps) {
+export default function EditThoughtModal({ 
+  thoughtId, 
+  initialText, 
+  initialTags, 
+  initialOutlinePointId,
+  allowedTags, 
+  sermonOutline,
+  onSave, 
+  onClose 
+}: EditThoughtModalProps) {
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
-  const isChanged = text !== initialText || tags.length !== initialTags.length || tags.some((tag, index) => tag !== initialTags[index]);
+  const [selectedOutlinePointId, setSelectedOutlinePointId] = useState<string | undefined>(initialOutlinePointId);
+  const isChanged = text !== initialText || 
+                    tags.length !== initialTags.length || 
+                    tags.some((tag, index) => tag !== initialTags[index]) ||
+                    selectedOutlinePointId !== initialOutlinePointId;
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -34,10 +49,15 @@ export default function EditThoughtModal({ thoughtId, initialText, initialTags, 
     setTags(tags.filter((_, i) => i !== index));
   };
 
+  const handleOutlinePointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedOutlinePointId(value === "" ? undefined : value);
+  };
+
   const handleSave = () => {
     setIsSubmitting(true);
     try {
-      onSave(text, tags);
+      onSave(text, tags, selectedOutlinePointId);
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);
@@ -45,6 +65,26 @@ export default function EditThoughtModal({ thoughtId, initialText, initialTags, 
       setIsSubmitting(false);
     }
   };
+
+  // Create a flat array of all outline points with section information
+  const allOutlinePoints: { id: string; text: string; section: string }[] = [];
+  
+  if (sermonOutline) {
+    sermonOutline.introduction.forEach(point => {
+      allOutlinePoints.push({ ...point, section: t('outline.introduction') });
+    });
+    
+    sermonOutline.main.forEach(point => {
+      allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
+    });
+    
+    sermonOutline.conclusion.forEach(point => {
+      allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
+    });
+  }
+
+  // Find the selected outline point text for display
+  const selectedPointInfo = allOutlinePoints.find(point => point.id === selectedOutlinePointId);
 
   const availableTags = allowedTags.filter(t => !tags.includes(t.name));
 
@@ -61,6 +101,51 @@ export default function EditThoughtModal({ thoughtId, initialText, initialTags, 
             minRows={3}
           />
         </div>
+
+        {sermonOutline && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'Outline Point'}</label>
+            <select
+              value={selectedOutlinePointId || ""}
+              onChange={handleOutlinePointChange}
+              className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option value="">{t('editThought.noOutlinePoint') || 'No outline point selected'}</option>
+              
+              {/* Group outline points by section */}
+              {sermonOutline.introduction.length > 0 && (
+                <optgroup label={t('outline.introduction') || 'Introduction'}>
+                  {sermonOutline.introduction.map(point => (
+                    <option key={point.id} value={point.id}>{point.text}</option>
+                  ))}
+                </optgroup>
+              )}
+              
+              {sermonOutline.main.length > 0 && (
+                <optgroup label={t('outline.mainPoints') || 'Main Points'}>
+                  {sermonOutline.main.map(point => (
+                    <option key={point.id} value={point.id}>{point.text}</option>
+                  ))}
+                </optgroup>
+              )}
+              
+              {sermonOutline.conclusion.length > 0 && (
+                <optgroup label={t('outline.conclusion') || 'Conclusion'}>
+                  {sermonOutline.conclusion.map(point => (
+                    <option key={point.id} value={point.id}>{point.text}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            
+            {selectedPointInfo && (
+              <p className="mt-1 text-sm text-gray-500">
+                {t('editThought.selectedOutlinePoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="mb-4">
           <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
           <div className="flex flex-wrap gap-2">

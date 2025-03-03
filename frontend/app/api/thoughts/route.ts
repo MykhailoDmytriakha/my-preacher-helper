@@ -151,7 +151,8 @@ export async function PUT(request: Request) {
       id: updatedThoughtNew.id,
       text: updatedThoughtNew.text,
       tags: updatedThoughtNew.tags,
-      date: updatedThoughtNew.date
+      date: updatedThoughtNew.date,
+      outlinePointId: updatedThoughtNew.outlinePointId
     };
     
     // verify that updatedThought has everything that is needed

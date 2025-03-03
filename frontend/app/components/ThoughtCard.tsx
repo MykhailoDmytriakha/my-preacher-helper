@@ -1,8 +1,8 @@
 "use client";
 
 import { formatDate } from "@utils/dateFormatter";
-import { TrashIcon, EditIcon } from "@components/Icons";
-import { Thought } from "@/models/models";
+import { TrashIcon, EditIcon, DocumentIcon } from "@components/Icons";
+import { Thought, Outline, OutlinePoint } from "@/models/models";
 import { useEffect, useRef } from "react";
 import { getContrastColor } from "@utils/color";
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,7 @@ interface ThoughtCardProps {
   hasRequiredTag: boolean;
   allowedTags: { name: string; color: string }[];
   currentTag: string;
+  sermonOutline?: Outline;
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onEditCancel: () => void;
@@ -37,6 +38,7 @@ export default function ThoughtCard({
   hasRequiredTag,
   allowedTags,
   currentTag,
+  sermonOutline,
   onDelete,
   onEditStart,
   onEditCancel,
@@ -102,6 +104,25 @@ export default function ThoughtCard({
       }
     });
   };
+
+  // Find the associated outline point, if any
+  const findOutlinePoint = (): { text: string; section: string } | undefined => {
+    if (!thought.outlinePointId || !sermonOutline) return undefined;
+    
+    // Check in each section
+    const introPoint = sermonOutline.introduction.find(p => p.id === thought.outlinePointId);
+    if (introPoint) return { text: introPoint.text, section: t('outline.introduction') || 'Introduction' };
+    
+    const mainPoint = sermonOutline.main.find(p => p.id === thought.outlinePointId);
+    if (mainPoint) return { text: mainPoint.text, section: t('outline.mainPoints') || 'Main Points' };
+    
+    const conclPoint = sermonOutline.conclusion.find(p => p.id === thought.outlinePointId);
+    if (conclPoint) return { text: conclPoint.text, section: t('outline.conclusion') || 'Conclusion' };
+    
+    return undefined;
+  };
+
+  const outlinePoint = findOutlinePoint();
 
   if (editingIndex === index) {
     // Edit Mode
@@ -232,8 +253,19 @@ export default function ThoughtCard({
             </div>
           )}
         </div>
-        {/* Thought Text */}
-        <div className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{thought.text}</div>
+
+        <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+          {thought.text}
+        </p>
+
+        {/* Display associated outline point if available */}
+        {outlinePoint && (
+          <div className="mt-3">
+            <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800">
+              {outlinePoint.section}: {outlinePoint.text}
+            </span>
+          </div>
+        )}
 
         {/* Warning if no required tag */}
         {!hasRequiredTag && (

@@ -279,4 +279,101 @@ describe('ThoughtCard Component', () => {
     expect(screen.getByText('Основная часть')).toBeInTheDocument();
     expect(screen.getByText('Заключение')).toBeInTheDocument();
   });
+
+  it('displays outline point when thought has outlinePointId and sermon outline is provided', () => {
+    // Mock sermon outline
+    const mockSermonOutline = {
+      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
+      main: [{ id: 'main-1', text: 'Main point 1' }],
+      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    };
+    
+    // Test with introduction point
+    const thoughtWithIntroPoint: Thought = {
+      id: 'thought-3',
+      text: 'Thought with intro outline point',
+      tags: ['Tag1'],
+      date: '2023-01-01',
+      outlinePointId: 'intro-1'
+    };
+    
+    const { rerender } = render(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithIntroPoint}
+        sermonOutline={mockSermonOutline}
+      />
+    );
+    
+    // Check that outline point is displayed with correct section
+    expect(screen.getByText('outline.introduction: Introduction point 1')).toBeInTheDocument();
+    
+    // Test with main point
+    const thoughtWithMainPoint: Thought = {
+      ...thoughtWithIntroPoint,
+      outlinePointId: 'main-1'
+    };
+    
+    rerender(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithMainPoint}
+        sermonOutline={mockSermonOutline}
+      />
+    );
+    
+    // Check that outline point is displayed with correct section
+    expect(screen.getByText('outline.mainPoints: Main point 1')).toBeInTheDocument();
+    
+    // Test with conclusion point
+    const thoughtWithConclPoint: Thought = {
+      ...thoughtWithIntroPoint,
+      outlinePointId: 'concl-1'
+    };
+    
+    rerender(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithConclPoint}
+        sermonOutline={mockSermonOutline}
+      />
+    );
+    
+    // Check that outline point is displayed with correct section
+    expect(screen.getByText('outline.conclusion: Conclusion point 1')).toBeInTheDocument();
+  });
+
+  it('does not display outline point when thought has no outlinePointId', () => {
+    // Mock sermon outline
+    const mockSermonOutline = {
+      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
+      main: [{ id: 'main-1', text: 'Main point 1' }],
+      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    };
+    
+    // Thought without outlinePointId
+    const thoughtWithoutOutlinePoint: Thought = {
+      id: 'thought-4',
+      text: 'Thought without outline point',
+      tags: ['Tag1'],
+      date: '2023-01-01',
+      // No outlinePointId
+    };
+    
+    render(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithoutOutlinePoint}
+        sermonOutline={mockSermonOutline}
+      />
+    );
+    
+    // Check that no outline point section is displayed
+    expect(screen.queryByText(/outline\.introduction/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/outline\.mainPoints/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/outline\.conclusion/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Introduction point 1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Main point 1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Conclusion point 1/)).not.toBeInTheDocument();
+  });
 }); 

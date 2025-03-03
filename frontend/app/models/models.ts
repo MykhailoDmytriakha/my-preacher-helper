@@ -3,6 +3,7 @@ export interface Thought {
   text: string;
   tags: string[];
   date: string;
+  outlinePointId?: string;
 }
 
 export interface OutlinePoint {
