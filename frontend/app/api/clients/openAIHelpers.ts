@@ -15,7 +15,9 @@ export function extractSermonContent(sermon: Sermon): string {
   
   // Extract text from thoughts, removing empty or very short entries
   if (sermon.thoughts && sermon.thoughts.length > 0) {
-    console.log(`Processing ${sermon.thoughts.length} thoughts`);
+    if (isDebugMode) {
+      console.log(`Processing ${sermon.thoughts.length} thoughts`);
+    }
     
     const meaningfulThoughts = sermon.thoughts
       .filter(t => t.text && t.text.trim().length > 10) // Filter out very short thoughts
@@ -28,7 +30,7 @@ export function extractSermonContent(sermon: Sermon): string {
       });
     
     sermonContent = meaningfulThoughts.join("\n\n");
-  } else {
+  } else if (isDebugMode) {
     console.log("No thoughts found in sermon");
   }
   
@@ -171,12 +173,16 @@ export function extractSermonContent(sermon: Sermon): string {
   
   // If we don't have meaningful content after all this, use a fallback message
   if (sermonContent.trim().length < 30) {
-    console.log("Minimal sermon content detected, using fallback");
+    if (isDebugMode) {
+      console.log("Minimal sermon content detected, using fallback");
+    }
     sermonContent = `This sermon with title "${sermon.title}" and reference "${sermon.verse}" appears to be in early stages of development with minimal content.`;
   }
 
   // Log content size for debugging and optimization
-  console.log(`Content size: ${sermonContent.length} characters`);
+  if (isDebugMode) {
+    console.log(`Content size: ${sermonContent.length} characters`);
+  }
   
   return sermonContent;
 }
@@ -211,11 +217,149 @@ export function parseAIResponse<T>(rawJson: string | null, fieldName: string, fu
 }
 
 /**
+ * Formats a duration into a human-readable string
+ * @param durationMs Duration in milliseconds
+ * @returns Formatted string (e.g. "1.5s", "2m 30s", "1h 20m")
+ */
+export function formatDuration(durationMs: number): string {
+  // If less than 1 second, show milliseconds
+  if (durationMs < 1000) {
+    return `${Math.round(durationMs)}ms`;
+  }
+  
+  // Convert to seconds
+  const seconds = durationMs / 1000;
+  
+  // If less than 60 seconds, show seconds
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  
+  // Convert to minutes and seconds
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  
+  // If less than 60 minutes, show minutes and seconds
+  if (minutes < 60) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  
+  // Convert to hours, minutes, and seconds
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = Math.floor(minutes % 60);
+  
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+/**
  * Logs timing information for AI operations
  * @param operation Name of the operation being timed
- * @param startTime Start time in milliseconds
+ * @param startTime Start time in milliseconds from performance.now()
  */
 export function logOperationTiming(operation: string, startTime: number): void {
-  const endTime = Date.now();
-  console.log(`${operation} completed in ${(endTime - startTime) / 1000} seconds`);
-} 
+  const endTime = performance.now();
+  const durationMs = endTime - startTime;
+  const formattedDuration = formatDuration(durationMs);
+  logger.info(operation, `Completed in ${formattedDuration}`);
+}
+
+/**
+ * Unified logger for consistent logging throughout the application
+ * 
+ * Usage examples:
+ * 
+ * 1. Basic logging:
+ *    logger.info('ComponentName', 'Message goes here');
+ * 
+ * 2. With additional data:
+ *    logger.info('ComponentName', 'Found items', items);
+ * 
+ * 3. Error logging:
+ *    try {
+ *      // Some code that may throw
+ *    } catch (err) {
+ *      logger.error('ComponentName', 'Failed to process data', err);
+ *    }
+ * 
+ * 4. Debug logging (only shows in debug mode):
+ *    logger.debug('ComponentName', 'Detailed debug info', debugData);
+ * 
+ * 5. Success logging:
+ *    logger.success('ComponentName', 'Operation completed successfully');
+ * 
+ * 6. Warning logging:
+ *    logger.warn('ComponentName', 'Resource usage is high', { cpu: 90, memory: 85 });
+ */
+export const logger = {
+  /**
+   * Log information with a specified module name
+   * @param module The name of the module/component logging the message
+   * @param message The message to log
+   * @param data Optional data to include with the log
+   */
+  info: (module: string, message: string, data?: any) => {
+    if (data) {
+      console.log(`ℹ️ [${module}] ${message}`, data);
+    } else {
+      console.log(`ℹ️ [${module}] ${message}`);
+    }
+  },
+  
+  /**
+   * Log a warning with a specified module name
+   * @param module The name of the module/component logging the warning
+   * @param message The warning message
+   * @param data Optional data to include with the warning
+   */
+  warn: (module: string, message: string, data?: any) => {
+    if (data) {
+      console.warn(`⚠️ [${module}] ${message}`, data);
+    } else {
+      console.warn(`⚠️ [${module}] ${message}`);
+    }
+  },
+  
+  /**
+   * Log an error with a specified module name
+   * @param module The name of the module/component logging the error
+   * @param message The error message
+   * @param error Optional error object or data to include
+   */
+  error: (module: string, message: string, error?: any) => {
+    if (error) {
+      console.error(`❌ [${module}] ${message}`, error);
+    } else {
+      console.error(`❌ [${module}] ${message}`);
+    }
+  },
+  
+  /**
+   * Log a debug message (only in debug mode)
+   * @param module The name of the module/component logging the debug message
+   * @param message The debug message
+   * @param data Optional data to include with the debug message
+   */
+  debug: (module: string, message: string, data?: any) => {
+    if (isDebugMode) {
+      if (data) {
+        console.log(`🔍 [${module}] ${message}`, data);
+      } else {
+        console.log(`🔍 [${module}] ${message}`);
+      }
+    }
+  },
+  
+  /**
+   * Log a success message
+   * @param module The name of the module/component logging the success
+   * @param message The success message
+   * @param data Optional data to include with the success message
+   */
+  success: (module: string, message: string, data?: any) => {
+    if (data) {
+      console.log(`✅ [${module}] ${message}`, data);
+    } else {
+      console.log(`✅ [${module}] ${message}`);
+    }
+  }
+}; 

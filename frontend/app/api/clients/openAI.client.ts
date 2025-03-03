@@ -9,554 +9,659 @@ import {
   versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage
 } from "@/config/prompts";
-import { extractSermonContent, parseAIResponse, logOperationTiming } from "./openAIHelpers";
+import {
+  thoughtFunctionSchema,
+  sortingFunctionSchema,
+  insightsFunctionSchema,
+  topicsFunctionSchema,
+  versesFunctionSchema,
+  directionsFunctionSchema
+} from "@/config/schemas";
+import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger } from "./openAIHelpers";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
-const gptModel = process.env.OPENAI_GPT_MODEL as string;
+const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
 const isDebugMode = process.env.DEBUG_MODE === 'true';
+
+// Create XML function definition for Claude models
+function createXmlFunctionDefinition(functionSchema: any): string {
+  const schema = functionSchema.function;
+  const parameters = schema.parameters.properties;
+  
+  let xmlDefinition = `
+<function name="${schema.name}">
+  <parameters>`;
+  
+  // Add each parameter
+  for (const [paramName, paramSchema] of Object.entries(parameters)) {
+    const param = paramSchema as any;
+    xmlDefinition += `
+    <parameter name="${paramName}" type="${param.type}">
+      ${param.description || ''}
+    </parameter>`;
+  }
+  
+  xmlDefinition += `
+  </parameters>
+</function>
+
+Your response should be structured as follows:
+
+<function_call name="${schema.name}">
+<arguments>
+{
+`;
+
+  // Add a template for each parameter
+  for (const [paramName, paramSchema] of Object.entries(parameters)) {
+    const param = paramSchema as any;
+    if (param.type === "array") {
+      xmlDefinition += `  "${paramName}": [],\n`;
+    } else if (param.type === "object") {
+      xmlDefinition += `  "${paramName}": {},\n`;
+    } else {
+      xmlDefinition += `  "${paramName}": "",\n`;
+    }
+  }
+
+  xmlDefinition += `}
+</arguments>
+</function_call>
+
+The response MUST be valid JSON within the <arguments> tags.`;
+
+  return xmlDefinition;
+}
+
+// Helper function to extract data from Claude's response
+function extractClaudeFunctionResponse<T>(responseContent: string): T {
+  try {
+    // First try: Extract JSON from within the <arguments> tags
+    const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
+    if (argumentsMatch && argumentsMatch[1]) {
+      const jsonString = argumentsMatch[1].trim();
+      return JSON.parse(jsonString) as T;
+    } 
+    
+    // Second try: Look for a JSON object
+    console.log("No <arguments> tags found, trying alternative extraction methods");
+    const jsonRegex = /\{[\s\S]*?\}/;
+    const jsonMatch = responseContent.match(jsonRegex);
+    
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as T;
+    } 
+    
+    throw new Error("Could not find any JSON object in model response");
+  } catch (error) {
+    console.error("Failed to parse function response from Claude model:", error);
+    throw new Error("Invalid response format from AI model");
+  }
+}
+
+// Helper function to extract function response
+function extractFunctionResponse<T>(response: OpenAI.Chat.ChatCompletion): T {
+  // For Claude models, extract from content
+  if (response.choices[0].message.content) {
+    return extractClaudeFunctionResponse<T>(response.choices[0].message.content);
+  }
+  
+  throw new Error("No function call found in the response");
+}
+
+// Helper function to create messages array
+function createMessagesArray(systemPrompt: string, userContent: string): Array<OpenAI.ChatCompletionMessageParam> {
+  // Since o1-mini doesn't support system messages, include system content as part of user message
+  return [
+    { role: "user", content: `${systemPrompt}\n\n${userContent}` }
+  ];
+}
+
+/**
+ * Wraps OpenAI API calls with enhanced logging and timing
+ * @param apiCallFn The actual API call function
+ * @param operationName Name of the operation for logging
+ * @param requestData Data being sent to OpenAI
+ * @param inputInfo Additional context information
+ * @param options Optional configuration for logging behavior
+ * @returns The API call result
+ */
+async function withOpenAILogging<T>(
+  apiCallFn: () => Promise<any>, 
+  operationName: string, 
+  requestData: any,
+  inputInfo: any,
+  options: {
+    logFullResponse?: boolean,
+    logMaxLength?: number
+  } = {}
+): Promise<T> {
+  // Default options
+  const {
+    logFullResponse = false,
+    logMaxLength = 500
+  } = options;
+  
+  logger.info(operationName, "Starting operation");
+  logger.info(operationName, "Input info", inputInfo);
+  
+  // Truncate request data logging if it's too large
+  const requestStr = JSON.stringify(requestData, null, 2);
+  if (requestStr.length > logMaxLength && !logFullResponse) {
+    logger.info(operationName, `Request data (truncated to ${logMaxLength} chars)`, requestStr.substring(0, logMaxLength) + '...');
+  } else {
+    logger.info(operationName, "Request data", requestData);
+  }
+  
+  const startTime = performance.now();
+  
+  try {
+    const response = await apiCallFn();
+    const endTime = performance.now();
+    const durationMs = endTime - startTime;
+    const formattedDuration = formatDuration(durationMs);
+    
+    logger.success(operationName, `Completed in ${formattedDuration}`);
+    
+    // Truncate response logging if it's too large
+    const responseStr = JSON.stringify(response, null, 2);
+    if (responseStr.length > logMaxLength && !logFullResponse) {
+      logger.info(operationName, `Raw response (truncated to ${logMaxLength} chars)`, responseStr.substring(0, logMaxLength) + '...');
+    } else {
+      logger.info(operationName, "Raw response", response);
+    }
+    
+    let prettyResponse: any;
+    
+    // Handle different response formats based on the operation
+    if (response.choices && response.choices[0]?.message) {
+      if (response.choices[0].message.content) {
+        // For content-based responses (Claude-style)
+        prettyResponse = response.choices[0].message.content;
+      } else if (response.choices[0].message.function_call) {
+        // For function call responses
+        prettyResponse = JSON.parse(response.choices[0].message.function_call.arguments);
+      }
+    } else if (response.text) {
+      // For transcription responses
+      prettyResponse = response.text;
+    } else {
+      // Default case
+      prettyResponse = response;
+    }
+    
+    // Truncate pretty response logging if it's too large
+    const prettyStr = JSON.stringify(prettyResponse, null, 2);
+    if (prettyStr.length > logMaxLength && !logFullResponse) {
+      logger.info(operationName, `Pretty response (truncated to ${logMaxLength} chars)`, prettyStr.substring(0, logMaxLength) + '...');
+    } else {
+      logger.info(operationName, "Pretty response", prettyResponse);
+    }
+    
+    return response;
+  } catch (error) {
+    const endTime = performance.now();
+    const durationMs = endTime - startTime;
+    const formattedDuration = formatDuration(durationMs);
+    
+    logger.error(operationName, `Failed after ${formattedDuration}`, error);
+    throw error;
+  }
+}
 
 // ===== API Functions =====
 
 export async function createTranscription(file: File): Promise<string> {
-  console.log("createTranscription: Received file for transcription", file);
-  const transcriptionResponse = await openai.audio.transcriptions.create({
-    file,
-    model: audioModel,
-    response_format: "text",
-  });
-  console.log(
-    "createTranscription: Transcription response received",
-    transcriptionResponse
-  );
-  return transcriptionResponse;
+  try {
+    const inputInfo = {
+      filename: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    };
+    
+    const requestData = {
+      model: audioModel,
+      file: 'Audio file content (binary data not shown in logs)'
+    };
+    
+    const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
+      () => openai.audio.transcriptions.create({
+        file,
+        model: audioModel,
+      }), 
+      'Transcription',
+      requestData,
+      inputInfo
+    );
+    
+    return result.text;
+  } catch (error) {
+    console.error("Error transcribing file:", error);
+    throw error;
+  }
 }
 
-/**
- * Generate a thought from transcription text
- * @param thoughtText Transcription text to process
- * @param sermon The current sermon context (for reference)
- * @param availableTags List of tags that the user can actually use
- * @returns Thought object with text, tags, date
- */
+// Generate a single thought from audio transcription or text
 export async function generateThought(
-  thoughtText: string,
+  content: string, 
   sermon: Sermon,
-  availableTags: string[]
-): Promise<Thought> {
-  const userMessage = createThoughtUserMessage(thoughtText, sermon, availableTags);
+  availableTags: string[] = []
+): Promise<{ text: string; tags: string[] }> {
+  // Create user message with the input format the LLM expects
+  const userMessage = createThoughtUserMessage(content, sermon, availableTags);
   
   if (isDebugMode) {
-    console.log("DEBUG MODE: System prompt:", thoughtSystemPrompt);
-    console.log("DEBUG MODE: User message:", userMessage);
+    logger.debug('GenerateThought', "Generating thought for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
+    logger.debug('GenerateThought', "With available tags", availableTags);
   }
   
   try {
-    const response = await openai.chat.completions.create({
-      model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: thoughtSystemPrompt },
-        { role: "user", content: userMessage },
-      ]
-    });
-
-    const rawJson = response.choices[0].message.content;
+    // For Claude models
+    const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
     
-    if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response:", rawJson);
-    }
+    const requestOptions = {
+      model: gptModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+      sermonTitle: sermon.title,
+      availableTags
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Thought',
+      requestOptions,
+      inputInfo
+    );
 
-    let result;
-    try {
-      result = JSON.parse(rawJson || "{}");
-    } catch (jsonError) {
-      console.error("generateThought: JSON parsing error:", jsonError);
-      throw new Error("Invalid JSON structure from OpenAI");
-    }
+    const result = extractFunctionResponse<{ text: string; tags: string[] }>(response);
 
     if (typeof result.text !== "string" || !Array.isArray(result.tags)) {
-      console.error("generateThought: Invalid JSON structure received", result);
-      throw new Error("Invalid JSON structure from OpenAI");
+      logger.error('GenerateThought', "Invalid response structure received", result);
+      throw new Error("Invalid response structure from OpenAI");
     }
 
     const labelWidth = 16;
-    const transcriptionLabel = "- Transcription:";
-    const thoughtLabel = "- Thought:";
-    console.log(`${transcriptionLabel} ${thoughtText}\n${thoughtLabel} ${result.text}`);
-    return {
-      ...result,
-      id: uuidv4(),
-      date: new Date().toISOString()
-    } as Thought;
+    logger.success('GenerateThought', "Thought generated successfully");
+    logger.info('GenerateThought', `Text: ${result.text.substring(0, 60)}${result.text.length > 60 ? "..." : ""}`);
+    logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
+
+    return result;
   } catch (error) {
-    console.error("generateThought: OpenAI API Error:", error);
-    return {
-      id: uuidv4(),
-      text: thoughtText,
-      tags: [],
-      date: new Date().toISOString(),
-    };
+    logger.error('GenerateThought', "Error generating thought", error);
+    throw error;
   }
 }
 
 /**
- * Uses AI to sort items in a logical sequence based on the provided outline points.
- * 
- * @param columnId - The ID of the column being sorted (e.g., "introduction", "main", "conclusion").
- * @param items - The list of items to sort.
- * @param sermon - The sermon object containing title and scripture for context.
+ * Sort items within a column using AI
+ * @param columnId - ID of the column containing the items
+ * @param items - Array of items to sort
+ * @param sermon - The sermon context
  * @param outlinePoints - Optional outline points to guide the sorting.
  * @returns A promise that resolves to the sorted list of items.
  */
-export async function sortItemsWithAI(
-  columnId: string, 
-  items: Item[], 
-  sermon: Sermon, 
-  outlinePoints?: OutlinePoint[]
-): Promise<Item[]> {
+export async function sortItemsWithAI(columnId: string, items: Item[], sermon: Sermon, outlinePoints: OutlinePoint[] = []): Promise<Item[]> {
   try {
-    // Start measuring execution time
-    const startTime = Date.now();
-    
-    if (items.length <= 1) {
-      console.log("Sort AI: No need to sort 0 or 1 items");
-      return items; // No need to sort 0 or 1 items
+    // Create a map for quick lookup by ID
+    const itemsMapByKey: Record<string, Item> = {};
+    items.forEach(item => {
+      // Add the item to lookup maps, using just the first 4 chars of the ID as key
+      const shortKey = item.id.slice(0, 4);
+      itemsMapByKey[shortKey] = item;
+    });
+
+    // Log the mapping for debugging
+    if (isDebugMode) {
+      console.log("Sort AI: Item key to ID mapping:");
+      Object.entries(itemsMapByKey).forEach(([key, item]) => {
+        console.log(`  ${key} -> ${item.id.slice(0, 8)}`);
+      });
     }
     
-    // Create a mapping of keys (first 4 chars of ID) to items for reference and logging
-    const itemsMapByKey: Record<string, Item> = {};
-    const keyToIndex: Record<string, number> = {};
-    items.forEach((item, index) => {
-      const key = item.id.slice(0, 4);
-      itemsMapByKey[key] = item;
-      keyToIndex[key] = index;
-    });
-    
-    // Log the mapping for debugging
-    console.log("Sort AI: Item key to ID mapping:");
-    Object.entries(itemsMapByKey).forEach(([key, item]) => {
-      console.log(`  Key ${key} -> ID: ${item.id.slice(0, 4)}, Content preview: "${item.content.substring(0, 30)}..."`);
-    });
-    
-    // Create user message using the template
+    // Create user message for the AI model
     const userMessage = createSortingUserMessage(columnId, items, sermon, outlinePoints);
     
     if (isDebugMode) {
       console.log("DEBUG MODE: User message for sorting:", userMessage);
     }
     
-    const response = await openai.chat.completions.create({
+    // For Claude models (o1-mini), use XML tags for function-like behavior
+    const xmlFunctionPrompt = createXmlFunctionDefinition(sortingFunctionSchema);
+    
+    const requestOptions = {
       model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: sortingSystemPrompt },
-        { role: "user", content: userMessage },
-      ]
-    });
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
     
-    const rawJson = response.choices[0].message.content;
+    const inputInfo = {
+      columnId,
+      itemCount: items.length,
+      sermonTitle: sermon.title,
+      outlinePointCount: outlinePoints.length
+    };
     
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Sort Items',
+      requestOptions,
+      inputInfo
+    );
+    
+    // Extract the response
+    let sortedData: { sortedItems: Array<{key: string, outlinePoint?: string, content?: string}> };
+    
+    try {
+      const content = response.choices[0].message.content || '';
+      sortedData = extractClaudeFunctionResponse(content);
+    } catch (error) {
+      console.error("Failed to parse function response from model:", error);
+      throw new Error("Invalid response format from AI model");
+    }
+
+    // Log original item order for comparison
     if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response for sorting:", rawJson);
+      console.log("DEBUG: Original item ordering:");
+      items.forEach((item, index) => {
+        console.log(`  [${index}] ${item.id.slice(0, 4)}: "${item.content.substring(0, 30)}..."`);
+      });
     }
     
-    let result;
-    try {
-      result = JSON.parse(rawJson || "{}");
-      
-      // Log original item order for comparison
-      const originalItemKeys = items.map((item: Item) => item.id.slice(0, 4));
-      console.log("DEBUG: Original item keys:", originalItemKeys.join(','));
-      
-      // Validate and extract keys from the AI response
-      if (!result.sortedItems || !Array.isArray(result.sortedItems)) {
-        console.error("Invalid response format from AI:", result);
-        return items; // Return original order if malformed
+    // Validate and extract keys from the AI response
+    if (!sortedData.sortedItems || !Array.isArray(sortedData.sortedItems)) {
+      console.error("Invalid response format from AI:", sortedData);
+      return items; // Return original order if malformed
+    }
+    
+    const extractedKeys: string[] = [];
+    sortedData.sortedItems.forEach((item: any, pos: number) => {
+      if (item && typeof item.key === 'string') {
+        extractedKeys.push(item.key);
+        if (isDebugMode) {
+          console.log(`  [${pos}] ${item.key}: ${item.outlinePoint || 'no outline'} - ${item.content || 'no preview'}`);
+        }
       }
+    });
+    
+    // Grouping by outline points if in debug mode
+    if (isDebugMode && sortedData.sortedItems.length > 0) {
+      const groupedByOutline: Record<string, Array<{key: string, content: string}>> = {};
+      const includedKeys = new Set<string>();
       
-      const extractedKeys: string[] = [];
-      result.sortedItems.forEach((item: any, pos: number) => {
+      sortedData.sortedItems.forEach((item: {key: string, outlinePoint?: string, content?: string}) => {
         if (item && typeof item.key === 'string') {
-          extractedKeys.push(item.key);
-          const originalItem = itemsMapByKey[item.key];
-          console.log(`DEBUG: Raw API response item ${pos}: key=${item.key}, maps to ID=${originalItem ? originalItem.id.slice(0,4) : 'INVALID'}, content="${originalItem ? originalItem.content.substring(0, 30) : 'INVALID'}..."`);
+          includedKeys.add(item.key);
+          const outlineKey = item.outlinePoint || 'unassigned';
+          if (!groupedByOutline[outlineKey]) {
+            groupedByOutline[outlineKey] = [];
+          }
+          groupedByOutline[outlineKey].push({
+            key: item.key,
+            content: item.content || 'no preview'
+          });
         }
       });
-      console.log("DEBUG: All keys extracted from raw API response:", extractedKeys);
       
-      // Grouping by outline points if in debug mode
-      if (isDebugMode && result.sortedItems.length > 0) {
-        const groupedByOutline: Record<string, Array<{key: string, content: string}>> = {};
-        const includedKeys = new Set<string>();
-        
-        result.sortedItems.forEach((item: {key: string, outlinePoint?: string, content: string}) => {
-          if (item && typeof item.key === 'string') {
-            includedKeys.add(item.key);
-            const outlineKey = item.outlinePoint || 'Unspecified';
-            if (!groupedByOutline[outlineKey]) {
-              groupedByOutline[outlineKey] = [];
-            }
-            groupedByOutline[outlineKey].push({
-              key: item.key,
-              content: item.content || (itemsMapByKey[item.key]?.content.substring(0, 30) || 'Unknown content')
-            });
-          }
+      console.log("DEBUG: Items grouped by outline points:");
+      Object.entries(groupedByOutline).forEach(([outline, items]) => {
+        console.log(`  [${outline}] (${items.length} items):`);
+        items.forEach(item => {
+          console.log(`    - ${item.key}: ${item.content}`);
         });
-        
-        // Check for missing keys
-        const missingKeys: string[] = [];
-        for (const key of Object.keys(itemsMapByKey)) {
-          if (!includedKeys.has(key)) {
-            missingKeys.push(key);
-          }
-        }
-        
-        console.log("DEBUG MODE: Items grouped by outline points:");
-        Object.entries(groupedByOutline).forEach(([outline, arr]) => {
-          console.log(`  ${outline} (${arr.length} items):`);
-          arr.forEach(item => {
-            console.log(`    - Key ${item.key}: "${item.content}"`);
-          });
-        });
-        
-        if (missingKeys.length > 0) {
-          console.log(`DEBUG MODE: WARNING - ${missingKeys.length} keys missing from AI response:`);
-          console.log(`  Missing keys: ${missingKeys.join(', ')}`);
-          missingKeys.forEach(key => {
-            const content = itemsMapByKey[key]?.content.substring(0, 50) || 'Unknown';
-            console.log(`    - Key ${key}: "${content}..."`);
-          });
-        } else {
-          console.log("DEBUG MODE: All keys included in AI response.");
-        }
-      }
-    } catch (jsonError) {
-      console.error("sortItemsWithAI: JSON parsing error:", jsonError);
-      console.error("sortItemsWithAI: Raw JSON was:", rawJson);
-      return items; // Return original order if parsing fails
+      });
     }
     
     // Extract and validate keys from the AI response
-    const aiSortedKeys = result.sortedItems
+    const aiSortedKeys = sortedData.sortedItems
       .map((aiItem: any) => {
         if (aiItem && typeof aiItem.key === 'string') {
-          let key = aiItem.key;
-          if (!itemsMapByKey[key] && key.length > 4) {
+          let itemKey: string = aiItem.key;
+          if (!itemsMapByKey[itemKey] && itemKey.length > 4) {
             // Attempt to correct the key by taking the last 4 characters
-            const correctedKey = key.substring(key.length - 4);
+            const correctedKey = itemKey.substring(itemKey.length - 4);
             if (itemsMapByKey[correctedKey]) {
-              console.log(`AI sorted: Corrected key from ${key} to ${correctedKey}`);
-              key = correctedKey;
-            } else {
-              console.log(`AI sorted: Key ${key} is invalid even after correction attempt.`);
-              return null;
+              console.log(`DEBUG: Corrected AI key ${itemKey} to ${correctedKey}`);
+              itemKey = correctedKey;
             }
-          } else if (!itemsMapByKey[key]) {
-            console.log(`AI sorted: Invalid key ${key} -> Not found in itemsMapByKey`);
-            return null;
           }
-          const originalItem = itemsMapByKey[key];
-          console.log(`AI sorted: Valid key ${key} -> ID: ${originalItem.id.slice(0, 4)}, Content: "${originalItem.content.substring(0, 30)}..."`);
-          return key;
+          return itemsMapByKey[itemKey] ? itemKey : null;
         }
         return null;
       })
       .filter((key: string | null): key is string => key !== null);
-
-    // Remove duplicates, keeping the first occurrence
-    const uniqueKeys: string[] = [];
-    const seenKeys = new Set<string>();
     
-    for (const key of aiSortedKeys) {
-      if (!seenKeys.has(key)) {
-        uniqueKeys.push(key);
-        seenKeys.add(key);
-      } else {
-        console.log(`AI sorted: Skipping duplicate key ${key} -> ID: ${itemsMapByKey[key].id.slice(0, 4)}`);
-      }
-    }
+    // Create a new array with the sorted items
+    const sortedItems: Item[] = aiSortedKeys.map((key: string) => itemsMapByKey[key]);
     
-    console.log("Sort AI: Unique sorted keys after removing duplicates:", uniqueKeys);
-
-    // Detect missing keys
-    const includedKeysSet = new Set(uniqueKeys);
-    const missingKeys: string[] = [];
-    
-    Object.keys(itemsMapByKey).forEach(key => {
-      if (!includedKeysSet.has(key)) {
-        missingKeys.push(key);
-        console.log(`AI sorted: Missing key ${key} -> ID: ${key}, Content: "${itemsMapByKey[key].content.substring(0, 30)}..."`);
-      }
-    });
-    
-    // Create final order of keys by appending missing keys
-    const finalKeysOrder = [...uniqueKeys, ...missingKeys];
-    if (finalKeysOrder.length !== items.length) {
-      console.error(`CRITICAL ERROR: Final keys order has ${finalKeysOrder.length} items, but expected ${items.length}. Adjusting...`);
-      while (finalKeysOrder.length > items.length) {
-        const removed = finalKeysOrder.pop();
-        console.error(`Removed extra key: ${removed}`);
-      }
-      Object.keys(itemsMapByKey).forEach(key => {
-        if (!finalKeysOrder.includes(key)) {
-          finalKeysOrder.push(key);
-          console.error(`Added missing key: ${key}`);
-        }
+    // Check if all items were included in the sorted result
+    const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));
+    if (missingSortedKeys.length > 0) {
+      console.log(`DEBUG: ${missingSortedKeys.length} items were missing in the AI sorted order, appending them to the end`);
+      missingSortedKeys.forEach(key => {
+        sortedItems.push(itemsMapByKey[key]);
       });
     }
     
-    console.log("Sort AI: Final order of keys:", finalKeysOrder);
-    
-    // Map keys to items to form the sortedItems
-    const sortedItems = finalKeysOrder.map(key => itemsMapByKey[key]);
-    
-    // Log final sorted order with IDs
-    console.log("Sort AI: Final sorted order (IDs):", sortedItems.map(item => item.id.slice(0, 4)).join(', '));
-    
-    // Calculate and log execution time
-    const executionTime = Date.now() - startTime;
-    console.log(`SortItemsWithAI: AI sorting completed in ${executionTime}ms for ${items.length} items`);
-    
-    // Log before/after comparison
-    const originalIds = items.map(item => item.id.slice(0, 4)).join(',');
-    const newIds = sortedItems.map(item => item.id.slice(0, 4)).join(',');
-    console.log(`SortItemsWithAI: Reordered from [${originalIds}] to [${newIds}]`);
-    
     return sortedItems;
   } catch (error) {
-    console.error("Error in AI sorting:", error);
-    return items; // Return original order if an error occurs
+    console.error("Error in sortItemsWithAI:", error);
+    throw error;
   }
 }
 
 /**
- * Generate insights for a sermon using OpenAI
- * @param sermon The sermon to generate insights for
- * @returns Generated insights or null if failed
+ * Generate insights for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Insights object with mainIdea, keyPoints, suggestedOutline, audienceTakeaways
  */
 export async function generateSermonInsights(sermon: Sermon): Promise<Insights | null> {
-  const startTime = Date.now();
-  console.log("Generating sermon insights for:", sermon.title);
+  // Extract sermon content using our helper function
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createInsightsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating insights for sermon:", sermon.id);
+  }
   
   try {
-    // Extract sermon content using our helper function
-    const sermonContent = extractSermonContent(sermon);
+    // For Claude models
+    const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
     
-    // Create user message using the template
-    const userMessage = createInsightsUserMessage(sermon, sermonContent);
-    
-    if (isDebugMode) {
-      console.log("DEBUG MODE: User message for insights:", userMessage);
-    }
-    
-    // Call OpenAI API to generate insights
-    const response = await openai.chat.completions.create({
+    const requestOptions = {
       model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: insightsSystemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 2000
-    });
-    
-    const rawJson = response.choices[0].message.content;
-    
-    // Log completion time
-    const endTime = Date.now();
-    console.log(`Insights generation completed in ${(endTime - startTime) / 1000} seconds`);
-    
-    if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response for insights:", rawJson);
-    }
-    
-    // Parse the response using our helper function
-    const topics = parseAIResponse<string>(rawJson, "topics", "generateSermonInsights");
-    const relatedVerses = parseAIResponse<VerseWithRelevance>(rawJson, "relatedVerses", "generateSermonInsights");
-    const possibleDirections = parseAIResponse<DirectionSuggestion>(rawJson, "possibleDirections", "generateSermonInsights");
-    
-    // If any of the fields failed to parse, return null
-    if (!topics || !relatedVerses || !possibleDirections) {
-      console.error("Failed to parse insights response");
-      return null;
-    }
-    
-    // Create and return structured insights object
-    return {
-      topics,
-      relatedVerses,
-      possibleDirections
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Sermon Insights',
+      requestOptions,
+      inputInfo
+    );
+    
+    return extractFunctionResponse<Insights>(response);
   } catch (error) {
-    console.error("Error generating sermon insights:", error);
+    console.error("ERROR: Failed to generate sermon insights:", error);
     return null;
   }
 }
 
 /**
- * Generate only topics for a sermon using OpenAI
- * @param sermon The sermon to generate topics for
- * @returns Generated topics array or empty array if failed
+ * Generate topics for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Array of topic strings
  */
 export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
-  const startTime = Date.now();
-  console.log("Generating sermon topics for:", sermon.title);
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createTopicsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating topics for sermon:", sermon.id);
+  }
   
   try {
-    // Extract sermon content using our helper function
-    const sermonContent = extractSermonContent(sermon);
+    // For Claude models
+    const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
     
-    // Create user message using the template
-    const userMessage = createTopicsUserMessage(sermon, sermonContent);
-    
-    if (isDebugMode) {
-      console.log("DEBUG MODE: User message for topics:", userMessage);
-    }
-    
-    // Call OpenAI API to generate topics
-    const response = await openai.chat.completions.create({
+    const requestOptions = {
       model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: topicsSystemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 1500
-    });
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
     
-    const rawJson = response.choices[0].message.content;
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
     
-    // Log completion time using the helper function
-    logOperationTiming("Topics generation", startTime);
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Sermon Topics',
+      requestOptions,
+      inputInfo
+    );
     
-    if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response for topics:", rawJson);
-    }
-    
-    // Parse the response using our helper function
-    const topics = parseAIResponse<string>(rawJson, "topics", "generateSermonTopics");
-    
-    // Return the topics array or empty array if parsing failed
-    return topics || [];
+    const result = extractFunctionResponse<{ topics: string[] }>(response);
+    return result.topics || [];
   } catch (error) {
-    console.error("Error generating sermon topics:", error);
+    console.error("ERROR: Failed to generate sermon topics:", error);
     return [];
   }
 }
 
 /**
- * Generate only related verses for a sermon using OpenAI
- * @param sermon The sermon to generate related verses for
- * @returns Generated related verses array with both reference and relevance, or empty array if failed
+ * Generate Bible verse suggestions for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Array of verse objects with reference and relevance
  */
 export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
-  const startTime = Date.now();
-  console.log("Generating sermon verses for:", sermon.title);
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createVersesUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating verse suggestions for sermon:", sermon.id);
+  }
   
   try {
-    // Extract sermon content using our helper function
-    const sermonContent = extractSermonContent(sermon);
+    // For Claude models
+    const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
     
-    // Create user message using the template
-    const userMessage = createVersesUserMessage(sermon, sermonContent);
-    
-    if (isDebugMode) {
-      console.log("DEBUG MODE: User message for verses:", userMessage);
-    }
-    
-    // Call OpenAI API to generate verses
-    const response = await openai.chat.completions.create({
+    const requestOptions = {
       model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: versesSystemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 1500
-    });
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
     
-    const rawJson = response.choices[0].message.content;
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
     
-    // Log completion time using the helper function
-    logOperationTiming("Verses generation", startTime);
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Sermon Verses',
+      requestOptions,
+      inputInfo
+    );
     
-    if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response for verses:", rawJson);
-    }
-    
-    // Parse the response using our helper function
-    const verses = parseAIResponse<VerseWithRelevance>(rawJson, "relatedVerses", "generateSermonVerses");
-    
-    // Return the verses array or empty array if parsing failed
-    return verses || [];
+    const result = extractFunctionResponse<{ verses: VerseWithRelevance[] }>(response);
+    return result.verses || [];
   } catch (error) {
-    console.error("Error generating sermon verses:", error);
+    console.error("ERROR: Failed to generate sermon verses:", error);
     return [];
   }
 }
 
 /**
- * Generate only possible directions for a sermon using OpenAI
- * @param sermon The sermon to generate possible directions for
- * @returns Generated possible directions array or empty array if failed
+ * Generate direction suggestions for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Array of direction suggestion objects
  */
 export async function generateSermonDirections(sermon: Sermon): Promise<DirectionSuggestion[] | null> {
-  const startTime = Date.now();
-  console.log("Generating sermon directions for:", sermon.title);
+  // Extract sermon content using our helper function
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createDirectionsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating direction suggestions for sermon:", sermon.id);
+  }
   
   try {
-    // Extract sermon content using our helper function
-    const sermonContent = extractSermonContent(sermon);
+    // For Claude models
+    const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
     
-    // Create user message using the template
-    const userMessage = createDirectionsUserMessage(sermon, sermonContent);
-    
-    if (isDebugMode) {
-      console.log("DEBUG MODE: User message for directions:", userMessage);
-    }
-    
-    // Call OpenAI API to generate directions
-    const response = await openai.chat.completions.create({
+    const requestOptions = {
       model: gptModel,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: directionsSystemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 2500
-    });
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
     
-    const rawJson = response.choices[0].message.content;
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
     
-    // Log completion time
-    const endTime = Date.now();
-    console.log(`Directions generation completed in ${(endTime - startTime) / 1000} seconds`);
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Sermon Directions',
+      requestOptions,
+      inputInfo
+    );
     
-    if (isDebugMode) {
-      console.log("DEBUG MODE: Raw API response for directions:", rawJson);
-    }
-    
-    // Parse the response using our helper function
-    const directions = parseAIResponse<DirectionSuggestion>(rawJson, "possibleDirections", "generateSermonDirections");
-    
-    // If parsing failed, return null
-    if (!directions) {
-      console.error("Failed to parse directions response");
-      return null;
-    }
-    
-    // Add ids to the directions for React's keying system
-    const directionsWithIds = directions.map(direction => ({
-      ...direction,
-      id: uuidv4()
-    }));
-    
-    return directionsWithIds;
+    const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
+    return result.directions || null;
   } catch (error) {
-    console.error("Error generating sermon directions:", error);
+    console.error("ERROR: Failed to generate sermon direction suggestions:", error);
     return null;
+  }
+}
+
+export async function generateDirectionSuggestions(sermon: Sermon): Promise<DirectionSuggestion[]> {
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createDirectionsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating direction suggestions for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: gptModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => openai.chat.completions.create(requestOptions),
+      'Generate Direction Suggestions',
+      requestOptions,
+      inputInfo
+    );
+    
+    const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
+    return result.directions || [];
+  } catch (error) {
+    console.error("ERROR: Failed to generate sermon direction suggestions:", error);
+    return [];
   }
 } 
