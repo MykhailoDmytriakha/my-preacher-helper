@@ -71,20 +71,39 @@ export const PlusIcon = ({ className, ...props }: IconProps) => (
 );
 
 // Chevron Icon
-export const ChevronIcon = ({ className, ...props }: IconProps) => (
-  <svg
-    className={`w-4 h-4 transition-transform ${className}`}
-    fill="currentColor"
-    viewBox="0 0 20 20"
-    {...props}
-  >
-    <path
-      fillRule="evenodd"
-      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-      clipRule="evenodd"
-    />
-  </svg>
-);
+export const ChevronIcon = ({ 
+  className, 
+  direction = "down", 
+  ...props 
+}: IconProps & { 
+  direction?: "up" | "down" | "left" | "right" 
+}) => {
+  const getPath = () => {
+    switch (direction) {
+      case "up":
+        return "M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z";
+      case "down":
+        return "M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z";
+      case "left":
+        return "M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z";
+      case "right":
+        return "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z";
+      default:
+        return "M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z";
+    }
+  };
+
+  return (
+    <svg
+      className={`w-5 h-5 transition-transform duration-200 ${className}`}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      {...props}
+    >
+      <path d={getPath()} />
+    </svg>
+  );
+};
 
 // User Icon
 export const UserIcon = ({ className, ...props }: IconProps) => (
@@ -136,5 +155,61 @@ export const EditIcon = ({ className, ...props }: IconProps) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="grey" className="w-4 h-4">
     <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z" />
     <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z" />
+  </svg>
+);
+
+// Refresh Icon
+export const RefreshIcon = ({ className, ...props }: IconProps) => (
+  <svg 
+    className={`w-5 h-5 ${className}`} 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24" 
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth="2" 
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+    />
+  </svg>
+);
+
+// Document Icon
+export const DocumentIcon = ({ className, ...props }: IconProps) => (
+  <svg 
+    className={`w-5 h-5 ${className}`} 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24" 
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth="2" 
+      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+    />
+  </svg>
+);
+
+// Back Arrow Icon
+export const BackArrowIcon = ({ className, ...props }: IconProps) => (
+  <svg 
+    className={`w-5 h-5 ${className}`} 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth={2} 
+      d="M10 19l-7-7m0 0l7-7m-7 7h18"
+    />
   </svg>
 );

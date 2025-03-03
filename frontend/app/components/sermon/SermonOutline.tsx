@@ -1,6 +1,10 @@
+// External libraries
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+
+// Path alias imports
 import type { Sermon, Outline, OutlinePoint } from '@/models/models';
+import { ChevronIcon } from '@components/Icons';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 
 interface SermonOutlineProps {
@@ -275,9 +279,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
           </div>
         </div>
         <div className={`transform transition-transform duration-200 ${expandedSections[section] ? 'rotate-180' : ''}`}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500 dark:text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
+          <ChevronIcon className="text-gray-500 dark:text-gray-400" />
         </div>
       </div>
       
@@ -350,9 +352,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           className={`p-1 rounded ${index === 0 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400'}`}
                           title={t('common.moveUp')}
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                          </svg>
+                          <ChevronIcon direction="up" className="h-5 w-5 text-gray-500 dark:text-gray-400" />
                         </button>
                         <button 
                           onClick={(e) => {
@@ -363,9 +363,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           className={`p-1 rounded ${index === sectionPoints[section].length - 1 ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-600 dark:text-gray-400'}`}
                           title={t('common.moveDown')}
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                          <ChevronIcon direction="down" className="h-5 w-5 text-gray-500 dark:text-gray-400" />
                         </button>
                         <button 
                           onClick={(e) => {

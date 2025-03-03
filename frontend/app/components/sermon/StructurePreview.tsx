@@ -1,8 +1,12 @@
 "use client";
 
+// External libraries
 import React, { useState, useEffect } from "react";
-import type { Sermon, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
+
+// Path alias imports
+import type { Sermon, Thought } from "@/models/models";
+import { ChevronIcon } from '@components/Icons';
 
 interface StructurePreviewProps {
   sermon: Sermon;
@@ -57,15 +61,9 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
           aria-label={isCollapsed ? "Expand" : "Collapse"}
         >
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            className={`h-5 w-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} 
-            fill="none" 
-            viewBox="0 0 24 24" 
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <ChevronIcon 
+            className={isCollapsed ? 'rotate-180' : ''} 
+          />
         </button>
       </div>
       

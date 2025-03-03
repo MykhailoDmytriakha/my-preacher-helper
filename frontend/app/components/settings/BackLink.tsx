@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
+import { BackArrowIcon } from '@components/Icons';
 
 interface BackLinkProps {
   to: string;
@@ -18,19 +19,7 @@ const BackLink: React.FC<BackLinkProps> = ({ to, label }) => {
         href={to}
         className="flex items-center text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
       >
-        <svg 
-          className="w-5 h-5 mr-1" 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            strokeWidth={2} 
-            d="M10 19l-7-7m0 0l7-7m-7 7h18"
-          />
-        </svg>
+        <BackArrowIcon className="mr-1" />
         <span suppressHydrationWarning={true}>
           {label || t('settings.backToDashboard')}
         </span>

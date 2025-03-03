@@ -1,5 +1,5 @@
 import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously, setPersistence, browserLocalPersistence } from "firebase/auth";
-import app from "../config/firebaseConfig";
+import app from "@/config/firebaseConfig";
 import { toast } from 'sonner';
 const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);

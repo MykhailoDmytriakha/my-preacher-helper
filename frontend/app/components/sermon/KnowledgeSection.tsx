@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sermon, Insights } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { 
@@ -10,6 +9,8 @@ import {
   generatePossibleDirections 
 } from "@/services/insights.service";
 import { getSermonById } from "@/services/sermon.service";
+import { ChevronIcon, RefreshIcon } from '@components/Icons';
+import { Sermon, Insights } from '@/models/models';
 
 interface KnowledgeSectionProps {
   sermon: Sermon;
@@ -250,15 +251,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             aria-expanded={expanded}
             aria-label={expanded ? t('knowledge.showLess') : t('knowledge.showMore')}
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              className={`h-5 w-5 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <ChevronIcon 
+              className={expanded ? 'rotate-180' : ''} 
+            />
           </button>
         ) : null}
       </div>
@@ -303,9 +298,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                   title={t('knowledge.refresh')}
                 >
                   {isGeneratingTopics ? <LoadingSpinner /> : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
+                    <RefreshIcon className="w-4 h-4" />
                   )}
                 </button>
               </div>
@@ -343,9 +336,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                   title={t('knowledge.refresh')}
                 >
                   {isGeneratingVerses ? <LoadingSpinner /> : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
+                    <RefreshIcon className="w-4 h-4" />
                   )}
                 </button>
               </div>
@@ -380,9 +371,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                   title={t('knowledge.refresh')}
                 >
                   {isGeneratingDirections ? <LoadingSpinner /> : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
+                    <RefreshIcon className="w-4 h-4" />
                   )}
                 </button>
               </div>

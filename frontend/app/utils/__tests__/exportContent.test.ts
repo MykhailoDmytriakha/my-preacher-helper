@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { exportSermonContent } from '../exportContent';
+import { exportSermonContent } from '@/utils/exportContent';
 import type { Sermon, Thought, Structure } from '@/app/models/models';
 
 // Mock the i18n instance
