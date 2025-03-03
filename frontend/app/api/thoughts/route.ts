@@ -179,17 +179,36 @@ export async function PUT(request: Request) {
     console.log("Thoughts route: Thought to update:", JSON.stringify(oldThought));
     console.log("Thoughts route: Updated thought:", JSON.stringify(updatedThought));
     
-    // Use Admin SDK instead of client SDK
-    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
-    await sermonDocRef.update({
-      thoughts: FieldValue.arrayRemove(oldThought)
-    });
-    
-    await sermonDocRef.update({
-      thoughts: FieldValue.arrayUnion(updatedThought)
-    });
-
-    return NextResponse.json(updatedThought);
+    // Use Admin SDK with transaction to ensure atomic update
+    try {
+      await adminDb.runTransaction(async (transaction) => {
+        const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+        const sermonDoc = await transaction.get(sermonDocRef);
+        
+        if (!sermonDoc.exists) {
+          throw new Error("Sermon document not found");
+        }
+        
+        const sermonData = sermonDoc.data();
+        if (!sermonData) {
+          throw new Error("Sermon data is empty");
+        }
+        
+        // Get current thoughts array and create updated array
+        const currentThoughts = sermonData.thoughts || [];
+        const updatedThoughts = currentThoughts.filter((t: Thought) => t.id !== oldThought.id);
+        updatedThoughts.push(updatedThought);
+        
+        // Update in a single transaction
+        transaction.update(sermonDocRef, { thoughts: updatedThoughts });
+      });
+      
+      console.log("Thoughts route: Successfully updated thought in transaction");
+      return NextResponse.json(updatedThought);
+    } catch (error) {
+      console.error("Thoughts route: Error updating thought in transaction:", error);
+      return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+    }
   } catch (error) {
     console.error("Thoughts route: Error updating thought:", error);
     return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
