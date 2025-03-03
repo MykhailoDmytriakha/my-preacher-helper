@@ -135,7 +135,10 @@
   "editThought": {
     "editTitle": "Редагувати запис",
     "textLabel": "Текст запису",
-    "availableTags": "Доступні теги для додавання:"
+    "availableTags": "Доступні теги для додавання:",
+    "outlinePointLabel": "Пов'язаний пункт плану",
+    "noOutlinePoint": "Пункт плану не вибрано",
+    "selectedOutlinePoint": "Вибрано пункт плану з розділу «{{section}}»"
   },
   "structure": {
     "title": "Структура проповіді:",

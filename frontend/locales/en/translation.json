@@ -151,7 +151,10 @@
   "editThought": {
     "editTitle": "Edit Thought",
     "textLabel": "Thought Text",
-    "availableTags": "Available tags to add:"
+    "availableTags": "Available tags to add:",
+    "outlinePointLabel": "Associated Outline Point",
+    "noOutlinePoint": "No outline point selected",
+    "selectedOutlinePoint": "Selected outline point from {{section}}"
   },
   "structure": {
     "title": "Sermon Structure:",

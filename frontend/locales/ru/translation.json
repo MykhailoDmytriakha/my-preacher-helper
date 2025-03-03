@@ -157,7 +157,10 @@
   "editThought": {
     "editTitle": "Редактировать запись",
     "textLabel": "Текст записи",
-    "availableTags": "Доступные теги для добавления:"
+    "availableTags": "Доступные теги для добавления:",
+    "outlinePointLabel": "Связанный пункт плана",
+    "noOutlinePoint": "Пункт плана не выбран",
+    "selectedOutlinePoint": "Выбран пункт плана из раздела «{{section}}»"
   },
   "structure": {
     "title": "Структура проповеди:",
