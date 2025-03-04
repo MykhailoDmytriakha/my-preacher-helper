@@ -132,7 +132,8 @@ describe('KnowledgeSection Component', () => {
     });
     
     expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
-    expect(screen.getByText('Click to expand insights')).toBeInTheDocument();
+    // No longer check for the hint text since it's been removed from the component
+    // expect(screen.getByText('Click to expand insights')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
 

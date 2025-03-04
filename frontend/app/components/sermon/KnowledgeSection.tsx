@@ -396,9 +396,10 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
           </div>
           </>
           ) : (
-            <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
-              {t('knowledge.clickToExpand')}
-            </p>
+            // <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
+            //   {t('knowledge.clickToExpand')}
+            // </p>
+            null
           )}
         </div>
       )}
