@@ -44,7 +44,7 @@ export default function SortableItem({ item, containerId, onEdit }: SortableItem
       {item.outlinePoint && (
         <div className="mb-2">
           <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800">
-            {item.outlinePoint.section}: {item.outlinePoint.text}
+            {item.outlinePoint.section ? `${item.outlinePoint.section}: ${item.outlinePoint.text}` : item.outlinePoint.text}
           </span>
         </div>
       )}

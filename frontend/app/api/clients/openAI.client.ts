@@ -417,6 +417,9 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
       });
     }
     
+    // Create a map to store AI-assigned outline points for each item
+    const outlinePointAssignments: Record<string, string> = {};
+    
     // Extract and validate keys from the AI response
     const aiSortedKeys = sortedData.sortedItems
       .map((aiItem: any) => {
@@ -430,6 +433,15 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
               itemKey = correctedKey;
             }
           }
+          
+          // Store the outline point assignment if available
+          if (itemsMapByKey[itemKey] && aiItem.outlinePoint) {
+            outlinePointAssignments[itemKey] = aiItem.outlinePoint;
+            if (isDebugMode) {
+              console.log(`DEBUG: Assigned outline point "${aiItem.outlinePoint}" to item ${itemKey}`);
+            }
+          }
+          
           return itemsMapByKey[itemKey] ? itemKey : null;
         }
         return null;
@@ -437,7 +449,79 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
       .filter((key: string | null): key is string => key !== null);
     
     // Create a new array with the sorted items
-    const sortedItems: Item[] = aiSortedKeys.map((key: string) => itemsMapByKey[key]);
+    const sortedItems: Item[] = aiSortedKeys.map((key: string) => {
+      const item = itemsMapByKey[key];
+      
+      // Find matching outline point ID based on the AI-assigned outline text
+      if (outlinePointAssignments[key] && outlinePoints.length > 0) {
+        const aiAssignedOutlineText = outlinePointAssignments[key];
+        
+        // First try exact match
+        let matchingOutlinePoint = outlinePoints.find(op => 
+          op.text.toLowerCase() === aiAssignedOutlineText.toLowerCase()
+        );
+        
+        // If no exact match, try substring matching
+        if (!matchingOutlinePoint) {
+          matchingOutlinePoint = outlinePoints.find(op => 
+            op.text.toLowerCase().includes(aiAssignedOutlineText.toLowerCase()) ||
+            aiAssignedOutlineText.toLowerCase().includes(op.text.toLowerCase())
+          );
+        }
+        
+        // If still no match, try fuzzy matching
+        if (!matchingOutlinePoint && outlinePoints.length > 0) {
+          // Find the closest match based on word overlap
+          const aiWords = new Set(aiAssignedOutlineText.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+          
+          let bestMatchScore = 0;
+          let bestMatch: OutlinePoint | undefined;
+          
+          for (const op of outlinePoints) {
+            const opWords = new Set(op.text.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+            let matchScore = 0;
+            
+            // Count word overlaps
+            for (const word of aiWords) {
+              if (opWords.has(word)) matchScore++;
+            }
+            
+            if (matchScore > bestMatchScore) {
+              bestMatchScore = matchScore;
+              bestMatch = op;
+            }
+          }
+          
+          // Only use if we have some word overlap
+          if (bestMatchScore > 0) {
+            matchingOutlinePoint = bestMatch;
+          }
+        }
+        
+        if (matchingOutlinePoint) {
+          // Create a new item with the assigned outline point
+          if (isDebugMode) {
+            console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingOutlinePoint.text}" (${matchingOutlinePoint.id})`);
+          }
+          
+          // No need for section mapping since we don't want to show the section name
+          return {
+            ...item,
+            outlinePointId: matchingOutlinePoint.id,
+            outlinePoint: {
+              text: matchingOutlinePoint.text,
+              section: ''  // Empty string instead of section name
+            }
+          };
+        } else {
+          if (isDebugMode) {
+            console.log(`DEBUG: Could not match "${aiAssignedOutlineText}" to any outline point`);
+          }
+        }
+      }
+      
+      return item;
+    });
     
     // Check if all items were included in the sorted result
     const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));

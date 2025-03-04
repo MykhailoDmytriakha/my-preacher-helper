@@ -60,7 +60,9 @@ export default function Column({
           style={headerColor ? { backgroundColor: headerColor } : {}}
         >
           <div className="flex justify-between items-center">
-            <span>{title}</span>
+            <span>
+              {title} <span className="ml-2 text-sm bg-white/20 px-2 py-0.5 rounded-full">{items.length}</span>
+            </span>
             {showFocusButton && (
               <div className="flex space-x-2">
                 {isFocusMode && (

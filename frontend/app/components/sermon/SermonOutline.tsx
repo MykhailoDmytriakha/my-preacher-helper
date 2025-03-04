@@ -10,12 +10,13 @@ import { getSermonOutline, updateSermonOutline } from '@/services/outline.servic
 
 interface SermonOutlineProps {
   sermon: Sermon;
+  thoughtsPerOutlinePoint?: Record<string, number>;
 }
 
 // Define valid section types
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
-const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
+const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlinePoint = {} }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -372,6 +373,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                           ) : (
                             <>
                               <p className="flex-1 text-gray-700 dark:text-gray-300 min-w-0 pr-2 flex items-center">{point.text}</p>
+                              {thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0 && (
+                                <span className="flex items-center justify-center mr-2 min-w-[1.5rem] h-6 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs rounded-full px-1.5">
+                                  {thoughtsPerOutlinePoint[point.id]}
+                                </span>
+                              )}
                               <div 
                                 className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute right-2 top-1/2 transform -translate-y-1/2 rounded p-0.5"
                                 style={{ backgroundColor: 'inherit' }}
@@ -391,10 +397,21 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon }) => {
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    deletePoint(section, point.id);
+                                    if (!(thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0)) {
+                                      deletePoint(section, point.id);
+                                    }
                                   }}
-                                  className="p-1 text-red-600 rounded"
-                                  title={t('common.delete')}
+                                  disabled={!!(thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0)}
+                                  className={`p-1 rounded ${
+                                    thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0
+                                      ? 'text-gray-400 cursor-not-allowed'
+                                      : 'text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30'
+                                  }`}
+                                  title={
+                                    thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0
+                                      ? t('common.cannotDeleteWithThoughts', { count: thoughtsPerOutlinePoint[point.id] })
+                                      : t('common.delete')
+                                  }
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />

@@ -218,6 +218,24 @@ export default function SermonPage() {
     }
   }, [hasStructureTags, structureFilter, sortOrder]);
 
+  // Calculate the number of thoughts for each outline point
+  const calculateThoughtsPerOutlinePoint = () => {
+    if (!sermon || !sermon.thoughts || !sermon.outline) return {};
+    
+    const counts: Record<string, number> = {};
+    
+    // Count thoughts for each outline point ID
+    sermon.thoughts.forEach(thought => {
+      if (thought.outlinePointId) {
+        counts[thought.outlinePointId] = (counts[thought.outlinePointId] || 0) + 1;
+      }
+    });
+    
+    return counts;
+  };
+
+  const thoughtsPerOutlinePoint = calculateThoughtsPerOutlinePoint();
+
   if (loading || !sermon) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -650,7 +668,7 @@ export default function SermonPage() {
           <div className="space-y-6">
             <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
             <KnowledgeSection sermon={sermon} />
-            <SermonOutline sermon={sermon} />
+            <SermonOutline sermon={sermon} thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} />
             {sermon.structure && <StructurePreview sermon={sermon} />}
           </div>
         </div>

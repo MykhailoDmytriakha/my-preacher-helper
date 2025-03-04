@@ -226,20 +226,18 @@ export default function ThoughtCard({
             {/* Delete Button */}
             <button
               onClick={() => onDelete(index, thought.id)}
-              className="hover:bg-red-200 text-white p-2 rounded"
-              style={{ marginLeft: "2px" }}
+              className="text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded-full transition-colors"
             >
-              <TrashIcon className="w-4 h-4" fill="gray" />
+              <TrashIcon className="w-3.5 h-3.5" />
             </button>
             {/* Edit Button */}
             <button
               onClick={() => {
                 onEditStart(thought, index);
               }}
-              className="hover:bg-blue-200 text-white p-2 rounded"
-              style={{ marginLeft: "2px" }}
+              className="text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 p-1.5 rounded-full transition-colors"
             >
-              <EditIcon className="w-4 h-4" fill="gray" />
+              <EditIcon className="w-5 h-5" />
             </button>
             {/* Show thought ID for debugging */}
             <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">

@@ -59,6 +59,10 @@ export function createSortingUserMessage(
     For the main part, arrange points in a logical theological flow.
     For the conclusion, arrange for effective closing impact.
     
+    CRITICAL ASPECT - SMOOTH PROGRESSION: Ensure the progression of thoughts is gradual and smooth, making it easy for listeners to follow. The sermon should flow naturally like a smooth, even road without bumps or potholes. Adjacent thoughts should connect logically, with each thought building on the previous one. Avoid jarring transitions or unrelated thoughts placed next to each other.
+    
+    CRITICAL TASK: For each item, you MUST assign it to the most appropriate outline point. This assignment is crucial for sermon organization.
+    
     IMPORTANT: Return a JSON object in this format:
     {
       "sortedItems": [
@@ -69,9 +73,13 @@ export function createSortingUserMessage(
     }
     
     The "key" should be the first 4 characters of the original item ID.
-    The "outlinePoint" should indicate which outline point this item corresponds to.
+    ${outlinePointsText ? 
+      "The \"outlinePoint\" field MUST match EXACTLY one of the following outline points (copy and paste the exact text to avoid errors):\n" + 
+      outlinePoints?.map(op => `  - "${op.text}"`).join("\n") : 
+      "The \"outlinePoint\" should indicate which outline point this item corresponds to. Use the EXACT text of one of the outline points provided."
+    }
     The "content" should be the first 5-10 words of the item to confirm you understand what you're sorting.
-    ${!outlinePointsText ? "If no outline points are provided, use \"General\" for the outlinePoint field." : ""}
+    ${!outlinePointsText ? "If no outline points are provided, use \"General\" for the outlinePoint field or create appropriate outline points based on the content." : ""}
     
     CRITICAL INSTRUCTION: You MUST include ALL ${items.length} items in your response without skipping any. Every item key present in the input must be included exactly once in the sortedItems array.
     Double-check that you've included all keys before submitting your response.

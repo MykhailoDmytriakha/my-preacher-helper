@@ -213,7 +213,8 @@
     "add": "Добавить",
     "saving": "Сохранение...",
     "dragToReorder": "Перетащите для изменения порядка",
-    "savingChanges": "Сохранение изменений..."
+    "savingChanges": "Сохранение изменений...",
+    "cannotDeleteWithThoughts": "Невозможно удалить: {{count}} мысль(ей) привязано к этому пункту"
   },
   "outline": {
     "introduction": "Вступление",

@@ -207,7 +207,8 @@
     "add": "Add",
     "saving": "Saving...",
     "dragToReorder": "Drag to reorder",
-    "savingChanges": "Saving changes..."
+    "savingChanges": "Saving changes...",
+    "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point"
   },
   "outline": {
     "introduction": "Introduction",

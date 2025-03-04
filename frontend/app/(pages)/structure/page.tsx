@@ -187,7 +187,7 @@ function StructurePageContent() {
               if (point) {
                 outlinePoint = {
                   text: point.text,
-                  section: sectionTranslations[section]
+                  section: '' // Don't show section in structure page
                 };
                 break;
               }
@@ -323,7 +323,7 @@ function StructurePageContent() {
           if (point) {
             outlinePoint = {
               text: point.text,
-              section: sectionTranslations[section]
+              section: '' // Don't show section in structure page
             };
             break;
           }
@@ -764,6 +764,22 @@ function StructurePageContent() {
         return;
       }
       
+      // Check if we have outline points for this column
+      const availableOutlinePoints = outlinePoints[columnId as keyof typeof outlinePoints];
+      const hasOutlinePoints = availableOutlinePoints && availableOutlinePoints.length > 0;
+      
+      if (hasOutlinePoints) {
+        console.log(`handleAiSort: Found ${availableOutlinePoints.length} outline points for ${columnId}`);
+      } else {
+        console.log(`handleAiSort: No outline points found for ${columnId}`);
+        // Inform the user that sorting will happen without outline point assignment
+        toast.info(
+          t('structure.aiSortNoOutlinePoints', {
+            defaultValue: 'Sorting items without outline point assignment. Add outline points first to enable this feature.'
+          })
+        );
+      }
+      
       console.log(`handleAiSort: Starting AI sort for ${columnItems.length} items in ${columnId}`);
       // Pass the outline points for the specific column
       const sortedItems = await sortItemsWithAI(
@@ -785,6 +801,24 @@ function StructurePageContent() {
       console.log(`handleAiSort: Sorted items in ${columnId}:`);
       for (const item of sortedItems) {
         console.log(item.content.substring(0, 50) + (item.content.length > 50 ? '...' : ''));
+      }
+      
+      // Track which thoughts need to be updated with new outline point assignments
+      const thoughtsToUpdate: Array<{id: string, outlinePointId?: string}> = [];
+      
+      // Check for outline point assignments that need to be saved
+      for (const item of sortedItems) {
+        if (item.outlinePointId) {
+          // Find the original item to see if the outline point has changed
+          const originalItem = columnItems.find(original => original.id === item.id);
+          if (!originalItem || originalItem.outlinePointId !== item.outlinePointId) {
+            // Outline point has been assigned or changed, add to update list
+            thoughtsToUpdate.push({
+              id: item.id,
+              outlinePointId: item.outlinePointId
+            });
+          }
+        }
       }
       
       // Update the containers state with the sorted items and save to database in the same operation
@@ -815,6 +849,90 @@ function StructurePageContent() {
             
             // Update the sermon state with the new structure
             setSermon((prev) => (prev ? { ...prev, structure: newStructure } : prev));
+            
+            // Now update any thoughts that have new outline point assignments
+            if (thoughtsToUpdate.length > 0) {
+              console.log(`handleAiSort: Updating ${thoughtsToUpdate.length} thoughts with new outline point assignments`);
+              
+              // Track success and failures
+              const successfulUpdates: string[] = [];
+              const failedUpdates: string[] = [];
+              
+              // Process each thought update sequentially to avoid race conditions
+              for (const thoughtUpdate of thoughtsToUpdate) {
+                if (sermon) {
+                  const thought = sermon.thoughts.find(t => t.id === thoughtUpdate.id);
+                  if (thought) {
+                    // Create updated thought with the new outline point ID
+                    const updatedThought: Thought = {
+                      ...thought,
+                      outlinePointId: thoughtUpdate.outlinePointId
+                    };
+                    
+                    try {
+                      // Save the updated thought to the database
+                      const savedThought = await updateThought(sermonId, updatedThought);
+                      console.log(`handleAiSort: Updated thought ${updatedThought.id} with outline point ${updatedThought.outlinePointId}`);
+                      
+                      // Update the sermon state with the updated thought
+                      setSermon(prev => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          thoughts: prev.thoughts.map(t => 
+                            t.id === savedThought.id ? savedThought : t
+                          )
+                        };
+                      });
+                      
+                      successfulUpdates.push(updatedThought.id);
+                    } catch (error) {
+                      console.error(`handleAiSort: Error updating thought ${updatedThought.id}:`, error);
+                      failedUpdates.push(updatedThought.id);
+                    }
+                  } else {
+                    console.error(`handleAiSort: Could not find thought ${thoughtUpdate.id} in sermon`);
+                    failedUpdates.push(thoughtUpdate.id);
+                  }
+                }
+              }
+              
+              // Log results of update process
+              console.log(`handleAiSort: Successfully updated ${successfulUpdates.length}/${thoughtsToUpdate.length} thoughts with outline points`);
+              if (failedUpdates.length > 0) {
+                console.error(`handleAiSort: Failed to update ${failedUpdates.length} thoughts: ${failedUpdates.join(', ')}`);
+              }
+              
+              // Show appropriate success message based on results
+              if (failedUpdates.length === 0) {
+                toast.success(
+                  t('structure.aiSortWithOutlineSuccess', {
+                    count: successfulUpdates.length,
+                    defaultValue: `Successfully sorted items and assigned ${successfulUpdates.length} thoughts to outline points.`
+                  })
+                );
+              } else if (successfulUpdates.length > 0) {
+                toast.success(
+                  t('structure.aiSortWithOutlinePartialSuccess', {
+                    successCount: successfulUpdates.length,
+                    failCount: failedUpdates.length,
+                    defaultValue: `Sorted items and assigned ${successfulUpdates.length} thoughts to outline points. ${failedUpdates.length} assignments failed.`
+                  })
+                );
+              } else {
+                toast.error(
+                  t('structure.aiSortWithOutlineFailed', {
+                    defaultValue: `Sorted items but failed to assign any outline points.`
+                  })
+                );
+              }
+            } else {
+              toast.success(
+                t('structure.aiSortSuccess', {
+                  defaultValue: 'Successfully sorted items.'
+                })
+              );
+            }
             
             console.log(`handleAiSort: Successfully sorted and saved ${columnId} structure`);
           } catch (dbError) {
@@ -897,7 +1015,9 @@ function StructurePageContent() {
                   className="flex items-center justify-between p-4 cursor-pointer"
                   onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
                 >
-                  <h2 className="text-xl font-semibold">{columnTitles["ambiguous"]}</h2>
+                  <h2 className="text-xl font-semibold">
+                    {columnTitles["ambiguous"]} <span className="ml-2 text-sm bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full">{containers.ambiguous.length}</span>
+                  </h2>
                   <svg
                     className={`w-6 h-6 transform transition-transform duration-200 ${
                       isAmbiguousVisible ? "rotate-0" : "-rotate-90"
@@ -998,7 +1118,7 @@ function StructurePageContent() {
                     {activeItem.outlinePoint && (
                       <div className="mb-2">
                         <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200">
-                          {activeItem.outlinePoint.section}: {activeItem.outlinePoint.text}
+                          {activeItem.outlinePoint.section ? `${activeItem.outlinePoint.section}: ${activeItem.outlinePoint.text}` : activeItem.outlinePoint.text}
                         </span>
                       </div>
                     )}

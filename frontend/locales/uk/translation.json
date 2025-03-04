@@ -213,7 +213,8 @@
     "add": "Додати",
     "saving": "Збереження...",
     "dragToReorder": "Перетягніть для зміни порядку",
-    "savingChanges": "Збереження змін..."
+    "savingChanges": "Збереження змін...",
+    "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) призначено до цього пункту"
   },
   "outline": {
     "introduction": "Вступ",
