@@ -80,20 +80,26 @@
   "settings": {
     "backToDashboard": "Back to Dashboard",
     "title": "Settings",
+    "userSettings": "User Settings",
     "manageTags": "Tag Management",
+    "displayName": "Display Name",
+    "noDisplayName": "No display name set",
+    "email": "Email",
+    "userId": "User ID",
+    "more": "More settings coming soon",
+    "moreSettingsSoon": "More user settings options will be available soon",
+    "placeholder": "Loading user data...",
     "requiredTags": "Required Tags",
     "customTags": "Custom Tags",
     "tagNamePlaceholder": "Tag name",
     "addTag": "Add",
     "editColor": "Edit Color",
     "deleteTag": "Delete tag",
-    "userSettings": "User Settings",
-    "email": "Email",
-    "userId": "User ID",
-    "displayName": "Display Name",
-    "noDisplayName": "No display name set",
-    "moreSettingsSoon": "More user settings options will be available soon",
-    "loadingUserData": "Loading user data..."
+    "loading": "Loading...",
+    "noCustomTags": "You don't have any custom tags yet",
+    "noRequiredTags": "No required tags",
+    "tagName": "Tag Name",
+    "tagColor": "Tag Color"
   },
   "sermon": {
     "notFound": "Sermon not found",
@@ -157,7 +163,7 @@
     "selectedOutlinePoint": "Selected outline point from {{section}}"
   },
   "structure": {
-    "title": "Sermon Structure:",
+    "title": "Sermon Structure",
     "entries": "entries",
     "recommended": "Recommended: {{percent}}%",
     "workButton": "Work on Structure",
@@ -176,7 +182,11 @@
     "content": "Content",
     "tags": "Tags",
     "sortButton": "Sort ✨",
-    "sorting": "Sorting..."
+    "sorting": "Sorting...",
+    "sortInfo": "Sorting only processes unassigned thoughts, up to 25 at a time.",
+    "assigned": "Assigned to outline",
+    "unassigned": "Unassigned",
+    "assignedUnassignedTooltip": "{{assigned}} assigned to outline points / {{unassigned}} unassigned"
   },
   "knowledge": {
     "title": "Sermon Insights",

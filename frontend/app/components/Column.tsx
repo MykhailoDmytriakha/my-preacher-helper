@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
 import SortableItem from "./SortableItem";
 import { Item, OutlinePoint } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 
 interface ColumnProps {
   id: string;
@@ -39,9 +40,14 @@ export default function Column({
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
+  const [showTooltip, setShowTooltip] = useState(false);
   
   // Always use vertical list strategy regardless of focus mode
   const sortingStrategy = verticalListSortingStrategy;
+  
+  // Count assigned vs unassigned items
+  const assignedItems = items.filter(item => item.outlinePointId).length;
+  const unassignedItems = items.length - assignedItems;
   
   return (
     <div className={`flex flex-col ${className}`}>
@@ -60,8 +66,32 @@ export default function Column({
           style={headerColor ? { backgroundColor: headerColor } : {}}
         >
           <div className="flex justify-between items-center">
-            <span>
-              {title} <span className="ml-2 text-sm bg-white/20 px-2 py-0.5 rounded-full">{items.length}</span>
+            <span className="flex items-center">
+              {title} 
+              <div 
+                className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white/30"
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+                title={t('structure.assignedUnassignedTooltip', {
+                  assigned: assignedItems,
+                  unassigned: unassignedItems
+                })}
+              >
+                <span className="bg-green-500/40 px-2 py-0.5 text-white">
+                  {assignedItems}
+                </span>
+                <span className="bg-white/20 px-2 py-0.5 text-white">
+                  {unassignedItems}
+                </span>
+                {showTooltip && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
+                    {t('structure.assignedUnassignedTooltip', {
+                      assigned: assignedItems,
+                      unassigned: unassignedItems
+                    })}
+                  </div>
+                )}
+              </div>
             </span>
             {showFocusButton && (
               <div className="flex space-x-2">
@@ -80,7 +110,17 @@ export default function Column({
                         {t('structure.sorting')}
                       </>
                     ) : (
-                      <>{t('structure.sortButton')}</>
+                      <>
+                        {t('structure.sortButton')}
+                        <div className="relative flex items-center ml-1 group">
+                          <QuestionMarkCircleIcon className="w-4 h-4 text-white/70" />
+                          <div className="absolute bottom-full mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-normal">
+                            {t('structure.sortInfo', {
+                              defaultValue: 'Sorting only processes unassigned thoughts, up to 25 at a time.'
+                            })}
+                          </div>
+                        </div>                      
+                      </>
                     )}
                   </button>
                 )}

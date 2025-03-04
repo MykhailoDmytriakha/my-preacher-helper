@@ -59,7 +59,7 @@ export function createSortingUserMessage(
     For the main part, arrange points in a logical theological flow.
     For the conclusion, arrange for effective closing impact.
     
-    CRITICAL ASPECT - SMOOTH PROGRESSION: Ensure the progression of thoughts is gradual and smooth, making it easy for listeners to follow. The sermon should flow naturally like a smooth, even road without bumps or potholes. Adjacent thoughts should connect logically, with each thought building on the previous one. Avoid jarring transitions or unrelated thoughts placed next to each other.
+    CRITICAL ASPECT - SMOOTH PROGRESSION: Ensure the progression of thoughts is gradual and smooth (coherent progression), making it easy for listeners to follow. The sermon should flow naturally like a smooth, even road without bumps or potholes. Adjacent thoughts should connect logically, with each thought building on the previous one. Avoid jarring transitions or unrelated thoughts placed next to each other.
     
     CRITICAL TASK: For each item, you MUST assign it to the most appropriate outline point. This assignment is crucial for sermon organization.
     

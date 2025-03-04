@@ -75,7 +75,7 @@
   "tags": {
     "introduction": "Вступ",
     "mainPart": "Основна частина",
-    "conclusion": "Заключення"
+    "conclusion": "Висновок"
   },
   "settings": {
     "backToDashboard": "Повернутися до панелі керування",
@@ -152,7 +152,7 @@
     "noEntries": "Немає записів",
     "introduction": "Вступ",
     "mainPart": "Основна частина",
-    "conclusion": "Закінчення",
+    "conclusion": "Висновок",
     "preview": "Попередній перегляд структури",
     "focusMode": "Режим фокусу",
     "normalMode": "Звичайний режим",
@@ -160,7 +160,11 @@
     "content": "Зміст",
     "tags": "Теги",
     "sortButton": "Сортувати ✨",
-    "sorting": "Сортування..."
+    "sorting": "Сортування...",
+    "sortInfo": "Сортування обробляє лише непривʼязані думки, до 25 за раз.",
+    "assigned": "Привʼязані до плану",
+    "unassigned": "Непривʼязані",
+    "assignedUnassignedTooltip": "{{assigned}} привʼязано до пунктів плану / {{unassigned}} не привʼязано"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",
