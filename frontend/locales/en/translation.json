@@ -205,7 +205,9 @@
     "edit": "Edit",
     "delete": "Delete",
     "add": "Add",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "dragToReorder": "Drag to reorder",
+    "savingChanges": "Saving changes..."
   },
   "outline": {
     "introduction": "Introduction",
