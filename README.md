@@ -96,11 +96,6 @@
 
 ### TODO
 
-AI:
-
-- we could Gemini API: it is cheper and first 'X' amount requirest are free
-  - we need to compare price for useing openAI gpt-4o and Gemini 2.O
-
 Structure page:
 
 - add `plush sign` on structure page to each section, click on it allow to add thought to this section
@@ -126,3 +121,7 @@ Transciption:
 - insights only available after 20 thoughts, it should be message with countdown
 - плывет layout на маленьких эранах (мобильное приложение)
 - if thought is adding manually, do not apply AI to it
+
+Outline:
+If outline was removed, we need remove it from assigned thoughts
+if outline was changed, we need to ask wheter to keep or remove assigned thoughts

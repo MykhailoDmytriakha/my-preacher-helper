@@ -22,18 +22,18 @@ export async function POST(request: Request) {
       if (!sermonId || !thought) {
         return NextResponse.json({ error: 'sermonId and thought are required' }, { status: 400 });
       }
-      const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
-      const availableTags = [
-        ...(await getRequiredTags()),
-        ...(await getCustomTags(sermon.userId))
-      ].map(t => t.name);
-      const manualThought = await generateThought(thought.text, sermon, availableTags);
+      // const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
+      // const availableTags = [
+      //   ...(await getRequiredTags()),
+      //   ...(await getCustomTags(sermon.userId))
+      // ].map(t => t.name);
+      // const manualThought = await generateThought(thought.text, sermon, availableTags);
       
       // Add id and date to the thought
       const thoughtWithId: Thought = {
         id: uuidv4(),
-        text: manualThought.text,
-        tags: manualThought.tags,
+        text: thought.text,
+        tags: [],
         date: new Date().toISOString()
       };
       
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
       }
       
-      console.log("Manual (fixed) thought:", thoughtWithId);
+      console.log("Manual thought:", thoughtWithId);
       
       // Use Admin SDK instead of client SDK
       const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
