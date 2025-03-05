@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { getContrastColor } from "@utils/color";
 import { EditIcon } from '@components/Icons';
 import { Item } from "@/models/models";
+import CardContent from "./CardContent";
 
 
 
@@ -40,32 +41,8 @@ export default function SortableItem({ item, containerId, onEdit }: SortableItem
       {...listeners}
       className="relative group mb-4 p-4 bg-white rounded-md border border-gray-200 shadow-md hover:shadow-xl"
     >
-      {/* Display outline point if available */}
-      {item.outlinePoint && (
-        <div className="mb-2">
-          <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800">
-            {item.outlinePoint.section ? `${item.outlinePoint.section}: ${item.outlinePoint.text}` : item.outlinePoint.text}
-          </span>
-        </div>
-      )}
+      <CardContent item={item} />
       
-      <div className="pr-20 whitespace-pre-wrap">
-        {item.content}
-      </div>
-      
-      {item.customTagNames && item.customTagNames.length > 0 && (
-        <div className="flex flex-wrap gap-1 justify-end mt-2">
-          {item.customTagNames.map((tag) => (
-            <span 
-              key={tag.name}
-              style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
-              className="text-xs text-white px-2 py-1 rounded-full"
-            >
-              {tag.name}
-            </span>
-          ))}
-        </div>
-      )}
       {onEdit && (
         <button
           onPointerDown={(e) => { 

@@ -33,6 +33,7 @@ import { getSermonOutline } from "@/services/outline.service";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
 import { getContrastColor } from '@/utils/color';
+import CardContent from "@/components/CardContent";
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -713,38 +714,133 @@ function StructurePageContent() {
     
     const items = containers[focusedColumn];
     const title = columnTitles[focusedColumn];
-    let content = `# ${title}\n\n`;
     
-    // Add outline points if available
+    // Create a cleaner, more formatted export document
+    let content = `# ${title}\n`;
+    content += `${'='.repeat(title.length + 4)}\n\n`;
+    
+    // Check if we have outline points and items
     if (focusedColumn !== 'ambiguous' && 
         (focusedColumn === 'introduction' || focusedColumn === 'main' || focusedColumn === 'conclusion') && 
         outlinePoints[focusedColumn as keyof typeof outlinePoints]?.length > 0) {
-      content += `## ${t('structure.outlinePoints')}\n`;
-      outlinePoints[focusedColumn as keyof typeof outlinePoints].forEach((point: OutlinePoint) => {
-        content += `- ${point.text}\n`;
+      
+      const points = outlinePoints[focusedColumn as keyof typeof outlinePoints];
+      
+      // Create a map of outline points to their related items
+      const itemsByOutlinePoint: Record<string, Item[]> = {};
+      
+      // Initialize with empty arrays for each outline point
+      points.forEach(point => {
+        itemsByOutlinePoint[point.id] = [];
       });
-      content += '\n';
-    }
-    
-    // Add items
-    content += `## ${t('structure.content')}\n`;
-    if (items.length === 0) {
-      content += `${t('structure.noEntries')}\n`;
-    } else {
-      items.forEach((item, index) => {
-        content += `${index + 1}. ${item.content}\n`;
-        if (item.customTagNames && item.customTagNames.length > 0) {
-          // Extract tag names from the tag objects before joining
-          const tagNames = item.customTagNames.map(tag => 
-            typeof tag === 'string' ? tag : tag.name
-          ).filter(Boolean);
-          
-          if (tagNames.length > 0) {
-            content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
-          }
+      
+      // Create an array for unassigned items
+      const unassignedItems: Item[] = [];
+      
+      // Assign items to their outline points or to unassigned
+      items.forEach(item => {
+        if (item.outlinePointId && itemsByOutlinePoint[item.outlinePointId]) {
+          itemsByOutlinePoint[item.outlinePointId].push(item);
+        } else {
+          unassignedItems.push(item);
         }
-        content += '\n';
       });
+      
+      // Now output each outline point with its items
+      points.forEach((point, pointIndex) => {
+        // Get the associated items
+        const pointItems = itemsByOutlinePoint[point.id];
+        
+        // Format the outline point - check if it has a number prefix
+        const match = point.text.match(/^(\d+)[.)\s]+\s*(.*)$/);
+        let pointNumber: string;
+        let pointText: string;
+        
+        if (match) {
+          // If it has a number, use that
+          [, pointNumber, pointText] = match;
+        } else {
+          // Otherwise, use the point index + 1
+          pointNumber = (pointIndex + 1).toString();
+          pointText = point.text;
+        }
+        
+        // Add outline point as a section header
+        content += `## ${pointNumber}. ${pointText}\n`;
+        content += `${'-'.repeat(pointText.length + pointNumber.length + 4)}\n\n`;
+        
+        // Add all items under this outline point
+        if (pointItems.length === 0) {
+          content += `${t('structure.noEntriesForPoint')}\n\n`;
+        } else {
+          pointItems.forEach((item, itemIndex) => {
+            content += `${pointNumber}.${itemIndex + 1}. ${item.content}\n`;
+            
+            // Add tags with better formatting
+            if (item.customTagNames && item.customTagNames.length > 0) {
+              // Extract tag names from the tag objects before joining
+              const tagNames = item.customTagNames.map(tag => 
+                typeof tag === 'string' ? tag : tag.name
+              ).filter(Boolean);
+              
+              if (tagNames.length > 0) {
+                content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
+              }
+            }
+            content += '\n';
+          });
+        }
+      });
+      
+      // Add a section for unassigned items if there are any
+      if (unassignedItems.length > 0) {
+        content += `## ${t('structure.unassignedItems')}\n`;
+        content += `${'-'.repeat(t('structure.unassignedItems').length + 4)}\n\n`;
+        
+        unassignedItems.forEach((item, index) => {
+          content += `${index + 1}. ${item.content}\n`;
+          
+          // Add tags with better formatting
+          if (item.customTagNames && item.customTagNames.length > 0) {
+            // Extract tag names from the tag objects before joining
+            const tagNames = item.customTagNames.map(tag => 
+              typeof tag === 'string' ? tag : tag.name
+            ).filter(Boolean);
+            
+            if (tagNames.length > 0) {
+              content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
+            }
+          }
+          content += '\n';
+        });
+      }
+    } else {
+      // If there are no outline points or this is the ambiguous column, just list all items
+      content += `## ${t('structure.content')}\n`;
+      content += `${'-'.repeat(t('structure.content').length + 4)}\n\n`;
+      
+      if (items.length === 0) {
+        content += `${t('structure.noEntries')}\n`;
+      } else {
+        items.forEach((item, index) => {
+          // Create a formatted item block with clear numbering
+          content += `${index + 1}. ${item.content}\n`;
+          
+          // Add tags with better formatting
+          if (item.customTagNames && item.customTagNames.length > 0) {
+            // Extract tag names from the tag objects before joining
+            const tagNames = item.customTagNames.map(tag => 
+              typeof tag === 'string' ? tag : tag.name
+            ).filter(Boolean);
+            
+            if (tagNames.length > 0) {
+              content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
+            }
+          }
+          
+          content += '\n';
+        });
+      }
     }
     
     return content;
@@ -984,7 +1080,7 @@ function StructurePageContent() {
         </div>
         
         {/* Export Button in Focus Mode */}
-        {focusedColumn && (
+        {/* {focusedColumn && (
           <div className="flex justify-end items-center mb-4">
             <div className="flex items-center gap-2">
               <span className="text-gray-700">{t('export.exportTo')}:</span>
@@ -995,7 +1091,7 @@ function StructurePageContent() {
               />
             </div>
           </div>
-        )}
+        )} */}
         
         <DndContext
           collisionDetection={pointerWithin}
@@ -1064,6 +1160,8 @@ function StructurePageContent() {
                 onAiSort={() => handleAiSort("introduction")}
                 isLoading={isSorting && focusedColumn === "introduction"}
                 className={focusedColumn === "introduction" ? "w-full" : ""}
+                sermonId={sermon.id}
+                getExportContent={getExportContentForFocusedColumn}
               />
             )}
             
@@ -1082,6 +1180,8 @@ function StructurePageContent() {
                 onAiSort={() => handleAiSort("main")}
                 isLoading={isSorting && focusedColumn === "main"}
                 className={focusedColumn === "main" ? "w-full" : ""}
+                sermonId={sermon.id}
+                getExportContent={getExportContentForFocusedColumn}
               />
             )}
             
@@ -1100,6 +1200,8 @@ function StructurePageContent() {
                 onAiSort={() => handleAiSort("conclusion")}
                 isLoading={isSorting && focusedColumn === "conclusion"}
                 className={focusedColumn === "conclusion" ? "w-full" : ""}
+                sermonId={sermon.id}
+                getExportContent={getExportContentForFocusedColumn}
               />
             )}
           </div>
@@ -1113,31 +1215,8 @@ function StructurePageContent() {
                   ? containers[containerKey].find((item) => item.id === activeId)
                   : null;
                 return activeItem ? (
-                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md whitespace-pre-wrap">
-                    {/* Display outline point if available */}
-                    {activeItem.outlinePoint && (
-                      <div className="mb-2">
-                        <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200">
-                          {activeItem.outlinePoint.section ? `${activeItem.outlinePoint.section}: ${activeItem.outlinePoint.text}` : activeItem.outlinePoint.text}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {activeItem.content}
-                    
-                    {activeItem.customTagNames && activeItem.customTagNames.length > 0 && (
-                      <div className="flex flex-wrap gap-1 justify-end mt-2">
-                        {activeItem.customTagNames.map((tag) => (
-                          <span 
-                            key={tag.name}
-                            style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
-                            className="text-xs text-white px-2 py-1 rounded-full"
-                          >
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
+                    <CardContent item={activeItem} />
                   </div>
                 ) : null;
               })()}
