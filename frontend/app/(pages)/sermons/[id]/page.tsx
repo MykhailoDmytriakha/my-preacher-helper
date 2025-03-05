@@ -669,7 +669,7 @@ export default function SermonPage() {
             <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
             <KnowledgeSection sermon={sermon} />
             <SermonOutline sermon={sermon} thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} />
-            {sermon.structure && <StructurePreview sermon={sermon} />}
+            {/* {sermon.structure && <StructurePreview sermon={sermon} />} */}
           </div>
         </div>
       </div>

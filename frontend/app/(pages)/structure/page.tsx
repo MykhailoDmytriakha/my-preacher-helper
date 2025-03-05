@@ -1072,11 +1072,13 @@ function StructurePageContent() {
           <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
             {t('structure.title')} {sermon.title}
           </h1>
-          <div className="text-center">
-            <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
-              {t('structure.backToSermon')}
-            </Link>
-          </div>
+          {!focusedColumn && (
+            <div className="text-center">
+              <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
+                {t('structure.backToSermon')}
+              </Link>
+            </div>
+          )}
         </div>
         
         {/* Export Button in Focus Mode */}

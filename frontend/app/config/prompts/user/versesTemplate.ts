@@ -21,7 +21,7 @@ export function createVersesUserMessage(
     
     Based on this sermon content, please provide:
     
-    10 RELATED VERSES: Provide 10 Bible verses that connect to the sermon's themes. Include both verses that support the existing sermon direction and verses that offer new biblical perspectives on the same themes. For each verse, explain its relevance to the sermon.
+    10 RELATED VERSES: Provide 10 Bible verses that connect to the sermon's themes. Include verses that offer new biblical perspectives on the same themes. IMPORTANT: Show ONLY verses that are NOT already mentioned in the sermon content/thoughts above. For each verse, explain its relevance to the sermon.
     
     IMPORTANT: Your response should be in the EXACT SAME LANGUAGE as the sermon content - this is critically important. If the sermon is in Russian, respond in Russian. If the sermon is in Ukrainian, respond in Ukrainian. If the sermon is in English, respond in English.
   `;

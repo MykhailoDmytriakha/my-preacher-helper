@@ -12,11 +12,18 @@ const isDebugMode = process.env.DEBUG_MODE === 'true';
  */
 export function extractSermonContent(sermon: Sermon): string {
   let sermonContent = "";
+  const usedThoughtIds = new Set<string>();
   
-  // Extract text from thoughts, removing empty or very short entries
-  if (sermon.thoughts && sermon.thoughts.length > 0) {
+  // First, check if the sermon has structure
+  const hasStructure = sermon.structure && 
+    (sermon.structure.introduction?.length > 0 || 
+     sermon.structure.main?.length > 0 || 
+     sermon.structure.conclusion?.length > 0);
+  
+  // If there's no structure, use all thoughts
+  if (!hasStructure && sermon.thoughts && sermon.thoughts.length > 0) {
     if (isDebugMode) {
-      console.log(`Processing ${sermon.thoughts.length} thoughts`);
+      console.log(`Processing ${sermon.thoughts.length} thoughts (unstructured)`);
     }
     
     const meaningfulThoughts = sermon.thoughts
@@ -30,6 +37,11 @@ export function extractSermonContent(sermon: Sermon): string {
       });
     
     sermonContent = meaningfulThoughts.join("\n\n");
+  } else if (sermon.thoughts && sermon.thoughts.length > 0) {
+    // If we have structure, we'll only use the thoughts referenced in the structure
+    if (isDebugMode) {
+      console.log(`Processing ${sermon.thoughts.length} thoughts (structured)`);
+    }
   } else if (isDebugMode) {
     console.log("No thoughts found in sermon");
   }
@@ -38,7 +50,6 @@ export function extractSermonContent(sermon: Sermon): string {
   if (sermon.structure) {
     // Create a map from thought ID to thought object
     const thoughtsById = new Map<string, Thought>();
-    const usedThoughtIds = new Set<string>();
     
     if (sermon.thoughts) {
       sermon.thoughts.forEach(t => {
@@ -56,7 +67,7 @@ export function extractSermonContent(sermon: Sermon): string {
         // Check if item is a UUID
         if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
           const thought = thoughtsById.get(item);
-          if (thought && thought.text) {
+          if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
             introContent.push(thought.text);
             usedThoughtIds.add(thought.id);
           }
@@ -97,7 +108,7 @@ export function extractSermonContent(sermon: Sermon): string {
         // Check if item is a UUID
         if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
           const thought = thoughtsById.get(item);
-          if (thought && thought.text) {
+          if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
             mainContent.push(thought.text);
             usedThoughtIds.add(thought.id);
           }
@@ -138,7 +149,7 @@ export function extractSermonContent(sermon: Sermon): string {
         // Check if item is a UUID
         if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
           const thought = thoughtsById.get(item);
-          if (thought && thought.text) {
+          if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
             conclusionContent.push(thought.text);
             usedThoughtIds.add(thought.id);
           }
@@ -167,6 +178,30 @@ export function extractSermonContent(sermon: Sermon): string {
       
       if (conclusionContent.length > 0) {
         sermonContent += "\n" + conclusionContent.join("\n");
+      }
+    }
+    
+    // For thoughts that are in the structure but not in any specific section
+    if (sermon.structure.ambiguous && sermon.structure.ambiguous.length > 0) {
+      sermonContent += "\n\nAdditional Thoughts:";
+      let ambiguousContent: string[] = [];
+      
+      for (const item of sermon.structure.ambiguous) {
+        // Check if item is a UUID
+        if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+          const thought = thoughtsById.get(item);
+          if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
+            ambiguousContent.push(thought.text);
+            usedThoughtIds.add(thought.id);
+          }
+        } else {
+          // It's already text content
+          ambiguousContent.push(item);
+        }
+      }
+      
+      if (ambiguousContent.length > 0) {
+        sermonContent += "\n" + ambiguousContent.join("\n");
       }
     }
   }

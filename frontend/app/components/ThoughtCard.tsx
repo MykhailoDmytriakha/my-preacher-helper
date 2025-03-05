@@ -228,7 +228,7 @@ export default function ThoughtCard({
               onClick={() => onDelete(index, thought.id)}
               className="text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded-full transition-colors"
             >
-              <TrashIcon className="w-3.5 h-3.5" />
+              <TrashIcon/>
             </button>
             {/* Edit Button */}
             <button

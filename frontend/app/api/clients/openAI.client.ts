@@ -142,7 +142,7 @@ async function withOpenAILogging<T>(
   // Default options
   const {
     logFullResponse = false,
-    logMaxLength = 500
+    logMaxLength = 2000
   } = options;
   
   logger.info(operationName, "Starting operation");
