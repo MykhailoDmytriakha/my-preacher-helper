@@ -103,6 +103,7 @@ function StructurePageContent() {
   const [isClient, setIsClient] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
   const [isSorting, setIsSorting] = useState(false);
+  const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -292,72 +293,185 @@ function StructurePageContent() {
     setEditingItem(item);
   };
 
-  const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
-    if (!editingItem || !sermon) return;
-
-    const updatedItem: Thought = {
-      ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
-      text: updatedText,
-      tags: [...(editingItem.requiredTags || []), ...updatedTags],
-      outlinePointId: outlinePointId
+  const handleAddThoughtToSection = (sectionId: string) => {
+    // Create an empty thought with predefined section
+    const emptyThought: Item = {
+      id: `temp-${Date.now()}`, // Temporary ID that will be replaced when saved
+      content: '',
+      requiredTags: [],
+      customTagNames: []
     };
+    
+    // Set as the editing item with the specific section
+    setEditingItem(emptyThought);
+    setAddingThoughtToSection(sectionId);
+  };
 
-    try {
-      const updatedThought = await updateThought(sermon.id, updatedItem);
-      const updatedThoughts = sermon.thoughts.map((thought) =>
-        thought.id === updatedItem.id ? updatedThought : thought
-      );
-      setSermon({ ...sermon, thoughts: updatedThoughts });
-
-      // Find outline point info if available
-      let outlinePoint: { text: string; section: string } | undefined;
-      if (outlinePointId && sermon.outline) {
-        const sections = ['introduction', 'main', 'conclusion'] as const;
-        const sectionTranslations: Record<string, string> = {
-          'introduction': t('outline.introduction') || 'Introduction',
-          'main': t('outline.mainPoints') || 'Main Points',
-          'conclusion': t('outline.conclusion') || 'Conclusion'
-        };
+  const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
+    if (!sermon) return;
+    
+    // Check if we're adding a new thought or editing an existing one
+    if (editingItem && editingItem.id.startsWith('temp-')) {
+      // This is a new thought being added
+      const section = addingThoughtToSection;
+      
+      // Construct the new thought data with the required date property
+      const newThought = {
+        id: Date.now().toString(), // Will be replaced by server
+        text: updatedText,
+        tags: [
+          ...updatedTags,
+          // Add the required section tag based on the section
+          ...(section ? [columnTitles[section as keyof typeof columnTitles]] : [])
+        ],
+        outlinePointId: outlinePointId,
+        date: new Date().toISOString() // Adding the required date property
+      };
+      
+      try {
+        // Add the thought using the thought service
+        const thoughtService = await import('@/services/thought.service');
+        const addedThought = await thoughtService.createManualThought(sermon.id, newThought);
         
-        for (const section of sections) {
-          const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
-          if (point) {
-            outlinePoint = {
-              text: point.text,
-              section: '' // Don't show section in structure page
-            };
-            break;
+        // Find outline point info if available
+        let outlinePoint: { text: string; section: string } | undefined;
+        if (outlinePointId && sermon.outline) {
+          const sections = ['introduction', 'main', 'conclusion'] as const;
+          const sectionTranslations: Record<string, string> = {
+            'introduction': t('outline.introduction') || 'Introduction',
+            'main': t('outline.mainPoints') || 'Main Points',
+            'conclusion': t('outline.conclusion') || 'Conclusion'
+          };
+          
+          for (const section of sections) {
+            const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
+            if (point) {
+              outlinePoint = {
+                text: point.text,
+                section: '' // Don't show section in structure page
+              };
+              break;
+            }
           }
         }
+        
+        // Create item for UI
+        const newItem: Item = {
+          id: addedThought.id,
+          content: updatedText,
+          customTagNames: updatedTags.map((tagName) => ({
+            name: tagName,
+            color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+          })),
+          requiredTags: section ? [
+            columnTitles[section as keyof typeof columnTitles] || ''
+          ] : [],
+          outlinePointId: outlinePointId,
+          outlinePoint: outlinePoint
+        };
+        
+        // Update sermon state
+        setSermon({
+          ...sermon,
+          thoughts: [...sermon.thoughts, addedThought]
+        });
+        
+        // Update containers
+        if (section) {
+          setContainers(prev => ({
+            ...prev,
+            [section]: [...prev[section], newItem]
+          }));
+          
+          // Update structure in database
+          const currentStructure = sermon.structure || {};
+          const newStructure = typeof currentStructure === 'string' 
+            ? JSON.parse(currentStructure) 
+            : { ...currentStructure };
+          
+          if (!newStructure[section]) {
+            newStructure[section] = [];
+          }
+          newStructure[section] = [...newStructure[section], newItem.id];
+          
+          await updateStructure(sermon.id, newStructure);
+        }
+      } catch (error) {
+        console.error("Error adding thought:", error);
+        toast.error(t('errors.failedToAddThought'));
+      } finally {
+        setEditingItem(null);
+        setAddingThoughtToSection(null);
       }
+    } else {
+      // Existing code for updating thoughts
+      if (!editingItem) return;
 
-      const newContainers = Object.keys(containers).reduce(
-        (acc, key) => {
-          acc[key] = containers[key].map((item) =>
-            item.id === updatedItem.id
-              ? {
-                  ...item,
-                  content: updatedText,
-                  customTagNames: updatedTags.map((tagName) => ({
-                    name: tagName,
-                    color:
-                      allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-                  })),
-                  outlinePointId: outlinePointId,
-                  outlinePoint: outlinePoint
-                }
-              : item
-          );
-          return acc;
-        },
-        {} as Record<string, Item[]>
-      );
+      const updatedItem: Thought = {
+        ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
+        text: updatedText,
+        tags: [...(editingItem.requiredTags || []), ...updatedTags],
+        outlinePointId: outlinePointId
+      };
 
-      setContainers(newContainers);
-    } catch (error) {
-      console.error("Error updating thought:", error);
-    } finally {
-      setEditingItem(null);
+      try {
+        const updatedThought = await updateThought(sermon.id, updatedItem);
+        const updatedThoughts = sermon.thoughts.map((thought) =>
+          thought.id === updatedItem.id ? updatedThought : thought
+        );
+        setSermon({ ...sermon, thoughts: updatedThoughts });
+
+        // Find outline point info if available
+        let outlinePoint: { text: string; section: string } | undefined;
+        if (outlinePointId && sermon.outline) {
+          const sections = ['introduction', 'main', 'conclusion'] as const;
+          const sectionTranslations: Record<string, string> = {
+            'introduction': t('outline.introduction') || 'Introduction',
+            'main': t('outline.mainPoints') || 'Main Points',
+            'conclusion': t('outline.conclusion') || 'Conclusion'
+          };
+          
+          for (const section of sections) {
+            const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
+            if (point) {
+              outlinePoint = {
+                text: point.text,
+                section: '' // Don't show section in structure page
+              };
+              break;
+            }
+          }
+        }
+
+        const newContainers = Object.keys(containers).reduce(
+          (acc, key) => {
+            acc[key] = containers[key].map((item) =>
+              item.id === updatedItem.id
+                ? {
+                    ...item,
+                    content: updatedText,
+                    customTagNames: updatedTags.map((tagName) => ({
+                      name: tagName,
+                      color:
+                        allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+                    })),
+                    outlinePointId: outlinePointId,
+                    outlinePoint: outlinePoint
+                  }
+                : item
+            );
+            return acc;
+          },
+          {} as Record<string, Item[]>
+        );
+
+        setContainers(newContainers);
+      } catch (error) {
+        console.error("Error updating thought:", error);
+      } finally {
+        setEditingItem(null);
+        setAddingThoughtToSection(null);
+      }
     }
   };
 
@@ -1164,6 +1278,7 @@ function StructurePageContent() {
                 className={focusedColumn === "introduction" ? "w-full" : ""}
                 sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
+                onAddThought={handleAddThoughtToSection}
               />
             )}
             
@@ -1184,6 +1299,7 @@ function StructurePageContent() {
                 className={focusedColumn === "main" ? "w-full" : ""}
                 sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
+                onAddThought={handleAddThoughtToSection}
               />
             )}
             
@@ -1204,35 +1320,37 @@ function StructurePageContent() {
                 className={focusedColumn === "conclusion" ? "w-full" : ""}
                 sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
+                onAddThought={handleAddThoughtToSection}
               />
             )}
           </div>
           <DragOverlay>
-            {activeId &&
-              (() => {
-                const containerKey = Object.keys(containers).find((key) =>
-                  containers[key].some((item) => item.id === activeId)
-                );
-                const activeItem = containerKey
-                  ? containers[containerKey].find((item) => item.id === activeId)
-                  : null;
-                return activeItem ? (
-                  <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
-                    <CardContent item={activeItem} />
-                  </div>
-                ) : null;
-              })()}
+            {activeId && (() => {
+              const containerKey = Object.keys(containers).find(
+                (key) => containers[key].some((item) => item.id === activeId)
+              );
+              
+              const activeItem = containerKey
+                ? containers[containerKey].find((item) => item.id === activeId)
+                : null;
+                
+              return activeItem ? (
+                <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
+                  <CardContent item={activeItem} />
+                </div>
+              ) : null;
+            })()}
           </DragOverlay>
         </DndContext>
         {editingItem && (
           <EditThoughtModal
-            thoughtId={editingItem.id}
+            thoughtId={editingItem.id.startsWith('temp-') ? undefined : editingItem.id}
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
             initialOutlinePointId={editingItem.outlinePointId}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
-            containerSection={Object.keys(containers).find(key => 
+            containerSection={addingThoughtToSection || Object.keys(containers).find(key => 
               containers[key].some(item => item.id === editingItem.id)
             )}
             onSave={handleSaveEdit}

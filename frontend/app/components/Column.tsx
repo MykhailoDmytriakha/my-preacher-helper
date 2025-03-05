@@ -25,6 +25,7 @@ interface ColumnProps {
   className?: string; // Custom class name for the column container
   getExportContent?: () => Promise<string>; // Function to get export content
   sermonId?: string; // Add sermonId prop for export functionality
+  onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
 }
 
 export default function Column({ 
@@ -41,7 +42,8 @@ export default function Column({
   isLoading = false,
   className = "",
   getExportContent,
-  sermonId
+  sermonId,
+  onAddThought
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -86,9 +88,22 @@ export default function Column({
           >
             {/* Column title */}
             <div className="p-5 border-b border-white/20">
-              <h2 className="text-2xl font-bold text-white">
-                {title}
-              </h2>
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-white">
+                  {title}
+                </h2>
+                {onAddThought && (
+                  <button
+                    onClick={() => onAddThought(id)}
+                    className="ml-2 p-1.5 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+                    title={t('structure.addThoughtToSection', { section: title })}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               
               <div className="flex items-center mt-2">
                 <div 
@@ -272,16 +287,27 @@ export default function Column({
                 )}
               </div>
             </span>
-            {showFocusButton && (
-              <div className="flex space-x-2">
+            <div className="flex items-center space-x-2">
+              {onAddThought && (
+                <button
+                  onClick={() => onAddThought(id)}
+                  className="p-1.5 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+                  title={t('structure.addThoughtToSection', { section: title })}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+              {showFocusButton && (
                 <button
                   onClick={() => onToggleFocusMode?.(id)}
                   className="px-3 py-1 text-xs bg-white text-gray-800 rounded hover:bg-gray-100 transition-colors"
                 >
                   {t('structure.focusMode')}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           
           {/* Outline points display */}

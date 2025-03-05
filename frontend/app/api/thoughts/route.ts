@@ -22,27 +22,28 @@ export async function POST(request: Request) {
       if (!sermonId || !thought) {
         return NextResponse.json({ error: 'sermonId and thought are required' }, { status: 400 });
       }
-      // const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
-      // const availableTags = [
-      //   ...(await getRequiredTags()),
-      //   ...(await getCustomTags(sermon.userId))
-      // ].map(t => t.name);
-      // const manualThought = await generateThought(thought.text, sermon, availableTags);
+      console.log("Thoughts route: Manual thought:", thought);
+      console.log("Will not apply AI to manual thought");
       
-      // Add id and date to the thought
+      // Add id and date to the thought, and use the tags provided in the request
       const thoughtWithId: Thought = {
         id: uuidv4(),
         text: thought.text,
-        tags: [],
-        date: new Date().toISOString()
+        tags: thought.tags || [], // Use tags from the request or default to empty array
+        date: thought.date || new Date().toISOString(),
       };
+      
+      // Only add outlinePointId if it exists and is not undefined
+      if (thought.outlinePointId) {
+        thoughtWithId.outlinePointId = thought.outlinePointId;
+      }
       
       //verify that thought has everything that is needed
       if (!thoughtWithId.id || !thoughtWithId.text || !thoughtWithId.tags || !thoughtWithId.date) {
         return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
       }
       
-      console.log("Manual thought:", thoughtWithId);
+      console.log("Manual thought with tags:", thoughtWithId);
       
       // Use Admin SDK instead of client SDK
       const sermonDocRef = adminDb.collection("sermons").doc(sermonId);

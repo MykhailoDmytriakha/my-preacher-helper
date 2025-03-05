@@ -99,7 +99,6 @@
 Structure page:
 
 - add `plush sign` on structure page to each section, click on it allow to add thought to this section
-- on structure page, grag and drop to another section should change required tag for thought accordingly and update structure for those sections
 
 Export:
 
@@ -120,8 +119,3 @@ Transciption:
 - елси произошла ошибка при записи то нужно вернуть текст пользователю, если это возмножно
 - insights only available after 20 thoughts, it should be message with countdown
 - плывет layout на маленьких эранах (мобильное приложение)
-- if thought is adding manually, do not apply AI to it
-
-Outline:
-If outline was removed, we need remove it from assigned thoughts
-if outline was changed, we need to ask wheter to keep or remove assigned thoughts
