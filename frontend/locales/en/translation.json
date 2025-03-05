@@ -26,7 +26,24 @@
     "testLogin": "Sign in as Test User"
   },
   "dashboard": {
-    "mySermons": "My Sermons"
+    "mySermons": "My Sermons",
+    "searchSermons": "Search sermons...",
+    "newest": "Newest first",
+    "oldest": "Oldest first",
+    "alphabetical": "Alphabetical",
+    "noSermons": "No sermons yet",
+    "createFirstSermon": "Create your first sermon using the button above",
+    "noSearchResults": "No results found",
+    "tryDifferentSearch": "Try a different search term",
+    "thought": "thought",
+    "thoughts": "thoughts",
+    "hasOutline": "Has outline",
+    "stats": {
+      "totalSermons": "Total Sermons",
+      "totalThoughts": "Total Thoughts",
+      "withOutlines": "With Outlines",
+      "latestSermon": "Latest Sermon"
+    }
   },
   "addSermon": {
     "newSermon": "New Sermon",

@@ -26,7 +26,24 @@
     "testLogin": "Увійти як тестовий користувач"
   },
   "dashboard": {
-    "mySermons": "Мої проповіді"
+    "mySermons": "Мої проповіді",
+    "searchSermons": "Пошук проповідей...",
+    "newest": "Спочатку нові",
+    "oldest": "Спочатку старі",
+    "alphabetical": "За алфавітом",
+    "noSermons": "Поки немає проповідей",
+    "createFirstSermon": "Створіть свою першу проповідь за допомогою кнопки вище",
+    "noSearchResults": "Нічого не знайдено",
+    "tryDifferentSearch": "Спробуйте інший пошуковий запит",
+    "thought": "запис",
+    "thoughts": "записів",
+    "hasOutline": "Є план",
+    "stats": {
+      "totalSermons": "Всього проповідей",
+      "totalThoughts": "Всього записів",
+      "withOutlines": "З планами",
+      "latestSermon": "Остання проповідь"
+    }
   },
   "addSermon": {
     "newSermon": "Нова проповідь",

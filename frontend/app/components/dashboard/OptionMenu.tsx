@@ -79,27 +79,28 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   };
 
   return (
-    <div ref={menuRef} className="relative inline-block text-left">
+    <div ref={menuRef} className="relative">
       <button
         onClick={handleToggle}
-        className="p-1 focus:outline-none hover:bg-gray-200 rounded transition-colors duration-200"
+        className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200"
+        aria-label={t('optionMenu.options')}
       >
         <DotsVerticalIcon className="w-5 h-5" />
       </button>
 
-      {open && (
-        <div className="origin-top-left absolute left-full top-0 ml-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+      {open && menuRef.current && (
+        <div className="fixed transform translate-x-0 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50" style={{top: menuRef.current.getBoundingClientRect().top, left: menuRef.current.getBoundingClientRect().left + 36}}>
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
             <button
               onClick={handleEdit}
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between items-center"
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
             >
               <span>{t('optionMenu.edit')}</span>
             </button>
             <button
               onClick={handleDelete}
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between items-center"
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
             >
               <span>{t('optionMenu.delete')}</span>

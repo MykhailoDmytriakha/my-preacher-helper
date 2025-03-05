@@ -20,7 +20,7 @@ export function ExportButtonsLayout({
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
-
+  
   return (
     <div className={`flex ${layoutClass} gap-1.5`}>
       <button
@@ -29,26 +29,34 @@ export function ExportButtonsLayout({
       >
         TXT
       </button>
-      <button
-        onClick={onPdfClick}
-        disabled={true}
-        className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed relative group"
-      >
-        PDF
-        <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
+      
+      <div className="tooltip w-full">
+        <button
+          onClick={onPdfClick}
+          disabled={true}
+          className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed"
+          aria-label="PDF export (coming soon)"
+        >
+          PDF
+        </button>
+        <span className={`tooltiptext ${orientation === "vertical" ? "tooltiptext-right" : "tooltiptext-top"}`}>
           {t('export.soonAvailable')}
         </span>
-      </button>
-      <button
-        onClick={onWordClick}
-        disabled={true}
-        className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed relative group"
-      >
-        Word
-        <span className={`hidden group-hover:block absolute ${orientation === "vertical" ? "left-full top-1/2 -translate-y-1/2 ml-2" : "bottom-full left-1/2 -translate-x-1/2 mb-2"} px-2 py-1 text-xs bg-gray-900 text-white rounded-md`}>
+      </div>
+      
+      <div className="tooltip w-full">
+        <button
+          onClick={onWordClick}
+          disabled={true}
+          className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed"
+          aria-label="Word export (coming soon)"
+        >
+          Word
+        </button>
+        <span className={`tooltiptext ${orientation === "vertical" ? "tooltiptext-right" : "tooltiptext-top"}`}>
           {t('export.soonAvailable')}
         </span>
-      </button>
+      </div>
     </div>
   );
 }
@@ -131,6 +139,78 @@ interface ExportButtonsContainerProps {
   orientation?: "horizontal" | "vertical";
 }
 
+// Add global CSS for tooltips in a style tag at the end of the file
+const TooltipStyles = () => (
+  <style jsx global>{`
+    /* Base tooltip styles */
+    .tooltip {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .tooltip .tooltiptext {
+      visibility: hidden;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      text-align: center;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      
+      /* Position the tooltip */
+      position: absolute;
+      z-index: 1000;
+      
+      /* Fade in transition */
+      opacity: 0;
+      transition: opacity 0.2s, visibility 0.2s;
+    }
+    
+    /* Show the tooltip on hover */
+    .tooltip:hover .tooltiptext {
+      visibility: visible;
+      opacity: 1;
+    }
+    
+    /* Tooltip positioning */
+    .tooltiptext-top {
+      bottom: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    
+    .tooltiptext-right {
+      left: calc(100% + 5px);
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    /* Arrows for tooltips */
+    .tooltiptext-top:after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    }
+    
+    .tooltiptext-right:after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 100%;
+      margin-top: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: transparent rgba(0, 0, 0, 0.8) transparent transparent;
+    }
+  `}</style>
+);
+
+// Modify the default export to include the tooltip styles
 export default function ExportButtons({
   sermonId,
   getExportContent,
@@ -155,6 +235,7 @@ export default function ExportButtons({
 
   return (
     <>
+      <TooltipStyles />
       <ExportButtonsLayout
         orientation={orientation}
         onTxtClick={handleTxtExport}

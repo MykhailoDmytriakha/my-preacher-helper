@@ -31,6 +31,13 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     conclusion: [],
   });
   
+  // Track expanded sections - initially collapsed until data is loaded
+  const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>({
+    introduction: false,
+    mainPart: false,
+    conclusion: false,
+  });
+  
   // Fetch outline data when the component mounts or sermon changes
   useEffect(() => {
     const fetchOutline = async () => {
@@ -51,12 +58,26 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
           };
           
           setSectionPoints(mappedOutline);
+          
+          // Auto-expand sections that have content
+          setExpandedSections({
+            introduction: mappedOutline.introduction.length > 0,
+            mainPart: mappedOutline.mainPart.length > 0,
+            conclusion: mappedOutline.conclusion.length > 0,
+          });
         } else {
           // Initialize with empty arrays if no data is returned
           setSectionPoints({
             introduction: [],
             mainPart: [],
             conclusion: [],
+          });
+          
+          // Keep all sections collapsed if empty
+          setExpandedSections({
+            introduction: false,
+            mainPart: false,
+            conclusion: false,
           });
         }
       } catch (err) {
@@ -163,13 +184,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     directlySaveOutlineChanges(sectionPoints);
   };
   
-  // Track expanded sections - all expanded by default
-  const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>({
-    introduction: true,
-    mainPart: true,
-    conclusion: true,
-  });
-  
   const toggleSection = (section: SectionType) => {
     setExpandedSections({
       ...expandedSections,
@@ -237,6 +251,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     
     // Update state
     setSectionPoints(updatedSectionPoints);
+    
+    // Auto-collapse section if it becomes empty
+    if (updatedSectionArray.length === 0) {
+      setExpandedSections({
+        ...expandedSections,
+        [section]: false
+      });
+    }
     
     // Save changes directly with the updated data
     directlySaveOutlineChanges(updatedSectionPoints);

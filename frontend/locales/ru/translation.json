@@ -26,7 +26,24 @@
     "testLogin": "Войти как тестовый пользователь"
   },
   "dashboard": {
-    "mySermons": "Мои проповеди"
+    "mySermons": "Мои проповеди",
+    "searchSermons": "Поиск проповедей...",
+    "newest": "Сначала новые",
+    "oldest": "Сначала старые",
+    "alphabetical": "По алфавиту",
+    "noSermons": "Пока нет проповедей",
+    "createFirstSermon": "Создайте свою первую проповедь с помощью кнопки выше",
+    "noSearchResults": "Ничего не найдено",
+    "tryDifferentSearch": "Попробуйте другой поисковый запрос",
+    "thought": "запись",
+    "thoughts": "записей",
+    "hasOutline": "Есть план",
+    "stats": {
+      "totalSermons": "Всего проповедей",
+      "totalThoughts": "Всего записей",
+      "withOutlines": "С планами",
+      "latestSermon": "Последняя проповедь"
+    }
   },
   "addSermon": {
     "newSermon": "Новая проповедь",
