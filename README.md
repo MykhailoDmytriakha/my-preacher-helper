@@ -96,10 +96,6 @@
 
 ### TODO
 
-Structure page:
-
-- add `plush sign` on structure page to each section, click on it allow to add thought to this section
-
 Export:
 
 - export to pdf and word
@@ -117,5 +113,4 @@ Guest mode:
 Transciption:
 
 - елси произошла ошибка при записи то нужно вернуть текст пользователю, если это возмножно
-- insights only available after 20 thoughts, it should be message with countdown
 - плывет layout на маленьких эранах (мобильное приложение)

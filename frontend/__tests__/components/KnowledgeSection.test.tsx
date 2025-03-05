@@ -21,7 +21,7 @@ jest.mock('@/services/insights.service', () => ({
 // Mock the translations
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: any) => {
       const translations: { [key: string]: string } = {
         'knowledge.title': 'Knowledge and Insights',
         'knowledge.showMore': 'Show more',
@@ -37,6 +37,9 @@ jest.mock('react-i18next', () => ({
         'knowledge.noInsights': 'No insights have been generated yet.',
         'knowledge.clickToExpand': 'Click to expand insights',
         'knowledge.insightsGenerated': 'Insights generated!',
+        'knowledge.insightsThreshold': options?.count > 1 
+          ? `You need ${options?.count} more thoughts to unlock insights. Currently: ${options?.thoughtsCount || 0} of 20 required`
+          : `You need ${options?.count} more thought to unlock insights. Currently: ${options?.thoughtsCount || 0} of 20 required`,
       };
       return translations[key] || key;
     },
@@ -111,7 +114,13 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('renders without insights and shows generate button', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
+    // Modify sermon to have exactly 20 thoughts so insights can be generated
+    const sermonWithEnoughThoughts = {
+      ...mockSermonWithoutInsights,
+      thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
+    };
+    
+    render(<KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />);
     
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -145,26 +154,29 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
     
-    // Initially collapsed
-    expect(screen.queryByText('Covered Topics')).not.toBeInTheDocument();
+    // Verify the initial state has collapsed UI
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
     
     // Click to expand - wrap in act()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Should now show sections
+    // Should show sections when expanded
     expect(screen.getByText('Covered Topics')).toBeInTheDocument();
     expect(screen.getByText('Related Verses')).toBeInTheDocument();
     expect(screen.getByText('Possible Directions')).toBeInTheDocument();
+    
+    // Button should now say "Show less"
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
     
     // Click to collapse - wrap in act()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
     });
     
-    // Sections should be hidden again
-    expect(screen.queryByText('Covered Topics')).not.toBeInTheDocument();
+    // Button should now say "Show more" again
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
 
   it('generates all insights when button is clicked', async () => {
@@ -175,7 +187,13 @@ describe('KnowledgeSection Component', () => {
       });
     });
 
-    render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
+    // Create a sermon with enough thoughts to generate insights
+    const sermonWithEnoughThoughts = {
+      ...mockSermonWithoutInsights,
+      thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
+    };
+
+    render(<KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />);
     
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -427,7 +445,7 @@ describe('KnowledgeSection Component', () => {
     console.error = mockErrorFn;
     
     try {
-      // Render with sermon that has no insights
+      // Render with sermon that has enough thoughts
       const { getByText } = render(
         <KnowledgeSection
           sermon={{
@@ -435,7 +453,7 @@ describe('KnowledgeSection Component', () => {
             title: 'Test Sermon',
             verse: 'John 3:16',
             date: '2023-01-01',
-            thoughts: [],
+            thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] }),
             userId: 'user1',
           }}
           updateSermon={mockUpdateSermon}

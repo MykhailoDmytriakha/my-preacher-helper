@@ -206,6 +206,12 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                      Array.isArray(localInsights.topics) && 
                      localInsights.topics.length > 0;
   
+  // Check if sermon has enough thoughts to generate insights
+  const THOUGHTS_THRESHOLD = 20;
+  const thoughtsCount = sermon.thoughts?.length || 0;
+  const hasEnoughThoughts = thoughtsCount >= THOUGHTS_THRESHOLD;
+  const remainingThoughts = THOUGHTS_THRESHOLD - thoughtsCount;
+  
   const topics = extractTopics();
   const relatedVerses = getRelatedVerses();
   const possibleDirections = getPossibleDirections();
@@ -251,40 +257,19 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             aria-expanded={expanded}
             aria-label={expanded ? t('knowledge.showLess') : t('knowledge.showMore')}
           >
-            <ChevronIcon 
-              className={expanded ? 'rotate-180' : ''} 
-            />
+            <ChevronIcon className={`transform ${expanded ? 'rotate-180' : ''}`} />
           </button>
         ) : null}
       </div>
       
-      {!hasInsights ? (
-        <div className="py-6 px-2">
-          <p className="text-gray-500 dark:text-gray-400 mb-4 text-left">
-            {t('knowledge.noInsights')}
-          </p>
-          <button
-            onClick={handleGenerateAllInsights}
-            disabled={isAnyGenerating()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
-          >
-            {isGeneratingAll ? (
-              <>
-                <svg className="inline-block w-4 h-4 mr-2 animate-spin" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {t('knowledge.generating')}
-              </>
-            ) : (
-              t('knowledge.generate')
-            )}
-          </button>
-        </div>
-      ) : (
+      {!expanded ? (
+        <p className="text-gray-600 dark:text-gray-400 text-sm">
+          {hasInsights ? t('knowledge.clickToExpand') : null}
+        </p>
+      ) : null}
+      
+      {hasInsights ? (
         <div className="space-y-6">
-          {expanded ? (
-          <>
           {/* Topics section */}
           <div>
             <div className="flex justify-between items-center mb-2">
@@ -394,13 +379,40 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               )) : null}
             </div>
           </div>
-          </>
-          ) : (
-            // <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
-            //   {t('knowledge.clickToExpand')}
-            // </p>
-            null
-          )}
+        </div>
+      ) : (
+        <div className="mt-4 text-center">
+          {hasEnoughThoughts ? (
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {t('knowledge.noInsights')}
+            </p>
+          ) : null}
+          
+          {!hasEnoughThoughts ? (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md">
+              <p>
+                {t('knowledge.insightsThreshold', {
+                  count: remainingThoughts,
+                  thoughtsCount: thoughtsCount,
+                  defaultValue: `You need {{count}} more thoughts to unlock insights. Currently: ${thoughtsCount}/${THOUGHTS_THRESHOLD}`
+                })}
+              </p>
+            </div>
+          ) : null}
+          
+          <button
+            className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${
+              hasEnoughThoughts
+                ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+            }`}
+            onClick={hasEnoughThoughts ? handleGenerateAllInsights : undefined}
+            disabled={!hasEnoughThoughts || isAnyGenerating()}
+            data-testid="generate-insights-button"
+          >
+            {isGeneratingAll ? <LoadingSpinner /> : null}
+            {t('knowledge.generate')}
+          </button>
         </div>
       )}
     </div>
