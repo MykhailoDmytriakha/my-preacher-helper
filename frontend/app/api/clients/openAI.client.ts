@@ -19,12 +19,22 @@ import {
 } from "@/config/schemas";
 import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger } from "./openAIHelpers";
 
+const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
+const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
+const geminiModel = process.env.GEMINI_MODEL as string;
+const isDebugMode = process.env.DEBUG_MODE === 'true';
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
-const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
-const isDebugMode = process.env.DEBUG_MODE === 'true';
+
+const gemini = new OpenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+});
+
+const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
+const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
 
 // Create XML function definition for Claude models
 function createXmlFunctionDefinition(functionSchema: any): string {
@@ -263,7 +273,7 @@ export async function generateThought(
     const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -274,7 +284,7 @@ export async function generateThought(
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Thought',
       requestOptions,
       inputInfo
@@ -336,7 +346,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     const xmlFunctionPrompt = createXmlFunctionDefinition(sortingFunctionSchema);
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -348,7 +358,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Sort Items',
       requestOptions,
       inputInfo
@@ -558,7 +568,7 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
     const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -569,7 +579,7 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Insights',
       requestOptions,
       inputInfo
@@ -600,7 +610,7 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
     const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -611,7 +621,7 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Topics',
       requestOptions,
       inputInfo
@@ -643,7 +653,7 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
     const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -654,7 +664,7 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Verses',
       requestOptions,
       inputInfo
@@ -687,7 +697,7 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -698,7 +708,7 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Directions',
       requestOptions,
       inputInfo
@@ -725,7 +735,7 @@ export async function generateDirectionSuggestions(sermon: Sermon): Promise<Dire
     const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
     
     const requestOptions = {
-      model: gptModel,
+      model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
     
@@ -736,7 +746,7 @@ export async function generateDirectionSuggestions(sermon: Sermon): Promise<Dire
     };
     
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => openai.chat.completions.create(requestOptions),
+      () => aiAPI.chat.completions.create(requestOptions),
       'Generate Direction Suggestions',
       requestOptions,
       inputInfo
