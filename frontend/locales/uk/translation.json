@@ -99,7 +99,12 @@
     "noCustomTags": "У вас поки немає користувацьких тегів",
     "noRequiredTags": "Немає обов'язкових тегів",
     "tagName": "Назва тегу",
-    "tagColor": "Колір тегу"
+    "tagColor": "Колір тегу",
+    "editColorFor": "Змінити колір для",
+    "presetColors": "Готові кольори",
+    "customColor": "Власний колір",
+    "selectColor": "Вибрати колір",
+    "newTag": "Новий тег"
   },
   "sermon": {
     "notFound": "Проповідь не знайдено",
@@ -218,7 +223,9 @@
     "saving": "Збереження...",
     "dragToReorder": "Перетягніть для зміни порядку",
     "savingChanges": "Збереження змін...",
-    "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) призначено до цього пункту"
+    "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) призначено до цього пункту",
+    "save": "Зберегти",
+    "cancel": "Скасувати"
   },
   "outline": {
     "introduction": "Вступ",

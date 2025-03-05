@@ -99,7 +99,12 @@
     "noCustomTags": "У вас пока нет пользовательских тегов",
     "noRequiredTags": "Нет обязательных тегов",
     "tagName": "Название тега",
-    "tagColor": "Цвет тега"
+    "tagColor": "Цвет тега",
+    "editColorFor": "Изменить цвет для",
+    "presetColors": "Готовые цвета",
+    "customColor": "Свой цвет",
+    "selectColor": "Выбрать цвет",
+    "newTag": "Новый тег"
   },
   "sermon": {
     "notFound": "Проповедь не найдена",
@@ -218,7 +223,9 @@
     "saving": "Сохранение...",
     "dragToReorder": "Перетащите для изменения порядка",
     "savingChanges": "Сохранение изменений...",
-    "cannotDeleteWithThoughts": "Невозможно удалить: {{count}} мысль(ей) привязано к этому пункту"
+    "cannotDeleteWithThoughts": "Невозможно удалить: {{count}} мысль(ей) привязано к этому пункту",
+    "save": "Сохранить",
+    "cancel": "Отмена"
   },
   "outline": {
     "introduction": "Вступление",

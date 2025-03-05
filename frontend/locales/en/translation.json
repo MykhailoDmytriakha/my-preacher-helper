@@ -99,7 +99,12 @@
     "noCustomTags": "You don't have any custom tags yet",
     "noRequiredTags": "No required tags",
     "tagName": "Tag Name",
-    "tagColor": "Tag Color"
+    "tagColor": "Tag Color",
+    "editColorFor": "Edit Color for",
+    "presetColors": "Preset Colors",
+    "customColor": "Custom Color",
+    "selectColor": "Select color",
+    "newTag": "New Tag"
   },
   "sermon": {
     "notFound": "Sermon not found",
@@ -218,7 +223,9 @@
     "saving": "Saving...",
     "dragToReorder": "Drag to reorder",
     "savingChanges": "Saving changes...",
-    "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point"
+    "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "outline": {
     "introduction": "Introduction",
