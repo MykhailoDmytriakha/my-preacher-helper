@@ -79,5 +79,23 @@ export interface UserSettings {
   id: string;
   userId: string;
   language: string;
-  // Other future user settings can be added here
+  isAdmin: boolean;
+}
+
+export interface User {
+  id: string;               // ID пользователя из Firebase Auth
+  email?: string;           // Электронная почта пользователя
+  displayName?: string;     // Отображаемое имя пользователя
+  createdAt: string;        // Дата создания аккаунта
+  lastLogin: string;        // Дата последнего входа
+  isAnonymous: boolean;     // Является ли пользователь гостем
+  isPremium: boolean;       // Имеет ли пользователь премиум-подписку
+  premiumExpiration?: string; // Дата окончания премиум-подписки
+  usageStats: {             // Статистика использования
+    sermonsCreated: number;  // Количество созданных проповедей
+    thoughtsCreated: number; // Количество созданных мыслей
+    lastActivity: string;    // Дата последней активности
+    aiRequestsMade: number;  // Количество использованных AI запросов
+    tagsCreated: number;     // Количество созданных тегов
+  }
 }

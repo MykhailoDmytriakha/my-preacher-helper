@@ -33,7 +33,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           </span>
         </button>
 
-        <div className="relative">
+        {/* <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
           </div>
@@ -42,9 +42,9 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
               {t('loginOptions.or')}
             </span>
           </div>
-        </div>
+        </div> */}
 
-        <button
+        {/* <button
           className="w-full px-6 py-3 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2"
           onClick={onGuestLogin}
         >
@@ -63,7 +63,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
               {t('loginOptions.testLogin')}
             </span>
           </button>
-        )}
+        )} */}
       </div>
     </div>
   );

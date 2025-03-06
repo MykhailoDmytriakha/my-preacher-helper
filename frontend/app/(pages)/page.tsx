@@ -88,9 +88,9 @@ export default function Home() {
           <FeatureCards />
         </div>
         
-        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+        {/* <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700"> */}
           <LoginOptions onGoogleLogin={handleLogin} onGuestLogin={handleGuestLogin} onTestLogin={handleTestLogin} />
-        </div>
+        {/* </div> */}
       </main>
       
       <footer className="py-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-800">

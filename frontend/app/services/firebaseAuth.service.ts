@@ -1,6 +1,16 @@
-import { getAuth, GoogleAuthProvider, signInWithPopup, User, signOut, signInAnonymously, setPersistence, browserLocalPersistence } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  User,
+  signOut,
+  signInAnonymously,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
 import app from "@/config/firebaseConfig";
-import { toast } from 'sonner';
+import { toast } from "sonner";
+// import { createUser, updateUser } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
@@ -10,7 +20,7 @@ setPersistence(auth, browserLocalPersistence);
 
 export const checkGuestExpiration = (user: User): boolean => {
   if (!user.isAnonymous) return true;
-  
+
   const creationTime = new Date(user.metadata.creationTime!).getTime();
   const expirationTime = creationTime + GUEST_EXPIRATION_DAYS * 86400 * 1000;
   return Date.now() < expirationTime;
@@ -19,22 +29,34 @@ export const checkGuestExpiration = (user: User): boolean => {
 export const signInAsGuest = async (): Promise<User | null> => {
   try {
     const result = await signInAnonymously(auth);
-    localStorage.setItem('guestUser', JSON.stringify({
-      ...result.user,
-      creationTime: new Date().toISOString()
-    }));
+    localStorage.setItem(
+      "guestUser",
+      JSON.stringify({
+        ...result.user,
+        creationTime: new Date().toISOString(),
+      })
+    );
+
+    // await createUser(result.user);
+
     return result.user;
   } catch (error) {
-    toast.error('Ошибка входа в гостевой режим');
+    toast.error("Ошибка входа в гостевой режим");
     throw error;
   }
 };
-
 
 export const signInWithGoogle = async (): Promise<User | null> => {
   try {
     const result = await signInWithPopup(auth, provider);
     console.log("User:", result.user);
+
+    // await createUser(result.user);
+
+    // await updateUser(result.user.uid, {
+    //   lastLogin: new Date().toISOString(),
+    // });
+
     return result.user;
   } catch (error) {
     console.error("Error signing in:", error);

@@ -5,7 +5,7 @@ import { UserSettings } from '@/models/models';
  * Repository for user settings database operations
  */
 export class UserSettingsRepository {
-  private readonly collection = "userSettings";
+  private readonly collection = "users";
   
   /**
    * Get user settings by userId
@@ -14,19 +14,16 @@ export class UserSettingsRepository {
    */
   async getByUserId(userId: string): Promise<UserSettings | null> {
     try {
-      const settingsRef = adminDb.collection(this.collection);
-      const querySnapshot = await settingsRef
-        .where("userId", "==", userId)
-        .limit(1)
-        .get();
+      const docRef = adminDb.collection(this.collection).doc(userId);
+      const doc = await docRef.get();
         
-      if (querySnapshot.empty) {
+      if (!doc.exists) {
         return null;
       }
       
       return { 
-        id: querySnapshot.docs[0].id, 
-        ...querySnapshot.docs[0].data() 
+        id: doc.id, 
+        ...doc.data() 
       } as UserSettings;
     } catch (error) {
       console.error('Error fetching user settings:', error);
@@ -42,26 +39,23 @@ export class UserSettingsRepository {
    */
   async createOrUpdate(userId: string, language: string = 'en'): Promise<string> {
     try {
-      const settingsRef = adminDb.collection(this.collection);
-      const querySnapshot = await settingsRef
-        .where("userId", "==", userId)
-        .limit(1)
-        .get();
+      const docRef = adminDb.collection(this.collection).doc(userId);
+      const doc = await docRef.get();
       
-      if (querySnapshot.empty) {
-        // Create new settings
-        const newSettings = {
-          userId,
-          language
-        };
-        
-        const docRef = await settingsRef.add(newSettings);
-        return docRef.id;
+      // Only update allowed fields (never isAdmin)
+      const allowedUpdates = {
+        language
+      };
+      console.log("Updating user settings for user:", userId, "with updates:", allowedUpdates);
+      
+      if (!doc.exists) {
+        // Create new settings with userId as document ID
+        await docRef.set(allowedUpdates);
+        return userId;
       } else {
-        // Update existing settings
-        const settingsDoc = querySnapshot.docs[0];
-        await settingsRef.doc(settingsDoc.id).update({ language });
-        return settingsDoc.id;
+        // Update existing settings, preserving all other fields including isAdmin if it exists
+        await docRef.update(allowedUpdates);
+        return userId;
       }
     } catch (error) {
       console.error('Error creating/updating user settings:', error);
