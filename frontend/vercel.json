@@ -4,6 +4,15 @@
     "app/api/insights/route.ts": {
       "maxDuration": 60
     },
+    "app/api/insights/verses/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/insights/topics/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/insights/directions/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/thoughts/route.ts": {
       "maxDuration": 60
     },
