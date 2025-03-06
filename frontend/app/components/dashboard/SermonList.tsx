@@ -57,12 +57,12 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                     <DocumentIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
                     <span>{thoughtCount} {thoughtCount === 1 ? t('dashboard.thought') : t('dashboard.thoughts')}</span>
                   </div>
-                  {hasOutline && (
+                  {hasOutline ? (
                     <div className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900 
                          text-green-800 dark:text-green-200 text-xs font-medium">
                       {t('dashboard.hasOutline')}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
               
