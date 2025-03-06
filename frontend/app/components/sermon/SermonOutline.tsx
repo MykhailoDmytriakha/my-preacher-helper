@@ -1,7 +1,7 @@
 // External libraries
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 
 // Path alias imports
 import type { Sermon, Outline, OutlinePoint } from '@/models/models';
@@ -324,19 +324,18 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
             </div>
           ) : sectionPoints[section].length > 0 ? (
             <Droppable droppableId={section}>
-              {(provided) => (
-                <ul 
+              {(provided: DroppableProvided) => (
+                <div 
                   className="space-y-2 mb-4"
                   ref={provided.innerRef}
                   {...provided.droppableProps}
                 >
                   {sectionPoints[section].map((point, index) => (
-                    <Draggable key={point.id} draggableId={point.id} index={index}>
-                      {(provided, snapshot) => (
-                        <li 
+                    <Draggable key={`${section}-${point.id}-${index}`} draggableId={point.id} index={index}>
+                      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
+                        <div 
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          key={point.id} 
                           className={`group flex items-center gap-2 p-2 rounded transition-colors relative overflow-hidden
                                      ${snapshot.isDragging 
                                        ? 'bg-blue-50 dark:bg-blue-900 shadow-lg' 
@@ -442,12 +441,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                               </div>
                             </>
                           )}
-                        </li>
+                        </div>
                       )}
                     </Draggable>
                   ))}
                   {provided.placeholder}
-                </ul>
+                </div>
               )}
             </Droppable>
           ) : (
