@@ -137,6 +137,7 @@ interface ExportButtonsContainerProps {
   sermonId: string;
   getExportContent: () => Promise<string>;
   orientation?: "horizontal" | "vertical";
+  className?: string;
 }
 
 // Add global CSS for tooltips in a style tag at the end of the file
@@ -215,6 +216,7 @@ export default function ExportButtons({
   sermonId,
   getExportContent,
   orientation = "horizontal",
+  className = "",
 }: ExportButtonsContainerProps) {
   const { t } = useTranslation();
   const [exportContent, setExportContent] = useState("");
@@ -234,7 +236,7 @@ export default function ExportButtons({
   };
 
   return (
-    <>
+    <div className={className}>
       <TooltipStyles />
       <ExportButtonsLayout
         orientation={orientation}
@@ -249,6 +251,6 @@ export default function ExportButtons({
           onClose={() => setShowTxtModal(false)}
         />
       )}
-    </>
+    </div>
   );
 }

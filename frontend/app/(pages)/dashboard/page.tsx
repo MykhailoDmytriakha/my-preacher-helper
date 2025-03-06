@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
+  const [isMobileSearchVisible, setIsMobileSearchVisible] = useState(false);
   
   useEffect(() => {
     async function fetchData() {
@@ -66,29 +67,59 @@ export default function DashboardPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">{t('common.loading')}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="space-y-6">
+      {/* Page header with responsive styling */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
           {t('dashboard.mySermons')}
         </h1>
-        <AddSermonModal
-          onNewSermonCreated={(newSermon: Sermon) =>
-            setSermons((prevSermons) => [newSermon, ...prevSermons])
-          }
-        />
+        <div className="self-end sm:self-auto">
+          <AddSermonModal
+            onNewSermonCreated={(newSermon: Sermon) =>
+              setSermons((prevSermons) => [newSermon, ...prevSermons])
+            }
+          />
+        </div>
       </div>
       
-      {/* Dashboard Stats */}
+      {/* Dashboard Stats with responsive grid */}
       {sermons.length > 0 && (
-        <DashboardStats sermons={sermons} />
+        <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
+          <div className="px-4 sm:px-0">
+            <DashboardStats sermons={sermons} />
+          </div>
+        </div>
       )}
       
-      {/* Search and Sort Options */}
-      <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+      {/* Mobile search toggle */}
+      <div className="block sm:hidden">
+        <button 
+          onClick={() => setIsMobileSearchVisible(!isMobileSearchVisible)}
+          className="w-full py-2 px-4 bg-gray-100 dark:bg-gray-800 rounded-md flex items-center justify-between"
+        >
+          <span className="text-gray-700 dark:text-gray-300">
+            {isMobileSearchVisible ? t('common.hideSearch') : t('common.showSearch')}
+          </span>
+          <ChevronIcon 
+            direction={isMobileSearchVisible ? "up" : "down"} 
+            className="w-5 h-5 text-gray-500" 
+          />
+        </button>
+      </div>
+
+      {/* Search and Sort Options with responsive layout */}
+      <div className={`${isMobileSearchVisible || 'hidden sm:flex'} flex-col sm:flex-row gap-4 sm:items-center`}>
         <div className="relative flex-grow">
           <input
             type="text"

@@ -243,7 +243,10 @@
     "savingChanges": "Saving changes...",
     "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "showSearch": "Show search",
+    "hideSearch": "Hide search",
+    "loading": "Loading..."
   },
   "outline": {
     "introduction": "Introduction",

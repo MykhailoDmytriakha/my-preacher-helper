@@ -243,7 +243,10 @@
     "savingChanges": "Сохранение изменений...",
     "cannotDeleteWithThoughts": "Невозможно удалить: {{count}} мысль(ей) привязано к этому пункту",
     "save": "Сохранить",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "showSearch": "Показать поиск",
+    "hideSearch": "Скрыть поиск",
+    "loading": "Загрузка..."
   },
   "outline": {
     "introduction": "Вступление",

@@ -243,7 +243,10 @@
     "savingChanges": "Збереження змін...",
     "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) призначено до цього пункту",
     "save": "Зберегти",
-    "cancel": "Скасувати"
+    "cancel": "Скасувати",
+    "showSearch": "Показати пошук",
+    "hideSearch": "Сховати пошук",
+    "loading": "Завантаження..."
   },
   "outline": {
     "introduction": "Вступ",
