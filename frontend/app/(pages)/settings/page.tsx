@@ -29,7 +29,7 @@ export default function SettingsPage() {
       setUser(currentUser);
       setLoading(false);
       if (!currentUser) {
-        window.location.href = '/login';
+        window.location.href = '/';
       }
     });
     return () => unsubscribe();
