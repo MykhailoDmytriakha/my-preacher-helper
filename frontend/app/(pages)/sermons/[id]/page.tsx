@@ -374,22 +374,22 @@ export default function SermonPage() {
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <DashboardNav />
       <GuestBanner />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
         <SermonHeader sermon={sermon} />
         
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-              <div className="flex justify-between items-center mb-5">
-                <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+            <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
                   <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                     {activeCount} / {totalThoughts}
                   </span>
                   
-                  <div className="relative ml-3">
+                  <div className="relative ml-0 sm:ml-3">
                     <button
                       ref={filterButtonRef}
                       onClick={(e) => {
@@ -412,6 +412,7 @@ export default function SermonPage() {
                         ref={filterRef}
                         onClick={(e) => e.stopPropagation()}
                         className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10"
+                        style={{ maxWidth: 'calc(100vw - 32px)' }}
                       >
                         <div className="py-1 divide-y divide-gray-200 dark:divide-gray-700">
                           {/* View options */}
@@ -596,7 +597,7 @@ export default function SermonPage() {
                     
                     <button 
                       onClick={resetFilters}
-                      className="ml-auto px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
+                      className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
                     >
                       {t('filters.clear')}
                     </button>

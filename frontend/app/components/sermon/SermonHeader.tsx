@@ -19,15 +19,17 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
   };
 
   return (
-    <div className="flex justify-between items-start">
-      <div>
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent break-words">
             {sermon.title}
           </h1>
-          <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
+          <div className="mt-2 sm:mt-0">
+            <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
           <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
             ID: {sermon.id}

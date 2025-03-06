@@ -22,19 +22,19 @@ export function ExportButtonsLayout({
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
   
   return (
-    <div className={`flex ${layoutClass} gap-1.5`}>
+    <div className={`flex ${layoutClass} gap-1.5 max-w-full sm:max-w-none flex-shrink-0`}>
       <button
         onClick={onTxtClick}
-        className="w-full px-3 py-1.5 text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+        className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
       >
         TXT
       </button>
       
-      <div className="tooltip w-full">
+      <div className="tooltip">
         <button
           onClick={onPdfClick}
           disabled={true}
-          className="w-full px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed"
+          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed"
           aria-label="PDF export (coming soon)"
         >
           PDF
@@ -44,11 +44,11 @@ export function ExportButtonsLayout({
         </span>
       </div>
       
-      <div className="tooltip w-full">
+      <div className="tooltip">
         <button
           onClick={onWordClick}
           disabled={true}
-          className="w-full px-3 py-1.5 text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed"
+          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed"
           aria-label="Word export (coming soon)"
         >
           Word
@@ -89,13 +89,13 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div 
-        className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl"
+        className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold">{t('export.txtTitle')}</h3>
+          <h3 className="text-lg sm:text-xl font-semibold">{t('export.txtTitle')}</h3>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -107,22 +107,22 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
           </button>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 max-h-96 overflow-y-auto">
-          <pre className="whitespace-pre-wrap font-mono text-sm">
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 max-h-64 sm:max-h-96 overflow-y-auto">
+          <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm">
             {content}
           </pre>
         </div>
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex gap-2 sm:gap-3 justify-end">
           <button
             onClick={handleCopy}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
           >
             {isCopied ? t('export.copied') : t('export.copy')}
           </button>
           <button
             onClick={handleDownload}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             {t('export.downloadTxt')}
           </button>

@@ -53,9 +53,9 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   const conclusionColor = "#16a34a";
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <h2 className="text-xl font-semibold mb-4">{t('structure.title')}</h2>
-      <div className="space-y-4">
+    <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">{t('structure.title')}</h2>
+      <div className="space-y-3 sm:space-y-4">
         <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
           <div className="absolute inset-0 flex">
             <div
@@ -84,26 +84,26 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             />
           </div>
         </div>
-        <div className="flex justify-between text-sm">
+        <div className="flex justify-between text-xs sm:text-sm">
           <div className="text-center" style={{ color: introColor }}>
-            <div className="text-lg font-bold">{introPercentage}%</div>
+            <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
             <span className="text-xs text-gray-500">
               "{t('tags.introduction')}" <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
           </div>
-          <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
+          <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: mainColor }}>
-            <div className="text-lg font-bold">{mainPercentage}%</div>
+            <div className="text-base sm:text-lg font-bold">{mainPercentage}%</div>
             <span className="text-xs text-gray-500">
               "{t('tags.mainPart')}"
               <br />
               {t('structure.recommended', { percent: 60 })}
             </span>
           </div>
-          <div className="border-l border-gray-200 dark:border-gray-700 mx-4" />
+          <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: conclusionColor }}>
-            <div className="text-lg font-bold">{conclusionPercentage}%</div>
+            <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
             <span className="text-xs text-gray-500">
               "{t('tags.conclusion')}" <br />
               {t('structure.recommended', { percent: 20 })}
@@ -113,7 +113,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
       </div>
       <button
         onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
-        className="w-full mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+        className="w-full mt-4 sm:mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm sm:text-base"
       >
         {t('structure.workButton')}
       </button>

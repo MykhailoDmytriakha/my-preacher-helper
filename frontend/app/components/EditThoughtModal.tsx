@@ -110,9 +110,9 @@ export default function EditThoughtModal({
   const availableTags = allowedTags.filter(t => !tags.includes(t.name));
 
   const modalContent = (
-    <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px]">
-        <h2 className="text-2xl font-bold mb-6">{t('editThought.editTitle')}</h2>
+    <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[600px]">
+        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">{t('editThought.editTitle')}</h2>
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel')}</label>
           <TextareaAutosize
@@ -155,14 +155,14 @@ export default function EditThoughtModal({
 
         <div className="mb-4">
           <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {tags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
               return (
                 <div
                   key={tag + idx}
                   onClick={() => handleRemoveTag(idx)}
-                  className="cursor-pointer flex items-center px-2 py-1 rounded-full"
+                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0', color: tagInfo ? getContrastColor(tagInfo.color) : '#000' }}
                 >
                   <span>{tag}</span>
@@ -172,12 +172,12 @@ export default function EditThoughtModal({
             })}
           </div>
           <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {availableTags.map(t => (
               <div
                 key={t.name}
                 onClick={() => handleAddTag(t.name)}
-                className="cursor-pointer flex items-center px-2 py-1 rounded-full"
+                className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: t.color, color: getContrastColor(t.color) }}
               >
                 {t.name}

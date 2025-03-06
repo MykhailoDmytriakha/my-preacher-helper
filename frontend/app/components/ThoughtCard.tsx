@@ -69,11 +69,9 @@ export default function ThoughtCard({
             key={tag}
             style={{
               backgroundColor: tagInfo.color,
-              padding: '0.25rem 0.5rem',
-              borderRadius: '9999px',
-              fontSize: '0.875rem',
               color: getContrastColor(tagInfo.color)
             }}
+            className="text-xs px-2 py-0.5 rounded-full inline-flex items-center"
           >
             {tag}
           </span>
@@ -96,7 +94,7 @@ export default function ThoughtCard({
         return (
           <span
             key={tag}
-            className={`text-sm px-2 py-1 rounded-full ${bgClass} ${textClass}`}
+            className={`text-xs px-2 py-0.5 rounded-full inline-flex items-center ${bgClass} ${textClass}`}
           >
             {tag}
           </span>
@@ -152,14 +150,14 @@ export default function ThoughtCard({
         />
         {/* Tags editing section */}
         <div className="mb-2">
-          <p className="font-medium">{t('thought.tagsLabel')}</p>
-          <div className="flex flex-wrap gap-2 mt-1">
+          <p className="font-medium text-sm">{t('thought.tagsLabel')}</p>
+          <div className="flex flex-wrap gap-1.5 mt-1">
             {editingTags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
               return (
                 <div
                   key={`${tag}-${idx}`}
-                  className="cursor-pointer flex items-center px-2 py-1 rounded-full"
+                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
                   onClick={() => onRemoveTag(idx)}
                   style={{ backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0', color: getContrastColor(tagInfo ? tagInfo.color : '#e0e0e0') }}
                 >
@@ -170,13 +168,13 @@ export default function ThoughtCard({
             })}
           </div>
           <p className="text-xs text-gray-500 mt-2 mb-1">{t('thought.availableTags')}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {allowedTags
               .filter((t) => !editingTags.includes(t.name))
               .map((t) => (
                 <div
                   key={t.name}
-                  className="cursor-pointer flex items-center px-2 py-1 rounded-full"
+                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
                   onClick={() => onAddTag(t.name)}
                   style={{ backgroundColor: t.color, color: getContrastColor(t.color) }}
                 >
@@ -218,8 +216,8 @@ export default function ThoughtCard({
             : "border border-red-500 bg-red-50 dark:bg-red-900"
         }`}
       >
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {formatDate(thought.date)}
             </span>
@@ -246,7 +244,7 @@ export default function ThoughtCard({
           </div>
           {/* Tags */}
           {thought.tags && thought.tags.length > 0 && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {renderTags(thought.tags)}
             </div>
           )}
