@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import useAuth from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import FeatureCards from '@/components/landing/FeatureCards';
 import LoginOptions from '@/components/landing/LoginOptions';
