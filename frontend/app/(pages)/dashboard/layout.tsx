@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@services/firebaseAuth.service";
-import DashboardNav from "@components/DashboardNav";
+import DashboardNav from "@/components/navigation/DashboardNav";
 import { GuestBanner } from '@components/GuestBanner';
 
 export default function DashboardLayout({ 

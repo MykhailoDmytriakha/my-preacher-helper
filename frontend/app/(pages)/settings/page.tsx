@@ -8,7 +8,7 @@ import TagsSection from "@components/settings/TagsSection";
 import UserSettingsSection from "@components/settings/UserSettingsSection";
 import SettingsLayout from "@components/settings/SettingsLayout";
 import SettingsNav from "@components/settings/SettingsNav";
-import LanguageInitializer from "@components/LanguageInitializer";
+import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import "@locales/i18n";
 
 export default function SettingsPage() {

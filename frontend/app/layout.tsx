@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 
 // Dynamically import the LanguageInitializer component to ensure it only runs on client-side
 const LanguageInitializer = dynamic(
-  () => import('./components/LanguageInitializer'),
+  () => import('./components/navigation/LanguageInitializer'),
   { ssr: false }
 );
 

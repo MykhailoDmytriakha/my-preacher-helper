@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import FeatureCards from '@/components/landing/FeatureCards';
 import LoginOptions from '@/components/landing/LoginOptions';
 import { useTranslation } from 'react-i18next';
-import LanguageSwitcher from '@/components/LanguageSwitcher';
+import LanguageSwitcher from '@/components/navigation/LanguageSwitcher';
 import '@locales/i18n';
 
 export default function Home() {

@@ -6,7 +6,7 @@ import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import type { Sermon, Thought } from "@/models/models";
 import Link from "next/link";
-import DashboardNav from "@components/DashboardNav";
+import DashboardNav from "@/components/navigation/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";

@@ -65,13 +65,13 @@
 
 | День | Задача |
 |------|--------|
-| ~~**День 1**~~ | ~~Настроить Next.js, Firebase, Google Login~~ ✅ |
-| ~~**День 2**~~ | ~~Реализовать запись аудио и передачу в Whisper API~~ ✅ |
-| ~~**День 3**~~ | ~~Подключить Whisper API, добавить транскрипцию~~ ✅ |
-| ~~**День 4**~~ | ~~Подключить GPT API, реализовать улучшение текста и авто-тегирование~~ ✅ |
-| **День 5** | Отображение данных + экспорт (TXT, PDF, Word) |
-| ~~**День 6**~~ | ~~Тестирование, исправление багов~~ ✅ |
-| **День 7** | Финальная проверка и демо |
+| ~~**Step 1**~~ | ~~Настроить Next.js, Firebase, Google Login~~ ✅ |
+| ~~**Step 2**~~ | ~~Реализовать запись аудио и передачу в Whisper API~~ ✅ |
+| ~~**Step 3**~~ | ~~Подключить Whisper API, добавить транскрипцию~~ ✅ |
+| ~~**Step 4**~~ | ~~Подключить GPT API, реализовать улучшение текста и авто-тегирование~~ ✅ |
+| **Step 5** | Отображение данных + экспорт (TXT, PDF, Word) |
+| ~~**Step 6**~~ | ~~Тестирование, исправление багов~~ ✅ |
+| ~~**Step 7**~~ | ~~Финальная проверка и демо~~ ✅ |
 
 ---
 
@@ -119,8 +119,42 @@ Logs:
 
 - fix logging for AI
 
-Tags:
-- сделать перевод основных тэгов
-
 Offline:
-- support offline mode
+
+- support offline mode using IndexDB
+  To enable offline functionality in your preacher helper application:
+
+  ### Core Strategy
+
+  1. **Local Storage for Sermon Data**: Store complete sermon objects in browser's localStorage to make them available offline.
+
+  2. **Online/Offline Detection**: Monitor network status to switch between online and offline modes automatically.
+
+  3. **Change Tracking**: Keep track of changes made while offline in a queue to be synchronized later.
+
+  4. **Synchronization Process**: When connection is restored, sync local changes with the server.
+
+  ### Implementation Essentials
+
+  1. **Local Storage Service**:
+
+    - Functions to save/retrieve sermons locally
+    - Track changes made while offline
+
+  2. **Network Status Management**:
+
+    - Detect when users go offline/online
+    - Trigger synchronization when reconnected 
+
+  3. **Modified API Services**:
+
+    - Try online API first when connected
+    - Fall back to local data when offline
+    - Update local storage when online operations succeed
+
+  4. **User Interface Updates**:
+  
+    - Indicator showing offline status
+    - Clear feedback about synchronization status
+
+  This approach provides a seamless experience where users can continue working with their sermons regardless of connection status. All changes made offline will automatically synchronize when they reconnect to the internet, without requiring manual intervention.

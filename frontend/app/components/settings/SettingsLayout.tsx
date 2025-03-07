@@ -3,7 +3,7 @@
 import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackLink from './BackLink';
-import DashboardNav from '@components/DashboardNav';
+import DashboardNav from '@/components/navigation/DashboardNav';
 
 interface SettingsLayoutProps {
   children: ReactNode;

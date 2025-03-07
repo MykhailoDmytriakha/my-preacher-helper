@@ -2,19 +2,34 @@ import { useState, useEffect, useCallback } from "react";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, User } from "firebase/auth";
 import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
 import { updateUserProfile } from "@services/userSettings.service";
+import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 
-export default function useAuth() {
+export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const { i18n } = useTranslation();
   const auth = getAuth();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
+    let isMounted = true;
+    
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (isMounted) {
+        setUser(currentUser);
+        setLoading(false);
+        if (!currentUser) {
+          router.push('/');
+        }
+      }
     });
-    return unsubscribe;
-  }, [auth]);
+    
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [router]);
 
   const loginWithGoogle = useCallback(async () => {
     try {
@@ -40,16 +55,23 @@ export default function useAuth() {
     }
   }, []);
 
-  const logoutUser = useCallback(async () => {
+  const handleLogout = useCallback(async () => {
     try {
+      const currentLang = document.cookie.match(/lang=([^;]+)/)?.[1] || 'en';
+      
       await logOut();
-      setUser(null);
-      localStorage.removeItem("guestUser");
+      localStorage.removeItem('guestUser');
+      sessionStorage.clear();
+
+      await i18n.changeLanguage(currentLang);
+      document.cookie = `lang=${currentLang}; path=/; max-age=2592000`;
+      
+      router.push('/');
     } catch (error) {
-      console.error("Error logging out", error);
-      throw error;
+      console.error('Logout failed:', error);
+      router.refresh();
     }
-  }, []);
+  }, [router, i18n]);
 
   const loginWithEmailAndPassword = async (email: string, password: string) => {
     try {
@@ -68,5 +90,5 @@ export default function useAuth() {
     }
   };
 
-  return { user, loading, loginWithGoogle, loginAsGuest, logoutUser, loginWithEmailAndPassword };
+  return { user, loading, loginWithGoogle, loginAsGuest, handleLogout, loginWithEmailAndPassword };
 }
