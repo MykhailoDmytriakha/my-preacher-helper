@@ -5,6 +5,7 @@ import { Thought } from '@/models/models';
 import { createManualThought } from '@services/thought.service';
 import { PlusIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
 interface AddThoughtManualProps {
@@ -52,26 +53,27 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
       </button>
       {open && (
         <div
-          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4"
           onClick={() => setOpen(false)}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px]"
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="mb-6">
-                <textarea
+            <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
+              <div className="mb-6 flex-grow overflow-auto">
+                <TextareaAutosize
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder={t('manualThought.placeholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
-                  rows={3}
+                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+                  minRows={3}
+                  maxRows={16}
                   required
                 />
               </div>
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 mt-auto">
                 <button
                   type="button"
                   onClick={() => setOpen(false)}

@@ -88,8 +88,8 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
         <DotsVerticalIcon className="w-5 h-5" />
       </button>
 
-      {open && menuRef.current && (
-        <div className="fixed transform translate-x-0 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50" style={{top: menuRef.current.getBoundingClientRect().top, left: menuRef.current.getBoundingClientRect().left + 36}}>
+      {open && (
+        <div className="absolute right-0 mt-1 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
             <button
               onClick={handleEdit}

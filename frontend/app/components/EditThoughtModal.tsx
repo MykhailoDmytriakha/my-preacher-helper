@@ -111,15 +111,16 @@ export default function EditThoughtModal({
 
   const modalContent = (
     <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[600px]">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden">
         <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">{t('editThought.editTitle')}</h2>
-        <div className="mb-4">
+        <div className="mb-4 flex-grow overflow-auto">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel')}</label>
           <TextareaAutosize
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
             minRows={3}
+            maxRows={16}
           />
         </div>
 
@@ -155,7 +156,7 @@ export default function EditThoughtModal({
 
         <div className="mb-4">
           <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto">
             {tags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
               return (
@@ -185,7 +186,7 @@ export default function EditThoughtModal({
             ))}
           </div>
         </div>
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 mt-auto">
           <button 
             type="button" 
             onClick={onClose} 

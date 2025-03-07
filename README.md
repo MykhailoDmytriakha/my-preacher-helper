@@ -118,3 +118,9 @@ Transciption:
 Logs:
 
 - fix logging for AI
+
+Tags:
+- сделать перевод основных тэгов
+
+Offline:
+- support offline mode

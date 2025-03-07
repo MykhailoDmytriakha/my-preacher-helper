@@ -61,14 +61,14 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
     // Останавливаем всплытие кликов, чтобы они не доходили до родительских элементов
     <div
       onClick={(e) => e.stopPropagation()}
-      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px]"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden"
       >
         <h2 className="text-2xl font-bold mb-6">{t('editSermon.editSermon')}</h2>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
           <div className="mb-6">
             <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('editSermon.titleLabel')}
@@ -80,10 +80,11 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               placeholder={t('editSermon.titlePlaceholder')}
               className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
               minRows={1}
+              maxRows={6}
               required
             />
           </div>
-          <div className="mb-6">
+          <div className="mb-6 flex-grow overflow-auto">
             <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('editSermon.verseLabel')}
             </label>
@@ -94,10 +95,11 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               placeholder={t('editSermon.versePlaceholder')}
               className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
               minRows={3}
+              maxRows={16}
               required
             />
           </div>
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 mt-auto">
             <button 
               type="button" 
               onClick={onClose}

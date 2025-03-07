@@ -7,6 +7,7 @@ import { auth } from '@services/firebaseAuth.service';
 import { Sermon } from '@/models/models';
 import { PlusIcon } from "@components/Icons";
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;
@@ -63,44 +64,49 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
       </button>
 
       {open && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px]">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden">
             <h2 className="text-2xl font-bold mb-6">{t('addSermon.newSermon')}</h2>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
               <div className="mb-6">
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                   {t('addSermon.titleLabel')}
                 </label>
-                <input 
-                  type="text" 
+                <TextareaAutosize 
                   id="title" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
                   placeholder={t('addSermon.titlePlaceholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+                  minRows={1}
+                  maxRows={6}
                   required
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {t('addSermon.titleExample')}
                 </p>
               </div>
-              <div className="mb-6">
+              <div className="mb-6 flex-grow overflow-auto">
                 <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                   {t('addSermon.verseLabel')}
                 </label>
-                <textarea 
-                  id="verse"
-                  value={verse}
-                  onChange={e => setVerse(e.target.value)}
-                  placeholder={t('addSermon.versePlaceholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
-                  required
-                />
+                <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 350px)' }}>
+                  <TextareaAutosize 
+                    id="verse"
+                    value={verse}
+                    onChange={e => setVerse(e.target.value)}
+                    placeholder={t('addSermon.versePlaceholder')}
+                    className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+                    minRows={3}
+                    maxRows={16}
+                    required
+                  />
+                </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {t('addSermon.verseExample')}
                 </p>
               </div>
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 mt-auto">
                 <button 
                   type="button" 
                   onClick={() => setOpen(false)}
