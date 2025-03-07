@@ -10,7 +10,7 @@ import {
 } from "firebase/auth";
 import app from "@/config/firebaseConfig";
 import { toast } from "sonner";
-// import { createUser, updateUser } from "@services/userSettings.service";
+import { initializeUserSettings, updateUserProfile } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
@@ -37,7 +37,13 @@ export const signInAsGuest = async (): Promise<User | null> => {
       })
     );
 
-    // await createUser(result.user);
+    // Store anonymous user information with placeholder email and name
+    // without affecting language settings
+    await updateUserProfile(
+      result.user.uid,
+      `guest-${result.user.uid.substring(0, 6)}@guest.local`, // placeholder email
+      `Guest User ${result.user.uid.substring(0, 6)}` // placeholder name
+    );
 
     return result.user;
   } catch (error) {
@@ -51,11 +57,12 @@ export const signInWithGoogle = async (): Promise<User | null> => {
     const result = await signInWithPopup(auth, provider);
     console.log("User:", result.user);
 
-    // await createUser(result.user);
-
-    // await updateUser(result.user.uid, {
-    //   lastLogin: new Date().toISOString(),
-    // });
+    // Store user email and displayName without affecting language settings
+    await updateUserProfile(
+      result.user.uid,
+      result.user.email || undefined,
+      result.user.displayName || undefined
+    );
 
     return result.user;
   } catch (error) {

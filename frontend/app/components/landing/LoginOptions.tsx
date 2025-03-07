@@ -52,7 +52,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
           <span suppressHydrationWarning={true}>
             {t('loginOptions.guestLogin')}
           </span>
-        </button>
+        </button> */}
 
         {process.env.NODE_ENV === 'development' && (
           <button
@@ -63,7 +63,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin 
               {t('loginOptions.testLogin')}
             </span>
           </button>
-        )} */}
+        )}
       </div>
     </div>
   );

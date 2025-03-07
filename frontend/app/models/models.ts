@@ -80,6 +80,8 @@ export interface UserSettings {
   userId: string;
   language: string;
   isAdmin: boolean;
+  email?: string;
+  displayName?: string;
 }
 
 export interface User {

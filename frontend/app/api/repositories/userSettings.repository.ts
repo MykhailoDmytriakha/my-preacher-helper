@@ -34,21 +34,36 @@ export class UserSettingsRepository {
   /**
    * Create or update user settings
    * @param userId User ID
-   * @param language Preferred language
+   * @param language Preferred language (optional)
+   * @param email User email (optional)
+   * @param displayName User display name (optional)
    * @returns ID of the created or updated document
    */
-  async createOrUpdate(userId: string, language: string = 'en'): Promise<string> {
+  async createOrUpdate(userId: string, language?: string, email?: string, displayName?: string): Promise<string> {
     try {
       const docRef = adminDb.collection(this.collection).doc(userId);
       const doc = await docRef.get();
       
-      // Only update allowed fields (never isAdmin)
-      const allowedUpdates = {
-        language
-      };
+      // Initialize updates object with only the fields that are provided
+      const allowedUpdates: any = {};
+      
+      // Only add fields that are explicitly provided
+      if (language !== undefined) allowedUpdates.language = language;
+      if (email !== undefined) allowedUpdates.email = email;
+      if (displayName !== undefined) allowedUpdates.displayName = displayName;
+
+      // If no fields to update, return early
+      if (Object.keys(allowedUpdates).length === 0) {
+        console.log("No fields to update for user:", userId);
+        return userId;
+      }
+
       console.log("Updating user settings for user:", userId, "with updates:", allowedUpdates);
       
       if (!doc.exists) {
+        // For new documents, ensure language is set by providing a default if not specified
+        if (language === undefined) allowedUpdates.language = 'en';
+        
         // Create new settings with userId as document ID
         await docRef.set(allowedUpdates);
         return userId;

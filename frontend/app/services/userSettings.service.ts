@@ -86,13 +86,65 @@ export async function updateUserLanguage(userId: string, language: string): Prom
 }
 
 /**
- * Initialize user settings with default language
+ * Update user profile information (email, displayName) without affecting language
  * @param userId The user ID
- * @param language The language code (defaults to system default)
+ * @param email User email
+ * @param displayName User display name
  */
-export async function initializeUserSettings(userId: string, language: string = DEFAULT_LANGUAGE): Promise<void> {
+export async function updateUserProfile(
+  userId: string, 
+  email?: string,
+  displayName?: string
+): Promise<void> {
   try {
     if (!userId) return;
+    
+    // Only update provided fields
+    const updates: any = {};
+    if (email !== undefined) updates.email = email;
+    if (displayName !== undefined) updates.displayName = displayName;
+    
+    // Don't make the API call if there's nothing to update
+    if (Object.keys(updates).length === 0) return;
+    
+    // Update settings through API without specifying language
+    const response = await fetch('/api/user/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, ...updates }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update user profile: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+  }
+}
+
+/**
+ * Initialize user settings with default language
+ * @param userId The user ID
+ * @param language The language code (optional, defaults to system default)
+ * @param email User email (optional)
+ * @param displayName User display name (optional)
+ */
+export async function initializeUserSettings(
+  userId: string, 
+  language?: string,
+  email?: string,
+  displayName?: string
+): Promise<void> {
+  try {
+    if (!userId) return;
+    
+    // Build request payload with only provided fields
+    const payload: any = { userId };
+    if (language !== undefined) payload.language = language;
+    if (email !== undefined) payload.email = email; 
+    if (displayName !== undefined) payload.displayName = displayName;
     
     // Create settings through API
     const response = await fetch('/api/user/settings', {
@@ -100,19 +152,23 @@ export async function initializeUserSettings(userId: string, language: string = 
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userId, language }),
+      body: JSON.stringify(payload),
     });
     
     if (!response.ok) {
       throw new Error(`Failed to initialize user settings: ${response.statusText}`);
     }
     
-    // Ensure cookie is in sync
-    setLanguageCookie(language);
+    // Only set language cookie if language was provided
+    if (language) {
+      setLanguageCookie(language);
+    }
   } catch (error) {
     console.error('Error initializing user settings:', error);
     // Still set cookie even if DB update fails
-    setLanguageCookie(language);
+    if (language) {
+      setLanguageCookie(language);
+    }
   }
 }
 
@@ -132,5 +188,29 @@ export function getCookieLanguage(): string {
 export function setLanguageCookie(language: string): void {
   if (typeof document !== 'undefined') {
     document.cookie = `${COOKIE_LANG_KEY}=${language}; path=/; max-age=${COOKIE_MAX_AGE}`;
+  }
+}
+
+/**
+ * Get user settings
+ * @param userId The user ID
+ * @returns The user settings or null if not found
+ */
+export async function getUserSettings(userId: string): Promise<UserSettings | null> {
+  try {
+    if (!userId) {
+      return null;
+    }
+    
+    const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user settings: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.settings;
+  } catch (error) {
+    console.error('Error getting user settings:', error);
+    return null;
   }
 } 

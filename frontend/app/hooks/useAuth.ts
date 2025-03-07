@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, User } from "firebase/auth";
 import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
+import { updateUserProfile } from "@services/userSettings.service";
 
 export default function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -54,6 +55,13 @@ export default function useAuth() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       setUser(userCredential.user);
+      
+      // Store user email and displayName in settings without affecting language
+      await updateUserProfile(
+        userCredential.user.uid,
+        email,
+        userCredential.user.displayName || undefined
+      );
     } catch (error) {
       console.error('Email/password login error:', error);
       throw error;

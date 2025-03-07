@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import { useTranslation } from 'react-i18next';
+import { getUserSettings } from '@/services/userSettings.service';
+import { UserSettings } from '@/models/models';
 
 interface UserSettingsSectionProps {
   user: User | null;
@@ -10,6 +12,27 @@ interface UserSettingsSectionProps {
 
 const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (user) {
+        try {
+          const userSettings = await getUserSettings(user.uid);
+          setSettings(userSettings);
+        } catch (error) {
+          console.error('Error fetching user settings:', error);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, [user]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -18,13 +41,19 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
       </h2>
       
       <div className="max-w-3xl space-y-6">
-        {user ? (
+        {loading ? (
+          <p className="text-gray-500 dark:text-gray-400">
+            <span suppressHydrationWarning={true}>{t('settings.loadingUserData')}</span>
+          </p>
+        ) : user ? (
           <>
             <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-8 pb-4 border-b border-gray-200 dark:border-gray-700">
               <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
                 <span suppressHydrationWarning={true}>{t('settings.email')}</span>:
               </span>
-              <span className="text-gray-900 dark:text-gray-100">{user.email}</span>
+              <span className="text-gray-900 dark:text-gray-100">
+                {settings?.email || user.email || <span suppressHydrationWarning={true}>{t('settings.noEmail')}</span>}
+              </span>
             </div>
             
             <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-8 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -39,11 +68,10 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
                 <span suppressHydrationWarning={true}>{t('settings.displayName')}</span>:
               </span>
               <span className="text-gray-900 dark:text-gray-100">
-                {user.displayName || <span suppressHydrationWarning={true}>{t('settings.noDisplayName')}</span>}
+                {settings?.displayName || user.displayName || <span suppressHydrationWarning={true}>{t('settings.noDisplayName')}</span>}
               </span>
             </div>
             
-            {/* Placeholder for future user settings options */}
             <div className="pt-4 mt-4">
               <p className="text-gray-500 dark:text-gray-400 italic text-center md:text-left">
                 <span suppressHydrationWarning={true}>{t('settings.moreSettingsSoon')}</span>
