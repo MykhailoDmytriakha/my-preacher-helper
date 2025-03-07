@@ -96,7 +96,7 @@ ${text}
       userId
     });
     
-    // Send the email
+    // Send the email using promise-based approach
     const info = await transporter.sendMail(emailContent);
     
     console.log('Email notification sent successfully', {
@@ -117,7 +117,8 @@ ${text}
       });
     }
     
-    // We don't throw the error here to avoid affecting the feedback submission process
+    // Rethrow to ensure the caller knows the email failed
+    throw error;
   }
 }
 
@@ -171,11 +172,14 @@ export async function POST(request: NextRequest) {
     // Add the feedback to Firestore
     const result = await storeFeedbackInDatabase(feedbackData);
 
-    // Send email notification (async - doesn't affect response time)
-    console.log('Triggering background email notification');
-    sendEmailNotification(feedbackData).catch(err => 
-      console.error('Background email sending failed:', err)
-    );
+    // Send email notification - ensure it completes before the function returns
+    console.log('Triggering email notification');
+    try {
+      await sendEmailNotification(feedbackData);
+    } catch (emailError) {
+      console.error('Email sending failed:', emailError);
+      // Still proceed with success response as the feedback was stored
+    }
 
     // Return success response
     console.log('Feedback submission completed successfully');
