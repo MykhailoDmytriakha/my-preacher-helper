@@ -68,7 +68,9 @@ const TagList: React.FC<TagListProps> = ({
           </div>
           
           <div className="flex-1">
-            <h3 className="text-gray-800 dark:text-gray-200 font-medium">{tag.name}</h3>
+            <h3 className="text-gray-800 dark:text-gray-200 font-medium">
+              {tag.translationKey ? t(tag.translationKey) : tag.name}
+            </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">{tag.color}</p>
           </div>
           

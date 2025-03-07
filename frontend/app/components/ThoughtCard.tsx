@@ -15,7 +15,7 @@ interface ThoughtCardProps {
   editingText: string;
   editingTags: string[];
   hasRequiredTag: boolean;
-  allowedTags: { name: string; color: string }[];
+  allowedTags: { name: string; color: string; translationKey?: string }[];
   currentTag: string;
   sermonOutline?: Outline;
   onDelete: (index: number, thoughtId: string) => void;
@@ -63,6 +63,17 @@ export default function ThoughtCard({
   const renderTags = (tags: string[]) => {
     return tags.map((tag) => {
       const tagInfo = allowedTags.find(t => t.name === tag);
+      
+      // Check if this is a required tag that should be translated
+      let displayName = tag;
+      if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
+        displayName = t('tags.introduction');
+      } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
+        displayName = t('tags.mainPart');
+      } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
+        displayName = t('tags.conclusion');
+      }
+      
       if (tagInfo && tagInfo.color) {
         return (
           <span
@@ -73,18 +84,18 @@ export default function ThoughtCard({
             }}
             className="text-xs px-2 py-0.5 rounded-full inline-flex items-center"
           >
-            {tag}
+            {tagInfo.translationKey ? t(tagInfo.translationKey) : displayName}
           </span>
         );
       } else {
         let bgClass, textClass;
-        if (tag === "Вступление") {
+        if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
           bgClass = "bg-blue-100 dark:bg-blue-900";
           textClass = "text-blue-800 dark:text-blue-200";
-        } else if (tag === "Основная часть") {
+        } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
           bgClass = "bg-purple-100 dark:bg-purple-900";
           textClass = "text-purple-800 dark:text-purple-200";
-        } else if (tag === "Заключение") {
+        } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
           bgClass = "bg-green-100 dark:bg-green-900";
           textClass = "text-green-800 dark:text-green-200";
         } else {
@@ -96,7 +107,7 @@ export default function ThoughtCard({
             key={tag}
             className={`text-xs px-2 py-0.5 rounded-full inline-flex items-center ${bgClass} ${textClass}`}
           >
-            {tag}
+            {displayName}
           </span>
         );
       }

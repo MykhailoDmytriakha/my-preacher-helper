@@ -13,7 +13,7 @@ interface EditThoughtModalProps {
   initialText: string;
   initialTags: string[];
   initialOutlinePointId?: string;
-  allowedTags: { name: string; color: string }[];
+  allowedTags: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: Outline;
   containerSection?: string;
   onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
@@ -159,6 +159,17 @@ export default function EditThoughtModal({
           <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto">
             {tags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
+              // Get display name (translated if available)
+              let displayName = tag;
+              if (tagInfo?.translationKey) {
+                displayName = t(tagInfo.translationKey);
+              } else if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
+                displayName = t('tags.introduction');
+              } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
+                displayName = t('tags.mainPart');
+              } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
+                displayName = t('tags.conclusion');
+              }
               return (
                 <div
                   key={tag + idx}
@@ -166,7 +177,7 @@ export default function EditThoughtModal({
                   className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0', color: tagInfo ? getContrastColor(tagInfo.color) : '#000' }}
                 >
-                  <span>{tag}</span>
+                  <span>{displayName}</span>
                   <span className="ml-1">×</span>
                 </div>
               );
@@ -174,16 +185,29 @@ export default function EditThoughtModal({
           </div>
           <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
           <div className="flex flex-wrap gap-1.5">
-            {availableTags.map(t => (
-              <div
-                key={t.name}
-                onClick={() => handleAddTag(t.name)}
-                className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: t.color, color: getContrastColor(t.color) }}
-              >
-                {t.name}
-              </div>
-            ))}
+            {availableTags.map(tag => {
+              // Get display name (translated if available)
+              let displayName = tag.name;
+              if (tag.translationKey) {
+                displayName = t(tag.translationKey);
+              } else if (tag.name.toLowerCase() === "intro" || tag.name.toLowerCase() === "вступление") {
+                displayName = t('tags.introduction');
+              } else if (tag.name.toLowerCase() === "main" || tag.name.toLowerCase() === "основная часть") {
+                displayName = t('tags.mainPart');
+              } else if (tag.name.toLowerCase() === "conclusion" || tag.name.toLowerCase() === "заключение") {
+                displayName = t('tags.conclusion');
+              }
+              return (
+                <div
+                  key={tag.name}
+                  onClick={() => handleAddTag(tag.name)}
+                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
+                >
+                  <span>{displayName}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-auto">

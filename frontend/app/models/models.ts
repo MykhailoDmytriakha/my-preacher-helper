@@ -59,11 +59,13 @@ export interface Tag {
   name: string;
   color: string;
   required: boolean;
+  translationKey?: string;
 }
 
 export interface TagInfo {
   name: string;
   color: string;
+  translationKey?: string;
 }
 
 export interface Item {

@@ -274,10 +274,10 @@ describe('ThoughtCard Component', () => {
       />
     );
     
-    // Check all three default tags are rendered
-    expect(screen.getByText('Вступление')).toBeInTheDocument();
-    expect(screen.getByText('Основная часть')).toBeInTheDocument();
-    expect(screen.getByText('Заключение')).toBeInTheDocument();
+    // Check all three default tags are rendered with their translated names
+    expect(screen.getByText('Introduction')).toBeInTheDocument();
+    expect(screen.getByText('Main Part')).toBeInTheDocument();
+    expect(screen.getByText('Conclusion')).toBeInTheDocument();
   });
 
   it('displays outline point when thought has outlinePointId and sermon outline is provided', () => {
