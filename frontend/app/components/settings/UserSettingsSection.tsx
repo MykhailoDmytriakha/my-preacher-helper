@@ -35,12 +35,12 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
   }, [user]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
+      <h2 className="text-lg md:text-xl font-semibold mb-4 md:mb-6">
         <span suppressHydrationWarning={true}>{t('settings.userSettings')}</span>
       </h2>
       
-      <div className="max-w-3xl space-y-6">
+      <div className="max-w-3xl space-y-4 md:space-y-6">
         {loading ? (
           <p className="text-gray-500 dark:text-gray-400">
             <span suppressHydrationWarning={true}>{t('settings.loadingUserData')}</span>
@@ -48,10 +48,10 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
         ) : user ? (
           <>
             <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-8 pb-4 border-b border-gray-200 dark:border-gray-700">
-              <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
+              <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[120px] md:min-w-[150px]">
                 <span suppressHydrationWarning={true}>{t('settings.email')}</span>:
               </span>
-              <span className="text-gray-900 dark:text-gray-100">
+              <span className="text-gray-900 dark:text-gray-100 break-words">
                 {settings?.email || user.email || <span suppressHydrationWarning={true}>{t('settings.noEmail')}</span>}
               </span>
             </div>

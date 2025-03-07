@@ -46,6 +46,11 @@ export default function SettingsPage() {
     }
   };
 
+  // Custom handler for section change
+  const handleSectionChange = (sectionId: 'user' | 'tags') => {
+    setActiveSection(sectionId);
+  };
+
   // Отображаем сообщение загрузки, если пользователь еще не загружен
   if (loading) {
     return (
@@ -73,17 +78,45 @@ export default function SettingsPage() {
     <>
       <LanguageInitializer />
       <SettingsLayout title={pageTitle}>
-        <div className="flex flex-col md:flex-row gap-8">
-          <div className="md:w-64 flex-shrink-0">
+        {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
+        <div className="block md:hidden mb-4">
+          <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
             <SettingsNav
               activeSection={activeSection}
-              onSectionChange={setActiveSection}
+              onNavigate={(sectionId) => {
+                if (sectionId === 'user' || sectionId === 'tags') {
+                  handleSectionChange(sectionId);
+                }
+              }}
             />
           </div>
+        </div>
+
+        {/* Desktop Layout (side-by-side) - only visible on desktop */}
+        <div className="hidden md:flex md:flex-row md:gap-8">
+          {/* Navigation sidebar for desktop */}
+          <div className="w-64 flex-shrink-0">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <SettingsNav
+                activeSection={activeSection}
+                onNavigate={(sectionId) => {
+                  if (sectionId === 'user' || sectionId === 'tags') {
+                    handleSectionChange(sectionId);
+                  }
+                }}
+              />
+            </div>
+          </div>
           
+          {/* Main content area for desktop */}
           <div className="flex-1 transition-opacity duration-200 ease-in-out">
             {renderActiveSection()}
           </div>
+        </div>
+
+        {/* Mobile Content Area - only visible on mobile */}
+        <div className="block md:hidden transition-opacity duration-200 ease-in-out">
+          {renderActiveSection()}
         </div>
       </SettingsLayout>
     </>

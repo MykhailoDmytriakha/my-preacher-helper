@@ -87,15 +87,15 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
+      <h2 className="text-lg md:text-xl font-semibold mb-4 md:mb-6">
         <span suppressHydrationWarning={true}>{t('settings.manageTags')}</span>
       </h2>
       
       <div className="max-w-3xl">
         {/* Required Tags */}
-        <div className="mb-8">
-          <h3 className="text-lg font-medium mb-4 text-gray-700 dark:text-gray-300">
+        <div className="mb-6 md:mb-8">
+          <h3 className="text-base md:text-lg font-medium mb-3 md:mb-4 text-gray-700 dark:text-gray-300">
             <span suppressHydrationWarning={true}>{t('settings.requiredTags')}</span>
           </h3>
           <TagList tags={tags.requiredTags} />
@@ -103,7 +103,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
 
         {/* Custom Tags */}
         <div>
-          <h3 className="text-lg font-medium mb-4 text-gray-700 dark:text-gray-300">
+          <h3 className="text-base md:text-lg font-medium mb-3 md:mb-4 text-gray-700 dark:text-gray-300">
             <span suppressHydrationWarning={true}>{t('settings.customTags')}</span>
           </h3>
           

@@ -30,21 +30,21 @@ const SettingsNav: React.FC<SettingsNavProps> = ({
   };
   
   return (
-    <div className="flex md:flex-col gap-2 mb-6 bg-white dark:bg-gray-800 rounded-lg shadow p-3 md:p-4 overflow-x-auto md:overflow-visible">
+    <>
       {sections.map((section) => (
         <button
           key={section.id}
           onClick={() => handleSectionClick(section.id)}
-          className={`px-4 py-2 rounded-lg text-left whitespace-nowrap transition-colors ${
+          className={`w-full text-center md:text-left py-3 px-4 md:py-4 md:border-b md:border-gray-100 md:dark:border-gray-700 md:last:border-b-0 transition-colors ${
             activeSection === section.id
               ? 'bg-blue-600 text-white font-medium'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
         >
           <span suppressHydrationWarning={true}>{section.label}</span>
         </button>
       ))}
-    </div>
+    </>
   );
 };
 
