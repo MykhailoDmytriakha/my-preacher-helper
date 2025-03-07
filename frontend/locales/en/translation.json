@@ -252,5 +252,21 @@
     "introduction": "Introduction",
     "mainPoints": "Main Points",
     "conclusion": "Conclusion"
+  },
+  "feedback": {
+    "button": "Feedback",
+    "title": "Send Feedback",
+    "typeLabel": "Feedback Type",
+    "typeSuggestion": "Suggestion",
+    "typeBug": "Bug Report",
+    "typeQuestion": "Question",
+    "typeOther": "Other",
+    "messageLabel": "Your Feedback",
+    "messagePlaceholder": "Please tell us what you think...",
+    "submitButton": "Submit",
+    "sendingButton": "Sending...",
+    "cancelButton": "Cancel",
+    "successMessage": "Thank you for your feedback!",
+    "errorMessage": "Sorry, there was a problem sending your feedback. Please try again."
   }
 } 

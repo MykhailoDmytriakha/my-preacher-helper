@@ -252,5 +252,21 @@
     "introduction": "Вступ",
     "mainPoints": "Основна частина",
     "conclusion": "Висновок"
+  },
+  "feedback": {
+    "button": "Зворотний зв'язок",
+    "title": "Надіслати відгук",
+    "typeLabel": "Тип відгуку",
+    "typeSuggestion": "Пропозиція",
+    "typeBug": "Повідомлення про помилку",
+    "typeQuestion": "Запитання",
+    "typeOther": "Інше",
+    "messageLabel": "Ваш відгук",
+    "messagePlaceholder": "Будь ласка, розкажіть нам, що ви думаєте...",
+    "submitButton": "Надіслати",
+    "sendingButton": "Надсилання...",
+    "cancelButton": "Скасувати",
+    "successMessage": "Дякуємо за ваш відгук!",
+    "errorMessage": "На жаль, виникла проблема з надсиланням вашого відгуку. Будь ласка, спробуйте ще раз."
   }
 } 

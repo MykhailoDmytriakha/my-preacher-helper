@@ -252,5 +252,21 @@
     "introduction": "Вступление",
     "mainPoints": "Основная часть",
     "conclusion": "Заключение"
+  },
+  "feedback": {
+    "button": "Обратная связь",
+    "title": "Отправить отзыв",
+    "typeLabel": "Тип отзыва",
+    "typeSuggestion": "Предложение",
+    "typeBug": "Сообщение об ошибке",
+    "typeQuestion": "Вопрос",
+    "typeOther": "Другое",
+    "messageLabel": "Ваш отзыв",
+    "messagePlaceholder": "Пожалуйста, расскажите нам, что вы думаете...",
+    "submitButton": "Отправить",
+    "sendingButton": "Отправка...",
+    "cancelButton": "Отмена",
+    "successMessage": "Спасибо за ваш отзыв!",
+    "errorMessage": "К сожалению, возникла проблема при отправке вашего отзыва. Пожалуйста, попробуйте еще раз."
   }
 } 
