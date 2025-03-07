@@ -70,7 +70,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
         <h2 className="text-2xl font-bold mb-6">{t('editSermon.editSermon')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-6">
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('editSermon.titleLabel')}
             </label>
             <TextareaAutosize 
@@ -78,13 +78,13 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('editSermon.titlePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
               minRows={1}
               required
             />
           </div>
           <div className="mb-6">
-            <label htmlFor="verse" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('editSermon.verseLabel')}
             </label>
             <TextareaAutosize 
@@ -92,7 +92,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               value={verse}
               onChange={e => setVerse(e.target.value)}
               placeholder={t('editSermon.versePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
               minRows={3}
               required
             />
@@ -102,7 +102,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               type="button" 
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
             >
               {t('buttons.cancel')}
             </button>

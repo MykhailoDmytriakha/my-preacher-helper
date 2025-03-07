@@ -66,7 +66,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder={t('manualThought.placeholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
+                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
                   rows={3}
                   required
                 />
@@ -75,7 +75,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
                   disabled={isSubmitting}
                 >
                   {t('buttons.cancel')}

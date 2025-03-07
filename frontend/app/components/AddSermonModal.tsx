@@ -68,7 +68,7 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
             <h2 className="text-2xl font-bold mb-6">{t('addSermon.newSermon')}</h2>
             <form onSubmit={handleSubmit}>
               <div className="mb-6">
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                   {t('addSermon.titleLabel')}
                 </label>
                 <input 
@@ -77,15 +77,15 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
                   value={title}
                   onChange={e => setTitle(e.target.value)}
                   placeholder={t('addSermon.titlePlaceholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
+                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {t('addSermon.titleExample')}
                 </p>
               </div>
               <div className="mb-6">
-                <label htmlFor="verse" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                   {t('addSermon.verseLabel')}
                 </label>
                 <textarea 
@@ -93,10 +93,10 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
                   value={verse}
                   onChange={e => setVerse(e.target.value)}
                   placeholder={t('addSermon.versePlaceholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3"
+                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {t('addSermon.verseExample')}
                 </p>
               </div>
@@ -104,7 +104,7 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
                 <button 
                   type="button" 
                   onClick={() => setOpen(false)}
-                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500"
                 >
                   {t('addSermon.cancel')}
                 </button>
