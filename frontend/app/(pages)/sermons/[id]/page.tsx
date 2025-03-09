@@ -236,6 +236,64 @@ export default function SermonPage() {
 
   const thoughtsPerOutlinePoint = calculateThoughtsPerOutlinePoint();
 
+  // Проверяем, есть ли мысли с несогласованностью между тегами и назначенными пунктами плана
+  const checkForInconsistentThoughts = (): boolean => {
+    if (!sermon || !sermon.thoughts || !sermon.outline) return false;
+    
+    // Соответствие между секциями и тегами
+    const sectionTagMapping: Record<string, string> = {
+      'introduction': 'Вступление',
+      'main': 'Основная часть',
+      'conclusion': 'Заключение'
+    };
+    
+    // Список обязательных тегов для проверки
+    const requiredTags = Object.values(sectionTagMapping);
+    
+    // Проверяем каждую мысль
+    return sermon.thoughts.some(thought => {
+      // 1. Проверка на несколько обязательных тегов у одной мысли
+      const usedRequiredTags = thought.tags.filter(tag => requiredTags.includes(tag));
+      if (usedRequiredTags.length > 1) {
+        return true; // Несогласованность: несколько обязательных тегов
+      }
+      
+      // 2. Проверка на несогласованность между тегом и назначенным пунктом плана
+      if (!thought.outlinePointId) return false; // Если нет назначенного пункта плана, нет и проблемы
+      
+      // Определяем секцию пункта плана
+      let outlinePointSection: string | undefined;
+      
+      if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
+        outlinePointSection = 'introduction';
+      } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
+        outlinePointSection = 'main';
+      } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
+        outlinePointSection = 'conclusion';
+      }
+      
+      if (!outlinePointSection) return false; // Если не нашли секцию, считаем что проблемы нет
+      
+      // Получаем ожидаемый тег для текущей секции
+      const expectedTag = sectionTagMapping[outlinePointSection];
+      if (!expectedTag) return false; // Если неизвестная секция, считаем что все в порядке
+      
+      // Проверяем, имеет ли мысль тег соответствующей секции
+      const hasExpectedTag = thought.tags.includes(expectedTag);
+      
+      // Проверяем, имеет ли мысль теги других секций
+      const hasOtherSectionTags = Object.values(sectionTagMapping)
+        .filter(tag => tag !== expectedTag)
+        .some(tag => thought.tags.includes(tag));
+      
+      // Несогласованность, если нет ожидаемого тега или есть теги других секций
+      return !(!hasOtherSectionTags || hasExpectedTag);
+    });
+  };
+  
+  // Проверяем наличие несогласованностей
+  const hasInconsistentThoughts = checkForInconsistentThoughts();
+
   if (loading || !sermon) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -667,7 +725,12 @@ export default function SermonPage() {
           </div>
 
           <div className="space-y-6">
-            <StructureStats sermon={sermon} tagCounts={tagCounts} totalThoughts={totalThoughts} />
+            <StructureStats 
+              sermon={sermon} 
+              tagCounts={tagCounts} 
+              totalThoughts={totalThoughts} 
+              hasInconsistentThoughts={hasInconsistentThoughts} 
+            />
             <KnowledgeSection sermon={sermon} />
             <SermonOutline sermon={sermon} thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} />
             {/* {sermon.structure && <StructurePreview sermon={sermon} />} */}

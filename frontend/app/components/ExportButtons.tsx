@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
@@ -64,20 +64,42 @@ export function ExportButtonsLayout({
 interface ExportTxtModalProps {
   content: string;
   onClose: () => void;
+  getExportContent: (format: 'plain' | 'markdown') => Promise<string>;
 }
 
-export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
+export function ExportTxtModal({ content, onClose, getExportContent }: ExportTxtModalProps) {
   const { t } = useTranslation();
   const [isCopied, setIsCopied] = useState(false);
+  const [format, setFormat] = useState<'plain' | 'markdown'>('plain');
+  const [modalContent, setModalContent] = useState(content);
+  const [isLoading, setIsLoading] = useState(false);
+  const [displayContent, setDisplayContent] = useState(content);
+
+  useEffect(() => {
+    const updateContent = async () => {
+      setIsLoading(true);
+      try {
+        const newContent = await getExportContent(format);
+        setModalContent(newContent);
+        setDisplayContent(newContent);
+      } catch (error) {
+        console.error("Error updating content format:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    updateContent();
+  }, [format, getExportContent]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(modalContent);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    const blob = new Blob([content], { type: "text/plain" });
+    const blob = new Blob([modalContent], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -107,10 +129,39 @@ export function ExportTxtModal({ content, onClose }: ExportTxtModalProps) {
           </button>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 max-h-64 sm:max-h-96 overflow-y-auto">
-          <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm">
-            {content}
-          </pre>
+        <div className="flex items-center mb-4 text-sm">
+          <span className="mr-2">{t('export.format')}:</span>
+          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md">
+            <button 
+              className={`px-3 py-1 rounded-md ${format === 'plain' 
+                ? 'bg-blue-500 text-white' 
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+              onClick={() => setFormat('plain')}
+            >
+              {t('export.formatPlain')}
+            </button>
+            <button 
+              className={`px-3 py-1 rounded-md ${format === 'markdown' 
+                ? 'bg-blue-500 text-white' 
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+              onClick={() => setFormat('markdown')}
+            >
+              {t('export.formatMarkdown')}
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 overflow-hidden">
+          <div style={{ minHeight: '200px' }} className="max-h-64 sm:max-h-96 overflow-y-auto relative">
+            {isLoading ? (
+              <div className="flex justify-center items-center absolute inset-0 bg-gray-50/80 dark:bg-gray-700/80 z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            ) : null}
+            <pre className={`whitespace-pre-wrap font-mono text-xs sm:text-sm transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+              {displayContent}
+            </pre>
+          </div>
         </div>
 
         <div className="flex gap-2 sm:gap-3 justify-end">
@@ -140,7 +191,6 @@ interface ExportButtonsContainerProps {
   className?: string;
 }
 
-// Add global CSS for tooltips in a style tag at the end of the file
 const TooltipStyles = () => (
   <style jsx global>{`
     /* Base tooltip styles */
@@ -211,7 +261,6 @@ const TooltipStyles = () => (
   `}</style>
 );
 
-// Modify the default export to include the tooltip styles
 export default function ExportButtons({
   sermonId,
   getExportContent,
@@ -221,6 +270,102 @@ export default function ExportButtons({
   const { t } = useTranslation();
   const [exportContent, setExportContent] = useState("");
   const [showTxtModal, setShowTxtModal] = useState(false);
+
+  const getFormattedContent = async (format: 'plain' | 'markdown') => {
+    try {
+      // Получаем оригинальный контент для анализа
+      const originalContent = await getExportContent();
+      
+      // Определяем колонку, находящуюся в фокусе, анализируя заголовок
+      // Это эвристика, но она должна работать для наших данных
+      let focusedColumn: string | undefined;
+      
+      // Проверим, находимся ли мы на странице структуры
+      const isStructurePage = window.location.pathname.includes('/structure');
+      
+      // Если мы на странице структуры, попробуем определить колонку из URL
+      if (isStructurePage) {
+        const url = new URL(window.location.href);
+        const focusParam = url.searchParams.get('focus');
+        
+        // Если параметр focus есть в URL, используем его
+        if (focusParam && ['introduction', 'main', 'conclusion', 'ambiguous'].includes(focusParam)) {
+          focusedColumn = focusParam;
+        }
+      }
+      
+      // Если мы все еще не определили колонку, попробуем проанализировать содержимое
+      if (!focusedColumn) {
+        // Попытка определить текущую колонку из содержимого
+        if (originalContent.includes('# Introduction') || 
+            originalContent.includes('# Вступление') || 
+            originalContent.includes('# Вступ')) {
+          focusedColumn = 'introduction';
+        } else if (originalContent.includes('# Main Part') || 
+                  originalContent.includes('# Основная часть') || 
+                  originalContent.includes('# Основна частина')) {
+          focusedColumn = 'main';
+        } else if (originalContent.includes('# Conclusion') || 
+                  originalContent.includes('# Заключение') || 
+                  originalContent.includes('# Висновок')) {
+          focusedColumn = 'conclusion';
+        } else if (originalContent.includes('# Under Consideration') || 
+                  originalContent.includes('# На рассмотрении') || 
+                  originalContent.includes('# На розгляді')) {
+          focusedColumn = 'ambiguous';
+        }
+      }
+      
+      // Записываем в консоль для отладки
+      console.log('Determined focusedColumn:', focusedColumn);
+      
+      // Для определения страницы и API-вызова
+      if (window.location.pathname.includes('/sermons/') || 
+          window.location.pathname.includes('/dashboard')) {
+        const { getExportContent: exportFn } = await import('@/utils/exportContent');
+        
+        try {
+          const response = await fetch(`/api/sermons/${sermonId}`);
+          if (response.ok) {
+            const sermon = await response.json();
+            // На страницах проповеди не используем фокус колонки
+            return exportFn(sermon, undefined, { format });
+          }
+        } catch (error) {
+          console.error("Error fetching sermon for format change:", error);
+        }
+      }
+      
+      // Для страницы структуры (structure page)
+      if (isStructurePage) {
+        try {
+          const response = await fetch(`/api/sermons/${sermonId}`);
+          if (response.ok) {
+            const sermon = await response.json();
+            
+            // Используем определенную выше переменную focusedColumn
+            const { getExportContent: exportFn } = await import('@/utils/exportContent');
+            
+            // Если мы определили focusedColumn, используем её, иначе экспортируем всю проповедь
+            if (focusedColumn) {
+              console.log('Exporting with focusedColumn:', focusedColumn);
+              return exportFn(sermon, focusedColumn, { format });
+            } else {
+              // Если не удалось определить колонку, просто экспортируем весь контент
+              return exportFn(sermon, undefined, { format });
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching sermon for format change:", error);
+        }
+      }
+      
+      return originalContent;
+    } catch (error) {
+      console.error("Error generating export content with format:", error);
+      return "";
+    }
+  };
 
   const handleTxtExport = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -248,6 +393,7 @@ export default function ExportButtons({
       {showTxtModal && (
         <ExportTxtModal
           content={exportContent}
+          getExportContent={getFormattedContent}
           onClose={() => setShowTxtModal(false)}
         />
       )}

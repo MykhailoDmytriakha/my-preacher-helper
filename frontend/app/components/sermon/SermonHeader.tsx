@@ -4,7 +4,7 @@
 import React from 'react';
 import ExportButtons from '@components/ExportButtons';
 import { formatDate } from '@utils/dateFormatter';
-import { exportSermonContent } from '@/utils/exportContent';
+import { getExportContent } from '@/utils/exportContent';
 import type { Sermon } from '@/models/models';
 
 interface SermonHeaderProps {
@@ -15,7 +15,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
   const formattedDate = formatDate(sermon.date);
 
   const generateExportContent = async () => {
-    return exportSermonContent(sermon);
+    return getExportContent(sermon);
   };
 
   return (

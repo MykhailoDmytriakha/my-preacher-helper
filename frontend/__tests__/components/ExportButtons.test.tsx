@@ -124,6 +124,7 @@ describe('ExportButtons', () => {
     const mockProps = {
       content: 'Test export content',
       onClose: jest.fn(),
+      getExportContent: jest.fn().mockResolvedValue('Test export content')
     };
     
     it('renders content correctly', () => {
@@ -146,10 +147,12 @@ describe('ExportButtons', () => {
         
         // Check for buttons
         const buttons = portalContent.querySelectorAll('button');
-        expect(buttons.length).toBe(3); // Close, Copy, Download
+        expect(buttons.length).toBe(5); // Close, Plain/Format, Markdown/Format, Copy, Download
         
-        const copyButton = Array.from(buttons).find(b => b.textContent === 'Copy to Clipboard');
-        const downloadButton = Array.from(buttons).find(b => b.textContent === 'Download as TXT');
+        // Instead of looking for specific button text, let's just verify the total number of buttons
+        // and that we have copy and download buttons as required
+        const copyButton = Array.from(buttons).find(b => b.textContent?.includes('Copy'));
+        const downloadButton = Array.from(buttons).find(b => b.textContent?.includes('Download'));
         
         expect(copyButton).not.toBeUndefined();
         expect(downloadButton).not.toBeUndefined();

@@ -83,11 +83,17 @@
     "downloadTxt": "Скачать TXT",
     "prepareError": "Ошибка подготовки экспорта",
     "sermonTitle": "Проповедь: ",
-    "scriptureText": "Текст из Библии: ",
+    "scriptureText": "Текст Писания: ",
     "tagsLabel": "Теги: ",
-    "multiTagThoughts": "Мысли с несколькими метками",
+    "multiTagThoughts": "Мысли с несколькими тегами",
     "otherThoughts": "Другие мысли",
-    "exportTo": "Экспорт в"
+    "exportTo": "Экспорт в",
+    "unassignedThoughts": "Неназначенные мысли",
+    "thoughts": "Мысли",
+    "noEntries": "Нет записей",
+    "format": "Формат",
+    "formatPlain": "Обычный текст",
+    "formatMarkdown": "Markdown"
   },
   "tags": {
     "introduction": "Вступление",
@@ -174,7 +180,9 @@
     "tagsLabel": "Теги:",
     "availableTags": "Доступные теги для добавления:",
     "missingTags": "Если нужный тег отсутствует, перейдите в {link}",
-    "missingRequiredTag": "Эта запись не содержит обязательный тег. Не забудьте добавить «{{intro}}», «{{main}}» или «{{conclusion}}»!"
+    "missingRequiredTag": "Эта запись не содержит обязательный тег. Не забудьте добавить «{{intro}}», «{{main}}» или «{{conclusion}}»!",
+    "inconsistentSection": "Несогласованность: запись имеет тег \"{{actualTag}}\", но назначена к пункту плана из {{expectedSection}}",
+    "multipleStructureTags": "Несогласованность: обнаружено несколько структурных тегов. Запись должна иметь только один структурный тег."
   },
   "editThought": {
     "editTitle": "Редактировать запись",
@@ -189,6 +197,7 @@
     "entries": "записей",
     "recommended": "Рекомендуется: {{percent}}%",
     "workButton": "Работать над структурой",
+    "inconsistentTagsWarning": "Некоторые записи имеют несогласованные теги. Исправьте их прежде чем работать над структурой.",
     "underConsideration": "На рассмотрении",
     "loadingSermon": "Загрузка данных проповеди...",
     "notFound": "Проповедь не найдена или не указан sermonId",

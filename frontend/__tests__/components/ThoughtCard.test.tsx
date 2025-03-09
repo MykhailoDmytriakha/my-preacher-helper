@@ -31,6 +31,8 @@ jest.mock('react-i18next', () => ({
         'thought.availableTags': 'Available tags',
         'thought.missingTags': 'Missing tags',
         'thought.missingRequiredTag': 'Missing required tag',
+        'thought.inconsistentSection': 'Inconsistency: thought has tag "{{actualTag}}" but assigned to {{expectedSection}} outline point',
+        'thought.multipleStructureTags': 'Inconsistency: multiple structure tags detected. A thought should only have one structure tag.',
         'buttons.save': 'Save',
         'buttons.cancel': 'Cancel',
         'tags.introduction': 'Introduction',
@@ -41,6 +43,10 @@ jest.mock('react-i18next', () => ({
       
       if (key === 'thought.missingRequiredTag' && options) {
         return `Please add one of these tags: ${options.intro}, ${options.main}, or ${options.conclusion}`;
+      }
+      
+      if (key === 'thought.inconsistentSection' && options) {
+        return `Inconsistency: thought has tag "${options.actualTag}" but assigned to ${options.expectedSection} outline point`;
       }
       
       return translations[key] || key;
@@ -164,13 +170,13 @@ describe('ThoughtCard Component', () => {
     expect(textarea).toHaveValue('Edited text');
     
     // Should have save and cancel buttons
-    expect(screen.getByText('Save')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    expect(screen.getByTestId('save-button')).toBeInTheDocument();
+    expect(screen.getByTestId('cancel-button')).toBeInTheDocument();
     
     // Should show tags in edit mode
-    expect(screen.getByText('Tag1')).toBeInTheDocument();
-    expect(screen.getByText('Tags')).toBeInTheDocument();
-    expect(screen.getByText('Available tags')).toBeInTheDocument();
+    expect(screen.getByTestId('editing-tag-Tag1')).toBeInTheDocument();
+    expect(screen.getByTestId('tags-section-header')).toBeInTheDocument();
+    expect(screen.getByTestId('available-tags-header')).toBeInTheDocument();
   });
   
   it('calls onTextChange when textarea value changes', () => {
@@ -200,7 +206,7 @@ describe('ThoughtCard Component', () => {
       />
     );
     
-    const saveButton = screen.getByText('Save');
+    const saveButton = screen.getByTestId('save-button');
     fireEvent.click(saveButton);
     
     expect(defaultProps.onEditSave).toHaveBeenCalledTimes(1);
@@ -216,7 +222,7 @@ describe('ThoughtCard Component', () => {
       />
     );
     
-    const cancelButton = screen.getByText('Cancel');
+    const cancelButton = screen.getByTestId('cancel-button');
     fireEvent.click(cancelButton);
     
     expect(defaultProps.onEditCancel).toHaveBeenCalledTimes(1);
@@ -233,7 +239,7 @@ describe('ThoughtCard Component', () => {
     );
     
     // Find and click on an available tag
-    const availableTag = screen.getByText('Tag2');
+    const availableTag = screen.getByTestId('available-tag-Tag2');
     fireEvent.click(availableTag);
     
     expect(defaultProps.onAddTag).toHaveBeenCalledTimes(1);
@@ -251,7 +257,7 @@ describe('ThoughtCard Component', () => {
     );
     
     // Find and click on an active tag
-    const activeTag = screen.getByText('Tag1');
+    const activeTag = screen.getByTestId('editing-tag-Tag1');
     fireEvent.click(activeTag);
     
     expect(defaultProps.onRemoveTag).toHaveBeenCalledTimes(1);
@@ -306,7 +312,7 @@ describe('ThoughtCard Component', () => {
     );
     
     // Check that outline point is displayed with correct section
-    expect(screen.getByText('outline.introduction: Introduction point 1')).toBeInTheDocument();
+    expect(screen.getByText('Introduction: Introduction point 1')).toBeInTheDocument();
     
     // Test with main point
     const thoughtWithMainPoint: Thought = {
@@ -323,7 +329,7 @@ describe('ThoughtCard Component', () => {
     );
     
     // Check that outline point is displayed with correct section
-    expect(screen.getByText('outline.mainPoints: Main point 1')).toBeInTheDocument();
+    expect(screen.getByText('Main Part: Main point 1')).toBeInTheDocument();
     
     // Test with conclusion point
     const thoughtWithConclPoint: Thought = {
@@ -340,7 +346,7 @@ describe('ThoughtCard Component', () => {
     );
     
     // Check that outline point is displayed with correct section
-    expect(screen.getByText('outline.conclusion: Conclusion point 1')).toBeInTheDocument();
+    expect(screen.getByText('Conclusion: Conclusion point 1')).toBeInTheDocument();
   });
 
   it('does not display outline point when thought has no outlinePointId', () => {
@@ -375,5 +381,98 @@ describe('ThoughtCard Component', () => {
     expect(screen.queryByText(/Introduction point 1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Main point 1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Conclusion point 1/)).not.toBeInTheDocument();
+  });
+
+  it('displays inconsistency warning when thought has tag inconsistent with outline point section', () => {
+    // Mock sermon outline
+    const mockSermonOutline = {
+      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
+      main: [{ id: 'main-1', text: 'Main point 1' }],
+      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    };
+    
+    // Thought with tag from different section than outline point
+    const thoughtWithInconsistentTag: Thought = {
+      id: 'thought-5',
+      text: 'Thought with inconsistent tag',
+      tags: ['Вступление'], // Introduction tag
+      date: '2023-01-01',
+      outlinePointId: 'main-1' // But assigned to main point
+    };
+    
+    render(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithInconsistentTag}
+        sermonOutline={mockSermonOutline}
+        hasRequiredTag={true}
+      />
+    );
+    
+    // Check that inconsistency warning is displayed
+    expect(screen.getByText(/Inconsistency: thought has tag/)).toBeInTheDocument();
+    
+    // Check that card has red border styling
+    const cardElement = screen.getByText('Thought with inconsistent tag').closest('div');
+    expect(cardElement).toHaveClass('border-red-500');
+  });
+  
+  it('displays multiple structure tags warning when thought has multiple structure tags', () => {
+    // Thought with multiple structure tags
+    const thoughtWithMultipleTags: Thought = {
+      id: 'thought-6',
+      text: 'Thought with multiple structure tags',
+      tags: ['Вступление', 'Основная часть'], // Both Introduction and Main Part tags
+      date: '2023-01-01'
+    };
+    
+    render(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={thoughtWithMultipleTags}
+        hasRequiredTag={true}
+      />
+    );
+    
+    // Check that multiple tags warning is displayed
+    expect(screen.getByText(/Inconsistency: multiple structure tags detected/)).toBeInTheDocument();
+    
+    // Check that card has red border styling
+    const cardElement = screen.getByText('Thought with multiple structure tags').closest('div');
+    expect(cardElement).toHaveClass('border-red-500');
+  });
+  
+  it('does not display warnings when thought has consistent tags and section', () => {
+    // Mock sermon outline
+    const mockSermonOutline = {
+      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
+      main: [{ id: 'main-1', text: 'Main point 1' }],
+      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    };
+    
+    // Thought with consistent tag and outline point
+    const consistentThought: Thought = {
+      id: 'thought-7',
+      text: 'Thought with consistent tag',
+      tags: ['Вступление'], // Introduction tag
+      date: '2023-01-01',
+      outlinePointId: 'intro-1' // Assigned to intro point
+    };
+    
+    render(
+      <ThoughtCard 
+        {...defaultProps} 
+        thought={consistentThought}
+        sermonOutline={mockSermonOutline}
+        hasRequiredTag={true}
+      />
+    );
+    
+    // Check that no inconsistency warning is displayed
+    expect(screen.queryByText(/Inconsistency/)).not.toBeInTheDocument();
+    
+    // Check that card does not have red border styling
+    const cardElement = screen.getByText('Thought with consistent tag').closest('div');
+    expect(cardElement).not.toHaveClass('border-red-500');
   });
 }); 

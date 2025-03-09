@@ -4,7 +4,7 @@ import OptionMenu from "@/components/dashboard/OptionMenu";
 import ExportButtons from "@components/ExportButtons";
 import { formatDate } from "@utils/dateFormatter";
 import { Sermon } from "@/models/models";
-import { exportSermonContent } from "@/utils/exportContent";
+import { getExportContent } from "@/utils/exportContent";
 import { DocumentIcon } from "@components/Icons";
 import { useTranslation } from "react-i18next";
 
@@ -74,7 +74,7 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                 <ExportButtons
                   sermonId={sermon.id}
                   orientation="horizontal"
-                  getExportContent={() => exportSermonContent(sermon)}
+                  getExportContent={() => getExportContent(sermon)}
                   className="scale-90 sm:scale-100 origin-top-left sm:origin-center"
                 />
               </div>

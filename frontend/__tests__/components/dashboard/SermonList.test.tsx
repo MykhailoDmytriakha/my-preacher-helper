@@ -47,7 +47,7 @@ jest.mock('@utils/dateFormatter', () => ({
 }));
 
 jest.mock('@/utils/exportContent', () => ({
-  exportSermonContent: jest.fn().mockReturnValue('Exported content'),
+  getExportContent: jest.fn().mockReturnValue('Exported content'),
 }));
 
 // Mock the entire i18n module

@@ -12,12 +12,14 @@ interface StructureStatsProps {
     [key: string]: number;
   };
   totalThoughts: number;
+  hasInconsistentThoughts?: boolean;
 }
 
 const StructureStats: React.FC<StructureStatsProps> = ({
   sermon,
   tagCounts,
   totalThoughts,
+  hasInconsistentThoughts = false,
 }) => {
   const router = useRouter();
   const { id } = useParams() as { id: string };
@@ -113,7 +115,13 @@ const StructureStats: React.FC<StructureStatsProps> = ({
       </div>
       <button
         onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
-        className="w-full mt-4 sm:mt-6 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm sm:text-base"
+        className={`w-full mt-4 sm:mt-6 px-4 py-2 ${
+          hasInconsistentThoughts 
+            ? 'bg-gray-400 cursor-not-allowed' 
+            : 'bg-purple-600 hover:bg-purple-700'
+        } text-white rounded-lg transition-colors text-sm sm:text-base`}
+        disabled={hasInconsistentThoughts}
+        title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning', 'Some thoughts have inconsistent tags. Please fix tag inconsistencies before working on structure.') : ''}
       >
         {t('structure.workButton')}
       </button>

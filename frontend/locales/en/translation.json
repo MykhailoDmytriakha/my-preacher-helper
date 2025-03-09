@@ -87,7 +87,13 @@
     "tagsLabel": "Tags: ",
     "multiTagThoughts": "Thoughts with Multiple Tags",
     "otherThoughts": "Other Thoughts",
-    "exportTo": "Export to"
+    "exportTo": "Export to",
+    "unassignedThoughts": "Unassigned Thoughts",
+    "thoughts": "Thoughts",
+    "noEntries": "No entries",
+    "format": "Format",
+    "formatPlain": "Plain Text",
+    "formatMarkdown": "Markdown"
   },
   "tags": {
     "introduction": "Introduction",
@@ -174,7 +180,9 @@
     "tagsLabel": "Tags:",
     "availableTags": "Available tags to add:",
     "missingTags": "If needed tag is missing, go to {link}",
-    "missingRequiredTag": "This entry is missing a required tag. Don't forget to add «{{intro}}», «{{main}}» or «{{conclusion}}»!"
+    "missingRequiredTag": "This entry is missing a required tag. Don't forget to add «{{intro}}», «{{main}}» or «{{conclusion}}»!",
+    "inconsistentSection": "Inconsistency: thought has tag \"{{actualTag}}\" but assigned to {{expectedSection}} outline point",
+    "multipleStructureTags": "Inconsistency: multiple structure tags detected. A thought should only have one structure tag."
   },
   "editThought": {
     "editTitle": "Edit Thought",
@@ -189,6 +197,7 @@
     "entries": "entries",
     "recommended": "Recommended: {{percent}}%",
     "workButton": "Work on Structure",
+    "inconsistentTagsWarning": "Some thoughts have tag inconsistencies. Please fix them before working on structure.",
     "underConsideration": "Under Consideration",
     "loadingSermon": "Loading sermon data...",
     "notFound": "Sermon not found or sermonId not specified",

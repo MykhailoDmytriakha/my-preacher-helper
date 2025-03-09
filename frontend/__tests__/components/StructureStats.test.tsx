@@ -25,6 +25,7 @@ jest.mock('react-i18next', () => ({
         'structure.entries': 'entries',
         'structure.recommended': `Recommended: ${options?.percent || 0}%`,
         'structure.workButton': 'Work on Structure',
+        'structure.inconsistentTagsWarning': 'Some thoughts have tag inconsistencies. Please fix them before working on structure.',
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
         'tags.conclusion': 'Conclusion',
@@ -41,7 +42,8 @@ const MockStructureStats: React.FC<{
     [key: string]: number;
   };
   totalThoughts: number;
-}> = ({ sermon, tagCounts, totalThoughts }) => {
+  hasInconsistentThoughts?: boolean;
+}> = ({ sermon, tagCounts, totalThoughts, hasInconsistentThoughts = false }) => {
   // Calculate the same values as the real component
   const intro = tagCounts["Вступление"] || 0;
   const main = tagCounts["Основная часть"] || 0;
@@ -69,7 +71,13 @@ const MockStructureStats: React.FC<{
           <div className="conclusion-percentage">{conclusionPercentage}%</div>
           <div>Recommended: 20%</div>
         </div>
-        <button onClick={() => mockPush(`/structure?sermonId=${sermon.id}`)}>
+        <button 
+          onClick={() => !hasInconsistentThoughts && mockPush(`/structure?sermonId=${sermon.id}`)}
+          disabled={hasInconsistentThoughts}
+          className={hasInconsistentThoughts ? 'disabled-button' : 'enabled-button'}
+          title={hasInconsistentThoughts ? 'Some thoughts have tag inconsistencies. Please fix them before working on structure.' : ''}
+          data-testid="work-structure-button"
+        >
           Work on Structure
         </button>
       </div>
@@ -153,10 +161,56 @@ describe('StructureStats Component', () => {
     );
 
     // Find and click the structure button
-    const structureButton = screen.getByText('Work on Structure');
+    const structureButton = screen.getByTestId('work-structure-button');
     fireEvent.click(structureButton);
 
     // Check if navigation was triggered
+    expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
+  });
+
+  it('disables button when thoughts have inconsistencies', () => {
+    render(
+      <MockStructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts}
+        hasInconsistentThoughts={true}
+      />
+    );
+
+    // Find the button and check if it's disabled
+    const structureButton = screen.getByTestId('work-structure-button');
+    expect(structureButton).toBeDisabled();
+    expect(structureButton).toHaveClass('disabled-button');
+    
+    // Check if tooltip/title contains warning message
+    expect(structureButton).toHaveAttribute('title', 'Some thoughts have tag inconsistencies. Please fix them before working on structure.');
+    
+    // Click the button and check that navigation was not triggered
+    fireEvent.click(structureButton);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+  
+  it('enables button when thoughts have no inconsistencies', () => {
+    render(
+      <MockStructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts}
+        hasInconsistentThoughts={false}
+      />
+    );
+
+    // Find the button and check if it's enabled
+    const structureButton = screen.getByTestId('work-structure-button');
+    expect(structureButton).not.toBeDisabled();
+    expect(structureButton).toHaveClass('enabled-button');
+    
+    // Check that tooltip/title is empty
+    expect(structureButton).toHaveAttribute('title', '');
+    
+    // Click the button and check that navigation was triggered
+    fireEvent.click(structureButton);
     expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
   });
 

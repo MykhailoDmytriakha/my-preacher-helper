@@ -87,7 +87,13 @@
     "tagsLabel": "Теги: ",
     "multiTagThoughts": "Думки з кількома тегами",
     "otherThoughts": "Інші думки",
-    "exportTo": "Експорт в"
+    "exportTo": "Експорт в",
+    "unassignedThoughts": "Непризначені думки",
+    "thoughts": "Думки",
+    "noEntries": "Немає записів",
+    "format": "Формат",
+    "formatPlain": "Звичайний текст",
+    "formatMarkdown": "Markdown"
   },
   "tags": {
     "introduction": "Вступ",
@@ -152,7 +158,9 @@
     "tagsLabel": "Теги:",
     "availableTags": "Доступні теги для додавання:",
     "missingTags": "Якщо потрібного тегу немає, перейдіть до {link}",
-    "missingRequiredTag": "Цей запис не містить обов'язковий тег. Не забудьте додати «{{intro}}», «{{main}}» або «{{conclusion}}»!"
+    "missingRequiredTag": "Цей запис не містить обов'язковий тег. Не забудьте додати «{{intro}}», «{{main}}» або «{{conclusion}}»!",
+    "inconsistentSection": "Невідповідність: запис має тег \"{{actualTag}}\", але призначений до пункту плану з {{expectedSection}}",
+    "multipleStructureTags": "Невідповідність: виявлено кілька структурних тегів. Запис повинен мати лише один структурний тег."
   },
   "editThought": {
     "editTitle": "Редагувати запис",
@@ -167,6 +175,7 @@
     "entries": "записів",
     "recommended": "Рекомендовано: {{percent}}%",
     "workButton": "Працювати над структурою",
+    "inconsistentTagsWarning": "Деякі записи мають неузгоджені теги. Виправте їх перш ніж працювати над структурою.",
     "underConsideration": "На розгляді",
     "loadingSermon": "Завантаження даних проповіді...",
     "notFound": "Проповідь не знайдено або не вказано sermonId",

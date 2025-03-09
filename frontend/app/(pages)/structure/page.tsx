@@ -34,6 +34,7 @@ import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
 import { getContrastColor } from '@/utils/color';
 import CardContent from "@/components/CardContent";
+import { getExportContent } from "@/utils/exportContent";
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -822,142 +823,12 @@ function StructurePageContent() {
   };
 
   const getExportContentForFocusedColumn = async () => {
-    if (!focusedColumn || !containers[focusedColumn]) {
+    if (!focusedColumn || !sermon) {
       return '';
     }
     
-    const items = containers[focusedColumn];
-    const title = columnTitles[focusedColumn];
-    
-    // Create a cleaner, more formatted export document
-    let content = `# ${title}\n`;
-    content += `${'='.repeat(title.length + 4)}\n\n`;
-    
-    // Check if we have outline points and items
-    if (focusedColumn !== 'ambiguous' && 
-        (focusedColumn === 'introduction' || focusedColumn === 'main' || focusedColumn === 'conclusion') && 
-        outlinePoints[focusedColumn as keyof typeof outlinePoints]?.length > 0) {
-      
-      const points = outlinePoints[focusedColumn as keyof typeof outlinePoints];
-      
-      // Create a map of outline points to their related items
-      const itemsByOutlinePoint: Record<string, Item[]> = {};
-      
-      // Initialize with empty arrays for each outline point
-      points.forEach(point => {
-        itemsByOutlinePoint[point.id] = [];
-      });
-      
-      // Create an array for unassigned items
-      const unassignedItems: Item[] = [];
-      
-      // Assign items to their outline points or to unassigned
-      items.forEach(item => {
-        if (item.outlinePointId && itemsByOutlinePoint[item.outlinePointId]) {
-          itemsByOutlinePoint[item.outlinePointId].push(item);
-        } else {
-          unassignedItems.push(item);
-        }
-      });
-      
-      // Now output each outline point with its items
-      points.forEach((point, pointIndex) => {
-        // Get the associated items
-        const pointItems = itemsByOutlinePoint[point.id];
-        
-        // Format the outline point - check if it has a number prefix
-        const match = point.text.match(/^(\d+)[.)\s]+\s*(.*)$/);
-        let pointNumber: string;
-        let pointText: string;
-        
-        if (match) {
-          // If it has a number, use that
-          [, pointNumber, pointText] = match;
-        } else {
-          // Otherwise, use the point index + 1
-          pointNumber = (pointIndex + 1).toString();
-          pointText = point.text;
-        }
-        
-        // Add outline point as a section header
-        content += `## ${pointNumber}. ${pointText}\n`;
-        content += `${'-'.repeat(pointText.length + pointNumber.length + 4)}\n\n`;
-        
-        // Add all items under this outline point
-        if (pointItems.length === 0) {
-          content += `${t('structure.noEntriesForPoint')}\n\n`;
-        } else {
-          pointItems.forEach((item, itemIndex) => {
-            content += `${pointNumber}.${itemIndex + 1}. ${item.content}\n`;
-            
-            // Add tags with better formatting
-            if (item.customTagNames && item.customTagNames.length > 0) {
-              // Extract tag names from the tag objects before joining
-              const tagNames = item.customTagNames.map(tag => 
-                typeof tag === 'string' ? tag : tag.name
-              ).filter(Boolean);
-              
-              if (tagNames.length > 0) {
-                content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
-              }
-            }
-            content += '\n';
-          });
-        }
-      });
-      
-      // Add a section for unassigned items if there are any
-      if (unassignedItems.length > 0) {
-        content += `## ${t('structure.unassignedItems')}\n`;
-        content += `${'-'.repeat(t('structure.unassignedItems').length + 4)}\n\n`;
-        
-        unassignedItems.forEach((item, index) => {
-          content += `${index + 1}. ${item.content}\n`;
-          
-          // Add tags with better formatting
-          if (item.customTagNames && item.customTagNames.length > 0) {
-            // Extract tag names from the tag objects before joining
-            const tagNames = item.customTagNames.map(tag => 
-              typeof tag === 'string' ? tag : tag.name
-            ).filter(Boolean);
-            
-            if (tagNames.length > 0) {
-              content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
-            }
-          }
-          content += '\n';
-        });
-      }
-    } else {
-      // If there are no outline points or this is the ambiguous column, just list all items
-      content += `## ${t('structure.content')}\n`;
-      content += `${'-'.repeat(t('structure.content').length + 4)}\n\n`;
-      
-      if (items.length === 0) {
-        content += `${t('structure.noEntries')}\n`;
-      } else {
-        items.forEach((item, index) => {
-          // Create a formatted item block with clear numbering
-          content += `${index + 1}. ${item.content}\n`;
-          
-          // Add tags with better formatting
-          if (item.customTagNames && item.customTagNames.length > 0) {
-            // Extract tag names from the tag objects before joining
-            const tagNames = item.customTagNames.map(tag => 
-              typeof tag === 'string' ? tag : tag.name
-            ).filter(Boolean);
-            
-            if (tagNames.length > 0) {
-              content += `   ${t('structure.tags')}: ${tagNames.join(', ')}\n`;
-            }
-          }
-          
-          content += '\n';
-        });
-      }
-    }
-    
-    return content;
+    // Используем общую функцию getExportContent с указанием focusedColumn и формата markdown
+    return getExportContent(sermon, focusedColumn, { format: 'markdown' });
   };
 
   const handleAiSort = async (columnId: string) => {

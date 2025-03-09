@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { exportSermonContent } from '@/utils/exportContent';
+import { getExportContent } from '@/utils/exportContent';
 import type { Sermon, Thought, Structure } from '@/app/models/models';
 
 // Mock the i18n instance
@@ -12,6 +12,9 @@ jest.mock('@locales/i18n', () => ({
         'export.tagsLabel': 'Tags: ',
         'export.otherThoughts': 'Other Thoughts',
         'export.multiTagThoughts': 'Thoughts with Multiple Tags',
+        'export.unassignedThoughts': 'Unassigned Thoughts',
+        'export.thoughts': 'Thoughts',
+        'export.noEntries': 'No entries',
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
         'tags.conclusion': 'Conclusion'
@@ -32,7 +35,7 @@ afterAll(() => {
   jest.restoreAllMocks();
 });
 
-describe('exportSermonContent', () => {
+describe('getExportContent', () => {
   // Helper function to create a timestamp for a specified number of days ago
   const daysAgo = (days: number): string => {
     const date = new Date();
@@ -77,7 +80,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Sermon: Test Sermon');
@@ -132,7 +135,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Introduction:');
@@ -166,7 +169,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Main Part:');
@@ -197,7 +200,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Sermon: Test Sermon');
@@ -234,7 +237,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       if (result === '') {
@@ -257,7 +260,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert - fix to match actual format with correct spacing and line breaks
       expect(result).toMatch(/Sermon: Test Sermon\s+Scripture Text:\s+John 3:16/);
@@ -284,7 +287,7 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Sermon: Test Sermon');
@@ -319,13 +322,128 @@ describe('exportSermonContent', () => {
       };
 
       // Act
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
 
       // Assert
       expect(result).toContain('Introduction:');
       expect(result).toContain('- Existing thought');
       // Only the existing thought should be included
       expect(result.match(/- /g)?.length).toBe(1);
+    });
+
+    it('should handle thoughts with inconsistent tags and outline points', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        // Thought with inconsistent tag (Intro tag but assigned to Main outline point)
+        createThought('1', 'Inconsistent thought', ['Вступление'], 1),
+      ];
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'Inconsistent Tags Sermon',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        outline: {
+          introduction: [],
+          main: [{ id: 'main-1', text: 'Main point 1' }],
+          conclusion: []
+        },
+        userId: 'user1'
+      };
+
+      // Assign the thought to main section outline point
+      thoughts[0].outlinePointId = 'main-1';
+
+      // Act
+      const result = await getExportContent(sermon);
+
+      // Assert
+      expect(result).toContain('Sermon: Inconsistent Tags Sermon');
+      expect(result).toContain('Main Part:');
+      expect(result).toContain('- Inconsistent thought');
+      // Despite inconsistency, thought should be exported to the section of its outline point
+      
+      // The inconsistency flag should not affect export content structure
+      expect(result).not.toContain('Inconsistency:');
+    });
+
+    it('should handle complex case with multiple inconsistencies', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        // Thought with tag from introduction but assigned to main outline point
+        createThought('1', 'Inconsistent thought', ['Вступление'], 1),
+        // Thought with tag from conclusion but assigned to introduction outline point
+        createThought('2', 'Another inconsistent thought', ['Заключение'], 2),
+        // Thought with multiple structure tags and assigned to an outline point
+        createThought('3', 'Multiple tags with outline', ['Вступление', 'Основная часть'], 3),
+      ];
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'Complex Inconsistencies',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        outline: {
+          introduction: [{ id: 'intro-1', text: 'Intro point 1' }],
+          main: [{ id: 'main-1', text: 'Main point 1' }],
+          conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+        },
+        userId: 'user1'
+      };
+
+      // Assign thoughts to inconsistent outline points
+      thoughts[0].outlinePointId = 'main-1';
+      thoughts[1].outlinePointId = 'intro-1';
+      thoughts[2].outlinePointId = 'concl-1';
+
+      // Act
+      const result = await getExportContent(sermon);
+
+      // Assert
+      expect(result).toContain('Sermon: Complex Inconsistencies');
+      
+      // First thought should be exported to Main Part due to its outline point
+      expect(result).toContain('Main Part:');
+      expect(result).toContain('- Inconsistent thought');
+      
+      // Second thought should be exported to Introduction due to its outline point
+      expect(result).toContain('Introduction:');
+      expect(result).toContain('- Another inconsistent thought');
+      
+      // Third thought should be in Multiple Tags section due to having multiple structure tags
+      expect(result).toContain('Thoughts with Multiple Tags:');
+      expect(result).toContain('- Multiple tags with outline');
+      
+      // The inconsistency flags should not appear in export
+      expect(result).not.toContain('Inconsistency:');
+    });
+
+    it('should handle thoughts with multiple structure tags', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        // Thought with multiple structure tags
+        createThought('1', 'Multiple structure tags', ['Вступление', 'Основная часть'], 1),
+      ];
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'Multiple Tags Sermon',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        userId: 'user1'
+      };
+
+      // Act
+      const result = await getExportContent(sermon);
+
+      // Assert
+      expect(result).toContain('Sermon: Multiple Tags Sermon');
+      expect(result).toContain('Thoughts with Multiple Tags:');
+      expect(result).toContain('- Multiple structure tags');
+      expect(result).toContain('Tags: Вступление, Основная часть');
     });
   });
 
@@ -341,7 +459,7 @@ describe('exportSermonContent', () => {
       };
 
       const expected = `Sermon: Minimal Sermon\nScripture Text: \nGenesis 1:1\n\n`;
-      expect(await exportSermonContent(sermon)).toBe(expected);
+      expect(await getExportContent(sermon)).toBe(expected);
     });
 
     it('should produce exact output for full structured sermon', async () => {
@@ -369,7 +487,7 @@ describe('exportSermonContent', () => {
 
       const expected = `Sermon: Full Sermon\nScripture Text: \nRevelation 22:21\n\nIntroduction:\n- Intro\n\n----------------------------------\n\nMain Part:\n- Main\n\n----------------------------------\n\nConclusion:\n- Conclusion\n\n----------------------------------\n\nOther Thoughts:\n- Other\n\n----------------------------------\n\n`;
       
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
       
       // Check each section exists with proper content
       expect(result).toContain('Sermon: Full Sermon');
@@ -405,7 +523,7 @@ describe('exportSermonContent', () => {
         userId: 'user1'
       };
 
-      const result = await exportSermonContent(sermon);
+      const result = await getExportContent(sermon);
       
       // Check content exists rather than exact formatting
       expect(result).toContain('Sermon: Multi-Tag Sermon');
@@ -419,6 +537,103 @@ describe('exportSermonContent', () => {
       
       // Check for separator lines
       expect(result).toContain('----------------------------------');
+    });
+  });
+
+  describe('export formats', () => {
+    it('should export in markdown format', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        createThought('1', 'Introduction thought', ['Вступление'], 3),
+        createThought('2', 'Main part thought', ['Основная часть'], 2),
+        createThought('3', 'Conclusion thought', ['Заключение'], 1),
+      ];
+
+      const structure: Structure = {
+        introduction: ['1'],
+        main: ['2'],
+        conclusion: ['3'],
+        ambiguous: []
+      };
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'Markdown Sermon',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        structure,
+        userId: 'user1'
+      };
+
+      // Act
+      const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+
+      // Assert
+      expect(result).toContain('# Sermon: Markdown Sermon');
+      expect(result).toContain('**Scripture Text:**');
+      expect(result).toContain('John 3:16');
+      expect(result).toContain('## Introduction');
+      expect(result).toContain('* Introduction thought');
+      expect(result).toContain('## Main Part');
+      expect(result).toContain('* Main part thought');
+      expect(result).toContain('## Conclusion');
+      expect(result).toContain('* Conclusion thought');
+      
+      // Check markdown separator
+      expect(result).toContain('\n\n---\n\n');
+    });
+
+    it('should export in plain text format without tags', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        createThought('1', 'Introduction thought', ['Вступление', 'Custom Tag'], 1),
+      ];
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'No Tags Sermon',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        userId: 'user1'
+      };
+
+      // Act
+      const result = await getExportContent(sermon, undefined, { includeTags: false });
+
+      // Assert
+      expect(result).toContain('Sermon: No Tags Sermon');
+      expect(result).toContain('Introduction:');
+      expect(result).toContain('- Introduction thought');
+      expect(result).not.toContain('Tags:');
+      expect(result).not.toContain('Custom Tag');
+    });
+
+    it('should export without metadata when specified', async () => {
+      // Arrange
+      const thoughts: Thought[] = [
+        createThought('1', 'Some thought', ['Вступление'], 1),
+      ];
+
+      const sermon: Sermon = {
+        id: '123',
+        title: 'No Metadata Sermon',
+        verse: 'John 3:16',
+        date: new Date().toISOString(),
+        thoughts,
+        userId: 'user1'
+      };
+
+      // Act
+      const result = await getExportContent(sermon, undefined, { includeMetadata: false });
+
+      // Assert
+      expect(result).not.toContain('Sermon: No Metadata Sermon');
+      expect(result).not.toContain('Scripture Text:');
+      expect(result).not.toContain('John 3:16');
+      expect(result).toContain('Introduction:');
+      expect(result).toContain('- Some thought');
     });
   });
 }); 
