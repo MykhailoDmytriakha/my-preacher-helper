@@ -51,11 +51,13 @@ export async function POST(request: Request) {
     }
 
     // Use the Admin SDK to add a document to Firestore - this bypasses security rules
-    const sermonData = { userId, title, verse, date };
+    const sermonData = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
     const docRef = await adminDb.collection('sermons').add(sermonData);
     console.log("Sermon written with ID:", docRef.id);
     
-    const newSermon = { id: docRef.id, ...sermon };
+    // Create a new sermon object with the correct ID
+    // FIXED: Spread sermon first, then override the id property to ensure it takes precedence
+    const newSermon = { ...sermon, id: docRef.id };
     console.log("New sermon object after attaching ID:", newSermon);
 
     console.log("Returning success response for created sermon");
