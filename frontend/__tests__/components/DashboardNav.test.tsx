@@ -5,13 +5,16 @@ import DashboardNav from '@/components/navigation/DashboardNav';
 import { User } from 'firebase/auth';
 
 // Mock key dependencies
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ 
-    push: jest.fn(),
-    refresh: jest.fn()
-  }),
-  usePathname: () => '/dashboard'
-}));
+jest.mock('next/navigation', () => {
+  const push = jest.fn();
+  return {
+    useRouter: () => ({ 
+      push,
+      refresh: jest.fn()
+    }),
+    usePathname: () => '/dashboard'
+  };
+});
 
 // Mock LanguageSwitcher component
 jest.mock('@components/navigation/LanguageSwitcher', () => {
@@ -250,11 +253,10 @@ describe('DashboardNav Component', () => {
     expect(icon.className).not.toContain('rotate-180');
   });
 
-  // Skip this test for now since the mock implementation is problematic
-  test.skip('redirects to home when user is not authenticated', async () => {
-    // Create a spy on the push function
-    const routerMock = require('next/navigation').useRouter();
-    const pushSpy = jest.spyOn(routerMock, 'push');
+  test('redirects to home when user is not authenticated', async () => {
+    // Get the mocked router
+    const { useRouter } = require('next/navigation');
+    const router = useRouter();
     
     // Clear all mocks before testing
     jest.clearAllMocks();
@@ -277,10 +279,7 @@ describe('DashboardNav Component', () => {
     });
     
     // Verify the redirect happened
-    expect(pushSpy).toHaveBeenCalledWith('/');
-    
-    // Clean up the spy
-    pushSpy.mockRestore();
+    expect(router.push).toHaveBeenCalledWith('/');
   });
 
   test('calls logout function when logout button is clicked', async () => {

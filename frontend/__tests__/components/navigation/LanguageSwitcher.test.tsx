@@ -167,11 +167,36 @@ describe('LanguageSwitcher Component', () => {
     expect(document.removeEventListener).toHaveBeenCalledWith('mousedown', expect.any(Function));
   });
   
-  test.skip('closes dropdown when clicking outside', () => {
-    // This test is skipped because the actual click outside behavior is difficult to test
-    // in the JSDOM environment, and we're already testing the key parts of the functionality
-    // in other tests. The handleClickOutside function itself is covered by our tests for
-    // adding and removing event listeners.
+  test('closes dropdown when clicking outside', () => {
+    // Mock the document.addEventListener to capture the click handler
+    const addEventListenerSpy = jest.spyOn(document, 'addEventListener');
+    const removeEventListenerSpy = jest.spyOn(document, 'removeEventListener');
+    
+    // Mock contains to return false (click is outside)
+    Element.prototype.contains = jest.fn().mockImplementation(() => false);
+    
+    render(<LanguageSwitcher />);
+    
+    // Open dropdown
+    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    
+    // Verify event listener was added
+    expect(addEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
+    
+    // Get the handler function that was registered
+    const mousedownHandler = addEventListenerSpy.mock.calls.find(
+      call => call[0] === 'mousedown'
+    )?.[1] as EventListener;
+    
+    // Simulate a click outside
+    mousedownHandler(new MouseEvent('mousedown', { bubbles: true }));
+    
+    // Verify event listener was removed (which happens when dropdown is closed)
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
+    
+    // Clean up
+    addEventListenerSpy.mockRestore();
+    removeEventListenerSpy.mockRestore();
   });
   
   test('doesnt close dropdown when clicking inside', () => {
