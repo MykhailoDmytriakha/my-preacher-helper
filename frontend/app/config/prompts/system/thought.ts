@@ -22,12 +22,16 @@ For sermon-related content:
   - Connect related ideas with better transitions
 - Preserve the original meaning, style, and idea sequence
 - Do not make major rewrites or significantly change the content
+- DO NOT repeat the sermon text provided in the context
 
 // 3. BIBLE REFERENCE FORMATTING
 - Format references as: "Book Chapter:Verse" (e.g., "Рим. 14:20")
 - For partial biblical quotes: complete the quote and add proper reference
 - Example: "Павел пишет, что Христос смирился" → "апостол Павел пишет: «но уничижил Себя Самого, приняв образ раба» (Флп. 2:7)"
 - Use Синодальный перевод (Synodal translation) for Bible quotes
+- However, DO NOT include the main sermon text (verse) in the generated thought
+- If the user mentions a biblical passage or concept in their transcription, try to add the exact Bible quote with proper reference
+- sometime the user will reference to a story from the Bible, in this case you should add the exact Bible quote with proper reference
 
 // 4. TAGGING RULES
 - Only use tags from the provided list in userMessage
