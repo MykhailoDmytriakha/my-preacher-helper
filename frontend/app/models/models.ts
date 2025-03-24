@@ -25,8 +25,11 @@ export interface Structure {
 }
 
 export interface DirectionSuggestion {
-  area: string;
-  suggestion: string;
+  area?: string;           // Supports the original format
+  suggestion?: string;     // Supports the original format
+  title?: string;          // Supports the schema format
+  description?: string;    // Supports the schema format
+  examples?: string[];     // Supports the schema format
   id?: string;
 }
 

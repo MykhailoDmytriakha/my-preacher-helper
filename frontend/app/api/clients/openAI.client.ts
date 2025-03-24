@@ -98,14 +98,44 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
     
     // Second try: Look for a JSON object
     console.log("No <arguments> tags found, trying alternative extraction methods");
-    const jsonRegex = /\{[\s\S]*?\}/;
+    
+    // Try to extract JSON from code blocks
+    const codeBlockMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      try {
+        return JSON.parse(codeBlockMatch[1].trim()) as T;
+      } catch (e) {
+        console.log("Failed to parse JSON from code block, trying other methods");
+      }
+    }
+    
+    // Try to extract any JSON object in the response
+    const jsonRegex = /\{[\s\S]*\}/;
     const jsonMatch = responseContent.match(jsonRegex);
     
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as T;
-    } 
+      try {
+        return JSON.parse(jsonMatch[0]) as T;
+      } catch (e) {
+        console.log("Failed to parse JSON object, trying more specific extraction");
+      }
+    }
+
+    // For Gemini model responses handling DirectionSuggestion format specifically
+    if (responseContent.includes("\"directions\":")) {
+      try {
+        // Try to clean up the JSON by finding the directions array and parsing it
+        const directionsMatch = responseContent.match(/"directions"\s*:\s*\[([\s\S]*?)\]\s*}/);
+        if (directionsMatch) {
+          const cleanedJson = `{"directions": [${directionsMatch[1]}]}`;
+          return JSON.parse(cleanedJson) as T;
+        }
+      } catch (e) {
+        console.log("Failed to extract directions array", e);
+      }
+    }
     
-    throw new Error("Could not find any JSON object in model response");
+    throw new Error("Could not find any valid JSON object in model response");
   } catch (error) {
     console.error("Failed to parse function response from Claude model:", error);
     throw new Error("Invalid response format from AI model");
@@ -550,132 +580,34 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
 }
 
 /**
- * Generate insights for a sermon
- * @param sermon The sermon to analyze
- * @returns Insights object with mainIdea, keyPoints, suggestedOutline, audienceTakeaways
+ * Normalizes direction suggestions to a consistent format
+ * regardless of whether they come from Gemini or Claude model
+ * @param directions The raw direction suggestions from AI
+ * @returns Normalized direction suggestions
  */
-export async function generateSermonInsights(sermon: Sermon): Promise<Insights | null> {
-  // Extract sermon content using our helper function
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createInsightsUserMessage(sermon, sermonContent);
-  
-  if (isDebugMode) {
-    console.log("DEBUG: Generating insights for sermon:", sermon.id);
-  }
-  
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
+function normalizeDirectionSuggestions(directions: any[]): DirectionSuggestion[] {
+  return directions.map(direction => {
+    // If it already has area and suggestion, just return as is
+    if (direction.area && direction.suggestion) {
+      return direction;
+    }
     
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    // If it has title/description format, convert to area/suggestion
+    if (direction.title && direction.description) {
+      return {
+        area: direction.title,
+        suggestion: direction.description,
+        // Keep examples if present
+        ...(direction.examples ? { examples: direction.examples } : {})
+      };
+    }
+    
+    // For any other format, try to extract something usable
+    return {
+      area: direction.area || direction.title || 'Research Direction',
+      suggestion: direction.suggestion || direction.description || JSON.stringify(direction)
     };
-    
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-    
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Insights',
-      requestOptions,
-      inputInfo
-    );
-    
-    return extractFunctionResponse<Insights>(response);
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon insights:", error);
-    return null;
-  }
-}
-
-/**
- * Generate topics for a sermon
- * @param sermon The sermon to analyze
- * @returns Array of topic strings
- */
-export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createTopicsUserMessage(sermon, sermonContent);
-  
-  if (isDebugMode) {
-    console.log("DEBUG: Generating topics for sermon:", sermon.id);
-  }
-  
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
-    
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-    
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-    
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Topics',
-      requestOptions,
-      inputInfo
-    );
-    
-    const result = extractFunctionResponse<{ topics: string[] }>(response);
-    return result.topics || [];
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon topics:", error);
-    return [];
-  }
-}
-
-/**
- * Generate Bible verse suggestions for a sermon
- * @param sermon The sermon to analyze
- * @returns Array of verse objects with reference and relevance
- */
-export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createVersesUserMessage(sermon, sermonContent);
-  
-  if (isDebugMode) {
-    console.log("DEBUG: Generating verse suggestions for sermon:", sermon.id);
-  }
-  
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
-    
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-    
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-    
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Verses',
-      requestOptions,
-      inputInfo
-    );
-    
-    const result = extractFunctionResponse<{ verses: VerseWithRelevance[] }>(response);
-    return result.verses || [];
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon verses:", error);
-    return [];
-  }
+  });
 }
 
 /**
@@ -715,7 +647,10 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     );
     
     const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
-    return result.directions || null;
+    
+    // Normalize the directions before returning
+    const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
+    return normalizedDirections.length ? normalizedDirections : null;
   } catch (error) {
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
     return null;
@@ -753,7 +688,10 @@ export async function generateDirectionSuggestions(sermon: Sermon): Promise<Dire
     );
     
     const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
-    return result.directions || [];
+    
+    // Normalize the directions before returning
+    const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
+    return normalizedDirections;
   } catch (error) {
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
     return [];
