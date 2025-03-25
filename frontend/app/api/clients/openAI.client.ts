@@ -366,6 +366,135 @@ export async function generateThought(
 }
 
 /**
+ * Generate insights for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Insights object with mainIdea, keyPoints, suggestedOutline, audienceTakeaways
+ */
+export async function generateSermonInsights(sermon: Sermon): Promise<Insights | null> {
+  // Extract sermon content using our helper function
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createInsightsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating insights for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Sermon Insights',
+      requestOptions,
+      inputInfo
+    );
+    
+    return extractFunctionResponse<Insights>(response);
+  } catch (error) {
+    console.error("ERROR: Failed to generate sermon insights:", error);
+    return null;
+  }
+}
+
+/**
+ * Generate topics for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Array of topic strings
+ */
+export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createTopicsUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating topics for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Sermon Topics',
+      requestOptions,
+      inputInfo
+    );
+    
+    const result = extractFunctionResponse<{ topics: string[] }>(response);
+    return result.topics || [];
+  } catch (error) {
+    console.error("ERROR: Failed to generate sermon topics:", error);
+    return [];
+  }
+}
+
+/**
+ * Generate Bible verse suggestions for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Array of verse objects with reference and relevance
+ */
+export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createVersesUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating verse suggestions for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Sermon Verses',
+      requestOptions,
+      inputInfo
+    );
+    
+    const result = extractFunctionResponse<{ verses: VerseWithRelevance[] }>(response);
+    return result.verses || [];
+  } catch (error) {
+    console.error("ERROR: Failed to generate sermon verses:", error);
+    return [];
+  }
+}
+
+/**
  * Sort items within a column using AI
  * @param columnId - ID of the column containing the items
  * @param items - Array of items to sort
