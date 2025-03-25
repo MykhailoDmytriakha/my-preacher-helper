@@ -103,9 +103,13 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
     const codeBlockMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch && codeBlockMatch[1]) {
       try {
-        return JSON.parse(codeBlockMatch[1].trim()) as T;
+        // Clean up the JSON string first
+        const cleanedJson = codeBlockMatch[1].trim()
+          .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
+          .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+        return JSON.parse(cleanedJson) as T;
       } catch (e) {
-        console.log("Failed to parse JSON from code block, trying other methods");
+        console.log("Failed to parse JSON from code block, trying other methods:", e);
       }
     }
     
@@ -115,9 +119,13 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
     
     if (jsonMatch) {
       try {
-        return JSON.parse(jsonMatch[0]) as T;
+        // Clean up the JSON string
+        const cleanedJson = jsonMatch[0]
+          .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
+          .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+        return JSON.parse(cleanedJson) as T;
       } catch (e) {
-        console.log("Failed to parse JSON object, trying more specific extraction");
+        console.log("Failed to parse JSON object, trying more specific extraction:", e);
       }
     }
 
@@ -132,6 +140,24 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
         }
       } catch (e) {
         console.log("Failed to extract directions array", e);
+      }
+    }
+    
+    // For Gemini model responses handling sortedItems format specifically
+    if (responseContent.includes("\"sortedItems\":")) {
+      try {
+        // Try to clean up the JSON by finding the sortedItems array and parsing it
+        const sortedItemsMatch = responseContent.match(/"sortedItems"\s*:\s*\[([\s\S]*?)\](?:\s*})?/);
+        if (sortedItemsMatch) {
+          // Clean up the array content to ensure it's valid JSON
+          const cleanedArrayContent = sortedItemsMatch[1].trim()
+            .replace(/,\s*$/, ''); // Remove trailing comma at the end of array
+          
+          const cleanedJson = `{"sortedItems": [${cleanedArrayContent}]}`;
+          return JSON.parse(cleanedJson) as T;
+        }
+      } catch (e) {
+        console.log("Failed to extract sortedItems array:", e);
       }
     }
     
