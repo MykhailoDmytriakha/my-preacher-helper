@@ -397,4 +397,237 @@ export const logger = {
       console.log(`✅ [${module}] ${message}`);
     }
   }
-}; 
+};
+
+/**
+ * Extracts meaningful content from a specific section of a sermon for AI processing
+ * @param sermon The sermon to extract content from
+ * @param section The section to extract ('introduction', 'main', or 'conclusion')
+ * @returns Formatted sermon section content as a string
+ */
+export function extractSectionContent(sermon: Sermon, section: string): string {
+  const sectionLower = section.toLowerCase();
+  if (!['introduction', 'main', 'conclusion'].includes(sectionLower)) {
+    throw new Error(`Invalid section: ${section}. Must be one of: introduction, main, conclusion`);
+  }
+
+  // Create a map from thought ID to thought object
+  const thoughtsById = new Map<string, Thought>();
+  const usedThoughtIds = new Set<string>();
+  
+  if (sermon.thoughts) {
+    sermon.thoughts.forEach(t => {
+      if (t.id) thoughtsById.set(t.id, t);
+    });
+  }
+  
+  let sectionContent = "";
+  
+  // Check if the sermon has structure
+  const hasStructure = sermon.structure && 
+    (sermon.structure.introduction?.length > 0 || 
+     sermon.structure.main?.length > 0 || 
+     sermon.structure.conclusion?.length > 0);
+  
+  if (hasStructure && sermon.structure) {
+    // Extract content only for the requested section
+    switch (sectionLower) {
+      case 'introduction':
+        if (sermon.structure.introduction && sermon.structure.introduction.length > 0) {
+          sectionContent += "Introduction:";
+          let introContent: string[] = [];
+          
+          // First try to resolve IDs to actual thoughts
+          for (const item of sermon.structure.introduction) {
+            // Check if item is a UUID
+            if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+              const thought = thoughtsById.get(item);
+              if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
+                introContent.push(thought.text);
+                usedThoughtIds.add(thought.id);
+              }
+            } else {
+              // It's already text content
+              introContent.push(item);
+            }
+          }
+          
+          // If we couldn't resolve any IDs to content, try to find thoughts by tag
+          if (introContent.length === 0) {
+            const introThoughts = sermon.thoughts?.filter(t => 
+              t.tags?.some(tag => 
+                tag.toLowerCase() === "вступление" || 
+                tag.toLowerCase() === "introduction" || 
+                tag.toLowerCase() === "вступ"
+              ) && !usedThoughtIds.has(t.id)
+            ) || [];
+            
+            introContent = introThoughts.map(t => {
+              usedThoughtIds.add(t.id);
+              return t.text;
+            });
+          }
+          
+          if (introContent.length > 0) {
+            sectionContent += "\n" + introContent.join("\n");
+          }
+        }
+        break;
+        
+      case 'main':
+        if (sermon.structure.main && sermon.structure.main.length > 0) {
+          sectionContent += "Main Part:";
+          let mainContent: string[] = [];
+          
+          // First try to resolve IDs to actual thoughts
+          for (const item of sermon.structure.main) {
+            // Check if item is a UUID
+            if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+              const thought = thoughtsById.get(item);
+              if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
+                mainContent.push(thought.text);
+                usedThoughtIds.add(thought.id);
+              }
+            } else {
+              // It's already text content
+              mainContent.push(item);
+            }
+          }
+          
+          // If we couldn't resolve any IDs to content, try to find thoughts by tag
+          if (mainContent.length === 0) {
+            const mainThoughts = sermon.thoughts?.filter(t => 
+              t.tags?.some(tag => 
+                tag.toLowerCase() === "основная часть" || 
+                tag.toLowerCase() === "main part" || 
+                tag.toLowerCase() === "основна частина"
+              ) && !usedThoughtIds.has(t.id)
+            ) || [];
+            
+            mainContent = mainThoughts.map(t => {
+              usedThoughtIds.add(t.id);
+              return t.text;
+            });
+          }
+          
+          if (mainContent.length > 0) {
+            sectionContent += "\n" + mainContent.join("\n");
+          }
+        }
+        break;
+        
+      case 'conclusion':
+        if (sermon.structure.conclusion && sermon.structure.conclusion.length > 0) {
+          sectionContent += "Conclusion:";
+          let conclusionContent: string[] = [];
+          
+          // First try to resolve IDs to actual thoughts
+          for (const item of sermon.structure.conclusion) {
+            // Check if item is a UUID
+            if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+              const thought = thoughtsById.get(item);
+              if (thought && thought.text && !usedThoughtIds.has(thought.id)) {
+                conclusionContent.push(thought.text);
+                usedThoughtIds.add(thought.id);
+              }
+            } else {
+              // It's already text content
+              conclusionContent.push(item);
+            }
+          }
+          
+          // If we couldn't resolve any IDs to content, try to find thoughts by tag
+          if (conclusionContent.length === 0) {
+            const conclusionThoughts = sermon.thoughts?.filter(t => 
+              t.tags?.some(tag => 
+                tag.toLowerCase() === "заключение" || 
+                tag.toLowerCase() === "conclusion" || 
+                tag.toLowerCase() === "закінчення" || 
+                tag.toLowerCase() === "заключення"
+              ) && !usedThoughtIds.has(t.id)
+            ) || [];
+            
+            conclusionContent = conclusionThoughts.map(t => {
+              usedThoughtIds.add(t.id);
+              return t.text;
+            });
+          }
+          
+          if (conclusionContent.length > 0) {
+            sectionContent += "\n" + conclusionContent.join("\n");
+          }
+        }
+        break;
+    }
+  } else if (sermon.thoughts && sermon.thoughts.length > 0) {
+    // If there's no structure, try to use tagged thoughts for the requested section
+    if (isDebugMode) {
+      console.log(`Processing thoughts for ${sectionLower} section (unstructured)`);
+    }
+    
+    let sectionThoughts: Thought[] = [];
+    
+    // Filter thoughts by relevant tags for the section
+    switch (sectionLower) {
+      case 'introduction':
+        sectionThoughts = sermon.thoughts.filter(t => 
+          t.tags?.some(tag => 
+            tag.toLowerCase() === "вступление" || 
+            tag.toLowerCase() === "introduction" || 
+            tag.toLowerCase() === "вступ"
+          )
+        );
+        break;
+      
+      case 'main':
+        sectionThoughts = sermon.thoughts.filter(t => 
+          t.tags?.some(tag => 
+            tag.toLowerCase() === "основная часть" || 
+            tag.toLowerCase() === "main part" || 
+            tag.toLowerCase() === "основна частина"
+          )
+        );
+        break;
+      
+      case 'conclusion':
+        sectionThoughts = sermon.thoughts.filter(t => 
+          t.tags?.some(tag => 
+            tag.toLowerCase() === "заключение" || 
+            tag.toLowerCase() === "conclusion" || 
+            tag.toLowerCase() === "закінчення" || 
+            tag.toLowerCase() === "заключення"
+          )
+        );
+        break;
+    }
+    
+    // Format section content
+    if (sectionThoughts.length > 0) {
+      sectionContent = sectionThoughts
+        .filter(t => t.text && t.text.trim().length > 10) // Filter out very short thoughts
+        .map(t => {
+          // Include tags as context
+          if (t.tags && t.tags.length > 0) {
+            return `[${t.tags.join(', ')}] ${t.text}`;
+          }
+          return t.text;
+        })
+        .join("\n\n");
+    }
+  }
+  
+  // If we don't have meaningful content after all this, use a fallback message
+  if (sectionContent.trim().length < 30) {
+    if (isDebugMode) {
+      console.log(`Minimal sermon ${sectionLower} content detected, using fallback`);
+    }
+    sectionContent = `This sermon with title "${sermon.title}" and reference "${sermon.verse}" appears to be in early stages of development with minimal content for the ${sectionLower} section.`;
+  }
+
+  // Log content size for debugging and optimization
+  if (isDebugMode) {
+    console.log(`${sectionLower} content size: ${sectionContent.length} characters`);
+  }
+  
+  return sectionContent;
+} 

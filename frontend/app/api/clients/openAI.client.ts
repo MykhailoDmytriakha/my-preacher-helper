@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion } from "@/models/models";
+import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion, Plan } from "@/models/models";
 import { v4 as uuidv4 } from 'uuid';
 import { 
   thoughtSystemPrompt, createThoughtUserMessage,
@@ -7,7 +7,8 @@ import {
   sortingSystemPrompt, createSortingUserMessage,
   topicsSystemPrompt, createTopicsUserMessage,
   versesSystemPrompt, createVersesUserMessage,
-  directionsSystemPrompt, createDirectionsUserMessage
+  directionsSystemPrompt, createDirectionsUserMessage,
+  planSystemPrompt, createPlanUserMessage
 } from "@/config/prompts";
 import {
   thoughtFunctionSchema,
@@ -15,9 +16,10 @@ import {
   insightsFunctionSchema,
   topicsFunctionSchema,
   versesFunctionSchema,
-  directionsFunctionSchema
+  directionsFunctionSchema,
+  planFunctionSchema
 } from "@/config/schemas";
-import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger } from "./openAIHelpers";
+import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
@@ -126,6 +128,57 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
         return JSON.parse(cleanedJson) as T;
       } catch (e) {
         console.log("Failed to parse JSON object, trying more specific extraction:", e);
+      }
+    }
+
+    // For Gemini model responses handling outline format specifically
+    if (responseContent.includes("\"outline\":")) {
+      try {
+        // Try to clean up the JSON by finding the outline string and parsing it
+        const outlineMatch = responseContent.match(/"outline"\s*:\s*"([^"]*?)"/);
+        if (outlineMatch) {
+          const cleanedJson = `{"outline": "${outlineMatch[1].replace(/"/g, '\\"')}"}`;
+          return JSON.parse(cleanedJson) as T;
+        }
+        
+        // Try with multiline string
+        const multilineOutlineMatch = responseContent.match(/"outline"\s*:\s*"([\s\S]*?)"/);
+        if (multilineOutlineMatch) {
+          const cleanedOutline = multilineOutlineMatch[1].replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          const cleanedJson = `{"outline": "${cleanedOutline}"}`;
+          return JSON.parse(cleanedJson) as T;
+        }
+        
+        // Handle case where outline is a raw text block without quotes
+        const rawOutlineMatch = responseContent.match(/"outline"\s*:\s*([^{}\[\],"]+)/);
+        if (rawOutlineMatch) {
+          const outlineContent = rawOutlineMatch[1].trim();
+          const cleanedJson = `{"outline": "${outlineContent.replace(/"/g, '\\"')}"}`;
+          return JSON.parse(cleanedJson) as T;
+        }
+        
+        // Last resort - try to extract any content after "outline":
+        const lastResortMatch = responseContent.match(/"outline"\s*:\s*([\s\S]+?)(?:,\s*"|\s*}|$)/);
+        if (lastResortMatch) {
+          let outlineContent = lastResortMatch[1].trim();
+          
+          // If it starts and ends with quotes, extract the content between
+          if (outlineContent.startsWith('"') && outlineContent.endsWith('"')) {
+            outlineContent = outlineContent.slice(1, -1);
+          }
+          
+          // Clean the content
+          const cleanedOutline = outlineContent.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          const cleanedJson = `{"outline": "${cleanedOutline}"}`;
+          
+          try {
+            return JSON.parse(cleanedJson) as T;
+          } catch (e) {
+            console.log("Failed to parse cleaned outline JSON", e);
+          }
+        }
+      } catch (e) {
+        console.log("Failed to extract outline string", e);
       }
     }
 
@@ -731,6 +784,93 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
   } catch (error) {
     console.error("Error in sortItemsWithAI:", error);
     throw error;
+  }
+}
+
+/**
+ * Generate a plan for a sermon
+ * @param sermon The sermon to analyze
+ * @returns Plan object with introduction, main, and conclusion, plus success flag
+ */
+export async function generatePlanForSection(sermon: Sermon, section: string): Promise<{ plan: Plan, success: boolean }> {
+  // Extract only the content for the requested section
+  const sectionContent = extractSectionContent(sermon, section);
+  
+  // Detect language - simple heuristic based on non-Latin characters
+  const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
+  const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
+  
+  if (isDebugMode) {
+    console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
+    console.log(`DEBUG: Generating plan for ${section} section`);
+    
+    // Log if outline structure exists for this section
+    const sectionLower = section.toLowerCase();
+    if (sermon.outline && sermon.outline[sectionLower as keyof typeof sermon.outline]) {
+      const outlinePoints = sermon.outline[sectionLower as keyof typeof sermon.outline];
+      console.log(`DEBUG: Found ${outlinePoints.length} outline points for ${section} section`);
+    } else {
+      console.log(`DEBUG: No outline points found for ${section} section`);
+    }
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${planSystemPrompt}\n\n${createXmlFunctionDefinition(planFunctionSchema)}`;
+    
+    // Create user message
+    const userMessage = createPlanUserMessage(sermon, section, sectionContent);
+    
+    // Prepare request options
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    // Log operation info
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      section,
+      contentLength: sectionContent.length,
+      detectedLanguage,
+      hasOutlineStructure: sermon.outline && 
+                          sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] && 
+                          (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as any).length > 0
+    };
+    
+    // Make API call
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Plan for Section',
+      requestOptions,
+      inputInfo
+    );
+    
+    // Extract response
+    const result = extractFunctionResponse<{ outline: string }>(response);
+    
+    // Format response to match Plan interface
+    const sectionLower = section.toLowerCase();
+    const plan: Plan = {
+      introduction: { outline: '' },
+      main: { outline: '' },
+      conclusion: { outline: '' }
+    };
+    
+    // Set the outline for the requested section
+    plan[sectionLower as keyof Plan] = { outline: result.outline };
+    
+    return { plan, success: true };
+  } catch (error) {
+    console.error(`ERROR: Failed to generate plan for ${section} section:`, error);
+    // Return empty plan structure on error, but indicate failure
+    const emptyPlan: Plan = {
+      introduction: { outline: '' },
+      main: { outline: '' },
+      conclusion: { outline: '' }
+    };
+    return { plan: emptyPlan, success: false };
   }
 }
 

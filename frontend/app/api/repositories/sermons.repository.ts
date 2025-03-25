@@ -81,6 +81,28 @@ export class SermonsRepository {
       throw error;
     }
   }
+
+  async updateSermonPlan(sermonId: string, plan: any): Promise<any> {
+    console.log(`Updating sermon plan for sermon ${sermonId}`);
+    try {
+      const docRef = adminDb.collection("sermons").doc(sermonId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        console.error(`Sermon with id ${sermonId} not found in Firestore`);
+        throw new Error("Sermon not found");
+      }
+
+      // Update the plan field in the sermon document
+      await docRef.update({ plan });
+      console.log(`Sermon plan updated for sermon id ${sermonId}`);
+      
+      return plan;
+    } catch (error) {
+      console.error(`Error updating sermon plan for sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

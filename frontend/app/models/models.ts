@@ -54,6 +54,7 @@ export interface Sermon {
   structure?: Structure;
   userId: string;
   insights?: Insights;
+  plan?: Plan;
 }
 
 export interface Tag {
@@ -106,3 +107,16 @@ export interface User {
     tagsCreated: number;     // Количество созданных тегов
   }
 }
+
+export interface Plan {
+  introduction: {
+    outline: string;
+  }
+  main: {
+    outline: string;
+  }
+  conclusion: {
+    outline: string;
+  }
+}
+

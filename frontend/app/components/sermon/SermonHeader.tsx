@@ -2,9 +2,11 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import ExportButtons from '@components/ExportButtons';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@/utils/exportContent';
+import { useTranslation } from 'react-i18next';
 import type { Sermon } from '@/models/models';
 
 interface SermonHeaderProps {
@@ -13,6 +15,8 @@ interface SermonHeaderProps {
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
   const formattedDate = formatDate(sermon.date);
+  const { t } = useTranslation();
+  const hasPlan = !!sermon.plan;
 
   const generateExportContent = async () => {
     return getExportContent(sermon);
@@ -25,8 +29,14 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent break-words">
             {sermon.title}
           </h1>
-          <div className="mt-2 sm:mt-0">
+          <div className="mt-2 sm:mt-0 flex items-center gap-2">
             <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
+            <Link 
+              href={`/sermons/${sermon.id}/outline`} 
+              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+            >
+              {hasPlan ? t('sermon.viewOutline') : t('sermon.createOutline')}
+            </Link>
           </div>
         </div>
         <div className="flex items-center gap-2 mt-1">
