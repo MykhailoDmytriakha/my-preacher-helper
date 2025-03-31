@@ -10,9 +10,13 @@ export const thoughtFunctionSchema = {
     parameters: {
       type: "object",
       properties: {
-        text: {
+        originalText: {
           type: "string",
-          description: "The processed thought text"
+          description: "The original transcription text provided as input"
+        },
+        formattedText: {
+          type: "string",
+          description: "The processed and formatted thought text derived from the original input"
         },
         tags: {
           type: "array",
@@ -20,9 +24,13 @@ export const thoughtFunctionSchema = {
             type: "string"
           },
           description: "List of relevant tags for the thought"
+        },
+        meaningPreserved: {
+          type: "boolean",
+          description: "Whether the generated text accurately reflects the core meaning of the original transcription"
         }
       },
-      required: ["text", "tags"]
+      required: ["originalText", "formattedText", "tags", "meaningPreserved"]
     }
   }
 }; 

@@ -89,19 +89,34 @@ export async function POST(request: Request) {
     ].map(t => t.name);
     const transcriptionText = await createTranscription(file);
     
-    const generatedThought = await generateThought(transcriptionText, sermon, availableTags);
+    // Call generateThought and get the new result structure
+    const generationResult = await generateThought(transcriptionText, sermon, availableTags);
     
-    // Add id and date to the thought
+    // Check if the generation was successful and meaning was preserved
+    if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {
+      // Handle generation failure or meaning not preserved
+      console.error("Thoughts route: Failed to generate thought or meaning not preserved.", generationResult);
+      // Optionally, you could return the original transcription if needed
+      return NextResponse.json(
+        { error: "Failed to generate a valid thought from the audio. Meaning might have been altered.", originalText: generationResult.originalText }, 
+        { status: 500 }
+      );
+    }
+    
+    // Proceed with the successfully generated thought
+    console.log("Thoughts route: Thought generation successful. Original Text:", generationResult.originalText);
     const thought: Thought = {
       id: uuidv4(),
-      text: generatedThought.text,
-      tags: generatedThought.tags,
+      text: generationResult.formattedText, // Use formattedText
+      tags: generationResult.tags, // Use tags
       date: new Date().toISOString()
+      // originalText: generationResult.originalText // Optionally add originalText to the Thought model if needed
     };
     
     //verify that thought has everything that is needed
     if (!thought.id || !thought.text || !thought.tags || !thought.date) {
-      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+      console.error("Thoughts route: Generated thought is missing required fields after processing", thought);
+      return NextResponse.json({ error: "Generated thought is missing required fields after processing" }, { status: 500 });
     }
     console.log("Generated thought:", thought);
     

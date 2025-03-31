@@ -74,10 +74,15 @@ Your response should be structured as follows:
       xmlDefinition += `  "${paramName}": [],\n`;
     } else if (param.type === "object") {
       xmlDefinition += `  "${paramName}": {},\n`;
+    } else if (param.type === "boolean") {
+      xmlDefinition += `  "${paramName}": false,\n`;
     } else {
       xmlDefinition += `  "${paramName}": "",\n`;
     }
   }
+
+  // Remove the last trailing comma
+  xmlDefinition = xmlDefinition.replace(/,\n$/, '\n');
 
   xmlDefinition += `}
 </arguments>
@@ -363,59 +368,130 @@ export async function createTranscription(file: File): Promise<string> {
   }
 }
 
-// Generate a single thought from audio transcription or text
+// Define the new return structure
+interface GenerateThoughtResult {
+  originalText: string;
+  formattedText: string | null; // Renamed from 'text'
+  tags: string[] | null;
+  meaningSuccessfullyPreserved: boolean;
+}
+
+// Generate a single thought from audio transcription or text, with retry logic
 export async function generateThought(
-  content: string, 
+  content: string,
   sermon: Sermon,
   availableTags: string[] = []
-): Promise<{ text: string; tags: string[] }> {
-  // Create user message with the input format the LLM expects
+): Promise<GenerateThoughtResult> {
+  const MAX_RETRIES = 3;
+  let attempts = 0;
+
+  // Create user message (remains the same)
   const userMessage = createThoughtUserMessage(content, sermon, availableTags);
-  
+
   if (isDebugMode) {
-    logger.debug('GenerateThought', "Generating thought for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
-    logger.debug('GenerateThought', "With available tags", availableTags);
+    logger.debug('GenerateThought', "Starting generation for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
+    logger.debug('GenerateThought', "Available tags", availableTags);
   }
-  
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
-    
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-    
-    const inputInfo = {
-      contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      sermonTitle: sermon.title,
-      availableTags
-    };
-    
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Thought',
-      requestOptions,
-      inputInfo
-    );
 
-    const result = extractFunctionResponse<{ text: string; tags: string[] }>(response);
+  while (attempts < MAX_RETRIES) {
+    attempts++;
+    logger.info('GenerateThought', `Attempt ${attempts}/${MAX_RETRIES}`);
 
-    if (typeof result.text !== "string" || !Array.isArray(result.tags)) {
-      logger.error('GenerateThought', "Invalid response structure received", result);
-      throw new Error("Invalid response structure from OpenAI");
+    try {
+      const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
+
+      const requestOptions = {
+        model: aiModel,
+        messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+      };
+
+      const inputInfo = {
+        contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+        sermonTitle: sermon.title,
+        availableTags,
+        attempt: attempts
+      };
+
+      const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+        () => aiAPI.chat.completions.create(requestOptions),
+        'Generate Thought',
+        requestOptions,
+        inputInfo
+      );
+
+      // Define the expected structure including the new field
+      interface ThoughtResponse {
+        originalText: string;
+        formattedText: string; // Renamed from 'text'
+        tags: string[];
+        meaningPreserved: boolean;
+      }
+
+      const result = extractFunctionResponse<ThoughtResponse>(response);
+
+      // **Validation and Meaning Check**
+      if (
+        result &&
+        typeof result.originalText === "string" &&
+        typeof result.formattedText === "string" && // Renamed from 'text'
+        result.formattedText.trim() !== '' && // Ensure formattedText is not empty
+        Array.isArray(result.tags) &&
+        typeof result.meaningPreserved === "boolean" 
+      ) {
+        if (result.meaningPreserved) {
+          // Success! Meaning preserved according to AI
+          logger.success('GenerateThought', `Success on attempt ${attempts}. Meaning preserved.`);
+          logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`); // Log original
+          logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`); // Log formatted
+          logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
+          return {
+            originalText: result.originalText,
+            formattedText: result.formattedText, // Renamed from 'text'
+            tags: result.tags,
+            meaningSuccessfullyPreserved: true,
+          };
+        } else {
+          // Valid response, but AI indicated meaning was NOT preserved
+          logger.warn('GenerateThought', `Attempt ${attempts} failed: AI indicated meaning not preserved. Retrying...`);
+          // Continue to the next attempt
+        }
+      } else {
+        // Invalid response structure
+        logger.warn('GenerateThought', `Attempt ${attempts} failed: Invalid response structure received.`, result);
+        // **Immediately return failure on invalid structure**
+        return {
+          originalText: content,
+          formattedText: null,
+          tags: null,
+          meaningSuccessfullyPreserved: false,
+        };
+      }
+    } catch (error) {
+      // **Immediately return failure on any exception**
+      logger.error('GenerateThought', `Attempt ${attempts} failed with error. Failing operation.`, error);
+      return {
+        originalText: content,
+        formattedText: null,
+        tags: null,
+        meaningSuccessfullyPreserved: false,
+      };
+      // Removed retry logic from catch block
     }
-
-    const labelWidth = 16;
-    logger.success('GenerateThought', "Thought generated successfully");
-    logger.info('GenerateThought', `Text: ${result.text.substring(0, 60)}${result.text.length > 60 ? "..." : ""}`);
-    logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
-
-    return result;
-  } catch (error) {
-    logger.error('GenerateThought', "Error generating thought", error);
-    throw error;
+    
+    // If we reach here, it means meaningPreserved was false, add a delay before retrying
+    if (attempts < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempts)); 
+    }
   }
+
+  // If loop finishes without success (all attempts had meaningPreserved: false)
+  logger.error('GenerateThought', "Failed to generate thought with preserved meaning after all retries.");
+  return {
+    originalText: content, // Return original input content on failure
+    formattedText: null,
+    tags: null,
+    meaningSuccessfullyPreserved: false,
+  };
 }
 
 /**
