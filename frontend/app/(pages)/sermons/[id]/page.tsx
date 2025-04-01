@@ -699,22 +699,11 @@ export default function SermonPage() {
                           key={index}
                           thought={thought}
                           index={index}
-                          editingIndex={null}
-                          editingText={""}
-                          editingTags={[]}
-                          hasRequiredTag={hasRequiredTag}
                           allowedTags={allowedTags}
                           currentTag={""}
                           sermonOutline={sermon.outline}
                           onDelete={(indexToDelete) => handleDeleteThought(indexToDelete, thought.id)}
                           onEditStart={(thought, index) => setEditingModalData({ thought, index })}
-                          onEditCancel={() => {}}
-                          onEditSave={() => {}}
-                          onTextChange={() => {}}
-                          onRemoveTag={() => {}}
-                          onAddTag={() => {}}
-                          onTagSelectorChange={() => {}}
-                          setCurrentTag={() => {}}
                         />
                       );
                     })

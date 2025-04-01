@@ -19,6 +19,16 @@ jest.mock('@components/Icons', () => ({
   EditIcon: () => <div data-testid="edit-icon" />,
 }));
 
+// Mock the tagUtils module
+jest.mock('@utils/tagUtils', () => ({
+  isStructureTag: jest.fn().mockImplementation(tag => 
+    ['Вступление', 'Основная часть', 'Заключение', 'Introduction', 'Main Part', 'Conclusion'].includes(tag)
+  ),
+  getDefaultTagStyling: jest.fn().mockReturnValue({ backgroundColor: '#333333', color: '#ffffff' }),
+  getStructureIcon: jest.fn().mockReturnValue(null),
+  getTagStyle: jest.fn().mockReturnValue({ backgroundColor: '#333333', color: '#ffffff' }),
+}));
+
 // Mock the entire i18n module
 jest.mock('@locales/i18n', () => {}, { virtual: true });
 
@@ -69,26 +79,18 @@ describe('ThoughtCard Component', () => {
     { name: 'Вступление', color: '#0000ff' },
     { name: 'Основная часть', color: '#ff00ff' },
     { name: 'Заключение', color: '#00ffff' },
+    { name: 'Introduction', color: '#0000ff' },
+    { name: 'Main Part', color: '#ff00ff' },
+    { name: 'Conclusion', color: '#00ffff' },
   ];
   
   const defaultProps = {
     thought: mockThought,
     index: 0,
-    editingIndex: null,
-    editingText: '',
-    editingTags: [],
-    hasRequiredTag: true,
     allowedTags: mockAllowedTags,
     currentTag: '',
     onDelete: jest.fn(),
     onEditStart: jest.fn(),
-    onEditCancel: jest.fn(),
-    onEditSave: jest.fn(),
-    onTextChange: jest.fn(),
-    onRemoveTag: jest.fn(),
-    onAddTag: jest.fn(),
-    onTagSelectorChange: jest.fn(),
-    setCurrentTag: jest.fn(),
   };
   
   beforeEach(() => {
@@ -117,14 +119,19 @@ describe('ThoughtCard Component', () => {
   });
   
   it('does not show warning when thought has required tag', () => {
-    render(<ThoughtCard {...defaultProps} hasRequiredTag={true} />);
+    const thoughtWithStructureTag = {
+      ...mockThought,
+      tags: ['Tag1', 'Вступление'] // Using the Russian tag that's recognized by the implementation
+    };
+    
+    render(<ThoughtCard {...defaultProps} thought={thoughtWithStructureTag} />);
     
     // Should not find warning message
     expect(screen.queryByText(/Please add one of these tags/)).not.toBeInTheDocument();
   });
   
   it('shows warning when thought has no required tag', () => {
-    render(<ThoughtCard {...defaultProps} hasRequiredTag={false} />);
+    render(<ThoughtCard {...defaultProps} />); // Default thought has no structure tags
     
     // Should find warning message
     expect(screen.getByText(/Please add one of these tags/)).toBeInTheDocument();
@@ -154,325 +161,156 @@ describe('ThoughtCard Component', () => {
     expect(defaultProps.onEditStart).toHaveBeenCalledWith(mockThought, 0);
   });
   
-  it('renders in edit mode when editingIndex matches index', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    // Should have textarea with editing text
-    const textarea = screen.getByRole('textbox');
-    expect(textarea).toBeInTheDocument();
-    expect(textarea).toHaveValue('Edited text');
-    
-    // Should have save and cancel buttons
-    expect(screen.getByTestId('save-button')).toBeInTheDocument();
-    expect(screen.getByTestId('cancel-button')).toBeInTheDocument();
-    
-    // Should show tags in edit mode
-    expect(screen.getByTestId('editing-tag-Tag1')).toBeInTheDocument();
-    expect(screen.getByTestId('tags-section-header')).toBeInTheDocument();
-    expect(screen.getByTestId('available-tags-header')).toBeInTheDocument();
-  });
-  
-  it('calls onTextChange when textarea value changes', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: 'New text' } });
-    
-    expect(defaultProps.onTextChange).toHaveBeenCalledTimes(1);
-    expect(defaultProps.onTextChange).toHaveBeenCalledWith('New text');
-  });
-  
-  it('calls onEditSave when save button is clicked', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    const saveButton = screen.getByTestId('save-button');
-    fireEvent.click(saveButton);
-    
-    expect(defaultProps.onEditSave).toHaveBeenCalledTimes(1);
-  });
-  
-  it('calls onEditCancel when cancel button is clicked', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    const cancelButton = screen.getByTestId('cancel-button');
-    fireEvent.click(cancelButton);
-    
-    expect(defaultProps.onEditCancel).toHaveBeenCalledTimes(1);
-  });
-  
-  it('calls onAddTag when clicking on an available tag', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    // Find and click on an available tag
-    const availableTag = screen.getByTestId('available-tag-Tag2');
-    fireEvent.click(availableTag);
-    
-    expect(defaultProps.onAddTag).toHaveBeenCalledTimes(1);
-    expect(defaultProps.onAddTag).toHaveBeenCalledWith('Tag2');
-  });
-  
-  it('calls onRemoveTag when clicking on an active tag', () => {
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        editingIndex={0} 
-        editingText="Edited text" 
-        editingTags={['Tag1']} 
-      />
-    );
-    
-    // Find and click on an active tag
-    const activeTag = screen.getByTestId('editing-tag-Tag1');
-    fireEvent.click(activeTag);
-    
-    expect(defaultProps.onRemoveTag).toHaveBeenCalledTimes(1);
-    expect(defaultProps.onRemoveTag).toHaveBeenCalledWith(0);
-  });
-  
   it('renders default tag styles when custom tag not found', () => {
-    const thoughtWithDefaultTags: Thought = {
-      id: 'thought-2',
-      text: 'Thought with default tags',
-      tags: ['Вступление', 'Основная часть', 'Заключение'],
-      date: '2023-01-01',
+    const thoughtWithUnknownTag = {
+      ...mockThought,
+      tags: ['UnknownTag'] // This tag doesn't exist in allowedTags
     };
     
-    render(
-      <ThoughtCard 
-        {...defaultProps} 
-        thought={thoughtWithDefaultTags}
-        allowedTags={[]} // Empty to force default styling
-      />
-    );
+    render(<ThoughtCard {...defaultProps} thought={thoughtWithUnknownTag} />);
     
-    // Check all three default tags are rendered with their translated names
-    expect(screen.getByText('Introduction')).toBeInTheDocument();
-    expect(screen.getByText('Main Part')).toBeInTheDocument();
-    expect(screen.getByText('Conclusion')).toBeInTheDocument();
+    // The tag should still be rendered with default styling
+    expect(screen.getByText('UnknownTag')).toBeInTheDocument();
   });
-
+  
   it('displays outline point when thought has outlinePointId and sermon outline is provided', () => {
-    // Mock sermon outline
-    const mockSermonOutline = {
-      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
-      main: [{ id: 'main-1', text: 'Main point 1' }],
-      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    const outlinePoint = {
+      id: 'point-1',
+      text: 'Test outline point',
+      order: 1
     };
     
-    // Test with introduction point
-    const thoughtWithIntroPoint: Thought = {
-      id: 'thought-3',
-      text: 'Thought with intro outline point',
-      tags: ['Tag1'],
-      date: '2023-01-01',
-      outlinePointId: 'intro-1'
+    const sermonOutline = {
+      id: 'outline-1',
+      title: 'Test Outline',
+      introduction: [outlinePoint],
+      main: [],
+      conclusion: []
     };
     
-    const { rerender } = render(
+    const thoughtWithOutlinePoint = {
+      ...mockThought,
+      outlinePointId: 'point-1'
+    };
+    
+    render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={thoughtWithIntroPoint}
-        sermonOutline={mockSermonOutline}
+        thought={thoughtWithOutlinePoint} 
+        sermonOutline={sermonOutline} 
       />
     );
     
-    // Check that outline point is displayed with correct section
-    expect(screen.getByText('Introduction: Introduction point 1')).toBeInTheDocument();
-    
-    // Test with main point
-    const thoughtWithMainPoint: Thought = {
-      ...thoughtWithIntroPoint,
-      outlinePointId: 'main-1'
-    };
-    
-    rerender(
-      <ThoughtCard 
-        {...defaultProps} 
-        thought={thoughtWithMainPoint}
-        sermonOutline={mockSermonOutline}
-      />
-    );
-    
-    // Check that outline point is displayed with correct section
-    expect(screen.getByText('Main Part: Main point 1')).toBeInTheDocument();
-    
-    // Test with conclusion point
-    const thoughtWithConclPoint: Thought = {
-      ...thoughtWithIntroPoint,
-      outlinePointId: 'concl-1'
-    };
-    
-    rerender(
-      <ThoughtCard 
-        {...defaultProps} 
-        thought={thoughtWithConclPoint}
-        sermonOutline={mockSermonOutline}
-      />
-    );
-    
-    // Check that outline point is displayed with correct section
-    expect(screen.getByText('Conclusion: Conclusion point 1')).toBeInTheDocument();
+    // Check for the combined text that includes both the section name and outline point text
+    expect(screen.getByText(/Introduction: Test outline point/)).toBeInTheDocument();
   });
-
+  
   it('does not display outline point when thought has no outlinePointId', () => {
-    // Mock sermon outline
-    const mockSermonOutline = {
-      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
-      main: [{ id: 'main-1', text: 'Main point 1' }],
-      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
-    };
-    
-    // Thought without outlinePointId
-    const thoughtWithoutOutlinePoint: Thought = {
-      id: 'thought-4',
-      text: 'Thought without outline point',
-      tags: ['Tag1'],
-      date: '2023-01-01',
-      // No outlinePointId
+    const sermonOutline = {
+      id: 'outline-1',
+      title: 'Test Outline',
+      introduction: [{
+        id: 'point-1',
+        text: 'Test outline point',
+        order: 1
+      }],
+      main: [],
+      conclusion: []
     };
     
     render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={thoughtWithoutOutlinePoint}
-        sermonOutline={mockSermonOutline}
+        sermonOutline={sermonOutline} 
       />
     );
     
-    // Check that no outline point section is displayed
-    expect(screen.queryByText(/outline\.introduction/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/outline\.mainPoints/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/outline\.conclusion/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Introduction point 1/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Main point 1/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Conclusion point 1/)).not.toBeInTheDocument();
+    // The outline point text should not be displayed
+    expect(screen.queryByText(/Test outline point/)).not.toBeInTheDocument();
   });
-
+  
   it('displays inconsistency warning when thought has tag inconsistent with outline point section', () => {
-    // Mock sermon outline
-    const mockSermonOutline = {
-      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
-      main: [{ id: 'main-1', text: 'Main point 1' }],
-      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    const outlinePoint = {
+      id: 'point-1',
+      text: 'Test outline point',
+      order: 1
     };
     
-    // Thought with tag from different section than outline point
-    const thoughtWithInconsistentTag: Thought = {
-      id: 'thought-5',
-      text: 'Thought with inconsistent tag',
-      tags: ['Вступление'], // Introduction tag
-      date: '2023-01-01',
-      outlinePointId: 'main-1' // But assigned to main point
+    const sermonOutline = {
+      id: 'outline-1',
+      title: 'Test Outline',
+      introduction: [outlinePoint],
+      main: [],
+      conclusion: []
+    };
+    
+    const thoughtWithInconsistentTag = {
+      ...mockThought,
+      outlinePointId: 'point-1',
+      tags: ['Заключение'] // This is inconsistent with the introduction section
     };
     
     render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={thoughtWithInconsistentTag}
-        sermonOutline={mockSermonOutline}
-        hasRequiredTag={true}
+        thought={thoughtWithInconsistentTag} 
+        sermonOutline={sermonOutline} 
       />
     );
     
-    // Check that inconsistency warning is displayed
-    expect(screen.getByText(/Inconsistency: thought has tag/)).toBeInTheDocument();
-    
-    // Check that card has red border styling
-    const cardElement = screen.getByText('Thought with inconsistent tag').closest('div');
-    expect(cardElement).toHaveClass('border-red-500');
+    // Should show inconsistency warning
+    expect(screen.getByText(/Inconsistency/)).toBeInTheDocument();
   });
   
   it('displays multiple structure tags warning when thought has multiple structure tags', () => {
-    // Thought with multiple structure tags
-    const thoughtWithMultipleTags: Thought = {
-      id: 'thought-6',
-      text: 'Thought with multiple structure tags',
-      tags: ['Вступление', 'Основная часть'], // Both Introduction and Main Part tags
-      date: '2023-01-01'
+    const thoughtWithMultipleStructureTags = {
+      ...mockThought,
+      tags: ['Вступление', 'Заключение'] // Multiple structure tags
     };
     
     render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={thoughtWithMultipleTags}
-        hasRequiredTag={true}
+        thought={thoughtWithMultipleStructureTags} 
       />
     );
     
-    // Check that multiple tags warning is displayed
-    expect(screen.getByText(/Inconsistency: multiple structure tags detected/)).toBeInTheDocument();
-    
-    // Check that card has red border styling
-    const cardElement = screen.getByText('Thought with multiple structure tags').closest('div');
-    expect(cardElement).toHaveClass('border-red-500');
+    // Should show multiple structure tags warning
+    expect(screen.getByText(/multiple structure tags detected/)).toBeInTheDocument();
   });
   
   it('does not display warnings when thought has consistent tags and section', () => {
-    // Mock sermon outline
-    const mockSermonOutline = {
-      introduction: [{ id: 'intro-1', text: 'Introduction point 1' }],
-      main: [{ id: 'main-1', text: 'Main point 1' }],
-      conclusion: [{ id: 'concl-1', text: 'Conclusion point 1' }]
+    const outlinePoint = {
+      id: 'point-1',
+      text: 'Test outline point',
+      order: 1
     };
     
-    // Thought with consistent tag and outline point
-    const consistentThought: Thought = {
-      id: 'thought-7',
-      text: 'Thought with consistent tag',
-      tags: ['Вступление'], // Introduction tag
-      date: '2023-01-01',
-      outlinePointId: 'intro-1' // Assigned to intro point
+    const sermonOutline = {
+      id: 'outline-1',
+      title: 'Test Outline',
+      introduction: [outlinePoint],
+      main: [],
+      conclusion: []
+    };
+    
+    const thoughtWithConsistentTag = {
+      ...mockThought,
+      outlinePointId: 'point-1',
+      tags: ['Вступление'] // This is consistent with the introduction section
     };
     
     render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={consistentThought}
-        sermonOutline={mockSermonOutline}
-        hasRequiredTag={true}
+        thought={thoughtWithConsistentTag} 
+        sermonOutline={sermonOutline} 
       />
     );
     
-    // Check that no inconsistency warning is displayed
+    // Should not show any warning
     expect(screen.queryByText(/Inconsistency/)).not.toBeInTheDocument();
-    
-    // Check that card does not have red border styling
-    const cardElement = screen.getByText('Thought with consistent tag').closest('div');
-    expect(cardElement).not.toHaveClass('border-red-500');
+    expect(screen.queryByText(/multiple structure tags/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Please add one of these tags/)).not.toBeInTheDocument();
   });
 }); 

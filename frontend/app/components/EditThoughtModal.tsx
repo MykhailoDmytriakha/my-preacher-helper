@@ -7,6 +7,7 @@ import { getContrastColor } from '@utils/color';
 import { Thought, OutlinePoint, Outline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { isStructureTag, getStructureIcon, getTagStyle } from "@utils/tagUtils";
 
 interface EditThoughtModalProps {
   thoughtId?: string;
@@ -161,6 +162,8 @@ export default function EditThoughtModal({
               const tagInfo = allowedTags.find(t => t.name === tag);
               // Get display name (translated if available)
               let displayName = tag;
+              const structureTagStatus = isStructureTag(tag);
+              
               if (tagInfo?.translationKey) {
                 displayName = t(tagInfo.translationKey);
               } else if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
@@ -170,13 +173,26 @@ export default function EditThoughtModal({
               } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
                 displayName = t('tags.conclusion');
               }
+              
+              // Get styling from our utilities
+              const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
+              const className = `cursor-pointer ${baseClassName}`;
+              
+              // Get the structure icon if applicable
+              const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
+              
               return (
                 <div
                   key={tag + idx}
                   onClick={() => handleRemoveTag(idx)}
-                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0', color: tagInfo ? getContrastColor(tagInfo.color) : '#000' }}
+                  className={className}
+                  style={style}
+                  role="button"
+                  aria-label={`Remove tag ${displayName}`}
                 >
+                  {iconInfo && (
+                    <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                  )}
                   <span>{displayName}</span>
                   <span className="ml-1">×</span>
                 </div>
@@ -188,6 +204,8 @@ export default function EditThoughtModal({
             {availableTags.map(tag => {
               // Get display name (translated if available)
               let displayName = tag.name;
+              const structureTagStatus = isStructureTag(tag.name);
+              
               if (tag.translationKey) {
                 displayName = t(tag.translationKey);
               } else if (tag.name.toLowerCase() === "intro" || tag.name.toLowerCase() === "вступление") {
@@ -197,13 +215,26 @@ export default function EditThoughtModal({
               } else if (tag.name.toLowerCase() === "conclusion" || tag.name.toLowerCase() === "заключение") {
                 displayName = t('tags.conclusion');
               }
+              
+              // Get styling from our utilities
+              const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);
+              const className = `cursor-pointer ${baseClassName}`;
+              
+              // Get the structure icon if applicable
+              const iconInfo = structureTagStatus ? getStructureIcon(tag.name) : null;
+              
               return (
                 <div
                   key={tag.name}
                   onClick={() => handleAddTag(tag.name)}
-                  className="cursor-pointer flex items-center text-xs px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
+                  className={className}
+                  style={style}
+                  role="button"
+                  aria-label={`Add tag ${displayName}`}
                 >
+                  {iconInfo && (
+                    <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                  )}
                   <span>{displayName}</span>
                 </div>
               );
