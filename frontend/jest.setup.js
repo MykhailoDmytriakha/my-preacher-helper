@@ -223,5 +223,28 @@ jest.mock('react-i18next', () => ({
   },
 }));
 
-// Mock i18n module
-jest.mock('@locales/i18n', () => {}, { virtual: true }); 
+// Mock base i18next module to avoid initialization errors in tests
+jest.mock('i18next', () => {
+  const mockInstance = {
+    use: () => mockInstance, // Return instance for chaining
+    init: jest.fn(),
+    t: (key) => key, // Simple pass-through translation mock
+    changeLanguage: jest.fn(),
+    language: 'en', // Default language for tests
+    // Add any other methods needed by your components
+  };
+
+  return {
+    // Keep existing mocks
+    use: () => mockInstance, 
+    init: jest.fn(),
+    t: (key) => key,
+    changeLanguage: jest.fn(),
+    language: 'en',
+    // Add the createInstance mock
+    createInstance: jest.fn(() => mockInstance), 
+  };
+});
+
+// Mock i18n module - REMOVED as it conflicts with react-i18next mock
+// jest.mock('@locales/i18n', () => {}, { virtual: true }); 

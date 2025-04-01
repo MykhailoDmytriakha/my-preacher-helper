@@ -1,5 +1,5 @@
-import type { Config } from '@jest/types'
-import nextJest from 'next/jest'
+import type { Config } from 'jest'
+import nextJest from 'next/jest.js'
 
 // Use nextJest to configure the Jest environment for Next.js
 const createJestConfig = nextJest({
@@ -8,62 +8,31 @@ const createJestConfig = nextJest({
 })
 
 // Add any custom config to be passed to Jest
-const config: Config.InitialOptions = {
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
-  modulePaths: ['<rootDir>'],
-  rootDir: './',
-  moduleFileExtensions: [
-    'ts',
-    'tsx',
-    'js',
-    'jsx',
-    'json',
-    'node'
-  ],
+const config: Config = {
+  coverageProvider: 'v8',
+  testEnvironment: 'jest-environment-jsdom',
+  // Add more setup options before each test is run
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  modulePaths: ['.'],
   moduleNameMapper: {
-    // Fix the path mapping to include app/ directory for components and utils
-    '^@/(.*)$': '<rootDir>/app/$1',
+    // Handle module aliases (aligning with tsconfig.json)
+    // Specific paths first
     '^@components/(.*)$': '<rootDir>/app/components/$1',
-    '^@utils/(.*)$': '<rootDir>/app/utils/$1',
-    '^@hooks/(.*)$': '<rootDir>/app/hooks/$1',
-    '^@locales/(.*)$': '<rootDir>/locales/$1',
     '^@services/(.*)$': '<rootDir>/app/services/$1',
-    '^@styles/(.*)$': '<rootDir>/app/styles/$1',
-    '^@context/(.*)$': '<rootDir>/app/context/$1',
-    '^@pages/(.*)$': '<rootDir>/app/pages/$1',
-    '^@models/(.*)$': '<rootDir>/app/models/$1',
+    '^@repositories/(.*)$': '<rootDir>/app/api/repositories/$1', // Corrected target path
+    '^@api/(.*)$': '<rootDir>/app/api/$1',
+    '^@clients/(.*)$': '<rootDir>/app/api/clients/$1', // Added from tsconfig
+    '^@utils/(.*)$': '<rootDir>/app/utils/$1',
+    '^@locales/(.*)$': '<rootDir>/locales/$1',
+    // Base path last
+    '^@/(.*)$': '<rootDir>/app/$1', // Corrected base path target
   },
-  transform: {
-    '^.+\\.(ts|tsx|js|jsx)$': 'babel-jest',
-  },
-  testMatch: [
-    '**/__tests__/**/*.[jt]s?(x)',
-    '**/?(*.)+(spec|test).[tj]s?(x)'
-  ],
-  setupFilesAfterEnv: [
-    '<rootDir>/jest.setup.js'
-  ],
-  testEnvironmentOptions: {
-    url: 'http://localhost/'
-  },
-  collectCoverageFrom: [
-    '**/*.{ts,tsx}',
-    '!**/node_modules/**',
-    '!**/*.d.ts',
-    '!**/types/**',
-    '!**/.next/**'
-  ],
-  coverageReporters: [
-    "json",
-    "lcov",
-    "text",
-    "text-summary",
-    "json-summary"
-  ],
-  reporters: [
-    "default",
-    "<rootDir>/test-summary.js"
+  // Tell Jest to transform specific node_modules packages
+  transformIgnorePatterns: [
+    // Ignore node_modules, but DO transform react-markdown and unified
+    '/node_modules/(?!react-markdown|unified)/',
+    // Keep the default Next.js pattern for CSS Modules
+    '^.+\\.module\\.(css|sass|scss)$',
   ],
 }
 

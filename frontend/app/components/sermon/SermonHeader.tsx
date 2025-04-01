@@ -18,8 +18,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
   const { t } = useTranslation();
   const hasPlan = !!sermon.plan;
 
-  const generateExportContent = async () => {
-    return getExportContent(sermon);
+  const generateExportContent = async (format: 'plain' | 'markdown') => {
+    return getExportContent(sermon, undefined, { format });
   };
 
   return (
@@ -29,11 +29,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon }) => {
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent break-words">
             {sermon.title}
           </h1>
-          <div className="mt-2 sm:mt-0 flex items-center gap-2">
+          <div className="mt-3 sm:mt-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <ExportButtons sermonId={sermon.id} getExportContent={generateExportContent} />
             <Link 
               href={`/sermons/${sermon.id}/outline`} 
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+              className="px-4 py-2 text-center text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
             >
               {hasPlan ? t('sermon.viewOutline') : t('sermon.createOutline')}
             </Link>

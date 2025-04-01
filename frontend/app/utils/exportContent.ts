@@ -1,21 +1,12 @@
 import type { Sermon, Structure, Thought, OutlinePoint } from "@/models/models";
 import { i18n } from '@locales/i18n';
 
-// Debug flag - can be turned on/off as needed, or controlled via environment variable
+// Debug flag
 const DEBUG_EXPORT = false;
+const debugLog = (message: string, data?: any) => { if (DEBUG_EXPORT) console.log(`[Export] ${message}`, data ? data : ''); };
 
-// Centralized debug logger
-const debugLog = (message: string, data?: any) => {
-  if (DEBUG_EXPORT) {
-    if (data) {
-      console.log(`[Export] ${message}`, data);
-    } else {
-      console.log(`[Export] ${message}`);
-    }
-  }
-};
+// --- Data Structures for Organized Content ---
 
-// Define types for the export organization
 interface OrganizedBlock {
   type: 'outline' | 'structure' | 'tag' | 'chronological' | 'unassigned';
   title: string;
@@ -29,6 +20,14 @@ interface ProcessedSection {
   organizedBlocks: OrganizedBlock[];
 }
 
+// Structure to hold all organized data before formatting
+interface ExportData {
+  sermon: Sermon; // Keep original sermon for header info
+  processedSections: ProcessedSection[];
+}
+
+// --- Export Options ---
+
 type ExportFormat = 'plain' | 'markdown';
 
 interface ExportOptions {
@@ -37,133 +36,61 @@ interface ExportOptions {
   includeMetadata?: boolean;
 }
 
-// Define common translation keys and fallbacks
+// --- Translation Keys ---
 const TRANSLATIONS = {
-  multipleTagsThoughts: 'Thoughts with Multiple Tags',
-  unassignedThoughts: 'Unassigned Thoughts',
-  thoughts: 'Thoughts',
-  noEntries: 'No entries',
-  sermonTitle: 'Sermon: ',
-  scriptureText: 'Scripture Text: ',
-  tagsLabel: 'Tags: '
+  multipleTagsThoughts: i18n.t('export.multipleTagsThoughts', 'Thoughts with Multiple Tags'),
+  unassignedThoughts: i18n.t('export.unassignedThoughts', 'Unassigned Thoughts'),
+  thoughts: i18n.t('export.thoughts', 'Thoughts'),
+  noEntries: i18n.t('export.noEntries', 'No entries'),
+  sermonTitle: i18n.t('export.sermonTitle', 'Sermon: '),
+  scriptureText: i18n.t('export.scriptureText', 'Scripture Text: '),
+  tagsLabel: i18n.t('export.tagsLabel', 'Tags: '),
+  // Section tags translations
+  introTag: 'Вступление',
+  mainTag: 'Основная часть',
+  conclusionTag: 'Заключение',
+  // Section titles
+  introTitle: i18n.t('tags.introduction', 'Introduction'),
+  mainTitle: i18n.t('tags.mainPart', 'Main Part'),
+  conclusionTitle: i18n.t('tags.conclusion', 'Conclusion'),
+  otherTitle: i18n.t('export.otherThoughts', 'Other Thoughts')
 };
 
+// --- Main Export Function ---
+
 /**
- * Unified export content function that can export either a full sermon or a focused section.
- * Follows a waterfall logic: outline -> structure -> tags -> date
+ * Organizes sermon content based on structure, outline, tags, or date.
+ * Returns a structured representation of the data.
  */
-export function getExportContent(
+function organizeSermonContent(
   sermon: Sermon,
   focusedSection?: string,
-  options: ExportOptions = {}
-): Promise<string> {
-  debugLog("Starting export", { 
-    id: sermon.id, 
-    title: sermon.title, 
-    focusedSection 
-  });
-
-  // Default options
-  const { 
-    format = 'plain', 
-    includeTags = true, 
-    includeMetadata = true 
-  } = options;
+): ExportData { // Returns structured data, not string
+  debugLog("Starting content organization", { id: sermon.id, title: sermon.title, focusedSection });
 
   // Basic validation
-  if (sermon.title.trim() === '') {
-    debugLog("Empty sermon title, returning empty result");
-    return Promise.resolve('');
-  }
-  
-  // Handle special cases for tests
-  if (sermon.title === 'Minimal Sermon' && !sermon.thoughts?.length) {
-    const header = `${TRANSLATIONS.sermonTitle}${sermon.title}\n${TRANSLATIONS.scriptureText}\n${sermon.verse}\n\n`;
-    return Promise.resolve(header);
-  }
-  
-  // Special case for the full structured sermon test
-  if (sermon.title === 'Full Sermon') {
-    const result = `Sermon: Full Sermon
-Scripture Text: 
-Revelation 22:21
-
-Introduction:
-- Intro
-
-----------------------------------
-
-Main Part:
-- Main
-
-----------------------------------
-
-Conclusion:
-- Conclusion
-
-----------------------------------
-
-Other Thoughts:
-- Other
-
-----------------------------------
-
-`;
-    return Promise.resolve(result);
-  }
-  
-  // Special case for Markdown test
-  if (sermon.title === 'Markdown Sermon' && format === 'markdown') {
-    const result = `# Sermon: Markdown Sermon
-
-**Scripture Text:**
-John 3:16
-
-## Introduction
-
-* Introduction thought
-   *Tags: Вступление*
-
----
-
-## Main Part
-
-* Main part thought
-   *Tags: Основная часть*
-
----
-
-## Conclusion
-
-* Conclusion thought
-   *Tags: Заключение*
-
----
-`;
-    return Promise.resolve(result);
-  }
-  
-  // Special case for inconsistent tags test
-  if (sermon.title === 'Inconsistent Tags Sermon') {
-    const result = `${TRANSLATIONS.sermonTitle}${sermon.title}\n${TRANSLATIONS.scriptureText}\n${sermon.verse}\n\nIntroduction:\n- Inconsistent thought\n   ${TRANSLATIONS.tagsLabel}Вступление\n\n${'-'.repeat(40)}\n\nMain Part:\n- Inconsistent thought\n   ${TRANSLATIONS.tagsLabel}Вступление\n`;
-    return Promise.resolve(result);
+  if (!sermon || sermon.title.trim() === '') {
+    debugLog("Invalid sermon data provided");
+    // Return a minimal structure for empty/invalid data
+    return { sermon, processedSections: [] };
   }
 
   // Determine which sections to process
-  const sections = focusedSection 
+  const sectionsToProcess = focusedSection
     ? [focusedSection]
-    : ['introduction', 'main', 'conclusion', 'ambiguous'];
+    : ['introduction', 'main', 'conclusion', 'ambiguous']; // Standard sections + ambiguous
 
-  // Process each section
   const processedSections: ProcessedSection[] = [];
 
-  sections.forEach(sectionKey => {
+  sectionsToProcess.forEach(sectionKey => {
     const sectionTitle = getSectionTitle(sectionKey);
-    const sectionThoughts = filterThoughtsBySection(sermon.thoughts, sectionKey);
+    // Ensure thoughts array exists
+    const allThoughts = sermon.thoughts || []; 
+    const sectionThoughts = filterThoughtsBySection(allThoughts, sectionKey);
     
     debugLog(`Processing section ${sectionKey}`, { thoughtCount: sectionThoughts.length });
     
-    // Get outline points for this section
+    // Get outline points for this section, ensure array exists
     const outlinePoints = sermon.outline?.[sectionKey as keyof typeof sermon.outline] || [];
     
     // Process the section using the waterfall logic
@@ -174,88 +101,203 @@ John 3:16
       sectionKey
     );
     
+    // Only add section if it contains blocks with thoughts
+    if (organizedBlocks.some(block => block.thoughts.length > 0)) {
     processedSections.push({
       sectionTitle,
       sectionKey,
       organizedBlocks
     });
-  });
-
-  // Format the processed sections
-  let content = '';
-  
-  // Add sermon header if including metadata
-  if (includeMetadata) {
-    content += formatHeader(sermon, format);
-  }
-  
-  // Format each section
-  processedSections.forEach((section, index) => {
-    content += formatSection(section, format, includeTags);
-    
-    // Add separator between sections (except after the last one)
-    if (index < processedSections.length - 1) {
-      content += format === 'markdown' 
-        ? '\n\n---\n\n' 
-        : '\n\n' + '-'.repeat(40) + '\n\n';
+    } else {
+        debugLog(`Skipping empty section ${sectionKey}`);
     }
   });
 
-  debugLog("Export completed", { contentLength: content.length });
-  return Promise.resolve(content);
+  debugLog("Content organization completed", { numberOfSections: processedSections.length });
+  return { sermon, processedSections };
+}
+
+
+/**
+ * Main exported function: Organizes content and then formats it.
+ */
+export function getExportContent(
+  sermon: Sermon,
+  focusedSection?: string,
+  options: ExportOptions = {}
+): Promise<string> { // Still returns Promise for compatibility
+  debugLog("getExportContent called", { title: sermon?.title, focusedSection, options });
+
+  // Default options
+  const {
+    format = 'plain',
+    includeTags = true,
+    includeMetadata = true
+  } = options;
+
+  // REMOVED: Test-specific logic blocks (Priority 1)
+
+  // Step 1: Organize the data (Separation of Concerns - Priority 2)
+  const organizedData = organizeSermonContent(sermon, focusedSection);
+
+  // Step 2: Format the organized data (Separation of Concerns - Priority 2)
+  let formattedContent = '';
+  if (format === 'markdown') {
+    formattedContent = formatMarkdown(organizedData, includeMetadata, includeTags);
+  } else {
+    formattedContent = formatPlainText(organizedData, includeMetadata, includeTags);
+  }
+
+  debugLog("Formatting complete", { format, contentLength: formattedContent.length });
+  // Wrap in Promise.resolve for backward compatibility if needed, though could return string directly
+  return Promise.resolve(formattedContent);
+}
+
+
+// --- Formatting Functions (Priority 2) ---
+
+/**
+ * Formats the organized data into a plain text string.
+ */
+function formatPlainText(
+  data: ExportData,
+  includeMetadata: boolean,
+  includeTags: boolean
+): string {
+  let content = '';
+  
+  // Add header
+  if (includeMetadata) {
+    let header = `${TRANSLATIONS.sermonTitle}${data.sermon.title}\n`;
+    if (data.sermon.verse && data.sermon.verse.trim()) {
+      // Use the translation key directly, assuming it includes the colon, and trim whitespace.
+      header += `${TRANSLATIONS.scriptureText.trim()}\n${data.sermon.verse}\n`;
+    }
+    header += '\n';
+    content += header;
+  }
+
+  // Add sections
+  data.processedSections.forEach((section, index) => {
+    // Add section title
+    content += `${section.sectionTitle}:\n\n`;
+
+    // Add blocks within section
+    section.organizedBlocks.forEach(block => {
+      // Add block title if different from section title
+      if (block.title !== section.sectionTitle) {
+         content += `${block.title}:\n\n`;
+      }
+
+      // Add thoughts
+      if (block.thoughts.length === 0) {
+        content += `${TRANSLATIONS.noEntries}\n\n`;
+      } else {
+        block.thoughts.forEach((thought) => {
+          content += `- ${thought.text}\n`;
+          if (includeTags && thought.tags && thought.tags.length > 0) {
+            content += `   ${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}\n`;
+          }
+          content += '\n';
+        });
+      }
+       // Separator between blocks
+       content += '---------------------\n\n';
+    });
+  });
+
+  return content;
 }
 
 /**
- * Process a section of thoughts using the waterfall logic
+ * Formats the organized data into a Markdown string.
  */
-function processSection(
-  thoughts: Thought[],
-  outlinePoints: OutlinePoint[] = [],
-  structure?: Structure,
-  sectionKey?: string
-): OrganizedBlock[] {
-  const organizedBlocks: OrganizedBlock[] = [];
+function formatMarkdown(
+  data: ExportData,
+  includeMetadata: boolean,
+  includeTags: boolean
+): string {
+  let content = '';
 
-  // First, identify thoughts with multiple structure tags
-  const structureTags = ["Вступление", "Основная часть", "Заключение"];
-  const multipleTagsThoughts = thoughts.filter(thought => {
-    const hasMultipleStructureTags = thought.tags.filter(tag => 
-      structureTags.includes(tag)
-    ).length > 1;
-    return hasMultipleStructureTags;
-  });
-  
-  // If we have thoughts with multiple structure tags, create a dedicated block
-  if (multipleTagsThoughts.length > 0) {
-    organizedBlocks.push({
-      type: 'tag',
-      title: TRANSLATIONS.multipleTagsThoughts,
-      thoughts: sortThoughtsByDate(multipleTagsThoughts)
-    });
-    
-    // Remove these thoughts from further processing
-    thoughts = thoughts.filter(thought => {
-      const hasMultipleStructureTags = thought.tags.filter(tag => 
-        structureTags.includes(tag)
-      ).length > 1;
-      return !hasMultipleStructureTags;
-    });
+  // Add header
+  if (includeMetadata) {
+    let header = `# ${TRANSLATIONS.sermonTitle}${data.sermon.title}\n\n`;
+    if (data.sermon.verse && data.sermon.verse.trim()) {
+      // Format the verse with a blockquote and ensure multi-line verses are properly formatted
+      header += `**${TRANSLATIONS.scriptureText.trim()}**\n> ${data.sermon.verse.replace(/\n/g, '\n> ')}\n\n`;
+    }
+    content += header;
   }
 
-  // Step 1: Check for outline points
-  if (outlinePoints.length > 0) {
-    debugLog("Processing with outline points", { count: outlinePoints.length });
-    
-    // Create map for quick lookup
-    const outlineMap = new Map<string, OutlinePoint>();
-    outlinePoints.forEach(point => {
-      outlineMap.set(point.id, point);
+  // Add sections
+  data.processedSections.forEach((section, index) => {
+     // Add section title (H2)
+    content += `## ${section.sectionTitle}\n`;
+    // Underline removed for cleaner Markdown
+    // content += `${'='.repeat(section.sectionTitle.length + 4)}\n\n`;
+    content += `\n`;
+
+    // Add blocks within section
+    section.organizedBlocks.forEach(block => {
+       // Add block title (H3) if different from section title
+       if (block.title !== section.sectionTitle) {
+          content += `### ${block.title}\n`;
+          // Underline removed
+          // content += `${'—'.repeat(block.title.length + 4)}\n\n`;
+          content += `\n`;
+       }
+
+      // Add thoughts (numbered list)
+      if (block.thoughts.length === 0) {
+        content += `_${TRANSLATIONS.noEntries}_\n\n`; // Italicize no entries
+      } else {
+        block.thoughts.forEach((thought, thoughtIndex) => {
+          content += `${thoughtIndex + 1}. ${thought.text}\n`;
+          if (includeTags && thought.tags && thought.tags.length > 0) {
+            // Indent tags slightly and italicize
+            content += `   *${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}*\n`;
+          }
+           content += '\n'; // Add space after each thought item
+        });
+      }
+       // Separator between blocks (Markdown horizontal rule)
+       content += '---\n\n';
     });
-    
-    // Separate assigned and unassigned thoughts
+  });
+
+  return content;
+}
+
+
+// --- Section/Thought Processing Logic (Refactoring Priority 3) ---
+
+/**
+ * Helper to extract thoughts with multiple structure tags.
+ */
+function extractMultiTagThoughts(thoughts: Thought[]) {
+    const structureTags = [TRANSLATIONS.introTag, TRANSLATIONS.mainTag, TRANSLATIONS.conclusionTag];
+    const multiTagThoughts: Thought[] = [];
+    const thoughtsWithoutMultiTag: Thought[] = [];
+
+    thoughts.forEach(thought => {
+        // Ensure tags array exists before filtering
+        const thoughtStructureTags = thought.tags?.filter(tag => structureTags.includes(tag)) || [];
+        if (thoughtStructureTags.length > 1) {
+            multiTagThoughts.push(thought);
+        } else {
+            thoughtsWithoutMultiTag.push(thought);
+        }
+    });
+    debugLog(`extractMultiTagThoughts`, { extracted: multiTagThoughts.length, remaining: thoughtsWithoutMultiTag.length });
+    return { multiTagThoughts, thoughtsWithoutMultiTag };
+}
+
+/**
+ * Helper to separate thoughts based on outline assignment.
+ */
+function separateThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, OutlinePoint>) {
     const assignedThoughts: Thought[] = [];
     const unassignedThoughts: Thought[] = [];
-    
     thoughts.forEach(thought => {
       if (thought.outlinePointId && outlineMap.has(thought.outlinePointId)) {
         assignedThoughts.push(thought);
@@ -263,399 +305,280 @@ function processSection(
         unassignedThoughts.push(thought);
       }
     });
-    
-    // Process assigned thoughts by outline point
-    if (assignedThoughts.length > 0) {
-      const outlineBlocks = processThoughtsByOutline(assignedThoughts, outlineMap);
-      organizedBlocks.push(...outlineBlocks);
-    }
-    
-    // Process unassigned thoughts through the waterfall
-    if (unassignedThoughts.length > 0) {
-      const unassignedBlock: OrganizedBlock = {
-        type: 'unassigned',
-        title: TRANSLATIONS.unassignedThoughts,
-        thoughts: []
-      };
-      
-      // Apply the waterfall logic to unassigned thoughts
-      const processedUnassigned = processUnassignedThoughts(
-        unassignedThoughts, 
-        structure,
-        sectionKey
-      );
-      
-      unassignedBlock.thoughts = processedUnassigned;
-      organizedBlocks.push(unassignedBlock);
-    }
-  } else {
-    // No outline points - process all thoughts through the waterfall
-    debugLog("No outline points, using waterfall logic for all thoughts");
-    const processedThoughts = processUnassignedThoughts(thoughts, structure, sectionKey);
-    
-    // If we have a section key, use it for the block title
-    const blockTitle = sectionKey 
-      ? getSectionTitle(sectionKey)
-      : TRANSLATIONS.thoughts;
-    
-    organizedBlocks.push({
-      type: 'chronological',
-      title: blockTitle,
-      thoughts: processedThoughts
-    });
-  }
-
-  return organizedBlocks;
+    debugLog(`separateThoughtsByOutline`, { assigned: assignedThoughts.length, unassigned: unassignedThoughts.length });
+    return { assignedThoughts, unassignedThoughts };
 }
 
-/**
- * Apply the waterfall processing to thoughts not assigned to outline points
- */
-function processUnassignedThoughts(
-  thoughts: Thought[],
-  structure?: Structure,
-  sectionKey?: string
-): Thought[] {
-  // Handle special case for tag testing
-  const extraTagThought = thoughts.find(t => t.text === 'Another main part thought');
-  if (extraTagThought) {
-    // Ensure the Extra Tag is visible in the test output
-    let tagIndex = extraTagThought.tags.indexOf('Extra Tag');
-    if (tagIndex !== -1) {
-      // Move 'Extra Tag' to the beginning for visibility in test output
-      extraTagThought.tags = ['Extra Tag', ...extraTagThought.tags.filter(t => t !== 'Extra Tag')];
-    }
-  }
-
-  // First identify thoughts with multiple structure tags
-  const multipleTagsThoughts = thoughts.filter(thought => {
-    const structureTags = ["Вступление", "Основная часть", "Заключение"];
-    const hasMultipleStructureTags = thought.tags.filter(tag => 
-      structureTags.includes(tag)
-    ).length > 1;
-    return hasMultipleStructureTags;
-  });
-  
-  // Remove these thoughts from the main array
-  const remainingThoughts = thoughts.filter(thought => {
-    const structureTags = ["Вступление", "Основная часть", "Заключение"];
-    const hasMultipleStructureTags = thought.tags.filter(tag => 
-      structureTags.includes(tag)
-    ).length > 1;
-    return !hasMultipleStructureTags;
-  });
-  
-  // Special case for inconsistent tags test
-  if (remainingThoughts.length === 1 && 
-      remainingThoughts[0].text === "Inconsistent thought" && 
-      structure && structure.main && structure.main.includes(remainingThoughts[0].id)) {
-    return remainingThoughts;
-  }
-  
-  // Step 2: Check for structure
-  let processedThoughts: Thought[] = [];
-  if (structure && isValidStructure(structure) && sectionKey) {
-    debugLog("Using structure for organization");
-    processedThoughts = processThoughtsByStructure(remainingThoughts, structure, sectionKey);
-  } 
-  // Step 3: Check for section tags
-  else if (hasValidSectionTags(remainingThoughts)) {
-    debugLog("Using tags for organization");
-    processedThoughts = processThoughtsByTags(remainingThoughts);
-  }
-  // Step 4: Fall back to date sorting
-  else {
-    debugLog("Falling back to date-based sorting");
-    processedThoughts = sortThoughtsByDate(remainingThoughts);
-  }
-  
-  // Add thoughts with multiple tags at the beginning
-  if (multipleTagsThoughts.length > 0) {
-    const sortedMultiTagThoughts = sortThoughtsByDate(multipleTagsThoughts);
-    processedThoughts = [...sortedMultiTagThoughts, ...processedThoughts];
-  }
-  
-  return processedThoughts;
-}
 
 /**
- * Process thoughts assigned to outline points
+ * Process thoughts assigned to specific outline points.
  */
-function processThoughtsByOutline(
-  thoughts: Thought[],
-  outlineMap: Map<string, OutlinePoint>
-): OrganizedBlock[] {
-  // Group thoughts by outline point
+function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, OutlinePoint>): OrganizedBlock[] {
+  // Group thoughts by outline point ID
   const thoughtsByOutline = new Map<string, Thought[]>();
-  
   thoughts.forEach(thought => {
-    if (!thought.outlinePointId) return;
-    
+    if (!thought.outlinePointId) return; // Should not happen here, but safe check
     if (!thoughtsByOutline.has(thought.outlinePointId)) {
       thoughtsByOutline.set(thought.outlinePointId, []);
     }
-    
     thoughtsByOutline.get(thought.outlinePointId)!.push(thought);
   });
   
-  // Sort outline points by order
-  const sortedPoints = Array.from(outlineMap.values())
-    .sort((a, b) => {
-      // Безопасно получаем order, используя any для обхода проверки типа
-      // т.к. свойство может существовать динамически
-      const orderA = (a as any).order || 0;
-      const orderB = (b as any).order || 0;
-      return orderA - orderB;
-    });
-  
-  // Create a block for each outline point
-  return sortedPoints.map(point => {
+  // Get outline points in the order they appear in the map (insertion order from sermon.outline)
+  // Remove the unnecessary sort based on a non-existent 'order' property
+  const pointsInOrder = Array.from(outlineMap.values());
+
+  // Create a block for each outline point that has thoughts
+  return pointsInOrder.map(point => {
     const pointThoughts = thoughtsByOutline.get(point.id) || [];
-    // Sort thoughts within each outline point by date
-    const sortedThoughts = sortThoughtsByDate(pointThoughts);
-    
+    const sortedThoughts = sortThoughtsByDate(pointThoughts); // Sort thoughts *within* the point by date
     return {
       type: 'outline' as const,
-      title: point.text,
+      title: point.text, // Use outline point text as block title
       outlineId: point.id,
       thoughts: sortedThoughts
     };
-  });
+  }).filter(block => block.thoughts.length > 0); // Filter out blocks with no thoughts
 }
 
+
 /**
- * Process thoughts using structure ordering
+ * Process thoughts based on the defined structure for a section.
+ * Returns only the thoughts that match the structure definition for that section.
  */
-function processThoughtsByStructure(
-  thoughts: Thought[],
-  structure: Structure,
-  sectionKey: string
-): Thought[] {
-  // Get thought IDs from the structure for this section
+function processThoughtsByStructure(thoughts: Thought[], structure: Structure, sectionKey: string): Thought[] {
   const structuredIds = structure[sectionKey as keyof Structure] || [];
-  
-  // Create a map for quick lookup
-  const thoughtMap = new Map<string, Thought>();
-  thoughts.forEach(thought => {
-    thoughtMap.set(thought.id, thought);
-  });
-  
-  // Ordered thoughts based on structure
+  if (!structuredIds || structuredIds.length === 0) {
+    debugLog(`processThoughtsByStructure - No structure defined for section ${sectionKey}`);
+    return []; // Return empty if no structure defined for this section
+  }
+
+  const thoughtMap = new Map<string, Thought>(thoughts.map(t => [t.id, t]));
   const orderedThoughts: Thought[] = [];
   
-  // Add thoughts in the order specified by the structure
   structuredIds.forEach(id => {
     if (thoughtMap.has(id)) {
       orderedThoughts.push(thoughtMap.get(id)!);
-      thoughtMap.delete(id);
+      // Do not delete from map here if thoughts might be used elsewhere
     }
   });
-  
-  // Add any remaining thoughts (not in the structure) at the end
-  const remainingThoughts = Array.from(thoughtMap.values());
-  const sortedRemainingThoughts = sortThoughtsByDate(remainingThoughts);
-  
-  return [...orderedThoughts, ...sortedRemainingThoughts];
+
+  debugLog(`processThoughtsByStructure - Found ${orderedThoughts.length} structured thoughts for ${sectionKey}`);
+  // Only return thoughts explicitly defined in the structure for this section
+  return orderedThoughts;
 }
 
+
 /**
- * Process thoughts using tag-based grouping
+ * Process thoughts by sorting them based on section tags (Intro, Main, Conclusion).
  */
 function processThoughtsByTags(thoughts: Thought[]): Thought[] {
-  // Define the required section tags
-  const requiredTags = ["Вступление", "Основная часть", "Заключение"];
-  
-  // Clone thoughts to avoid modifying the originals
-  const processedThoughts = [...thoughts].sort((a, b) => {
-    // Sort by priority of section tags first
+  const requiredTags = [TRANSLATIONS.introTag, TRANSLATIONS.mainTag, TRANSLATIONS.conclusionTag];
+  // Create a copy before sorting
+  const sorted = [...thoughts].sort((a, b) => {
     const aTagIndex = getTagPriority(a.tags, requiredTags);
     const bTagIndex = getTagPriority(b.tags, requiredTags);
-    
-    if (aTagIndex !== bTagIndex) {
-      return aTagIndex - bTagIndex;
-    }
-    
-    // If same priority, sort by date
-    const dateA = new Date(a.date || 0).getTime();
-    const dateB = new Date(b.date || 0).getTime();
-    return dateA - dateB;
+    if (aTagIndex !== bTagIndex) return aTagIndex - bTagIndex;
+    return sortByDateHelper(a, b); // Secondary sort by date
   });
-  
-  return processedThoughts;
+  debugLog(`processThoughtsByTags - Sorted ${sorted.length} thoughts`);
+  return sorted;
 }
 
 /**
- * Get the priority of a thought based on its tags
+ * Apply the organization waterfall logic (Structure -> Tags -> Date) 
+ * to a list of thoughts within a specific section context.
  */
-function getTagPriority(tags: string[], priorityTags: string[]): number {
-  for (let i = 0; i < tags.length; i++) {
-    const priority = priorityTags.indexOf(tags[i]);
-    if (priority !== -1) {
-      return priority;
+function organizeThoughtsWithinSection(
+  thoughts: Thought[],
+  structure: Structure | undefined,
+  sectionKey: string // Key of the section these thoughts belong to ('introduction', 'main', etc.)
+): Thought[] { // Returns thoughts ordered according to the first applicable logic
+
+  if (!thoughts || thoughts.length === 0) return [];
+  
+  debugLog(`organizeThoughtsWithinSection - Start for ${sectionKey}`, { count: thoughts.length });
+
+  // 1. Try Structure
+  // Structure only applies to specific sections, not 'ambiguous'
+  if (sectionKey !== 'ambiguous' && structure && isValidStructure(structure)) {
+      const structuredThoughts = processThoughtsByStructure(thoughts, structure, sectionKey);
+      // If structure ordering produced a result for this section, use it.
+      if (structuredThoughts.length > 0) { 
+          debugLog(`organizeThoughtsWithinSection - Using STRUCTURE order for ${sectionKey}`);
+          // Note: processThoughtsByStructure currently only returns thoughts *in* the structure.
+          // Decide if remaining thoughts should be appended (sorted by date?).
+          // For now, assuming structure is definitive for the section if present.
+          return structuredThoughts; 
+      }
+  }
+
+  // 2. Try Tags (if structure didn't apply or wasn't relevant)
+  if (hasValidSectionTags(thoughts)) {
+       debugLog(`organizeThoughtsWithinSection - Using TAG order for ${sectionKey}`);
+      return processThoughtsByTags(thoughts);
+  }
+
+  // 3. Fallback to Date
+  debugLog(`organizeThoughtsWithinSection - Using DATE order for ${sectionKey}`);
+  return sortThoughtsByDate(thoughts);
+}
+
+/**
+ * Main function to process thoughts within a single section 
+ * (e.g., 'introduction', 'main', 'conclusion', 'ambiguous').
+ * Handles outline points if present, otherwise uses the organization waterfall.
+ */
+function processSection(
+  sectionThoughts: Thought[], // Thoughts already filtered for this section
+  outlinePoints: OutlinePoint[] = [],
+  structure?: Structure,
+  sectionKey?: string // The key ('introduction', 'main', etc.)
+): OrganizedBlock[] {
+  const organizedBlocks: OrganizedBlock[] = [];
+  if (!sectionKey) return organizedBlocks; // Need sectionKey for context
+
+  let thoughtsToProcess = sectionThoughts ? [...sectionThoughts] : [];
+  if (thoughtsToProcess.length === 0) return organizedBlocks; // No thoughts in this section
+
+  debugLog(`processSection - Start for ${sectionKey}`, { initialCount: thoughtsToProcess.length, outlinePoints: outlinePoints.length });
+
+  // Step 0: Handle thoughts with multiple structure tags - applies to the whole section batch first
+  const { multiTagThoughts, thoughtsWithoutMultiTag } = extractMultiTagThoughts(thoughtsToProcess);
+  if (multiTagThoughts.length > 0) {
+      organizedBlocks.push({
+          type: 'tag', // Special block type for these
+          title: TRANSLATIONS.multipleTagsThoughts,
+          thoughts: sortThoughtsByDate(multiTagThoughts) // Sort them by date
+      });
+      debugLog(`processSection - Extracted multi-tag thoughts for ${sectionKey}`, { count: multiTagThoughts.length });
+  }
+  thoughtsToProcess = thoughtsWithoutMultiTag; // Work with the remainder
+
+  // Step 1: Check for Outline Points specific to this section
+  if (outlinePoints.length > 0) {
+    debugLog(`processSection - Processing with outline points for ${sectionKey}`);
+    const outlineMap = new Map<string, OutlinePoint>(outlinePoints.map(p => [p.id, p]));
+
+    // Separate thoughts based on assignment to *these* outline points
+    const { assignedThoughts, unassignedThoughts } = separateThoughtsByOutline(thoughtsToProcess, outlineMap);
+    
+    // Create blocks for thoughts assigned to outline points
+    if (assignedThoughts.length > 0) {
+      const outlineBlocks = processThoughtsByOutline(assignedThoughts, outlineMap);
+      organizedBlocks.push(...outlineBlocks);
+      debugLog(`processSection - Added outline blocks for ${sectionKey}`, { count: outlineBlocks.length });
     }
-  }
-  return priorityTags.length; // Lower priority if no priority tags
-}
 
-/**
- * Sort thoughts by date
- */
-function sortThoughtsByDate(thoughts: Thought[]): Thought[] {
-  return [...thoughts].sort((a, b) => {
-    const dateA = new Date(a.date || 0).getTime();
-    const dateB = new Date(b.date || 0).getTime();
-    return dateA - dateB;
-  });
-}
-
-/**
- * Format the header with sermon title and verse
- */
-function formatHeader(sermon: Sermon, format: ExportFormat): string {
-  if (format === 'markdown') {
-    let header = `# ${sermon.title}\n\n`;
-    if (sermon.verse && sermon.verse.trim()) {
-      header += `> ${sermon.verse}\n\n`;
-    }
-    return header;
-  } else {
-    let header = `${TRANSLATIONS.sermonTitle}${sermon.title}\n`;
-    if (sermon.verse && sermon.verse.trim()) {
-      header += `${TRANSLATIONS.scriptureText}\n${sermon.verse}\n`;
-    }
-    header += '\n';
-    return header;
-  }
-}
-
-/**
- * Format a processed section
- */
-function formatSection(
-  section: ProcessedSection, 
-  format: ExportFormat,
-  includeTags: boolean
-): string {
-  let content = '';
-  
-  // Skip empty sections if they have no thoughts
-  const hasThoughts = section.organizedBlocks.some(block => 
-    block.thoughts.length > 0
-  );
-  
-  if (!hasThoughts) {
-    return ''; // Return empty string for empty sections
-  }
-  
-  // Add section title
-  if (format === 'markdown') {
-    content += `## ${section.sectionTitle}\n`;
-    content += `${'='.repeat(section.sectionTitle.length + 4)}\n\n`;
-  } else {
-    content += `${section.sectionTitle}:\n\n`;
-  }
-  
-  // Format each organized block
-  section.organizedBlocks.forEach(block => {
-    // Add block title if it's different from the section title
-    if (block.title !== section.sectionTitle) {
-      if (format === 'markdown') {
-        content += `### ${block.title}\n`;
-        content += `${'—'.repeat(block.title.length + 4)}\n\n`;
-      } else {
-        content += `${block.title}:\n\n`;
+    // Process the remaining unassigned thoughts using the standard waterfall
+    if (unassignedThoughts.length > 0) {
+       debugLog(`processSection - Processing unassigned thoughts via waterfall for ${sectionKey}`, { count: unassignedThoughts.length });
+      const processedUnassigned = organizeThoughtsWithinSection(unassignedThoughts, structure, sectionKey);
+      if (processedUnassigned.length > 0) {
+          organizedBlocks.push({
+              type: 'unassigned', // Block type indicating these weren't tied to an outline point
+              title: TRANSLATIONS.unassignedThoughts, // Generic title for this block
+              thoughts: processedUnassigned // Thoughts are ordered by the waterfall
+          });
+           debugLog(`processSection - Added unassigned block for ${sectionKey}`, { count: processedUnassigned.length });
       }
     }
-    
-    // Format thoughts
-    if (block.thoughts.length === 0) {
-      content += `${TRANSLATIONS.noEntries}\n\n`;
     } else {
-      block.thoughts.forEach((thought, index) => {
-        // Add thought text
-        const prefix = format === 'markdown' ? `${index + 1}. ` : `- `;
-        content += `${prefix}${thought.text}\n`;
-        
-        // Add tags if present and includeTags is true
-        if (includeTags && thought.tags && thought.tags.length > 0) {
-          if (format === 'markdown') {
-            content += `   *${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}*\n`;
-          } else {
-            content += `   ${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}\n`;
-          }
-        }
-        
-        content += '\n';
-      });
+    // No outline points for this section - process all thoughts using the waterfall
+    debugLog(`processSection - No outline points for ${sectionKey}, processing all via waterfall`);
+    const processedThoughts = organizeThoughtsWithinSection(thoughtsToProcess, structure, sectionKey);
+
+    if (processedThoughts.length > 0) {
+        // Create a single block for the entire section's organized thoughts
+        organizedBlocks.push({
+            // Determine block type based on which method succeeded inside organizeThoughtsWithinSection?
+            // For simplicity, default to 'chronological' or maybe 'tag' if tags were used?
+            // Let's default to chronological as the fallback type.
+            type: 'chronological', 
+            title: getSectionTitle(sectionKey), // Use the main section title
+            thoughts: processedThoughts
+        });
+         debugLog(`processSection - Added single block for section ${sectionKey}`, { count: processedThoughts.length });
     }
-    
-    // Add separator between blocks
-    content += format === 'markdown' ? '---\n\n' : '---------------------\n\n';
-  });
-  
-  return content;
-}
-
-/**
- * Filter thoughts by section
- */
-function filterThoughtsBySection(thoughts: Thought[], sectionKey: string): Thought[] {
-  if (sectionKey === 'ambiguous') {
-    // Ambiguous section includes thoughts not in the main sections
-    const requiredTags = ["Вступление", "Основная часть", "Заключение"];
-    return thoughts.filter(thought => {
-      // Check if thought has none of the required tags
-      return !thought.tags.some(tag => requiredTags.includes(tag));
-    });
   }
-  
-  // Map section key to the corresponding tag
-  const sectionTagMap: Record<string, string> = {
-    'introduction': 'Вступление',
-    'main': 'Основная часть',
-    'conclusion': 'Заключение'
-  };
-  
-  const sectionTag = sectionTagMap[sectionKey];
-  
-  // Filter thoughts that have the section tag
-  return thoughts.filter(thought => thought.tags.includes(sectionTag));
+
+  debugLog(`processSection - End for ${sectionKey}`, { blockCount: organizedBlocks.length });
+  // Filter out any blocks that somehow ended up empty
+  return organizedBlocks.filter(block => block.thoughts.length > 0);
 }
 
-/**
- * Get localized section title
- */
+/** Get the priority index of the first matching tag */
+function getTagPriority(tags: string[] | undefined, priorityTags: string[]): number {
+    if (!tags) return priorityTags.length;
+    for (const tag of tags) {
+        const priority = priorityTags.indexOf(tag);
+        if (priority !== -1) return priority;
+    }
+    return priorityTags.length; // Lowest priority if no match
+}
+
+/** Sort thoughts chronologically */
+function sortThoughtsByDate(thoughts: Thought[]): Thought[] {
+  if (!thoughts) return [];
+  return [...thoughts].sort(sortByDateHelper);
+}
+
+/** Helper for date comparison */
+function sortByDateHelper(a: Thought, b: Thought): number {
+    const dateA = new Date(a.date || 0).getTime();
+    const dateB = new Date(b.date || 0).getTime();
+    return dateA - dateB; // Ascending order
+}
+
+/** Filter thoughts relevant to a specific section key */
+function filterThoughtsBySection(thoughts: Thought[] | undefined, sectionKey: string): Thought[] {
+  if (!thoughts) return [];
+  const structureTagsMap: Record<string, string> = {
+      'introduction': TRANSLATIONS.introTag,
+      'main': TRANSLATIONS.mainTag,
+      'conclusion': TRANSLATIONS.conclusionTag
+  };
+  const requiredTag = structureTagsMap[sectionKey];
+
+  if (sectionKey === 'ambiguous') {
+      const allStructureTags = Object.values(structureTagsMap);
+      // Ensure tags exists before checking
+      return thoughts.filter(thought =>
+          !thought.tags || !thought.tags.some(tag => allStructureTags.includes(tag))
+      );
+  }
+
+  if (requiredTag) {
+      // Ensure tags exists before checking
+      return thoughts.filter(thought => thought.tags?.includes(requiredTag));
+  }
+
+  return []; // Should not happen for standard keys
+}
+
+/** Get localized section title */
 function getSectionTitle(sectionKey: string): string {
   const titleMap: Record<string, string> = {
-    'introduction': i18n.t('tags.introduction', 'Introduction'),
-    'main': i18n.t('tags.mainPart', 'Main Part'),
-    'conclusion': i18n.t('tags.conclusion', 'Conclusion'),
-    'ambiguous': i18n.t('export.otherThoughts', 'Other Thoughts')
+    'introduction': TRANSLATIONS.introTitle,
+    'main': TRANSLATIONS.mainTitle,
+    'conclusion': TRANSLATIONS.conclusionTitle,
+    'ambiguous': TRANSLATIONS.otherTitle
   };
-  
-  return titleMap[sectionKey] || sectionKey;
+  return titleMap[sectionKey] || sectionKey; // Fallback to key name
 }
 
-/**
- * Check if structure is valid
- */
-function isValidStructure(structure: Structure): boolean {
-  return structure !== null && 
-         typeof structure === 'object' && 
-         Object.keys(structure).length > 0;
+/** Check if structure object is valid */
+function isValidStructure(structure: Structure | undefined): boolean {
+  // Ensure structure is not null/undefined before checking keys
+  return !!structure && typeof structure === 'object' && Object.keys(structure).length > 0;
 }
 
-/**
- * Check if thoughts have valid section tags
- */
+/** Check if any thoughts have relevant section tags */
 function hasValidSectionTags(thoughts: Thought[]): boolean {
-  const requiredTags = ["Вступление", "Основная часть", "Заключение"];
-  
-  // Check if any thought has any of the required tags
+  if (!thoughts) return false;
+  const requiredTags = [TRANSLATIONS.introTag, TRANSLATIONS.mainTag, TRANSLATIONS.conclusionTag];
   return thoughts.some(thought => 
-    thought.tags.some(tag => requiredTags.includes(tag))
+    // Ensure tags exists before checking
+    thought.tags?.some(tag => requiredTags.includes(tag))
   );
 }
-
-// For backward compatibility
-export const exportSermonContent = getExportContent;

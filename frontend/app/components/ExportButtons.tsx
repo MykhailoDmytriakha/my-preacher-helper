@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
@@ -22,19 +24,19 @@ export function ExportButtonsLayout({
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
   
   return (
-    <div className={`flex ${layoutClass} gap-1.5 max-w-full sm:max-w-none flex-shrink-0`}>
+    <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       <button
         onClick={onTxtClick}
-        className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+        className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex-1 sm:flex-none text-center"
       >
         TXT
       </button>
       
-      <div className="tooltip">
+      <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onPdfClick}
           disabled={true}
-          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed"
+          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md opacity-50 cursor-not-allowed w-full"
           aria-label="PDF export (coming soon)"
         >
           PDF
@@ -44,11 +46,11 @@ export function ExportButtonsLayout({
         </span>
       </div>
       
-      <div className="tooltip">
+      <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onWordClick}
           disabled={true}
-          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed"
+          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed w-full"
           aria-label="Word export (coming soon)"
         >
           Word
@@ -62,131 +64,205 @@ export function ExportButtonsLayout({
 }
 
 interface ExportTxtModalProps {
-  content: string;
+  isOpen: boolean;
   onClose: () => void;
-  getExportContent: (format: 'plain' | 'markdown') => Promise<string>;
+  content?: string;
+  getContent?: (format: 'plain' | 'markdown') => Promise<string>;
+  format?: 'plain' | 'markdown';
 }
 
-export function ExportTxtModal({ content, onClose, getExportContent }: ExportTxtModalProps) {
+export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
+  isOpen,
+  onClose,
+  content,
+  getContent,
+  format = 'plain',
+}) => {
   const { t } = useTranslation();
-  const [isCopied, setIsCopied] = useState(false);
-  const [format, setFormat] = useState<'plain' | 'markdown'>('plain');
-  const [modalContent, setModalContent] = useState(content);
+  const [activeFormat, setActiveFormat] = useState<'plain' | 'markdown'>(format);
   const [isLoading, setIsLoading] = useState(false);
-  const [displayContent, setDisplayContent] = useState(content);
+  const [exportContent, setExportContent] = useState<string>('');
+  const [error, setError] = useState<boolean>(false);
+  const modalId = useRef(`export-modal-${Math.random().toString(36).substring(2, 9)}`);
+  
+  // Add cleanup effect
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      setIsLoading(false);
+      setExportContent('');
+      setError(false);
+    };
+  }, []);
 
   useEffect(() => {
-    const updateContent = async () => {
+    if (isOpen) {
       setIsLoading(true);
-      try {
-        const newContent = await getExportContent(format);
-        setModalContent(newContent);
-        setDisplayContent(newContent);
-      } catch (error) {
-        console.error("Error updating content format:", error);
-      } finally {
+      setError(false);
+      
+      if (content) {
+        setExportContent(content);
         setIsLoading(false);
+      } else if (getContent) {
+        getContent(activeFormat)
+          .then((result) => {
+            setExportContent(result);
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            console.error('Error getting export content:', err);
+            setExportContent('Error preparing export');
+            setError(true);
+            setIsLoading(false);
+          });
       }
-    };
+    }
+  }, [isOpen, content, getContent, activeFormat]);
+  
+  const handleFormatChange = (newFormat: 'plain' | 'markdown') => {
+    setActiveFormat(newFormat);
+    setIsLoading(true);
+    setError(false);
     
-    updateContent();
-  }, [format, getExportContent]);
-
+    if (getContent) {
+      getContent(newFormat)
+        .then((result) => {
+          setExportContent(result);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          console.error('Error getting export content:', err);
+          setExportContent('Error preparing export');
+          setError(true);
+          setIsLoading(false);
+        });
+    }
+  };
+  
+  // Handle copy to clipboard
   const handleCopy = () => {
-    navigator.clipboard.writeText(modalContent);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    navigator.clipboard.writeText(exportContent).catch(err => {
+      console.error('Failed to copy text:', err);
+    });
   };
-
+  
+  // Handle download
   const handleDownload = () => {
-    const blob = new Blob([modalContent], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "sermon-export.txt";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const element = document.createElement('a');
+    const file = new Blob([exportContent], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `export.${activeFormat}`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
   };
-
+  
+  if (!isOpen) return null;
+  
   return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" data-testid="portal-content">
       <div 
-        className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl flex flex-col"
+        style={{ minHeight: "300px", maxHeight: "90vh" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-modal-title"
+        data-testid="export-txt-modal"
+        data-modal-id={modalId.current}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg sm:text-xl font-semibold">{t('export.txtTitle')}</h3>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
+        {/* Modal header */}
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+          <h3 id="export-modal-title" className="text-lg sm:text-xl font-semibold">
+            {t('export.txtTitle')}
+          </h3>
+          <button 
+            onClick={onClose} 
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
+            aria-label="Close"
           >
             ✕
           </button>
         </div>
         
-        <div className="flex items-center mb-4 text-sm">
+        {/* Format selection */}
+        <div className="flex items-center mb-4 text-sm flex-shrink-0">
           <span className="mr-2">{t('export.format')}:</span>
-          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md">
-            <button 
-              className={`px-3 py-1 rounded-md ${format === 'plain' 
-                ? 'bg-blue-500 text-white' 
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-              onClick={() => setFormat('plain')}
+          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+            <button
+              className={`px-3 py-1 rounded ${
+                activeFormat === 'plain'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+              onClick={() => handleFormatChange('plain')}
+              disabled={isLoading}
             >
               {t('export.formatPlain')}
             </button>
-            <button 
-              className={`px-3 py-1 rounded-md ${format === 'markdown' 
-                ? 'bg-blue-500 text-white' 
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-              onClick={() => setFormat('markdown')}
+            <button
+              className={`px-3 py-1 rounded ${
+                activeFormat === 'markdown'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+              onClick={() => handleFormatChange('markdown')}
+              disabled={isLoading}
             >
               {t('export.formatMarkdown')}
             </button>
           </div>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 overflow-hidden">
-          <div style={{ minHeight: '200px' }} className="max-h-64 sm:max-h-96 overflow-y-auto relative">
-            {isLoading ? (
-              <div className="flex justify-center items-center absolute inset-0 bg-gray-50/80 dark:bg-gray-700/80 z-10">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        {/* Content area */}
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 flex-grow overflow-y-auto relative">
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/80 dark:bg-gray-700/80 flex items-center justify-center z-10 rounded-lg">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+            </div>
+          )}
+          <div className={`transition-opacity duration-200 ${isLoading ? 'opacity-30' : 'opacity-100'}`}>
+            {error ? (
+              <div className="text-red-500">{exportContent}</div>
+            ) : activeFormat === 'plain' ? (
+              <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm">{exportContent}</pre>
+            ) : (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {exportContent}
+                </ReactMarkdown>
               </div>
-            ) : null}
-            <pre className={`whitespace-pre-wrap font-mono text-xs sm:text-sm transition-opacity duration-300 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
-              {displayContent}
-            </pre>
+            )}
           </div>
         </div>
-
-        <div className="flex gap-2 sm:gap-3 justify-end">
+        
+        {/* Action buttons */}
+        <div className="flex gap-2 sm:gap-3 justify-end flex-shrink-0">
           <button
             onClick={handleCopy}
+            disabled={isLoading || !exportContent || error}
             className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
           >
-            {isCopied ? t('export.copied') : t('export.copy')}
+            {t('export.copy')}
           </button>
           <button
             onClick={handleDownload}
+            disabled={isLoading || !exportContent || error}
             className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            {t('export.downloadTxt')}
+            {activeFormat === 'plain' 
+              ? t('export.downloadTxt') 
+              : t('export.downloadMarkdown', 'Download MD')}
           </button>
         </div>
       </div>
     </div>,
     document.body
   );
-}
+};
 
 interface ExportButtonsContainerProps {
   sermonId: string;
-  getExportContent: () => Promise<string>;
+  getExportContent: (format: 'plain' | 'markdown') => Promise<string>;
   orientation?: "horizontal" | "vertical";
   className?: string;
 }
@@ -268,133 +344,32 @@ export default function ExportButtons({
   className = "",
 }: ExportButtonsContainerProps) {
   const { t } = useTranslation();
-  const [exportContent, setExportContent] = useState("");
   const [showTxtModal, setShowTxtModal] = useState(false);
 
-  const getFormattedContent = async (format: 'plain' | 'markdown') => {
-    try {
-      // Получаем оригинальный контент для анализа
-      const originalContent = await getExportContent();
-      
-      // Определяем колонку, находящуюся в фокусе, анализируя заголовок
-      // Это эвристика, но она должна работать для наших данных
-      let focusedColumn: string | undefined;
-      
-      // Проверим, находимся ли мы на странице структуры
-      const isStructurePage = window.location.pathname.includes('/structure');
-      
-      // Если мы на странице структуры, попробуем определить колонку из URL
-      if (isStructurePage) {
-        const url = new URL(window.location.href);
-        const focusParam = url.searchParams.get('focus');
-        
-        // Если параметр focus есть в URL, используем его
-        if (focusParam && ['introduction', 'main', 'conclusion', 'ambiguous'].includes(focusParam)) {
-          focusedColumn = focusParam;
-        }
-      }
-      
-      // Если мы все еще не определили колонку, попробуем проанализировать содержимое
-      if (!focusedColumn) {
-        // Попытка определить текущую колонку из содержимого
-        if (originalContent.includes('# Introduction') || 
-            originalContent.includes('# Вступление') || 
-            originalContent.includes('# Вступ')) {
-          focusedColumn = 'introduction';
-        } else if (originalContent.includes('# Main Part') || 
-                  originalContent.includes('# Основная часть') || 
-                  originalContent.includes('# Основна частина')) {
-          focusedColumn = 'main';
-        } else if (originalContent.includes('# Conclusion') || 
-                  originalContent.includes('# Заключение') || 
-                  originalContent.includes('# Висновок')) {
-          focusedColumn = 'conclusion';
-        } else if (originalContent.includes('# Under Consideration') || 
-                  originalContent.includes('# На рассмотрении') || 
-                  originalContent.includes('# На розгляді')) {
-          focusedColumn = 'ambiguous';
-        }
-      }
-      
-      // Записываем в консоль для отладки
-      console.log('Determined focusedColumn:', focusedColumn);
-      
-      // Для определения страницы и API-вызова
-      if (window.location.pathname.includes('/sermons/') || 
-          window.location.pathname.includes('/dashboard')) {
-        const { getExportContent: exportFn } = await import('@/utils/exportContent');
-        
-        try {
-          const response = await fetch(`/api/sermons/${sermonId}`);
-          if (response.ok) {
-            const sermon = await response.json();
-            // На страницах проповеди не используем фокус колонки
-            return exportFn(sermon, undefined, { format });
-          }
-        } catch (error) {
-          console.error("Error fetching sermon for format change:", error);
-        }
-      }
-      
-      // Для страницы структуры (structure page)
-      if (isStructurePage) {
-        try {
-          const response = await fetch(`/api/sermons/${sermonId}`);
-          if (response.ok) {
-            const sermon = await response.json();
-            
-            // Используем определенную выше переменную focusedColumn
-            const { getExportContent: exportFn } = await import('@/utils/exportContent');
-            
-            // Если мы определили focusedColumn, используем её, иначе экспортируем всю проповедь
-            if (focusedColumn) {
-              console.log('Exporting with focusedColumn:', focusedColumn);
-              return exportFn(sermon, focusedColumn, { format });
-            } else {
-              // Если не удалось определить колонку, просто экспортируем весь контент
-              return exportFn(sermon, undefined, { format });
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching sermon for format change:", error);
-        }
-      }
-      
-      return originalContent;
-    } catch (error) {
-      console.error("Error generating export content with format:", error);
-      return "";
-    }
+  const handleTxtClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowTxtModal(true);
   };
 
-  const handleTxtExport = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const content = await getExportContent();
-      setExportContent(content);
-      setShowTxtModal(true);
-    } catch (error) {
-      console.error("Error generating export content:", error);
-      alert(t('export.prepareError'));
-    }
-  };
+  const handlePdfClick = () => { console.log("PDF Export clicked (disabled)"); };
+  const handleWordClick = () => { console.log("Word Export clicked (disabled)"); };
 
   return (
-    <div className={className}>
+    <div className={`relative ${className}`}>
       <TooltipStyles />
-      <ExportButtonsLayout
-        orientation={orientation}
-        onTxtClick={handleTxtExport}
-        onPdfClick={() => console.log(`Export PDF for sermon ${sermonId}`)}
-        onWordClick={() => console.log(`Export Word for sermon ${sermonId}`)}
-      />
       
+      <ExportButtonsLayout
+        onTxtClick={handleTxtClick}
+        onPdfClick={handlePdfClick}
+        onWordClick={handleWordClick}
+        orientation={orientation}
+      />
+
       {showTxtModal && (
         <ExportTxtModal
-          content={exportContent}
-          getExportContent={getFormattedContent}
+          isOpen={showTxtModal}
           onClose={() => setShowTxtModal(false)}
+          getContent={getExportContent}
         />
       )}
     </div>

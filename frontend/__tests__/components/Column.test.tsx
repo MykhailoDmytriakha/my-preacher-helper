@@ -1,7 +1,9 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { DndContext } from '@dnd-kit/core';
 import Column from '@/components/Column';
 import { Item } from '@/models/models';
+import '@testing-library/jest-dom';
 
 // Mock the i18next library
 jest.mock('react-i18next', () => ({
@@ -18,6 +20,11 @@ jest.mock('react-i18next', () => ({
     };
   }
 }));
+
+// Mock react-markdown to prevent ESM errors
+jest.mock('react-markdown', () => (props: any) => <>{props.children}</>);
+// Mock remark-gfm as well
+jest.mock('remark-gfm', () => ({}));
 
 describe('Column Component', () => {
   const mockItems: Item[] = [
