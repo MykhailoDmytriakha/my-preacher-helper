@@ -21,6 +21,8 @@ import {
 } from "@/config/schemas";
 import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
 const geminiModel = process.env.GEMINI_MODEL as string;
@@ -28,11 +30,15 @@ const isDebugMode = process.env.DEBUG_MODE === 'true';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  // Conditionally allow browser environment ONLY during tests
+  ...(isTestEnvironment && { dangerouslyAllowBrowser: true }),
 });
 
 const gemini = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+  // Conditionally allow browser environment ONLY during tests
+  ...(isTestEnvironment && { dangerouslyAllowBrowser: true }),
 });
 
 const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
@@ -93,8 +99,10 @@ The response MUST be valid JSON within the <arguments> tags.`;
   return xmlDefinition;
 }
 
-// Helper function to extract data from Claude's response
-function extractClaudeFunctionResponse<T>(responseContent: string): T {
+// Helper function to extract structured data (like JSON) when returned within the main response content
+// Handles formats often seen with models like Claude or Gemini when not using strict tool/function calls
+// Tries parsing from <arguments> tags, JSON markdown blocks, and raw JSON objects.
+function extractStructuredResponseFromContent<T>(responseContent: string): T {
   try {
     // First try: Extract JSON from within the <arguments> tags
     const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
@@ -109,14 +117,39 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
     // Try to extract JSON from code blocks
     const codeBlockMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch && codeBlockMatch[1]) {
+      let codeBlockContent = codeBlockMatch[1].trim();
       try {
-        // Clean up the JSON string first
-        const cleanedJson = codeBlockMatch[1].trim()
+        // Attempt to salvage truncated JSON by finding the last valid brace/bracket
+        const lastBrace = codeBlockContent.lastIndexOf('}');
+        const lastBracket = codeBlockContent.lastIndexOf(']');
+        const lastValidCharIndex = Math.max(lastBrace, lastBracket);
+
+        if (lastValidCharIndex > -1) {
+          // Ensure we don't cut off nested structures incorrectly, basic check
+          // Count braces and brackets up to the potential cut-off point
+          let openBraces = 0;
+          let openBrackets = 0;
+          for(let i = 0; i <= lastValidCharIndex; i++) {
+            if (codeBlockContent[i] === '{') openBraces++;
+            else if (codeBlockContent[i] === '}') openBraces--;
+            else if (codeBlockContent[i] === '[') openBrackets++;
+            else if (codeBlockContent[i] === ']') openBrackets--;
+          }
+          // Only truncate if it seems balanced or slightly off (due to potential cut)
+          // This is heuristic and might not cover all edge cases perfectly
+          if (openBraces >= 0 && openBrackets >= 0) {
+              codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
+          }
+        }
+
+        // Clean up the potentially truncated JSON string
+        const cleanedJson = codeBlockContent
           .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
           .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
         return JSON.parse(cleanedJson) as T;
       } catch (e) {
-        console.log("Failed to parse JSON from code block, trying other methods:", e);
+        console.log("Failed to parse JSON from potentially truncated code block, trying other methods:", e);
+        // Fall through to try other extraction methods if parsing still fails
       }
     }
     
@@ -219,21 +252,27 @@ function extractClaudeFunctionResponse<T>(responseContent: string): T {
       }
     }
     
-    throw new Error("Could not find any valid JSON object in model response");
+    throw new Error("Could not find any valid structured data (JSON) in model response content");
   } catch (error) {
-    console.error("Failed to parse function response from Claude model:", error);
+    // Ensure the error message reflects the broader scope
+    console.error("Failed to parse structured data from model response content:", error);
     throw new Error("Invalid response format from AI model");
   }
 }
 
 // Helper function to extract function response
 function extractFunctionResponse<T>(response: OpenAI.Chat.ChatCompletion): T {
-  // For Claude models, extract from content
+  // Check if the response contains structured data within the main content
   if (response.choices[0].message.content) {
-    return extractClaudeFunctionResponse<T>(response.choices[0].message.content);
+    // Use the renamed function here
+    return extractStructuredResponseFromContent<T>(response.choices[0].message.content);
   }
   
-  throw new Error("No function call found in the response");
+  // Add checks for standard OpenAI function/tool calls if needed in the future
+  // else if (response.choices[0].message.function_call) { ... }
+  // else if (response.choices[0].message.tool_calls) { ... }
+
+  throw new Error("No structured data found in the response content or known function/tool call fields");
 }
 
 // Helper function to create messages array
@@ -683,7 +722,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     
     try {
       const content = response.choices[0].message.content || '';
-      sortedData = extractClaudeFunctionResponse(content);
+      sortedData = extractStructuredResponseFromContent(content);
     } catch (error) {
       console.error("Failed to parse function response from model:", error);
       throw new Error("Invalid response format from AI model");
@@ -1021,50 +1060,11 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     
     // Normalize the directions before returning
     const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
-    return normalizedDirections.length ? normalizedDirections : null;
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon direction suggestions:", error);
-    return null;
-  }
-}
-
-export async function generateDirectionSuggestions(sermon: Sermon): Promise<DirectionSuggestion[]> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createDirectionsUserMessage(sermon, sermonContent);
-  
-  if (isDebugMode) {
-    console.log("DEBUG: Generating direction suggestions for sermon:", sermon.id);
-  }
-  
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
-    
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-    
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-    
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Direction Suggestions',
-      requestOptions,
-      inputInfo
-    );
-    
-    const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
-    
-    // Normalize the directions before returning
-    const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
+    // Return the normalized directions (could be an empty array)
     return normalizedDirections;
   } catch (error) {
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
+    // Return an empty array on error for consistent handling
     return [];
   }
 } 

@@ -1,3 +1,9 @@
+import 'openai/shims/node';
+
+// Set dummy API keys for OpenAI client initialization during tests
+process.env.OPENAI_API_KEY = 'test_key_openai';
+process.env.GEMINI_API_KEY = 'test_key_gemini';
+
 // Import Jest DOM utilities
 import '@testing-library/jest-dom';
 import 'jest-environment-jsdom';
