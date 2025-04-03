@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import type { Sermon, Thought } from "@/models/models";
+import type { Sermon, Thought, Outline } from "@/models/models";
 import Link from "next/link";
 import DashboardNav from "@/components/navigation/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
@@ -33,7 +33,7 @@ const AudioRecorder = dynamicImport(
 
 export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
-  const { sermon, setSermon, loading, getSortedThoughts } = useSermon(id);
+  const { sermon, setSermon, loading, getSortedThoughts, refreshSermon } = useSermon(id);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
@@ -293,6 +293,17 @@ export default function SermonPage() {
   
   // Проверяем наличие несогласованностей
   const hasInconsistentThoughts = checkForInconsistentThoughts();
+
+  // Function to update only the outline part of the sermon state
+  const handleOutlineUpdate = (updatedOutline: Outline) => {
+    setSermon(prevSermon => {
+      if (!prevSermon) return null;
+      return {
+        ...prevSermon,
+        outline: updatedOutline,
+      };
+    });
+  };
 
   if (loading || !sermon) {
     return (
@@ -721,7 +732,11 @@ export default function SermonPage() {
               hasInconsistentThoughts={hasInconsistentThoughts} 
             />
             <KnowledgeSection sermon={sermon} />
-            <SermonOutline sermon={sermon} thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} />
+            <SermonOutline 
+              sermon={sermon} 
+              thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
+              onOutlineUpdate={handleOutlineUpdate}
+            />
             {/* {sermon.structure && <StructurePreview sermon={sermon} />} */}
           </div>
         </div>

@@ -11,12 +11,13 @@ import { getSermonOutline, updateSermonOutline } from '@/services/outline.servic
 interface SermonOutlineProps {
   sermon: Sermon;
   thoughtsPerOutlinePoint?: Record<string, number>;
+  onOutlineUpdate?: (updatedOutline: Outline) => void;
 }
 
 // Define valid section types
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
-const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlinePoint = {} }) => {
+const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlinePoint = {}, onOutlineUpdate }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -38,7 +39,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     conclusion: false,
   });
   
-  // Fetch outline data when the component mounts or sermon changes
+  // Fetch outline data when the component mounts or sermon ID changes
   useEffect(() => {
     const fetchOutline = async () => {
       if (!sermon || !sermon.id) return;
@@ -89,7 +90,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     };
     
     fetchOutline();
-  }, [sermon, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sermon?.id]);
   
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
@@ -169,6 +171,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
         };
         
         const result = await updateSermonOutline(sermon.id, outlineToSave);
+        onOutlineUpdate?.(outlineToSave);
       } catch (err) {
         console.error("Error saving sermon outline:", err);
         setError(t('errors.saveOutlineError'));
@@ -507,6 +510,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
           ) : (
             <div 
               onClick={() => setAddingNewToSection(section)}
+              aria-label={t('common.addPoint')}
+              data-testid={`add-point-button-${section}`}
               className="mt-3 border-t border-dashed border-gray-300 dark:border-gray-600 pt-2 flex justify-center cursor-pointer opacity-50 hover:opacity-100 transition-opacity group"
             >
               <span className="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300">
