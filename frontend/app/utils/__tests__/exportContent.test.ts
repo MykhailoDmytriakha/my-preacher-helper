@@ -419,7 +419,7 @@ John 1:1`); // Use backticks for multiline check
 
       // Assert
       expect(result).toContain('# Sermon: Markdown Sermon');
-      expect(result).toContain(`**Scripture Text:**\n> Line1\n> Line2`); // Corrected backticks
+      expect(result).toContain(`**Scripture Text:**\n> Line1\n> \n> Line2`); 
 
       // Section Titles (H2)
       expect(result).toContain('## Introduction');
@@ -639,4 +639,69 @@ Other Thoughts:
     });
 
   });
+
+  // --- NEW TESTS FOR MARKDOWN VERSE FORMATTING --- 
+  describe('Markdown formatting', () => {
+    describe('Verse formatting', () => {
+      const baseSermon: Omit<Sermon, 'verse'> = {
+        id: 'mdVerseTest123',
+        title: 'Markdown Verse Test',
+        date: new Date().toISOString(),
+        thoughts: [], // Not relevant for these tests
+        userId: 'userMd'
+      };
+
+      it('should handle sermons with no verse', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: undefined };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        expect(result).toContain('# Sermon: Markdown Verse Test');
+        expect(result).not.toContain('**Scripture Text:**');
+        expect(result).not.toContain('> '); // No blockquote should be present
+      });
+
+      it('should format a single-line verse', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: 'John 3:16' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        expect(result).toContain('**Scripture Text:**\n> John 3:16\n\n');
+      });
+
+      it('should format a multi-line verse with internal newlines (\n)', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: 'Line 1\nLine 2\nLine 3' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        // Expect internal newlines to be joined with \n> \n for visual paragraph breaks
+        expect(result).toContain('**Scripture Text:**\n> Line 1\n> \n> Line 2\n> \n> Line 3\n\n');
+      });
+
+      it('should format multiple verses separated by single newlines (\n)', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: 'Verse 1 Reference\nVerse 2 Reference' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        // Expect verses separated by \n to be joined with \n> \n for visual paragraph breaks
+        expect(result).toContain('**Scripture Text:**\n> Verse 1 Reference\n> \n> Verse 2 Reference\n\n');
+      });
+
+      it('should format multiple verses separated by double newlines (\n\n)', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: 'Verse A Paragraph\n\nVerse B Paragraph' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        // Expect verses separated by \n\n to also be joined with \n> \n for visual paragraph breaks
+        expect(result).toContain('**Scripture Text:**\n> Verse A Paragraph\n> \n> Verse B Paragraph\n\n');
+      });
+      
+      it('should handle verse text with leading/trailing whitespace', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: '  \n  Trimmed Verse \n  ' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+         // Whitespace is trimmed, leaving only the core verse line
+        expect(result).toContain('**Scripture Text:**\n> Trimmed Verse\n\n');
+      });
+
+      it('should handle verse text with internal double newlines and whitespace', async () => {
+        const sermon: Sermon = { ...baseSermon, verse: '  Line Alpha  \n\n  Line Beta  \n\n' };
+        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        // Should trim whitespace around lines and handle double newlines correctly
+        expect(result).toContain('**Scripture Text:**\n> Line Alpha\n> \n> Line Beta\n\n');
+      });
+
+    });
+    // Add other Markdown formatting tests here if needed
+  });
+  // --- END OF NEW TESTS --- 
 }); 

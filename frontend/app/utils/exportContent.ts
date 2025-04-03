@@ -223,8 +223,13 @@ function formatMarkdown(
   if (includeMetadata) {
     let header = `# ${TRANSLATIONS.sermonTitle}${data.sermon.title}\n\n`;
     if (data.sermon.verse && data.sermon.verse.trim()) {
-      // Format the verse with a blockquote and ensure multi-line verses are properly formatted
-      header += `**${TRANSLATIONS.scriptureText.trim()}**\n> ${data.sermon.verse.replace(/\n/g, '\n> ')}\n\n`;
+      const trimmedVerse = data.sermon.verse.trim();
+      // Split by *any* newline, filter empty lines
+      const lines = trimmedVerse.split(/\n/).filter(line => line.trim() !== '');
+      // Prepend > to each line (trimming it first) and join with the paragraph separator
+      const formattedVerse = lines.map(line => '> ' + line.trim()).join('\n> \n');
+      
+      header += `**${TRANSLATIONS.scriptureText.trim()}**\n${formattedVerse}\n\n`;
     }
     content += header;
   }
