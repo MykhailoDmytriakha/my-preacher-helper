@@ -105,6 +105,7 @@ function StructurePageContent() {
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
   const [isSorting, setIsSorting] = useState(false);
   const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -1040,34 +1041,32 @@ function StructurePageContent() {
       return;
     }
 
-    // --- Backend Deletion First ---
+    // Find thought first to use its text in confirmation
+    const thoughtToDelete = sermon.thoughts.find(t => t.id === itemId);
+    if (!thoughtToDelete) {
+      console.error(`[Structure] Could not find thought with ID ${itemId} to delete.`);
+      toast.error(t('errors.deletingError') || "Failed to find thought to delete.");
+      return;
+    }
+
+    const confirmMessage = t('sermon.deleteThoughtConfirm', { 
+      defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`,
+      text: thoughtToDelete.text
+    });
+    if (!window.confirm(confirmMessage)) {
+      console.log(`[Structure] Deletion cancelled for thought ${itemId}`);
+      return;
+    }
+
+    // <<< Set deleting state BEFORE async call >>>
+    setDeletingItemId(itemId);
+
     try {
-      const thoughtToDelete = sermon.thoughts.find(t => t.id === itemId);
-
-      if (!thoughtToDelete) {
-        console.error(`[Structure] Could not find thought with ID ${itemId} to delete.`);
-        toast.error(t('errors.deletingError') || "Failed to find thought to delete.");
-        return;
-      }
-
-      // <<< Add confirmation dialog here >>>
-      const confirmMessage = t('sermon.deleteThoughtConfirm', { 
-        defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`, // Sensible default
-        text: thoughtToDelete.text // Pass thought text for interpolation
-      });
-      if (!window.confirm(confirmMessage)) {
-        console.log(`[Structure] Deletion cancelled for thought ${itemId}`);
-        return; // Stop if user cancels
-      }
-      // <<< End confirmation dialog >>>
-
       console.log(`[Structure] Attempting to delete thought ${itemId} from sermon ${sermonId}`);
-      // Pass the full thought object to the service function
       await deleteThought(sermonId, thoughtToDelete); 
       console.log(`[Structure] Successfully deleted thought ${itemId} from backend.`);
       
       // --- Update State on Successful Deletion ---
-      
       // Capture previous state for potential rollback (though less critical here)
       const previousSermon = sermon; 
       const previousContainers = { ...containersRef.current }; 
@@ -1125,6 +1124,9 @@ function StructurePageContent() {
       console.error(`[Structure] Error deleting thought ${itemId}:`, deleteError);
       toast.error(t('errors.deletingError') || "Failed to delete thought.");
       // Do not update UI state if backend deletion fails
+    } finally {
+      // <<< Clear deleting state AFTER operation (success or error) >>>
+      setDeletingItemId(null);
     }
   };
 
@@ -1222,6 +1224,7 @@ function StructurePageContent() {
                             onEdit={handleEdit} 
                             showDeleteIcon={true}
                             onDelete={handleRemoveFromStructure}
+                            isDeleting={item.id === deletingItemId}
                           />
                         ))
                       )}
@@ -1307,8 +1310,15 @@ function StructurePageContent() {
                 : null;
                 
               return activeItem ? (
-                <div className="p-4 bg-gray-300 rounded-md border border-gray-200 shadow-md">
-                  <CardContent item={activeItem} />
+                <div 
+                  className="flex items-start space-x-2 p-4 bg-white rounded-md border border-gray-300 shadow-lg opacity-90"
+                  style={{ width: 'auto' }}
+                >
+                  <div className="flex-grow">
+                    <CardContent item={activeItem} />
+                  </div>
+                  <div className="flex flex-col space-y-1 w-8 flex-shrink-0">
+                  </div>
                 </div>
               ) : null;
             })()}

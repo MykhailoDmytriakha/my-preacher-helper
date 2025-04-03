@@ -6,8 +6,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Item } from '@/models/models';
 
-// Mock the useSortable hook
 jest.mock('@dnd-kit/sortable', () => ({
+  // This is the simple mock now
   useSortable: jest.fn().mockReturnValue({
     attributes: { role: 'button' },
     listeners: { onKeyDown: jest.fn() },
@@ -16,6 +16,7 @@ jest.mock('@dnd-kit/sortable', () => ({
     transition: 'transform 250ms ease-in-out',
     isDragging: false
   }),
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</> 
 }));
 
 // Mock the CSS utility
@@ -291,6 +292,36 @@ Second paragraph with indentation.
     expect(deleteButton).toBeInTheDocument();
   });
 
-  // Note: Testing hover state (opacity change) directly is difficult with React Testing Library.
-  // We trust the Tailwind classes `opacity-0 group-hover:opacity-100` work as expected.
+  test('applies deleting styles and disables buttons when isDeleting is true', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        showDeleteIcon={true}
+        onDelete={mockOnDelete}
+        isDeleting={true}
+      />
+    );
+
+    // Check main container styles/attributes
+    // Note: Direct check for role='button' might be tricky if useSortable changes attributes
+    // Find by text content and go up to find the main sortable div
+    const mainDiv = screen.getByText(mockItem.content).closest('div[style*="opacity: 0.5"]');
+    expect(mainDiv).toBeInTheDocument(); // Check if opacity style was applied
+    expect(mainDiv).toHaveClass('pointer-events-none');
+    expect(mainDiv).toHaveStyle('opacity: 0.5');
+
+    // Check icon container visibility
+    // Go up two levels from the icon's mock div to reach the container div
+    const iconContainer = screen.getByTestId('edit-icon').parentElement?.parentElement; 
+    expect(iconContainer).toHaveClass('invisible');
+
+    // Check buttons are disabled
+    const editButton = screen.getByRole('button', { name: /edit thought/i });
+    expect(editButton).toBeDisabled();
+
+    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
+    expect(deleteButton).toBeDisabled();
+  });
 }); 
