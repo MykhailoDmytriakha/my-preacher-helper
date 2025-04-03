@@ -32,11 +32,14 @@ jest.mock('@/utils/color', () => ({
   getContrastColor: jest.fn().mockReturnValue('#ffffff'),
 }));
 
-// Mock the EditIcon component
+// Mock the EditIcon and TrashIcon components
 jest.mock('@components/Icons', () => {
   return {
     EditIcon: function MockEditIcon() {
       return <div data-testid="edit-icon" className="mock-edit-icon" />;
+    },
+    TrashIcon: function MockTrashIcon() {
+      return <div data-testid="trash-icon" className="mock-trash-icon" />;
     }
   };
 });
@@ -54,6 +57,7 @@ describe('SortableItem Component', () => {
 
   const mockContainerId = 'introduction';
   const mockOnEdit = jest.fn();
+  const mockOnDelete = jest.fn();
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -65,6 +69,7 @@ describe('SortableItem Component', () => {
         item={mockItem}
         containerId={mockContainerId}
         onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -84,6 +89,7 @@ describe('SortableItem Component', () => {
       <SortableItem
         item={mockItem}
         containerId={mockContainerId}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -109,6 +115,7 @@ describe('SortableItem Component', () => {
         item={itemWithoutTags}
         containerId={mockContainerId}
         onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -129,6 +136,7 @@ describe('SortableItem Component', () => {
         item={mockItem}
         containerId={mockContainerId}
         onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -147,6 +155,7 @@ describe('SortableItem Component', () => {
         item={mockItem}
         containerId={mockContainerId}
         onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -168,6 +177,7 @@ describe('SortableItem Component', () => {
       <SortableItem
         item={itemWithLineBreaks}
         containerId={mockContainerId}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -198,6 +208,7 @@ Second paragraph with indentation.
       <SortableItem
         item={itemWithMultilineContent}
         containerId={mockContainerId}
+        onDelete={mockOnDelete}
       />
     );
 
@@ -208,4 +219,78 @@ Second paragraph with indentation.
     // Verify the content is rendered with proper whitespace preservation
     expect(contentDiv?.textContent).toBe(multilineContent);
   });
+
+  test('does not render delete icon when showDeleteIcon is false or omitted', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+      />
+    );
+    expect(screen.queryByTestId('trash-icon')).not.toBeInTheDocument();
+
+    // Explicitly set to false
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        showDeleteIcon={false}
+        onDelete={mockOnDelete}
+      />
+    );
+    expect(screen.queryByTestId('trash-icon')).not.toBeInTheDocument();
+  });
+
+  test('renders delete icon when showDeleteIcon is true', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        showDeleteIcon={true}
+        onDelete={mockOnDelete}
+      />
+    );
+    expect(screen.getByTestId('trash-icon')).toBeInTheDocument();
+  });
+
+  test('calls onDelete with correct arguments when delete button is clicked', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        showDeleteIcon={true}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    // Find the delete button (using title attribute)
+    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
+    fireEvent.click(deleteButton);
+
+    expect(mockOnDelete).toHaveBeenCalledTimes(1);
+    expect(mockOnDelete).toHaveBeenCalledWith(mockItem.id, mockContainerId);
+  });
+
+  test('delete button has proper accessibility attributes', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        showDeleteIcon={true}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
+    expect(deleteButton).toHaveAttribute('title', 'Remove from Structure');
+    expect(deleteButton).toBeInTheDocument();
+  });
+
+  // Note: Testing hover state (opacity change) directly is difficult with React Testing Library.
+  // We trust the Tailwind classes `opacity-0 group-hover:opacity-100` work as expected.
 }); 

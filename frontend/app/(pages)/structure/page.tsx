@@ -25,7 +25,7 @@ import EditThoughtModal from "@/components/EditThoughtModal";
 import ExportButtons from "@/components/ExportButtons";
 import { getTags } from "@/services/tag.service";
 import { getSermonById } from "@/services/sermon.service";
-import { updateThought } from "@/services/thought.service";
+import { updateThought, deleteThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
@@ -409,7 +409,7 @@ function StructurePageContent() {
       if (!editingItem) return;
 
       const updatedItem: Thought = {
-        ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
+        ...sermon.thoughts.find((thought: Thought) => thought.id === editingItem.id)!,
         text: updatedText,
         tags: [...(editingItem.requiredTags || []), ...updatedTags],
         outlinePointId: outlinePointId
@@ -417,7 +417,7 @@ function StructurePageContent() {
 
       try {
         const updatedThought = await updateThought(sermon.id, updatedItem);
-        const updatedThoughts = sermon.thoughts.map((thought) =>
+        const updatedThoughts = sermon.thoughts.map((thought: Thought) =>
           thought.id === updatedItem.id ? updatedThought : thought
         );
         setSermon({ ...sermon, thoughts: updatedThoughts });
@@ -610,10 +610,8 @@ function StructurePageContent() {
 
     return sections.some(
       (section) => {
-        // Handle cases where a section might not exist
         const prevSection = prev[section] || [];
         const currSection = curr[section] || [];
-        
         return prevSection.length !== currSection.length ||
           prevSection.some(
             (item: string, index: number) => item !== currSection[index]
@@ -757,7 +755,7 @@ function StructurePageContent() {
         console.log(`[DnD] Item content: ${itemContent}`);
         
         const updatedItem: Thought = {
-          ...sermon.thoughts.find((thought) => thought.id === movedItem.id)!,
+          ...sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id)!,
           tags: [
             ...(movedItem.requiredTags || []),
             ...(movedItem.customTagNames || []).map((tag) => tag.name),
@@ -766,7 +764,7 @@ function StructurePageContent() {
 
         try {
           const updatedThought = await updateThought(sermon.id, updatedItem);
-          const newThoughts = sermon.thoughts.map((thought) =>
+          const newThoughts = sermon.thoughts.map((thought: Thought) =>
             thought.id === updatedItem.id ? updatedThought : thought
           );
           setSermon({ ...sermon, thoughts: newThoughts });
@@ -942,7 +940,7 @@ function StructurePageContent() {
               // Process each thought update sequentially to avoid race conditions
               for (const thoughtUpdate of thoughtsToUpdate) {
                 if (sermon) {
-                  const thought = sermon.thoughts.find(t => t.id === thoughtUpdate.id);
+                  const thought = sermon.thoughts.find((thought: Thought) => thought.id === thoughtUpdate.id);
                   if (thought) {
                     // Create updated thought with the new outline point ID
                     const updatedThought: Thought = {
@@ -1034,6 +1032,102 @@ function StructurePageContent() {
     }
   };
 
+  // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
+  const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
+    if (!sermonId || !sermon || containerId !== 'ambiguous') {
+      console.error("Cannot remove item: Invalid arguments or not in ambiguous container");
+      toast.error(t('errors.removingError') || "Error removing item.");
+      return;
+    }
+
+    // --- Backend Deletion First ---
+    try {
+      const thoughtToDelete = sermon.thoughts.find(t => t.id === itemId);
+
+      if (!thoughtToDelete) {
+        console.error(`[Structure] Could not find thought with ID ${itemId} to delete.`);
+        toast.error(t('errors.deletingError') || "Failed to find thought to delete.");
+        return;
+      }
+
+      // <<< Add confirmation dialog here >>>
+      const confirmMessage = t('sermon.deleteThoughtConfirm', { 
+        defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`, // Sensible default
+        text: thoughtToDelete.text // Pass thought text for interpolation
+      });
+      if (!window.confirm(confirmMessage)) {
+        console.log(`[Structure] Deletion cancelled for thought ${itemId}`);
+        return; // Stop if user cancels
+      }
+      // <<< End confirmation dialog >>>
+
+      console.log(`[Structure] Attempting to delete thought ${itemId} from sermon ${sermonId}`);
+      // Pass the full thought object to the service function
+      await deleteThought(sermonId, thoughtToDelete); 
+      console.log(`[Structure] Successfully deleted thought ${itemId} from backend.`);
+      
+      // --- Update State on Successful Deletion ---
+      
+      // Capture previous state for potential rollback (though less critical here)
+      const previousSermon = sermon; 
+      const previousContainers = { ...containersRef.current }; 
+
+      // 1. Update main sermon state (using a loop instead of filter)
+      const updatedThoughts: Thought[] = [];
+      for (const thought of previousSermon.thoughts) {
+        if (thought.id !== itemId) {
+          updatedThoughts.push(thought);
+        }
+      }
+      const sermonWithDeletedThought = { ...previousSermon, thoughts: updatedThoughts };
+      
+      // 2. Update local containers state
+      const updatedAmbiguous = previousContainers.ambiguous.filter((item: Item) => item.id !== itemId);
+      const newContainers: Record<string, Item[]> = {
+          ...previousContainers,
+          ambiguous: updatedAmbiguous
+      };
+
+      // 3. Recalculate structure for DB update (based on updated containers)
+      const newStructure = {
+          introduction: (newContainers.introduction || []).map((item: Item) => item.id),
+          main: (newContainers.main || []).map((item: Item) => item.id),
+          conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
+          ambiguous: (newContainers.ambiguous || []).map((item: Item) => item.id),
+      };
+      
+      // 4. Update UI *after* successful deletion confirmation
+      setSermon(sermonWithDeletedThought); // Update sermon state 
+      setContainers(newContainers); // Update containers state
+      containersRef.current = newContainers; // Keep ref in sync
+
+      // 5. Update structure in DB (if changed)
+      const structureDidChange = isStructureChanged(previousSermon.structure || {}, newStructure);
+      if (structureDidChange) {
+          console.log(`[Structure] Structure changed after deletion. Updating DB.`);
+          try {
+              await updateStructure(sermonId, newStructure);
+              console.log("[Structure] Database structure updated successfully after deletion.");
+              // Ensure the final sermon state reflects the latest structure
+              setSermon(prevSermon => prevSermon ? { ...prevSermon, structure: newStructure } : prevSermon);
+          } catch (structureError) {
+              console.error("[Structure] Error updating database structure after deletion:", structureError);
+              toast.error(t('errors.savingError') || "Error saving structure changes after deleting item.");
+              // Note: Thought is deleted, but structure might be out of sync. UI reflects deleted state.
+          }
+      } else {
+         console.log(`[Structure] Structure did not change after deletion. DB structure update skipped.`);
+      }
+
+      toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
+
+    } catch (deleteError) {
+      console.error(`[Structure] Error deleting thought ${itemId}:`, deleteError);
+      toast.error(t('errors.deletingError') || "Failed to delete thought.");
+      // Do not update UI state if backend deletion fails
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1121,7 +1215,14 @@ function StructurePageContent() {
                         <DummyDropZone container="ambiguous" />
                       ) : (
                         containers.ambiguous.map((item) => (
-                          <SortableItem key={item.id} item={item} containerId="ambiguous" onEdit={handleEdit} />
+                          <SortableItem 
+                            key={item.id} 
+                            item={item} 
+                            containerId="ambiguous" 
+                            onEdit={handleEdit} 
+                            showDeleteIcon={true}
+                            onDelete={handleRemoveFromStructure}
+                          />
                         ))
                       )}
                     </div>
