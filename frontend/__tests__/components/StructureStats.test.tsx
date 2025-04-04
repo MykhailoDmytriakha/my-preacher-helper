@@ -35,6 +35,21 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+// Mock themeColors
+jest.mock('@/utils/themeColors', () => ({
+  SERMON_SECTION_COLORS: {
+    introduction: {
+      base: "#2563eb"
+    },
+    mainPart: {
+      base: "#7e22ce"
+    },
+    conclusion: {
+      base: "#16a34a"
+    }
+  }
+}));
+
 // Mock component that simulates the actual StructureStats component
 const MockStructureStats: React.FC<{
   sermon: Sermon;

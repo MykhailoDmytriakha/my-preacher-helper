@@ -1,17 +1,46 @@
 import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle } from "../../app/utils/tagUtils";
+import { getTagStyling } from "../../app/utils/themeColors";
 import { getContrastColor } from "../../app/utils/color";
 
-// Mock color utility
+// Mock dependencies
 jest.mock("../../app/utils/color", () => ({
   getContrastColor: jest.fn(),
 }));
 
+jest.mock("../../app/utils/themeColors", () => ({
+  getTagStyling: jest.fn(),
+}));
+
 describe("tagUtils", () => {
   beforeEach(() => {
-    // Reset mock implementation
+    // Reset mock implementations
     (getContrastColor as jest.Mock).mockImplementation((color) => 
       color === "#FFFFFF" ? "#000000" : "#FFFFFF"
     );
+
+    // Mock the getTagStyling to return predictable test values
+    (getTagStyling as jest.Mock).mockImplementation((section) => {
+      if (section === 'introduction') {
+        return {
+          bg: "bg-blue-50 dark:bg-blue-900",
+          text: "text-blue-800 dark:text-blue-200"
+        };
+      } else if (section === 'mainPart') {
+        return {
+          bg: "bg-purple-50 dark:bg-purple-900",
+          text: "text-purple-800 dark:text-purple-200"
+        };
+      } else if (section === 'conclusion') {
+        return {
+          bg: "bg-green-50 dark:bg-green-900",
+          text: "text-green-800 dark:text-green-200"
+        };
+      }
+      return {
+        bg: "bg-indigo-50 dark:bg-indigo-900",
+        text: "text-indigo-800 dark:text-indigo-200"
+      };
+    });
   });
 
   describe("isStructureTag", () => {
@@ -50,24 +79,28 @@ describe("tagUtils", () => {
   describe("getDefaultTagStyling", () => {
     test("returns blue styling for intro tags", () => {
       const styling = getDefaultTagStyling("вступление");
+      expect(getTagStyling).toHaveBeenCalledWith('introduction');
       expect(styling.bg).toContain("blue");
       expect(styling.text).toContain("blue");
     });
 
     test("returns purple styling for main tags", () => {
       const styling = getDefaultTagStyling("main");
+      expect(getTagStyling).toHaveBeenCalledWith('mainPart');
       expect(styling.bg).toContain("purple");
       expect(styling.text).toContain("purple");
     });
 
     test("returns green styling for conclusion tags", () => {
       const styling = getDefaultTagStyling("заключение");
+      expect(getTagStyling).toHaveBeenCalledWith('conclusion');
       expect(styling.bg).toContain("green");
       expect(styling.text).toContain("green");
     });
 
     test("returns indigo styling for other tags", () => {
       const styling = getDefaultTagStyling("example");
+      expect(getTagStyling).not.toHaveBeenCalled();
       expect(styling.bg).toContain("indigo");
       expect(styling.text).toContain("indigo");
     });

@@ -737,7 +737,7 @@ export default function SermonPage() {
               thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
               onOutlineUpdate={handleOutlineUpdate}
             />
-            {/* {sermon.structure && <StructurePreview sermon={sermon} />} */}
+            {sermon.structure && <StructurePreview sermon={sermon} />}
           </div>
         </div>
       </div>

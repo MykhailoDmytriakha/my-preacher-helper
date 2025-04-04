@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 // Path alias imports
 import type { Sermon, Thought } from "@/models/models";
 import { ChevronIcon } from '@components/Icons';
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors'; // Import the central theme
 
 interface StructurePreviewProps {
   sermon: Sermon;
@@ -43,9 +44,9 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
   };
 
   // Default colors
-  const introColor = "#2563eb";
-  const mainColor = "#7e22ce";
-  const conclusionColor = "#16a34a";
+  const introColor = SERMON_SECTION_COLORS.introduction.base;
+  const mainColor = SERMON_SECTION_COLORS.mainPart.base;
+  const conclusionColor = SERMON_SECTION_COLORS.conclusion.base;
 
   if (!sermon.structure) return null;
 

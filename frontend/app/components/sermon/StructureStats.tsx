@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import type { Sermon, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 interface StructureStatsProps {
   sermon: Sermon;
@@ -50,9 +51,9 @@ const StructureStats: React.FC<StructureStatsProps> = ({
     : 0;
 
   // Default colors
-  const introColor = "#2563eb";
-  const mainColor = "#7e22ce";
-  const conclusionColor = "#16a34a";
+  const introColor = SERMON_SECTION_COLORS.introduction.base;
+  const mainColor = SERMON_SECTION_COLORS.mainPart.base;
+  const conclusionColor = SERMON_SECTION_COLORS.conclusion.base;
 
   return (
     <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">

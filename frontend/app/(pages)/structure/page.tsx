@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { getContrastColor } from '@/utils/color';
 import CardContent from "@/components/CardContent";
 import { getExportContent } from "@/utils/exportContent";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -133,7 +134,7 @@ function StructurePageContent() {
         setSermon(fetchedSermon);
   
         const tagsData = await getTags(fetchedSermon.userId);
-        const allTags: Record<string, { name: string; color: string }> = {};
+        const allTags: Record<string, { name: string; color?: string }> = {};
         tagsData.requiredTags.forEach((tag: any) => {
           const normalizedName = tag.name.trim().toLowerCase();
           allTags[normalizedName] = { name: tag.name, color: tag.color };
@@ -142,18 +143,25 @@ function StructurePageContent() {
           const normalizedName = tag.name.trim().toLowerCase();
           allTags[normalizedName] = { name: tag.name, color: tag.color };
         });
+
+        // Set required tag colors directly from the theme, ignore fetched tag colors for these
         setRequiredTagColors({
-          introduction: allTags["вступление"]?.color,
-          main: allTags["основная часть"]?.color,
-          conclusion: allTags["заключение"]?.color,
+          introduction: SERMON_SECTION_COLORS.introduction.base,
+          main: SERMON_SECTION_COLORS.mainPart.base,
+          conclusion: SERMON_SECTION_COLORS.conclusion.base,
         });
   
-        setAllowedTags(
-          Object.values(allTags).filter(
+        // Filter allowed tags and ensure a default color is provided if missing
+        const filteredAllowedTags = Object.values(allTags)
+          .filter(
             (tag) =>
               !["вступление", "основная часть", "заключение"].includes(tag.name.toLowerCase())
           )
-        );
+          .map(tag => ({
+            ...tag,
+            color: tag.color || "#808080" // Provide default gray color if missing
+          }));
+        setAllowedTags(filteredAllowedTags);
   
         const allThoughtItems: Record<string, Item> = {};
         fetchedSermon.thoughts.forEach((thought: any) => {

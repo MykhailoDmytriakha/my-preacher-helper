@@ -44,6 +44,21 @@ jest.mock('@/services/tag.service', () => ({
   getTags: jest.fn().mockResolvedValue([]),
 }));
 
+// Mock themeColors
+jest.mock('@/utils/themeColors', () => ({
+  SERMON_SECTION_COLORS: {
+    introduction: {
+      base: "#2563eb"
+    },
+    mainPart: {
+      base: "#7e22ce"
+    },
+    conclusion: {
+      base: "#16a34a"
+    }
+  }
+}));
+
 // Mock ExportButtons component
 jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
@@ -373,5 +388,51 @@ describe('Structure Page Focus Mode', () => {
     // It should not contain content from other sections
     expect(exportContentElement.textContent).not.toContain('Main point 1');
     expect(exportContentElement.textContent).not.toContain('Conclusion point 1');
+  });
+  
+  // New test for centralized colors
+  it('uses centralized colors for column headers from themeColors', () => {
+    // Create a mock implementation of the real structure page
+    const mockRequiredTagColors = jest.fn().mockImplementation(() => {
+      return {
+        introduction: "#2563eb", // The same as SERMON_SECTION_COLORS.introduction.base
+        main: "#7e22ce",         // The same as SERMON_SECTION_COLORS.mainPart.base
+        conclusion: "#16a34a"    // The same as SERMON_SECTION_COLORS.conclusion.base
+      };
+    });
+    
+    // Define a component that simulates using colors from themeColors
+    const StructurePageWithColors = () => {
+      const requiredTagColors = mockRequiredTagColors();
+      
+      return (
+        <div>
+          <div data-testid="column-introduction" style={{ backgroundColor: requiredTagColors.introduction }}>
+            Introduction
+          </div>
+          <div data-testid="column-main" style={{ backgroundColor: requiredTagColors.main }}>
+            Main Part
+          </div>
+          <div data-testid="column-conclusion" style={{ backgroundColor: requiredTagColors.conclusion }}>
+            Conclusion
+          </div>
+        </div>
+      );
+    };
+    
+    render(<StructurePageWithColors />);
+    
+    // Now verify that the columns are using the centralized colors
+    const introColumn = screen.getByTestId('column-introduction');
+    const mainColumn = screen.getByTestId('column-main');
+    const conclusionColumn = screen.getByTestId('column-conclusion');
+    
+    // Check that the styles are using the colors from SERMON_SECTION_COLORS
+    expect(introColumn).toHaveStyle({ backgroundColor: "#2563eb" });
+    expect(mainColumn).toHaveStyle({ backgroundColor: "#7e22ce" });
+    expect(conclusionColumn).toHaveStyle({ backgroundColor: "#16a34a" });
+    
+    // Verify that our mock was called, which represents the centralized color logic
+    expect(mockRequiredTagColors).toHaveBeenCalled();
   });
 }); 

@@ -16,6 +16,37 @@ jest.mock('@hello-pangea/dnd', () => ({
   Draggable: ({ children }: { children: any }) => children({ innerRef: jest.fn(), draggableProps: {}, dragHandleProps: {} }, { isDragging: false, isDropAnimating: false, draggingOver: null })
 }));
 
+// Mock themeColors
+jest.mock('@/utils/themeColors', () => ({
+  getSectionStyling: (section: string) => {
+    if (section === 'introduction') {
+      return {
+        headerBg: "bg-blue-50 dark:bg-blue-900/20",
+        headerHover: "hover:bg-blue-100 dark:hover:bg-blue-800/30",
+        border: "border-blue-200 dark:border-blue-800",
+        dragBg: "bg-blue-50 dark:bg-blue-900/30",
+        badge: "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
+      };
+    } else if (section === 'mainPart') {
+      return {
+        headerBg: "bg-purple-50 dark:bg-purple-900/20",
+        headerHover: "hover:bg-purple-100 dark:hover:bg-purple-800/30",
+        border: "border-purple-200 dark:border-purple-800",
+        dragBg: "bg-purple-50 dark:bg-purple-900/30",
+        badge: "bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100"
+      };
+    } else {
+      return {
+        headerBg: "bg-green-50 dark:bg-green-900/20",
+        headerHover: "hover:bg-green-100 dark:hover:bg-green-800/30",
+        border: "border-green-200 dark:border-green-800",
+        dragBg: "bg-green-50 dark:bg-green-900/30",
+        badge: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
+      };
+    }
+  }
+}));
+
 describe('SermonOutline Component', () => {
   // Define mock functions first
   const mockGetSermonOutline = jest.fn();

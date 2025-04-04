@@ -8,6 +8,7 @@ import type { Sermon, Outline, OutlinePoint } from '@/models/models';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { getSectionStyling } from '@/utils/themeColors';
 
 interface SermonOutlineProps {
   sermon: Sermon;
@@ -347,29 +348,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     }, 0);
   };
 
-  // Color mappings for sections
-  const sectionColors: Record<SectionType, {headerBg: string, headerHover: string, border: string, dragBg: string, badge: string}> = {
-    introduction: {
-      headerBg: "bg-blue-50 dark:bg-blue-900/20",
-      headerHover: "hover:bg-blue-100 dark:hover:bg-blue-800/30",
-      border: "border-blue-200 dark:border-blue-800",
-      dragBg: "bg-blue-50 dark:bg-blue-900/30",
-      badge: "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
-    },
-    mainPart: {
-      headerBg: "bg-purple-50 dark:bg-purple-900/20", 
-      headerHover: "hover:bg-purple-100 dark:hover:bg-purple-800/30",
-      border: "border-purple-200 dark:border-purple-800",
-      dragBg: "bg-purple-50 dark:bg-purple-900/30",
-      badge: "bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100"
-    },
-    conclusion: {
-      headerBg: "bg-green-50 dark:bg-green-900/20",
-      headerHover: "hover:bg-green-100 dark:hover:bg-green-800/30", 
-      border: "border-green-200 dark:border-green-800",
-      dragBg: "bg-green-50 dark:bg-green-900/30",
-      badge: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
-    }
+  // Use the new utility to define sectionColors
+  const sectionColors: Record<SectionType, ReturnType<typeof getSectionStyling>> = {
+    introduction: getSectionStyling('introduction'),
+    mainPart: getSectionStyling('mainPart'),
+    conclusion: getSectionStyling('conclusion'),
   };
 
   // Render each section
