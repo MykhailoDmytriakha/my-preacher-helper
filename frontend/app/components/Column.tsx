@@ -263,7 +263,7 @@ export default function Column({
             style={headerColor ? { backgroundColor: headerColor } : {}}
           >
             {/* Column title */}
-            <div className="p-5 border-b border-white/20">
+            <div className="p-5 border-b border-white">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-white">
                   {title}
@@ -271,7 +271,7 @@ export default function Column({
                 {onAddThought && (
                   <button
                     onClick={() => onAddThought(id)}
-                    className="ml-2 p-1.5 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+                    className="ml-2 p-1.5 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
                     title={t('structure.addThoughtToSection', { section: title })}
                   >
                     <PlusIcon className="h-5 w-5 text-white" />
@@ -281,26 +281,77 @@ export default function Column({
             </div>
             
             {/* Action buttons */}
-            <div className="p-5 border-b border-white/20">
-              {showFocusButton && (
-                <div className="space-y-3">
+            <div className="p-5 border-b border-white">
+              <div className="space-y-3">
+                {showFocusButton && (
                   <button
                     onClick={() => onToggleFocusMode?.(id)}
-                    className="w-full px-4 py-2.5 text-sm font-medium bg-white/90 text-gray-800 rounded-md hover:bg-white transition-colors shadow-sm flex items-center justify-center"
+                    className="relative w-full px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors shadow-sm flex items-center justify-center overflow-hidden isolation-auto"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    {t('structure.normalMode')}
+                    <div className="absolute inset-0 bg-white"></div>
+                    <div className="relative flex items-center justify-center text-gray-800 z-10">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      {t('structure.normalMode')}
+                    </div>
                   </button>
-                </div>
-              )}
+                )}
+                {onAiSort && (
+                  <button
+                    onClick={onAiSort}
+                    disabled={isLoading}
+                    className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${
+                      isLoading ? 'bg-white text-gray-800 border-gray-300' : 
+                      id === 'introduction' ? 'bg-blue-500 text-white hover:bg-blue-400 border-blue-400 shadow-md' : 
+                      id === 'main' ? 'bg-purple-500 text-white hover:bg-purple-400 border-purple-400 shadow-md' : 
+                      id === 'conclusion' ? 'bg-green-500 text-white hover:bg-green-400 border-green-400 shadow-md' : 
+                      'bg-gray-500 text-white hover:bg-gray-400 border-gray-400 shadow-md'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 mr-2 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {t('structure.sorting')}
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex items-center justify-center">
+                          <span className="text-base font-medium">{t('structure.sortButton')}</span>
+                          <span className="text-yellow-300 ml-1.5 animate-pulse text-lg">✨</span>
+                        </span>
+                        <div className="relative flex items-center group">
+                          <QuestionMarkCircleIcon className="w-4 h-4 ml-2 text-white opacity-80 hover:opacity-100" />
+                          <div className="absolute bottom-full left-1/3 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
+                            {t('structure.sortInfo', {
+                              defaultValue: 'Sorting only processes unassigned thoughts, up to 25 at a time.'
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </button>
+                )}
+                {getExportContent && sermonId && (
+                  <div className="mt-4 flex justify-center">
+                    <ExportButtons 
+                      getExportContent={getExportContent}
+                      sermonId={sermonId}
+                      className="inline-flex"
+                      orientation="horizontal"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             
             {/* Outline points - Now includes editing capabilities */}
             {isFocusMode && (
               <div className="p-5 flex-grow overflow-y-auto flex flex-col">
-                <h3 className="text-lg font-semibold text-white/90 mb-3">{t('structure.outlinePoints')}</h3>
+                <h3 className="text-lg font-semibold text-white mb-3">{t('structure.outlinePoints')}</h3>
                 <DragDropContext onDragEnd={handleDragEnd}>
                   <Droppable droppableId={`outline-${id}`}>
                     {(provided) => (
@@ -315,9 +366,9 @@ export default function Column({
                               <li
                                 ref={providedDraggable.innerRef}
                                 {...providedDraggable.draggableProps}
-                                className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 shadow-lg' : 'hover:bg-white/10'}`}
+                                className={`flex items-center group p-2 rounded transition-all ${snapshot.isDragging ? 'bg-white/30 shadow-md' : 'hover:bg-white/15'}`}
                               >
-                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white/40 hover:text-white/80">
+                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white transition-colors">
                                   <Bars3Icon className="h-5 w-5" />
                                 </div>
                                 {editingPointId === point.id ? (
@@ -329,7 +380,7 @@ export default function Column({
                                       value={editingText}
                                       onChange={(e) => setEditingText(e.target.value)}
                                       onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                                      className="flex-grow p-1 text-sm bg-white/20 text-white rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/50"
+                                      className="flex-grow p-1 text-sm bg-gray-700 text-white rounded border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white"
                                       placeholder={t('structure.editPointPlaceholder')}
                                       autoFocus
                                     />
@@ -343,15 +394,15 @@ export default function Column({
                                 ) : (
                                   // Display mode
                                   <>
-                                    <span className="text-sm text-white/90 flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
+                                    <span className="text-sm text-white flex-grow mr-2 transition-colors hover:text-white" onDoubleClick={() => handleStartEdit(point)}>
                                       {point.text}
                                     </span>
-                                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 hover:bg-white/30 rounded">
-                                        <PencilIcon className="h-4 w-4 text-white/70" />
+                                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 hover:bg-white/20 rounded transition-colors">
+                                        <PencilIcon className="h-4 w-4 text-white opacity-80 hover:opacity-100" />
                                       </button>
-                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 hover:bg-white/30 rounded">
-                                        <TrashIcon className="h-4 w-4 text-red-300" />
+                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 hover:bg-white/20 rounded transition-colors">
+                                        <TrashIcon className="h-4 w-4 text-red-300 opacity-80 hover:opacity-100" />
                                       </button>
                                     </div>
                                   </>
@@ -377,7 +428,7 @@ export default function Column({
                         onChange={(e) => setNewPointText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddPoint(); if (e.key === 'Escape') handleCancelEdit(); }}
                         placeholder={t('structure.addPointPlaceholder')}
-                        className="flex-grow p-1 text-sm bg-white/20 text-white rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/50 placeholder-white/50"
+                        className="flex-grow p-1 text-sm bg-gray-700 text-white rounded border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white placeholder-gray-300"
                         autoFocus
                       />
                       <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 hover:bg-white/30 rounded">
@@ -391,7 +442,7 @@ export default function Column({
                     <button 
                       onClick={() => setAddingNewPoint(true)}
                       aria-label={t('structure.addPointButton')}
-                      className="flex items-center justify-center w-full p-2 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded border border-dashed border-white/30 transition-colors"
+                      className="flex items-center justify-center w-full p-2 text-sm text-white hover:text-white hover:bg-white/15 rounded border border-dashed border-white/30 transition-all"
                     >
                       <PlusIcon className="h-4 w-4 mr-1" />
                       {t('structure.addPointButton')}
@@ -401,7 +452,7 @@ export default function Column({
 
                 {/* Saving Indicator - Moved Below List */}
                 {savingOutline && (
-                  <div className="text-xs text-white/70 mt-3 text-center animate-pulse">{t('buttons.saving')}...</div>
+                  <div className="text-xs text-white mt-3 text-center animate-pulse">{t('buttons.saving')}...</div>
                 )}
               </div>
             )}
@@ -446,7 +497,7 @@ export default function Column({
             <span className="flex items-center">
               {title} 
               <div 
-                className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white/30"
+                className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white"
                 onMouseEnter={() => setShowTooltip(true)}
                 onMouseLeave={() => setShowTooltip(false)}
                 title={t('structure.assignedUnassignedTooltip', {
@@ -454,10 +505,10 @@ export default function Column({
                   unassigned: unassignedItems
                 })}
               >
-                <span className="bg-green-500/40 px-2 py-0.5 text-white">
+                <span className="bg-green-500 bg-opacity-40 px-2 py-0.5 text-white">
                   {assignedItems}
                 </span>
-                <span className="bg-white/20 px-2 py-0.5 text-white">
+                <span className="bg-gray-500 px-2 py-0.5 text-white">
                   {unassignedItems}
                 </span>
                 {showTooltip && (
@@ -474,7 +525,7 @@ export default function Column({
               {onAddThought && (
                 <button
                   onClick={() => onAddThought(id)}
-                  className="p-1.5 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+                  className="p-1.5 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
                   title={t('structure.addThoughtToSection', { section: title })}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
@@ -495,7 +546,7 @@ export default function Column({
           
           {/* Outline points display */}
           {localOutlinePoints && localOutlinePoints.length > 0 && (
-            <div className="mt-2 text-sm font-normal text-white/90 border-t border-white/20 pt-2">
+            <div className="mt-2 text-sm font-normal text-white border-t border-white pt-2">
               <ul className="list-disc pl-4 space-y-1">
                 {localOutlinePoints.map((point: OutlinePoint) => (
                   <li key={point.id}>{point.text}</li>

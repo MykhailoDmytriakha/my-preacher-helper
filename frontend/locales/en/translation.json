@@ -220,7 +220,7 @@
     "outlinePoints": "Outline Points",
     "content": "Content",
     "tags": "Tags",
-    "sortButton": "Sort ✨",
+    "sortButton": "Sort",
     "sorting": "Sorting...",
     "sortInfo": "Sorting only processes unassigned thoughts, up to 25 at a time.",
     "assigned": "Assigned to outline",
