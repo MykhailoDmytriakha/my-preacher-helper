@@ -149,7 +149,9 @@
     "thoughtUpdateError": "Помилка оновлення запису в базі даних",
     "microphoneUnavailable": "Мікрофон недоступний",
     "addThoughtError": "Помилка додавання запису",
-    "aiSortingError": "Помилка сортування елементів за допомогою ШІ. Будь ласка, спробуйте ще раз."
+    "aiSortingError": "Помилка сортування елементів за допомогою ШІ. Будь ласка, спробуйте ще раз.",
+    "saveOutlineError": "Не вдалося зберегти план",
+    "fetchOutlineError": "Не вдалося завантажити план"
   },
   "audio": {
     "processing": "Обробка...",
@@ -201,7 +203,13 @@
     "sortInfo": "Сортування обробляє лише непривʼязані думки, до 25 за раз.",
     "assigned": "Привʼязані до плану",
     "unassigned": "Непривʼязані",
-    "assignedUnassignedTooltip": "{{assigned}} привʼязано до пунктів плану / {{unassigned}} не привʼязано"
+    "assignedUnassignedTooltip": "{{assigned}} привʼязано до пунктів плану / {{unassigned}} не привʼязано",
+    "outlineSavedSuccess": "План збережено",
+    "deletePointConfirm": "Ви впевнені, що хочете видалити цей пункт плану: \"{{text}}\"?",
+    "addThoughtToSection": "Додати думку до {{section}}",
+    "editPointPlaceholder": "Редагувати пункт плану",
+    "addPointPlaceholder": "Введіть новий пункт плану",
+    "addPointButton": "Додати пункт плану"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

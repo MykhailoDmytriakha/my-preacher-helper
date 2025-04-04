@@ -176,7 +176,9 @@
     "thoughtUpdateError": "Ошибка обновления записи в базе данных",
     "microphoneUnavailable": "Микрофон не доступен",
     "addThoughtError": "Ошибка добавления записи",
-    "aiSortingError": "Ошибка сортировки элементов с помощью ИИ. Пожалуйста, попробуйте еще раз."
+    "aiSortingError": "Ошибка сортировки элементов с помощью ИИ. Пожалуйста, попробуйте еще раз.",
+    "saveOutlineError": "Не удалось сохранить план",
+    "fetchOutlineError": "Не удалось загрузить план"
   },
   "manualThought": {
     "addManual": "Добавить запись вручную",
@@ -223,7 +225,13 @@
     "sortInfo": "Сортировка обрабатывает только непривязанные мысли, до 25 за раз.",
     "assigned": "Привязаны к плану",
     "unassigned": "Непривязанные",
-    "assignedUnassignedTooltip": "{{assigned}} привязано к пунктам плана / {{unassigned}} не привязано"
+    "assignedUnassignedTooltip": "{{assigned}} привязано к пунктам плана / {{unassigned}} не привязано",
+    "outlineSavedSuccess": "План сохранен",
+    "deletePointConfirm": "Вы уверены, что хотите удалить этот пункт плана: \"{{text}}\"?",
+    "addThoughtToSection": "Добавить мысль в {{section}}",
+    "editPointPlaceholder": "Редактировать пункт плана",
+    "addPointPlaceholder": "Введите новый пункт плана",
+    "addPointButton": "Добавить пункт плана"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

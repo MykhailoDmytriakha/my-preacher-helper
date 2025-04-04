@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import { updateSermonOutline } from "@/services/outline.service";
 import SortableItem from "./SortableItem";
-import { Item, OutlinePoint } from "@/models/models";
+import { Item, OutlinePoint, Outline } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import ExportButtons from "@components/ExportButtons";
+import { toast } from 'sonner';
 
 interface ColumnProps {
   id: string;
@@ -26,7 +29,22 @@ interface ColumnProps {
   getExportContent?: () => Promise<string>; // Function to get export content
   sermonId?: string; // Add sermonId prop for export functionality
   onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
+  onOutlineUpdate?: (updatedOutline: Outline) => void; // Add callback for outline updates propagating back to parent
+  thoughtsPerOutlinePoint?: Record<string, number>; // Add this prop for non-focus mode display
 }
+
+// Define SectionType based on Column ID mapping
+type SectionType = 'introduction' | 'mainPart' | 'conclusion';
+
+// Helper to map column ID to SectionType used in Outline model
+const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
+  switch (columnId) {
+    case 'introduction': return 'introduction';
+    case 'main': return 'mainPart';
+    case 'conclusion': return 'conclusion';
+    default: return null; // Handle cases like 'ambiguous' or others
+  }
+};
 
 export default function Column({ 
   id, 
@@ -34,7 +52,7 @@ export default function Column({
   items, 
   headerColor, 
   onEdit, 
-  outlinePoints = [],
+  outlinePoints: initialOutlinePoints = [], // Rename prop for clarity
   showFocusButton = false,
   isFocusMode = false,
   onToggleFocusMode,
@@ -43,12 +61,170 @@ export default function Column({
   className = "",
   getExportContent,
   sermonId,
-  onAddThought
+  onAddThought,
+  onOutlineUpdate, // Destructure the new callback
+  thoughtsPerOutlinePoint = {} // Destructure the new prop with a default value
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   const [showTooltip, setShowTooltip] = useState(false);
   
+  // --- State for Outline Point Editing (only relevant in focus mode) ---
+  const [localOutlinePoints, setLocalOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
+  const [editingPointId, setEditingPointId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+  const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
+  const [newPointText, setNewPointText] = useState<string>("");
+  const [savingOutline, setSavingOutline] = useState<boolean>(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  // Update local state if the prop changes (e.g., after initial load or external update)
+  useEffect(() => {
+    setLocalOutlinePoints(initialOutlinePoints);
+  }, [initialOutlinePoints]);
+
+  // Focus input when starting to add/edit
+  useEffect(() => {
+    if (addingNewPoint && addInputRef.current) {
+      addInputRef.current.focus();
+    }
+  }, [addingNewPoint]);
+
+  useEffect(() => {
+    if (editingPointId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingPointId]);
+
+  // --- Handlers for Outline Point Editing ---
+
+  // Debounced save function
+  const triggerSaveOutline = (updatedPoints: OutlinePoint[]) => {
+    if (!sermonId || !isFocusMode) return; // Only save in focus mode with sermonId
+
+    const sectionType = mapColumnIdToSectionType(id);
+    if (!sectionType) {
+      console.error("Cannot save outline: Invalid section ID", id);
+      return;
+    }
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    setSavingOutline(true); // Indicate saving starts
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Construct the full outline object expected by the API
+        // NOTE: This assumes we only modify the current section. 
+        // A more robust approach might fetch the full outline first.
+        const outlineToSave: Partial<Outline> = { [sectionType === 'mainPart' ? 'main' : sectionType]: updatedPoints };
+
+        // Call the API to update the outline
+        await updateSermonOutline(sermonId, outlineToSave as Outline); 
+
+        // Propagate the change UP using the callback
+        // Construct a potentially partial outline reflecting only the change made
+        const updatedOutlineForCallback: Outline = {
+          introduction: sectionType === 'introduction' ? updatedPoints : [], // Or fetch existing if needed
+          main: sectionType === 'mainPart' ? updatedPoints : [], // Or fetch existing if needed
+          conclusion: sectionType === 'conclusion' ? updatedPoints : [], // Or fetch existing if needed
+        };
+        onOutlineUpdate?.(updatedOutlineForCallback); // Notify parent
+
+        toast.success(t('structure.outlineSavedSuccess', { defaultValue: 'Outline saved' }));
+      } catch (error) {
+        console.error("Error saving sermon outline:", error);
+        toast.error(t('errors.saveOutlineError', { defaultValue: 'Failed to save outline' }));
+      } finally {
+        setSavingOutline(false); // Indicate saving finished
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current); // Clear timeout after execution
+          saveTimeoutRef.current = null;
+        }
+      }
+    }, 1500); // Debounce saves by 1.5 seconds
+  };
+
+  const handleAddPoint = () => {
+    if (!newPointText.trim()) {
+      setAddingNewPoint(false); // Close if empty
+      return;
+    }
+    const newPoint: OutlinePoint = {
+      id: `new-${Date.now().toString()}`, // Temporary ID
+      text: newPointText.trim(),
+    };
+    const updatedPoints = [...localOutlinePoints, newPoint];
+    setLocalOutlinePoints(updatedPoints);
+    setNewPointText("");
+    setAddingNewPoint(false);
+    triggerSaveOutline(updatedPoints);
+  };
+  
+  const handleStartEdit = (point: OutlinePoint) => {
+    setEditingPointId(point.id);
+    setEditingText(point.text);
+    setAddingNewPoint(false); // Ensure add mode is off
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPointId(null);
+    setEditingText("");
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingPointId || !editingText.trim()) {
+      handleCancelEdit(); // Cancel if text is empty
+      return;
+    }
+    const updatedPoints = localOutlinePoints.map(p => 
+      p.id === editingPointId ? { ...p, text: editingText.trim() } : p
+    );
+    setLocalOutlinePoints(updatedPoints);
+    handleCancelEdit(); // Reset editing state
+    triggerSaveOutline(updatedPoints);
+  };
+
+  const handleDeletePoint = (pointId: string) => {
+    // Find the point to get its text for the confirmation message
+    const pointToDelete = localOutlinePoints.find(p => p.id === pointId);
+    const pointText = pointToDelete ? pointToDelete.text : ''; // Get text or empty string
+
+    // Construct the confirmation message using translation and interpolation
+    const confirmMessage = t('structure.deletePointConfirm', {
+      defaultValue: `Are you sure you want to delete this outline point: "${pointText}"?`,
+      text: pointText // Pass text for interpolation if the key supports it
+    });
+
+    if (window.confirm(confirmMessage)) {
+      const updatedPoints = localOutlinePoints.filter(p => p.id !== pointId);
+      setLocalOutlinePoints(updatedPoints);
+      if (editingPointId === pointId) handleCancelEdit(); // Cancel edit if deleting the item being edited
+      triggerSaveOutline(updatedPoints);
+    }
+  };
+  
+  const handleDragEnd = (result: DropResult) => {
+    const { source, destination } = result;
+
+    // Dropped outside the list or in the same position
+    if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) {
+      return;
+    }
+    const items = Array.from(localOutlinePoints);
+    const [reorderedItem] = items.splice(source.index, 1);
+    items.splice(destination.index, 0, reorderedItem);
+
+    setLocalOutlinePoints(items);
+    triggerSaveOutline(items); // Save the new order
+  };
+
+  // --- End Outline Editing Logic ---
+
   // Always use vertical list strategy regardless of focus mode
   const sortingStrategy = verticalListSortingStrategy;
   
@@ -98,38 +274,9 @@ export default function Column({
                     className="ml-2 p-1.5 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
                     title={t('structure.addThoughtToSection', { section: title })}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                    </svg>
+                    <PlusIcon className="h-5 w-5 text-white" />
                   </button>
                 )}
-              </div>
-              
-              <div className="flex items-center mt-2">
-                <div 
-                  className="flex overflow-hidden rounded-full text-xs font-medium relative select-none cursor-default hover:ring-2 hover:ring-white/30"
-                  onMouseEnter={() => setShowTooltip(true)}
-                  onMouseLeave={() => setShowTooltip(false)}
-                  title={t('structure.assignedUnassignedTooltip', {
-                    assigned: assignedItems,
-                    unassigned: unassignedItems
-                  })}
-                >
-                  <span className="bg-green-500/70 px-2.5 py-1 text-white">
-                    {assignedItems}
-                  </span>
-                  <span className="bg-white/30 px-2.5 py-1 text-white">
-                    {unassignedItems}
-                  </span>
-                  {showTooltip && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
-                      {t('structure.assignedUnassignedTooltip', {
-                        assigned: assignedItems,
-                        unassigned: unassignedItems
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
             
@@ -146,80 +293,116 @@ export default function Column({
                     </svg>
                     {t('structure.normalMode')}
                   </button>
-                  
-                  <button
-                    onClick={onAiSort}
-                    disabled={isLoading}
-                    className={`w-full px-4 py-2.5 text-sm font-medium bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-md hover:from-violet-700 hover:to-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border-2 border-indigo-300 hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 focus:outline-none`}
-                  >
-                    {isLoading ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        {t('structure.sorting')}
-                      </>
-                    ) : (
-                      <>
-                        <span className="flex-grow">{t('structure.sortButton')}</span>
-                        <div className="relative flex items-center group">
-                          <QuestionMarkCircleIcon className="w-4 h-4 text-white/70" />
-                          <div className="absolute bottom-full left-1/3 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
-                            {t('structure.sortInfo', {
-                              defaultValue: 'Sorting only processes unassigned thoughts, up to 25 at a time.'
-                            })}
-                          </div>
-                        </div>                      
-                      </>
-                    )}
-                  </button>
-                  
-                  {/* Add export buttons in focus mode */}
-                  {getExportContent && sermonId && (
-                    <div className="mt-3">
-                      <div className="text-white/80 text-sm mb-1.5 font-medium">
-                        {t('export.exportTo')}:
-                      </div>
-                      <ExportButtons 
-                        sermonId={sermonId} 
-                        getExportContent={getExportContent} 
-                        orientation="horizontal"
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </div>
             
-            {/* Outline points */}
-            {outlinePoints && outlinePoints.length > 0 && (
-              <div className="p-5 flex-grow overflow-y-auto">
-                <ul className="space-y-3 text-white/90">
-                  {outlinePoints.map((point) => {
-                    // Extract the number prefix if it exists (e.g., "1. Text" or "1) Text")
-                    const match = point.text.match(/^(\d+)[.)\s]+\s*(.*)$/);
-                    
-                    if (match) {
-                      // If we have a numbered point, preserve the numbering
-                      const [_, number, text] = match;
-                      return (
-                        <li key={point.id} className="flex items-start">
-                          <span className="text-sm font-medium mr-1.5">{number}.</span>
-                          <span className="text-sm">{text}</span>
-                        </li>
-                      );
-                    } else {
-                      // For non-numbered points, keep the bullet style
-                      return (
-                        <li key={point.id} className="flex items-start">
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-white/70 mt-1.5 mr-2 flex-shrink-0"></span>
-                          <span className="text-sm">{point.text}</span>
-                        </li>
-                      );
-                    }
-                  })}
-                </ul>
+            {/* Outline points - Now includes editing capabilities */}
+            {isFocusMode && (
+              <div className="p-5 flex-grow overflow-y-auto flex flex-col">
+                <h3 className="text-lg font-semibold text-white/90 mb-3">{t('structure.outlinePoints')}</h3>
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <Droppable droppableId={`outline-${id}`}>
+                    {(provided) => (
+                      <ul 
+                        {...provided.droppableProps} 
+                        ref={provided.innerRef}
+                        className="space-y-2 flex-grow"
+                      >
+                        {localOutlinePoints.map((point, index) => (
+                          <Draggable key={point.id} draggableId={point.id} index={index}>
+                            {(providedDraggable, snapshot) => (
+                              <li
+                                ref={providedDraggable.innerRef}
+                                {...providedDraggable.draggableProps}
+                                className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 shadow-lg' : 'hover:bg-white/10'}`}
+                              >
+                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white/40 hover:text-white/80">
+                                  <Bars3Icon className="h-5 w-5" />
+                                </div>
+                                {editingPointId === point.id ? (
+                                  // Edit mode
+                                  <div className="flex-grow flex items-center space-x-1">
+                                    <input
+                                      ref={editInputRef}
+                                      type="text"
+                                      value={editingText}
+                                      onChange={(e) => setEditingText(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
+                                      className="flex-grow p-1 text-sm bg-white/20 text-white rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/50"
+                                      placeholder={t('structure.editPointPlaceholder')}
+                                      autoFocus
+                                    />
+                                    <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 hover:bg-white/30 rounded">
+                                      <CheckIcon className="h-4 w-4 text-green-300" />
+                                    </button>
+                                    <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 hover:bg-white/30 rounded">
+                                      <XMarkIcon className="h-4 w-4 text-red-300" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  // Display mode
+                                  <>
+                                    <span className="text-sm text-white/90 flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
+                                      {point.text}
+                                    </span>
+                                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 hover:bg-white/30 rounded">
+                                        <PencilIcon className="h-4 w-4 text-white/70" />
+                                      </button>
+                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 hover:bg-white/30 rounded">
+                                        <TrashIcon className="h-4 w-4 text-red-300" />
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </li>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </ul>
+                    )}
+                  </Droppable>
+                </DragDropContext>
+                
+                {/* Add New Point Section */}
+                <div className="mt-auto pt-4">
+                  {addingNewPoint ? (
+                    <div className="flex items-center space-x-1">
+                      <input
+                        ref={addInputRef}
+                        type="text"
+                        value={newPointText}
+                        onChange={(e) => setNewPointText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddPoint(); if (e.key === 'Escape') handleCancelEdit(); }}
+                        placeholder={t('structure.addPointPlaceholder')}
+                        className="flex-grow p-1 text-sm bg-white/20 text-white rounded border border-white/30 focus:outline-none focus:ring-1 focus:ring-white/50 placeholder-white/50"
+                        autoFocus
+                      />
+                      <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 hover:bg-white/30 rounded">
+                        <CheckIcon className="h-4 w-4 text-green-300" />
+                      </button>
+                      <button aria-label={t('common.cancel')} onClick={() => { setAddingNewPoint(false); setNewPointText(''); }} className="p-1 hover:bg-white/30 rounded">
+                        <XMarkIcon className="h-4 w-4 text-red-300" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setAddingNewPoint(true)}
+                      aria-label={t('structure.addPointButton')}
+                      className="flex items-center justify-center w-full p-2 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded border border-dashed border-white/30 transition-colors"
+                    >
+                      <PlusIcon className="h-4 w-4 mr-1" />
+                      {t('structure.addPointButton')}
+                    </button>
+                  )}
+                </div>
+
+                {/* Saving Indicator - Moved Below List */}
+                {savingOutline && (
+                  <div className="text-xs text-white/70 mt-3 text-center animate-pulse">{t('buttons.saving')}...</div>
+                )}
               </div>
             )}
           </div>
@@ -251,7 +434,7 @@ export default function Column({
     );
   }
   
-  // Render in normal mode (unchanged original layout)
+  // --- Non-Focus Mode Rendering ---
   return (
     <div className={`flex flex-col ${className}`}>
       <div className="mb-2">
@@ -311,10 +494,10 @@ export default function Column({
           </div>
           
           {/* Outline points display */}
-          {outlinePoints && outlinePoints.length > 0 && (
+          {localOutlinePoints && localOutlinePoints.length > 0 && (
             <div className="mt-2 text-sm font-normal text-white/90 border-t border-white/20 pt-2">
               <ul className="list-disc pl-4 space-y-1">
-                {outlinePoints.map((point) => (
+                {localOutlinePoints.map((point: OutlinePoint) => (
                   <li key={point.id}>{point.text}</li>
                 ))}
               </ul>

@@ -5,7 +5,8 @@ import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, D
 
 // Path alias imports
 import type { Sermon, Outline, OutlinePoint } from '@/models/models';
-import { ChevronIcon } from '@components/Icons';
+import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
+import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 
 interface SermonOutlineProps {
@@ -19,25 +20,49 @@ type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
 const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlinePoint = {}, onOutlineUpdate }) => {
   const { t } = useTranslation();
+  
+  // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [saveQueue, setSaveQueue] = useState<number>(0);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // State for outline data
   const [sectionPoints, setSectionPoints] = useState<Record<SectionType, OutlinePoint[]>>({
     introduction: [],
     mainPart: [],
     conclusion: [],
   });
-  
-  // Track expanded sections - initially collapsed until data is loaded
   const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>({
     introduction: false,
     mainPart: false,
     conclusion: false,
   });
+  const [editingPointId, setEditingPointId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+  const [addingNewToSection, setAddingNewToSection] = useState<SectionType | null>(null);
+  const [newPointTexts, setNewPointTexts] = useState<Record<SectionType, string>>({
+    introduction: '',
+    mainPart: '',
+    conclusion: '',
+  });
+
+  // --- All useRef hooks after useState ---
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  
+  // --- All useEffect hooks after useState and useRef ---
+  // Focus input when starting to add/edit
+  useEffect(() => {
+    if (addingNewToSection && addInputRef.current) {
+      addInputRef.current.focus();
+    }
+  }, [addingNewToSection]);
+
+  useEffect(() => {
+    if (editingPointId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingPointId]);
   
   // Fetch outline data when the component mounts or sermon ID changes
   useEffect(() => {
@@ -95,7 +120,10 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
-    if (!newPointTexts[section].trim()) return;
+    if (!newPointTexts[section].trim()) {
+      setAddingNewToSection(null); // Close if empty
+      return;
+    }
     
     const newPoint = {
       id: Date.now().toString(),
@@ -194,19 +222,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     });
   };
   
-  const [editingPointId, setEditingPointId] = useState<string | null>(null);
-  // Track which section is in "add new" mode
-  const [addingNewToSection, setAddingNewToSection] = useState<SectionType | null>(null);
-  
-  const [newPointTexts, setNewPointTexts] = useState<Record<SectionType, string>>({
-    introduction: '',
-    mainPart: '',
-    conclusion: '',
-  });
-  
-  // Create a ref for the active add input field
-  const addInputRef = useRef<HTMLDivElement>(null);
-  
   // Handle outside clicks to close the add point form
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -224,352 +239,281 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     }
   }, [addingNewToSection]);
   
-  const updatePoint = async (section: SectionType, pointId: string, newText: string) => {
-    // Create updated points array for this section
-    const updatedSectionArray = sectionPoints[section].map(point => 
-      point.id === pointId ? { ...point, text: newText } : point
-    );
-    
-    const updatedSectionPoints = {
-      ...sectionPoints,
-      [section]: updatedSectionArray,
-    };
-    
-    // Update state and reset editing
-    setSectionPoints(updatedSectionPoints);
+  const handleStartEdit = (point: OutlinePoint) => {
+    setEditingPointId(point.id);
+    setEditingText(point.text); // Set initial text for editing
+    setAddingNewToSection(null); // Ensure add mode is off
+  };
+
+  const handleCancelEdit = () => {
     setEditingPointId(null);
-    
-    // Save changes directly with the updated data
-    directlySaveOutlineChanges(updatedSectionPoints);
+    setEditingText(""); // Clear editing text
   };
-  
-  const deletePoint = async (section: SectionType, pointId: string) => {
-    // Create updated points array for this section
-    const updatedSectionArray = sectionPoints[section].filter(point => point.id !== pointId);
-    
-    const updatedSectionPoints = {
-      ...sectionPoints,
-      [section]: updatedSectionArray,
-    };
-    
-    // Update state
-    setSectionPoints(updatedSectionPoints);
-    
-    // Auto-collapse section if it becomes empty
-    if (updatedSectionArray.length === 0) {
-      setExpandedSections({
-        ...expandedSections,
-        [section]: false
-      });
-    }
-    
-    // Save changes directly with the updated data
-    directlySaveOutlineChanges(updatedSectionPoints);
-  };
-  
-  // Handle drag end event
-  const handleDragEnd = (result: DropResult) => {
-    const { destination, source } = result;
-    
-    // Return if dropped outside a droppable area or if dropped in the same position
-    if (!destination || 
-        (destination.droppableId === source.droppableId && 
-         destination.index === source.index)) {
+
+  const handleSaveEdit = () => {
+    if (!editingPointId || !editingText.trim()) {
+      handleCancelEdit(); // Cancel if empty
       return;
     }
-    
+
+    const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
+      acc[section as SectionType] = points.map(p => 
+        p.id === editingPointId ? { ...p, text: editingText.trim() } : p
+      );
+      return acc;
+    }, {} as Record<SectionType, OutlinePoint[]>);
+
+    setSectionPoints(updatedPoints);
+    handleCancelEdit(); // Exit edit mode
+    directlySaveOutlineChanges(updatedPoints);
+  };
+
+  const handleDeletePoint = (pointToDelete: OutlinePoint) => {
+    if (window.confirm(t('structure.deletePointConfirm', { text: pointToDelete.text }))) {
+      const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
+        acc[section as SectionType] = points.filter(p => p.id !== pointToDelete.id);
+        return acc;
+      }, {} as Record<SectionType, OutlinePoint[]>);
+      
+      setSectionPoints(updatedPoints);
+      directlySaveOutlineChanges(updatedPoints);
+    }
+  };
+
+  const handleCancelAdd = (section: SectionType) => {
+    setAddingNewToSection(null);
+    setNewPointTexts({
+      ...newPointTexts,
+      [section]: '',
+    });
+  };
+
+  const onDragEnd = (result: DropResult) => {
+    const { source, destination } = result;
+
+    // Dropped outside the list
+    if (!destination) {
+      return;
+    }
+
     const sourceSection = source.droppableId as SectionType;
-    const destinationSection = destination.droppableId as SectionType;
-    
-    // Create a copy of the current points
-    const updatedSectionPoints = { ...sectionPoints };
-    
-    // Remove the item from the source section
-    const [movedItem] = updatedSectionPoints[sourceSection].splice(source.index, 1);
-    
-    // Add the item to the destination section
-    updatedSectionPoints[destinationSection].splice(destination.index, 0, movedItem);
-    
-    // Update state
-    setSectionPoints(updatedSectionPoints);
-    
-    // Save changes
-    directlySaveOutlineChanges(updatedSectionPoints);
+    const destSection = destination.droppableId as SectionType;
+
+    let updatedPoints = { ...sectionPoints };
+
+    if (sourceSection === destSection) {
+      // Reordering within the same section
+      const sectionItems = Array.from(updatedPoints[sourceSection]);
+      const [removed] = sectionItems.splice(source.index, 1);
+      sectionItems.splice(destination.index, 0, removed);
+      updatedPoints[sourceSection] = sectionItems;
+    } else {
+      // Moving between sections
+      const sourceItems = Array.from(updatedPoints[sourceSection]);
+      const destItems = Array.from(updatedPoints[destSection]);
+      const [removed] = sourceItems.splice(source.index, 1);
+      destItems.splice(destination.index, 0, removed);
+      updatedPoints[sourceSection] = sourceItems;
+      updatedPoints[destSection] = destItems;
+    }
+
+    setSectionPoints(updatedPoints);
+    directlySaveOutlineChanges(updatedPoints);
   };
   
-  const renderSection = (section: SectionType, title: string, icon: React.ReactNode) => (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-      {/* Section header with toggle */}
-      <div 
-        className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 cursor-pointer"
-        onClick={() => toggleSection(section)}
-      >
-        <div className="flex items-center gap-2">
-          {icon}
-          <h3 className="font-medium text-lg">{title}</h3>
-          <div className="flex items-center justify-center w-6 h-6 bg-gray-200 dark:bg-gray-700 rounded-full text-xs text-gray-600 dark:text-gray-300">
-            {sectionPoints[section].length}
-          </div>
-        </div>
-        <div className={`transform transition-transform duration-200 ${expandedSections[section] ? 'rotate-180' : ''}`}>
-          <ChevronIcon className="text-gray-500 dark:text-gray-400" />
-        </div>
-      </div>
-      
-      {/* Section content - conditionally displayed */}
-      {expandedSections[section] && (
-        <div className="p-4">
-          {loading ? (
-            <div className="py-3 space-y-2 animate-pulse">
-              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-1/2"></div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
-            </div>
-          ) : sectionPoints[section].length > 0 ? (
-            <Droppable droppableId={section}>
-              {(provided: DroppableProvided) => (
-                <div 
-                  className="space-y-2 mb-4"
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                >
-                  {sectionPoints[section].map((point, index) => (
-                    <Draggable key={`${section}-${point.id}-${index}`} draggableId={point.id} index={index}>
-                      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-                        <div 
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          className={`group flex items-center gap-2 p-2 rounded transition-colors relative overflow-hidden
-                                     ${snapshot.isDragging 
-                                       ? 'bg-blue-50 dark:bg-blue-900 shadow-lg' 
-                                       : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'}`}
-                        >
-                          <div 
-                            {...provided.dragHandleProps}
-                            className="cursor-grab active:cursor-grabbing p-1 -ml-1 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                            title={t('common.dragToReorder')}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                            </svg>
-                          </div>
+  // Main component return
+  if (loading) {
+    return <div className="text-center p-4">{t('common.loading')}</div>;
+  }
 
-                          <span className="font-medium text-gray-600 dark:text-gray-300 shrink-0 flex items-center">{index + 1}.</span>
-                          
+  if (error) {
+    return <div className="text-center p-4 text-red-500">{error}</div>;
+  }
+
+  // Function to get count of thoughts for a point
+  const getThoughtCount = (pointId: string) => thoughtsPerOutlinePoint[pointId] || 0;
+
+  // Mapping for section titles
+  const sectionTitles: Record<SectionType, string> = {
+    introduction: t('structure.introduction'),
+    mainPart: t('structure.mainPart'),
+    conclusion: t('structure.conclusion'),
+  };
+
+  // Get total thoughts count per section
+  const getTotalThoughtsForSection = (sectionType: SectionType) => {
+    return sectionPoints[sectionType].reduce((total, point) => {
+      return total + (thoughtsPerOutlinePoint[point.id] || 0);
+    }, 0);
+  };
+
+  // Color mappings for sections
+  const sectionColors: Record<SectionType, {headerBg: string, headerHover: string, border: string, dragBg: string, badge: string}> = {
+    introduction: {
+      headerBg: "bg-blue-50 dark:bg-blue-900/20",
+      headerHover: "hover:bg-blue-100 dark:hover:bg-blue-800/30",
+      border: "border-blue-200 dark:border-blue-800",
+      dragBg: "bg-blue-50 dark:bg-blue-900/30",
+      badge: "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
+    },
+    mainPart: {
+      headerBg: "bg-purple-50 dark:bg-purple-900/20", 
+      headerHover: "hover:bg-purple-100 dark:hover:bg-purple-800/30",
+      border: "border-purple-200 dark:border-purple-800",
+      dragBg: "bg-purple-50 dark:bg-purple-900/30",
+      badge: "bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100"
+    },
+    conclusion: {
+      headerBg: "bg-green-50 dark:bg-green-900/20",
+      headerHover: "hover:bg-green-100 dark:hover:bg-green-800/30", 
+      border: "border-green-200 dark:border-green-800",
+      dragBg: "bg-green-50 dark:bg-green-900/30",
+      badge: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
+    }
+  };
+
+  // Render each section
+  const renderSection = (sectionType: SectionType) => {
+    const points = sectionPoints[sectionType] || [];
+    const isExpanded = expandedSections[sectionType];
+    const colors = sectionColors[sectionType];
+    const totalThoughts = getTotalThoughtsForSection(sectionType);
+
+    return (
+      <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white rounded-lg shadow-sm border ${colors.border}`}>
+        {/* Section Header */}
+        <button 
+          onClick={() => toggleSection(sectionType)}
+          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 ${colors.headerBg} rounded-t-lg ${colors.headerHover} focus:outline-none focus:ring-2 focus:ring-opacity-50 focus:ring-blue-400`}
+        >
+          <div className="flex items-center">
+            {sectionTitles[sectionType]}
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${colors.badge}`}>
+              {points.length}
+            </span>
+            {totalThoughts > 0 && (
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                {totalThoughts} {t('structure.entries')}
+              </span>
+            )}
+          </div>
+          <ChevronDownIcon className={`h-5 w-5 text-gray-500 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Section Content (Collapsible) */}
+        {isExpanded && (
+          <div className="p-4 border-t border-gray-200">
+            <Droppable droppableId={sectionType} key={sectionType}>
+              {(provided: DroppableProvided) => (
+                <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
+                  {points.map((point, index) => (
+                    <Draggable key={point.id} draggableId={point.id} index={index}>
+                      {(providedDraggable: DraggableProvided, snapshot: DraggableStateSnapshot) => (
+                        <li
+                          ref={providedDraggable.innerRef}
+                          {...providedDraggable.draggableProps}
+                          {...providedDraggable.dragHandleProps}
+                          className={`flex items-center group p-2 rounded transition-colors ${snapshot.isDragging ? `${colors.dragBg} shadow-md` : 'hover:bg-gray-50'}`}
+                          style={{
+                            ...providedDraggable.draggableProps.style,
+                            // Add any custom styles for dragging if needed
+                          }}
+                        >
+                          {/* Drag Handle */}
+                          <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600">
+                            <Bars3Icon className="h-5 w-5" />
+                          </div>
+                          {/* Point Text or Edit Input */}
                           {editingPointId === point.id ? (
-                            <div className="flex-1">
+                            <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
                               <input 
-                                type="text" 
-                                value={point.text} 
-                                onChange={(e) => {
-                                  setSectionPoints({
-                                    ...sectionPoints,
-                                    [section]: sectionPoints[section].map(p => 
-                                      p.id === point.id ? { ...p, text: e.target.value } : p
-                                    ),
-                                  });
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    updatePoint(section, point.id, point.text);
-                                  } else if (e.key === 'Escape') {
-                                    setEditingPointId(null);
-                                  }
-                                }}
-                                className="w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800"
+                                type="text"
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
+                                className="flex-grow p-1 text-sm bg-gray-100 text-gray-800 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                placeholder={t('structure.editPointPlaceholder')}
                                 autoFocus
                               />
-                              <div className="flex space-x-2 mt-2">
-                                <button 
-                                  onClick={() => updatePoint(section, point.id, point.text)}
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                >
-                                  {saving ? t('common.saving') : t('buttons.save')}
-                                </button>
-                                <button 
-                                  onClick={() => setEditingPointId(null)}
-                                  className="px-2 py-1 text-xs bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500"
-                                >
-                                  {t('buttons.cancel')}
-                                </button>
-                              </div>
+                              <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-600 hover:text-green-800">
+                                <CheckIcon className="h-5 w-5" />
+                              </button>
+                              <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-600 hover:text-red-800">
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
                             </div>
                           ) : (
                             <>
-                              <p className="flex-1 text-gray-700 dark:text-gray-300 min-w-0 pr-2 flex items-center">{point.text}</p>
-                              {thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0 && (
-                                <span className="flex items-center justify-center mr-2 min-w-[1.5rem] h-6 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs rounded-full px-1.5">
-                                  {thoughtsPerOutlinePoint[point.id]}
+                              <span className="text-sm text-gray-800 flex-grow mr-2">{point.text}</span>
+                               {/* Thought count badge */}
+                              {getThoughtCount(point.id) > 0 && (
+                                <span className="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full mr-2">
+                                  {getThoughtCount(point.id)}
                                 </span>
                               )}
-                              <div 
-                                className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute right-2 top-1/2 transform -translate-y-1/2 rounded p-0.5"
-                                style={{ backgroundColor: 'inherit' }}
-                              >
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingPointId(point.id);
-                                  }}
-                                  className="p-1 text-blue-600 rounded"
-                                  title={t('common.edit')}
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                                  </svg>
+                              {/* Action Buttons (Edit/Delete) - appear on hover */}
+                              <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-gray-500 hover:text-indigo-600">
+                                  <PencilIcon className="h-4 w-4" />
                                 </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!(thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0)) {
-                                      deletePoint(section, point.id);
-                                    }
-                                  }}
-                                  disabled={!!(thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0)}
-                                  className={`p-1 rounded ${
-                                    thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0
-                                      ? 'text-gray-400 cursor-not-allowed'
-                                      : 'text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30'
-                                  }`}
-                                  title={
-                                    thoughtsPerOutlinePoint && thoughtsPerOutlinePoint[point.id] > 0
-                                      ? t('common.cannotDeleteWithThoughts', { count: thoughtsPerOutlinePoint[point.id] })
-                                      : t('common.delete')
-                                  }
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                                  </svg>
+                                <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} className="p-1 text-gray-500 hover:text-red-600">
+                                  <TrashIcon className="h-4 w-4" />
                                 </button>
                               </div>
                             </>
                           )}
-                        </div>
+                        </li>
                       )}
                     </Draggable>
                   ))}
                   {provided.placeholder}
-                </div>
+                </ul>
               )}
             </Droppable>
-          ) : (
-            <div className="text-center text-gray-500 dark:text-gray-400 py-3 mb-4">
-              {icon}
-              <p className="text-sm">{t('structure.noEntries')}</p>
-            </div>
-          )}
-          
-          {/* Error message if saving/loading failed */}
-          {error && (
-            <div className="mb-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-sm rounded">
-              {error}
-            </div>
-          )}
-          
-          {/* Minimalist approach for adding new points - now section-specific */}
-          {addingNewToSection === section ? (
-            <div className="mt-2" ref={addInputRef}>
-              <input 
-                type="text" 
-                value={newPointTexts[section]}
-                onChange={(e) => setNewPointTexts({
-                  ...newPointTexts, 
-                  [section]: e.target.value
-                })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newPointTexts[section].trim()) {
-                    addPoint(section);
-                  } else if (e.key === 'Escape') {
-                    setAddingNewToSection(null);
-                  }
-                }}
-                placeholder={t('common.addPoint')}
-                className="w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 text-sm"
-                autoFocus
-              />
-              <div className="flex justify-end space-x-2 mt-2">
-                <button 
-                  onClick={() => setAddingNewToSection(null)}
-                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  {t('buttons.cancel')}
-                </button>
-                <button 
-                  onClick={() => {
-                    if (newPointTexts[section].trim()) {
-                      addPoint(section);
-                    }
-                  }}
-                  disabled={!newPointTexts[section].trim() || saving}
-                  className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:text-gray-400 disabled:dark:text-gray-600"
-                >
-                  {saving ? t('common.saving') : t('common.add')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div 
-              onClick={() => setAddingNewToSection(section)}
-              aria-label={t('common.addPoint')}
-              data-testid={`add-point-button-${section}`}
-              className="mt-3 border-t border-dashed border-gray-300 dark:border-gray-600 pt-2 flex justify-center cursor-pointer opacity-50 hover:opacity-100 transition-opacity group"
-            >
-              <span className="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-  
-  return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-semibold mb-4">{t('sermon.outline')}</h2>
-        
-        <div className="space-y-4">
-          {/* Introduction Section */}
-          {renderSection(
-            'introduction', 
-            t('tags.introduction'),
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          )}
-          
-          {/* Main Part Section */}
-          {renderSection(
-            'mainPart',
-            t('tags.mainPart'),
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          )}
-          
-          {/* Conclusion Section */}
-          {renderSection(
-            'conclusion',
-            t('tags.conclusion'),
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </div>
 
-        {/* Global save status indicator - now displayed at the top level, only once */}
-        {saveQueue > 0 && (
-          <div className="mb-4 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-sm rounded flex items-center">
-            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {t('common.saving')} ({saveQueue})
+            {/* Add New Point Section */}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+               {addingNewToSection === sectionType ? (
+                 <div ref={addInputRef} className="flex items-center space-x-1">
+                  <input
+                    type="text"
+                    value={newPointTexts[sectionType]}
+                    onChange={(e) => setNewPointTexts({...newPointTexts, [sectionType]: e.target.value})}
+                    onKeyDown={(e) => { if (e.key === 'Enter') addPoint(sectionType); if (e.key === 'Escape') handleCancelAdd(sectionType); }}
+                    placeholder={t('structure.addPointPlaceholder')}
+                    className="flex-grow p-1 text-sm bg-gray-100 text-gray-800 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500"
+                    autoFocus
+                  />
+                  <button aria-label={t('common.save')} onClick={() => addPoint(sectionType)} className="p-1 text-green-600 hover:text-green-800">
+                    <CheckIcon className="h-5 w-5" />
+                  </button>
+                  <button aria-label={t('common.cancel')} onClick={() => handleCancelAdd(sectionType)} className="p-1 text-red-600 hover:text-red-800">
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : (
+                  <button 
+                    onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
+                    aria-label={t('structure.addPointButton')}
+                    className="flex items-center justify-center w-full p-2 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-dashed border-gray-300 hover:border-indigo-400 transition-colors"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-1" />
+                    {t('structure.addPointButton')}
+                  </button>
+              )}
+            </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  return (
+    <DragDropContext onDragEnd={onDragEnd}>
+      <div className="mt-4">
+        {renderSection('introduction')}
+        {renderSection('mainPart')}
+        {renderSection('conclusion')}
       </div>
     </DragDropContext>
   );

@@ -176,7 +176,9 @@
     "thoughtUpdateError": "Error updating thought in database",
     "microphoneUnavailable": "Microphone unavailable",
     "addThoughtError": "Error adding thought",
-    "aiSortingError": "Error sorting items with AI. Please try again."
+    "aiSortingError": "Error sorting items with AI. Please try again.",
+    "saveOutlineError": "Failed to save outline",
+    "fetchOutlineError": "Failed to fetch outline"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -223,7 +225,13 @@
     "sortInfo": "Sorting only processes unassigned thoughts, up to 25 at a time.",
     "assigned": "Assigned to outline",
     "unassigned": "Unassigned",
-    "assignedUnassignedTooltip": "{{assigned}} assigned to outline points / {{unassigned}} unassigned"
+    "assignedUnassignedTooltip": "{{assigned}} assigned to outline points / {{unassigned}} unassigned",
+    "outlineSavedSuccess": "Outline saved",
+    "deletePointConfirm": "Are you sure you want to delete this outline point: \"{{text}}\"?",
+    "addThoughtToSection": "Add thought to {{section}}",
+    "editPointPlaceholder": "Edit outline point",
+    "addPointPlaceholder": "Enter new outline point",
+    "addPointButton": "Add outline point"
   },
   "knowledge": {
     "title": "Sermon Insights",
