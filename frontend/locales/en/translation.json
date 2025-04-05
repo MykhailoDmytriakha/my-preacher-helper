@@ -202,11 +202,12 @@
     "selectedOutlinePoint": "Selected outline point from {{section}}"
   },
   "structure": {
-    "title": "Sermon Structure",
+    "title": "Sermon Structure:",
     "entries": "entries",
     "recommended": "Recommended: {{percent}}%",
     "workButton": "Work on Structure",
-    "inconsistentTagsWarning": "Some thoughts have tag inconsistencies. Please fix them before working on structure.",
+    "inconsistentTagsWarning": "Some entries have inconsistent tags. Fix them before working on the structure.",
+    "linkThoughtsWarning": "Please first create outline points and link all thoughts to them on the Structure page",
     "underConsideration": "Under Consideration",
     "loadingSermon": "Loading sermon data...",
     "notFound": "Sermon not found or sermonId not specified",

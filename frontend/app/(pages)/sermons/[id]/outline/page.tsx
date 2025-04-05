@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { getSermonPlan, generateSermonPlan } from "@/services/plan.service";
 import useSermon from "@/hooks/useSermon";
+import useSermonValidator from "@/hooks/useSermonValidator";
 import Link from "next/link";
 import DashboardNav from "@/components/navigation/DashboardNav";
 import { GuestBanner } from "@components/GuestBanner";
@@ -18,6 +19,7 @@ export default function SermonOutlinePage() {
   const router = useRouter();
   const { t } = useTranslation();
   const { sermon, loading: sermonLoading, setSermon } = useSermon(id);
+  const { isPlanAccessible } = useSermonValidator(sermon);
   const [plan, setPlan] = useState<Plan | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +48,13 @@ export default function SermonOutlinePage() {
   const isAnyGenerating = useMemo(() => {
     return isGenerating || Object.values(generatingSections).some(value => value);
   }, [isGenerating, generatingSections]);
+
+  // Redirect if sermon's thoughts are not all linked to outline points
+  useEffect(() => {
+    if (!sermonLoading && sermon && !isPlanAccessible) {
+      router.push(`/sermons/${id}`);
+    }
+  }, [sermon, sermonLoading, isPlanAccessible, id, router]);
 
   useEffect(() => {
     const fetchPlan = async () => {
