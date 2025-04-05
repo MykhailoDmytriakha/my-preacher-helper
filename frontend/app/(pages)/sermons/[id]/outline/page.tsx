@@ -368,7 +368,7 @@ export default function SermonOutlinePage() {
 
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">{sermon?.title}</h1>
-          <p className="text-gray-600 dark:text-gray-400">{sermon?.verse}</p>
+          <p className="text-gray-600 dark:text-gray-400 whitespace-pre-line">{sermon?.verse}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">

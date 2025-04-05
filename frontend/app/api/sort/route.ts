@@ -23,17 +23,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }
 
-    // Filter out items that already have an outline point assigned
-    const unassignedItems = items.filter(item => !item.outlinePointId);
+    // We're now going to sort all items, not just unassigned ones
+    // But limit total to MAX_THOUGHTS_FOR_SORTING (25)
+    const itemsToSort = items.slice(0, MAX_THOUGHTS_FOR_SORTING);
     
-    // Limit to MAX_THOUGHTS_FOR_SORTING (25)
-    const itemsToSort = unassignedItems.slice(0, MAX_THOUGHTS_FOR_SORTING);
-    
-    console.log(`Sort route: Sorting ${itemsToSort.length} unassigned items (from total ${items.length}) in column ${columnId} for sermon ${sermonId}`);
+    console.log(`Sort route: Sorting ${itemsToSort.length} items in column ${columnId} for sermon ${sermonId}`);
 
     // Check if there are any items to sort
     if (itemsToSort.length === 0) {
-      console.log("Sort route: No unassigned items to sort");
+      console.log("Sort route: No items to sort");
       return NextResponse.json({ sortedItems: items }, { status: 200 });
     }
 
@@ -48,17 +46,14 @@ export async function POST(request: Request) {
     console.log("Sort route: Items to sort (IDs):", itemsToSort.map((item: Item) => item.id.slice(0, 4)).join(', '));
     
     // Perform the AI sorting
-    const sortedUnassignedItems = await sortItemsWithAI(columnId, itemsToSort, sermon, outlinePoints);
+    const sortedItems = await sortItemsWithAI(columnId, itemsToSort, sermon, outlinePoints);
     
     // Calculate execution time
     const executionTime = performance.now() - startTime;
     console.log(`AI sorting completed in ${executionTime.toFixed(2)}ms`);
     
-    // Combine sorted unassigned items with the items that already had outline points assigned
-    const assignedItems = items.filter(item => item.outlinePointId);
-    const sortedItems = [...sortedUnassignedItems, ...assignedItems];
-    
-    console.log(`Sort route: Successfully sorted ${sortedUnassignedItems.length} unassigned items`);
+    // Log the total count of sorted items
+    console.log(`Sort route: Successfully sorted ${sortedItems.length} items`);
     return NextResponse.json({ sortedItems });
   } catch (error) {
     console.error('Sort route: Error sorting items:', error);

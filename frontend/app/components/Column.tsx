@@ -4,12 +4,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { updateSermonOutline } from "@/services/outline.service";
+import { updateSermonOutline, getSermonOutline } from "@/services/outline.service";
 import SortableItem from "./SortableItem";
 import { Item, OutlinePoint, Outline } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 
@@ -31,6 +31,13 @@ interface ColumnProps {
   onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
   onOutlineUpdate?: (updatedOutline: Outline) => void; // Add callback for outline updates propagating back to parent
   thoughtsPerOutlinePoint?: Record<string, number>; // Add this prop for non-focus mode display
+  // New props for AI sort with interactive confirmation
+  isDiffModeActive?: boolean;
+  highlightedItems?: Record<string, { type: 'assigned' | 'moved' }>;
+  onKeepItem?: (itemId: string, columnId: string) => void;
+  onRevertItem?: (itemId: string, columnId: string) => void;
+  onKeepAll?: (columnId: string) => void;
+  onRevertAll?: (columnId: string) => void;
 }
 
 // Define SectionType based on Column ID mapping
@@ -63,22 +70,41 @@ export default function Column({
   sermonId,
   onAddThought,
   onOutlineUpdate, // Destructure the new callback
-  thoughtsPerOutlinePoint = {} // Destructure the new prop with a default value
+  thoughtsPerOutlinePoint = {}, // Destructure the new prop with a default value
+  // New props for AI sort with interactive confirmation
+  isDiffModeActive = false,
+  highlightedItems = {},
+  onKeepItem,
+  onRevertItem,
+  onKeepAll,
+  onRevertAll
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [outlinePoints, setOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
+  
+  // Basic state for outline points UI
+  const [editingPointId, setEditingPointId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
+  const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
+  const [newPointText, setNewPointText] = useState<string>('');
+  const [showTooltip, setShowTooltip] = useState<boolean>(false);
+  
+  // Refs for focus management
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  
+  // Calculate counts for assigned and unassigned items
+  const assignedItems = items.filter(item => item.outlinePointId).length;
+  const unassignedItems = items.length - assignedItems;
+  
+  // Calculate if this column has any highlighted items
+  const hasHighlightedItems = items.some(item => item.id in highlightedItems);
   
   // --- State for Outline Point Editing (only relevant in focus mode) ---
   const [localOutlinePoints, setLocalOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
-  const [editingPointId, setEditingPointId] = useState<string | null>(null);
-  const [editingText, setEditingText] = useState<string>("");
-  const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
-  const [newPointText, setNewPointText] = useState<string>("");
   const [savingOutline, setSavingOutline] = useState<boolean>(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const addInputRef = useRef<HTMLInputElement>(null);
-  const editInputRef = useRef<HTMLInputElement>(null);
 
   // Update local state if the prop changes (e.g., after initial load or external update)
   useEffect(() => {
@@ -98,18 +124,10 @@ export default function Column({
     }
   }, [editingPointId]);
 
-  // --- Handlers for Outline Point Editing ---
-
-  // Debounced save function
+  // Debounced save function - упрощенная версия по аналогии с SermonOutline.tsx
   const triggerSaveOutline = (updatedPoints: OutlinePoint[]) => {
     if (!sermonId || !isFocusMode) return; // Only save in focus mode with sermonId
 
-    const sectionType = mapColumnIdToSectionType(id);
-    if (!sectionType) {
-      console.error("Cannot save outline: Invalid section ID", id);
-      return;
-    }
-    
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
@@ -118,22 +136,28 @@ export default function Column({
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        // Construct the full outline object expected by the API
-        // NOTE: This assumes we only modify the current section. 
-        // A more robust approach might fetch the full outline first.
-        const outlineToSave: Partial<Outline> = { [sectionType === 'mainPart' ? 'main' : sectionType]: updatedPoints };
+        // Determine the key to use in the outline (mainPart -> main)
+        const sectionType = mapColumnIdToSectionType(id);
+        if (!sectionType) {
+          console.error("Cannot save outline: Invalid section ID", id);
+          return;
+        }
 
-        // Call the API to update the outline
-        await updateSermonOutline(sermonId, outlineToSave as Outline); 
+        // First fetch the current outline to avoid overwriting other sections
+        const currentOutline = await getSermonOutline(sermonId);
+        
+        // Create a merged outline that preserves other sections
+        const outlineToSave: Outline = {
+          introduction: sectionType === 'introduction' ? updatedPoints : (currentOutline?.introduction || []),
+          main: sectionType === 'mainPart' ? updatedPoints : (currentOutline?.main || []),
+          conclusion: sectionType === 'conclusion' ? updatedPoints : (currentOutline?.conclusion || [])
+        };
+
+        // Call the API to update the outline with the complete data
+        await updateSermonOutline(sermonId, outlineToSave);
 
         // Propagate the change UP using the callback
-        // Construct a potentially partial outline reflecting only the change made
-        const updatedOutlineForCallback: Outline = {
-          introduction: sectionType === 'introduction' ? updatedPoints : [], // Or fetch existing if needed
-          main: sectionType === 'mainPart' ? updatedPoints : [], // Or fetch existing if needed
-          conclusion: sectionType === 'conclusion' ? updatedPoints : [], // Or fetch existing if needed
-        };
-        onOutlineUpdate?.(updatedOutlineForCallback); // Notify parent
+        onOutlineUpdate?.(outlineToSave);
 
         toast.success(t('structure.outlineSavedSuccess', { defaultValue: 'Outline saved' }));
       } catch (error) {
@@ -142,11 +166,11 @@ export default function Column({
       } finally {
         setSavingOutline(false); // Indicate saving finished
         if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current); // Clear timeout after execution
+          clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = null;
         }
       }
-    }, 1500); // Debounce saves by 1.5 seconds
+    }, 200); // Используем более короткую задержку для дебаунса
   };
 
   const handleAddPoint = () => {
@@ -208,29 +232,29 @@ export default function Column({
     }
   };
   
+  // Оптимизированная версия handleDragEnd для @hello-pangea/dnd
   const handleDragEnd = (result: DropResult) => {
     const { source, destination } = result;
 
-    // Dropped outside the list or in the same position
-    if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) {
+    // Dropped outside the list or same position
+    if (!destination || (destination.index === source.index)) {
       return;
     }
-    const items = Array.from(localOutlinePoints);
-    const [reorderedItem] = items.splice(source.index, 1);
-    items.splice(destination.index, 0, reorderedItem);
 
-    setLocalOutlinePoints(items);
-    triggerSaveOutline(items); // Save the new order
+    // Create a shallow copy of the outline points array
+    const updatedPoints = Array.from(localOutlinePoints);
+    const [removed] = updatedPoints.splice(source.index, 1);
+    updatedPoints.splice(destination.index, 0, removed);
+    
+    // Update state
+    setLocalOutlinePoints(updatedPoints);
+    
+    // Save changes
+    triggerSaveOutline(updatedPoints);
   };
-
-  // --- End Outline Editing Logic ---
 
   // Always use vertical list strategy regardless of focus mode
   const sortingStrategy = verticalListSortingStrategy;
-  
-  // Count assigned vs unassigned items
-  const assignedItems = items.filter(item => item.outlinePointId).length;
-  const unassignedItems = items.length - assignedItems;
   
   // Background color for header based on id or custom color
   const headerBgColor = !headerColor
@@ -255,7 +279,7 @@ export default function Column({
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
     return (
-      <div className={`flex h-full gap-6 ${className}`}>
+      <div className={`flex h-full gap-6 justify-center max-w-[1800px] mx-auto ${className}`}>
         {/* Left sidebar - fixed, non-scrollable, with more top spacing when scrolling */}
         <div className="w-72 flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)]">
           <div 
@@ -335,6 +359,34 @@ export default function Column({
                     )}
                   </button>
                 )}
+                
+                {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
+                {isDiffModeActive && hasHighlightedItems && (
+                  <div className="space-y-2 mt-3 pt-3 border-t border-white border-opacity-30">
+                    <h3 className="text-sm font-medium text-white mb-2">
+                      {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
+                    </h3>
+                    
+                    {/* Accept all button */}
+                    <button
+                      onClick={() => onKeepAll?.(id)}
+                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-500 transition-colors shadow-sm flex items-center justify-center"
+                    >
+                      <CheckIcon className="h-4 w-4 mr-2" />
+                      {t('structure.acceptAllChanges', { defaultValue: 'Accept all remaining' })}
+                    </button>
+                    
+                    {/* Reject all button */}
+                    <button
+                      onClick={() => onRevertAll?.(id)}
+                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 text-white hover:bg-orange-500 transition-colors shadow-sm flex items-center justify-center"
+                    >
+                      <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
+                      {t('structure.rejectAllChanges', { defaultValue: 'Reject all suggestions' })}
+                    </button>
+                  </div>
+                )}
+                
                 {getExportContent && sermonId && (
                   <div className="mt-4 flex justify-center">
                     <ExportButtons 
@@ -366,43 +418,49 @@ export default function Column({
                               <li
                                 ref={providedDraggable.innerRef}
                                 {...providedDraggable.draggableProps}
-                                className={`flex items-center group p-2 rounded transition-all ${snapshot.isDragging ? 'bg-white/30 shadow-md' : 'hover:bg-white/15'}`}
+                                className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 shadow-md' : 'hover:bg-white/15'}`}
+                                style={providedDraggable.draggableProps.style}
                               >
-                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white transition-colors">
+                                {/* Drag handle */}
+                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white">
                                   <Bars3Icon className="h-5 w-5" />
                                 </div>
+                                
+                                {/* Edit form or display */}
                                 {editingPointId === point.id ? (
-                                  // Edit mode
-                                  <div className="flex-grow flex items-center space-x-1">
-                                    <input
-                                      ref={editInputRef}
+                                  <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
+                                    <input 
                                       type="text"
                                       value={editingText}
                                       onChange={(e) => setEditingText(e.target.value)}
                                       onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                                      className="flex-grow p-1 text-sm bg-gray-700 text-white rounded border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white"
+                                      className="flex-grow p-1 text-sm bg-white/90 text-gray-800 rounded border border-white/30 focus:outline-none focus:border-white"
                                       placeholder={t('structure.editPointPlaceholder')}
                                       autoFocus
                                     />
-                                    <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 hover:bg-white/30 rounded">
-                                      <CheckIcon className="h-4 w-4 text-green-300" />
+                                    <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-400 hover:text-green-300">
+                                      <CheckIcon className="h-5 w-5" />
                                     </button>
-                                    <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 hover:bg-white/30 rounded">
-                                      <XMarkIcon className="h-4 w-4 text-red-300" />
+                                    <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-400 hover:text-red-300">
+                                      <XMarkIcon className="h-5 w-5" />
                                     </button>
                                   </div>
                                 ) : (
-                                  // Display mode
                                   <>
-                                    <span className="text-sm text-white flex-grow mr-2 transition-colors hover:text-white" onDoubleClick={() => handleStartEdit(point)}>
+                                    <span className="text-sm text-white flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
                                       {point.text}
+                                      {thoughtsPerOutlinePoint[point.id] > 0 && (
+                                        <span className="ml-2 px-1.5 py-0.5 text-xs bg-white text-gray-700 rounded-full">
+                                          {thoughtsPerOutlinePoint[point.id]}
+                                        </span>
+                                      )}
                                     </span>
-                                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 hover:bg-white/20 rounded transition-colors">
-                                        <PencilIcon className="h-4 w-4 text-white opacity-80 hover:opacity-100" />
+                                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 hover:text-white">
+                                        <PencilIcon className="h-4 w-4" />
                                       </button>
-                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 hover:bg-white/20 rounded transition-colors">
-                                        <TrashIcon className="h-4 w-4 text-red-300 opacity-80 hover:opacity-100" />
+                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 text-white/70 hover:text-white">
+                                        <TrashIcon className="h-4 w-4" />
                                       </button>
                                     </div>
                                   </>
@@ -412,48 +470,38 @@ export default function Column({
                           </Draggable>
                         ))}
                         {provided.placeholder}
+                        
+                        {addingNewPoint ? (
+                          <div ref={addInputRef} className="mt-2 flex items-center space-x-1">
+                            <input
+                              type="text"
+                              value={newPointText}
+                              onChange={(e) => setNewPointText(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleAddPoint(); if (e.key === 'Escape') setAddingNewPoint(false); }}
+                              placeholder={t('structure.addPointPlaceholder')}
+                              className="flex-grow p-2 text-sm bg-white/90 text-gray-800 rounded border border-white/30 focus:outline-none focus:border-white"
+                              autoFocus
+                            />
+                            <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 text-green-400 hover:text-green-300">
+                              <CheckIcon className="h-5 w-5" />
+                            </button>
+                            <button aria-label={t('common.cancel')} onClick={() => setAddingNewPoint(false)} className="p-1 text-red-400 hover:text-red-300">
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setAddingNewPoint(true); setEditingPointId(null); }}
+                            className="mt-2 flex items-center justify-center w-full p-2 bg-white/10 rounded text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                          >
+                            <PlusIcon className="h-4 w-4 mr-1" />
+                            <span>{t('structure.addPointButton')}</span>
+                          </button>
+                        )}
                       </ul>
                     )}
                   </Droppable>
                 </DragDropContext>
-                
-                {/* Add New Point Section */}
-                <div className="mt-auto pt-4">
-                  {addingNewPoint ? (
-                    <div className="flex items-center space-x-1">
-                      <input
-                        ref={addInputRef}
-                        type="text"
-                        value={newPointText}
-                        onChange={(e) => setNewPointText(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddPoint(); if (e.key === 'Escape') handleCancelEdit(); }}
-                        placeholder={t('structure.addPointPlaceholder')}
-                        className="flex-grow p-1 text-sm bg-gray-700 text-white rounded border border-gray-500 focus:outline-none focus:ring-1 focus:ring-white placeholder-gray-300"
-                        autoFocus
-                      />
-                      <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 hover:bg-white/30 rounded">
-                        <CheckIcon className="h-4 w-4 text-green-300" />
-                      </button>
-                      <button aria-label={t('common.cancel')} onClick={() => { setAddingNewPoint(false); setNewPointText(''); }} className="p-1 hover:bg-white/30 rounded">
-                        <XMarkIcon className="h-4 w-4 text-red-300" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={() => setAddingNewPoint(true)}
-                      aria-label={t('structure.addPointButton')}
-                      className="flex items-center justify-center w-full p-2 text-sm text-white hover:text-white hover:bg-white/15 rounded border border-dashed border-white/30 transition-all"
-                    >
-                      <PlusIcon className="h-4 w-4 mr-1" />
-                      {t('structure.addPointButton')}
-                    </button>
-                  )}
-                </div>
-
-                {/* Saving Indicator - Moved Below List */}
-                {savingOutline && (
-                  <div className="text-xs text-white mt-3 text-center animate-pulse">{t('buttons.saving')}...</div>
-                )}
               </div>
             )}
           </div>
@@ -463,7 +511,7 @@ export default function Column({
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`flex-grow min-h-[600px] overflow-y-auto p-6 bg-white rounded-lg border-2 shadow-lg transition-all ${borderColor} ${isOver ? "ring-2 ring-blue-400" : ""}`}
+            className={`flex-grow min-w-[1200px] max-w-[1200px] min-h-[600px] overflow-y-auto p-6 bg-white rounded-lg border-2 shadow-lg transition-all ${borderColor} ${isOver ? "ring-2 ring-blue-400" : ""}`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
             {items.length === 0 ? (
@@ -473,7 +521,16 @@ export default function Column({
             ) : (
               <div className="space-y-3">
                 {items.map((item) => (
-                  <SortableItem key={item.id} item={item} containerId={id} onEdit={onEdit} />
+                  <SortableItem 
+                    key={item.id} 
+                    item={item} 
+                    containerId={id} 
+                    onEdit={onEdit}
+                    isHighlighted={item.id in highlightedItems}
+                    highlightType={highlightedItems[item.id]?.type}
+                    onKeep={onKeepItem}
+                    onRevert={onRevertItem}
+                  />
                 ))}
               </div>
             )}
@@ -485,77 +542,113 @@ export default function Column({
     );
   }
   
-  // --- Non-Focus Mode Rendering ---
+  // Normal mode UI (non-focused)
   return (
     <div className={`flex flex-col ${className}`}>
-      <div className="mb-2">
-        <h2
-          className={`text-xl font-semibold text-white p-3 rounded-t-md shadow ${headerBgColor}`}
+      <div className="relative overflow-hidden mb-2 rounded-t-md">
+        <div 
+          className={`p-3 ${headerBgColor} flex justify-between items-center`}
           style={headerColor ? { backgroundColor: headerColor } : {}}
         >
-          <div className="flex justify-between items-center">
-            <span className="flex items-center">
-              {title} 
-              <div 
-                className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white"
-                onMouseEnter={() => setShowTooltip(true)}
-                onMouseLeave={() => setShowTooltip(false)}
-                title={t('structure.assignedUnassignedTooltip', {
-                  assigned: assignedItems,
-                  unassigned: unassignedItems
-                })}
+          <h2 className="text-lg font-bold text-white flex items-center">
+            {title}
+            <div 
+              className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              title={t('structure.assignedUnassignedTooltip', {
+                assigned: assignedItems,
+                unassigned: unassignedItems
+              })}
+            >
+              <span className="bg-green-500 bg-opacity-40 px-2 py-0.5 text-white">
+                {assignedItems}
+              </span>
+              <span className="bg-gray-500 px-2 py-0.5 text-white">
+                {unassignedItems}
+              </span>
+              {showTooltip && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
+                  {t('structure.assignedUnassignedTooltip', {
+                    assigned: assignedItems,
+                    unassigned: unassignedItems
+                  })}
+                </div>
+              )}
+            </div>
+          </h2>
+          <div className="flex items-center space-x-2">
+            {onAddThought && (
+              <button
+                onClick={() => onAddThought(id)}
+                className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
+                title={t('structure.addThoughtToSection', { section: title })}
               >
-                <span className="bg-green-500 bg-opacity-40 px-2 py-0.5 text-white">
-                  {assignedItems}
-                </span>
-                <span className="bg-gray-500 px-2 py-0.5 text-white">
-                  {unassignedItems}
-                </span>
-                {showTooltip && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
-                    {t('structure.assignedUnassignedTooltip', {
-                      assigned: assignedItems,
-                      unassigned: unassignedItems
-                    })}
-                  </div>
-                )}
-              </div>
+                <PlusIcon className="h-4 w-4 text-white" />
+              </button>
+            )}
+            {showFocusButton && onToggleFocusMode && (
+              <button
+                onClick={() => onToggleFocusMode(id)}
+                className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
+                title={t('structure.focusMode')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
+        {isDiffModeActive && hasHighlightedItems && (
+          <div className="px-3 py-2 bg-gray-100 border-t border-gray-200 flex justify-between items-center">
+            <span className="text-xs font-medium text-gray-600">
+              {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
             </span>
-            <div className="flex items-center space-x-2">
-              {onAddThought && (
-                <button
-                  onClick={() => onAddThought(id)}
-                  className="p-1.5 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
-                  title={t('structure.addThoughtToSection', { section: title })}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-              {showFocusButton && (
-                <button
-                  onClick={() => onToggleFocusMode?.(id)}
-                  className="px-3 py-1 text-xs bg-white text-gray-800 rounded hover:bg-gray-100 transition-colors"
-                >
-                  {t('structure.focusMode')}
-                </button>
-              )}
+            <div className="flex space-x-2">
+              {/* Accept all button */}
+              <button
+                onClick={() => onKeepAll?.(id)}
+                className="px-2 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-500 transition-colors shadow-sm flex items-center"
+              >
+                <CheckIcon className="h-3 w-3 mr-1" />
+                {t('structure.acceptAll', { defaultValue: 'Accept all' })}
+              </button>
+              
+              {/* Reject all button */}
+              <button
+                onClick={() => onRevertAll?.(id)}
+                className="px-2 py-1 text-xs font-medium rounded bg-orange-600 text-white hover:bg-orange-500 transition-colors shadow-sm flex items-center"
+              >
+                <ArrowUturnLeftIcon className="h-3 w-3 mr-1" />
+                {t('structure.rejectAll', { defaultValue: 'Reject all' })}
+              </button>
             </div>
           </div>
-          
-          {/* Outline points display */}
-          {localOutlinePoints && localOutlinePoints.length > 0 && (
-            <div className="mt-2 text-sm font-normal text-white border-t border-white pt-2">
-              <ul className="list-disc pl-4 space-y-1">
-                {localOutlinePoints.map((point: OutlinePoint) => (
-                  <li key={point.id}>{point.text}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </h2>
+        )}
+        
+        {/* Outline points display */}
+        {localOutlinePoints && localOutlinePoints.length > 0 && (
+          <div className={`${headerBgColor} bg-opacity-80 p-2 text-sm font-normal text-white border-t border-white`}
+               style={headerColor ? { backgroundColor: headerColor, opacity: 0.8 } : {}}>
+            <ul className="list-disc pl-4 space-y-1">
+              {localOutlinePoints.map((point: OutlinePoint) => (
+                <li key={point.id} className="flex items-center">
+                  <span>{point.text}</span>
+                  {thoughtsPerOutlinePoint[point.id] > 0 && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-white text-gray-700 rounded-full">
+                      {thoughtsPerOutlinePoint[point.id]}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
+      
       <SortableContext items={items} strategy={sortingStrategy}>
         <div
           ref={setNodeRef}
@@ -569,7 +662,16 @@ export default function Column({
           ) : (
             <div className="space-y-3">
               {items.map((item) => (
-                <SortableItem key={item.id} item={item} containerId={id} onEdit={onEdit} />
+                <SortableItem 
+                  key={item.id} 
+                  item={item} 
+                  containerId={id} 
+                  onEdit={onEdit}
+                  isHighlighted={item.id in highlightedItems}
+                  highlightType={highlightedItems[item.id]?.type}
+                  onKeep={onKeepItem}
+                  onRevert={onRevertItem}
+                />
               ))}
             </div>
           )}

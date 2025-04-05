@@ -674,10 +674,17 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
   try {
     // Create a map for quick lookup by ID
     const itemsMapByKey: Record<string, Item> = {};
+    const itemsWithExistingOutlinePoints: Record<string, string> = {}; // Store items that already have outlinePointId
+
     items.forEach(item => {
       // Add the item to lookup maps, using just the first 4 chars of the ID as key
       const shortKey = item.id.slice(0, 4);
       itemsMapByKey[shortKey] = item;
+      
+      // Remember which items already have an outline point assigned
+      if (item.outlinePointId) {
+        itemsWithExistingOutlinePoints[shortKey] = item.outlinePointId;
+      }
     });
 
     // Log the mapping for debugging
@@ -747,55 +754,19 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
       if (item && typeof item.key === 'string') {
         extractedKeys.push(item.key);
         if (isDebugMode) {
-          console.log(`  [${pos}] ${item.key}: ${item.outlinePoint || 'no outline'} - ${item.content || 'no preview'}`);
+          console.log(`DEBUG: AI sorted item [${pos}]: ${item.key}`);
         }
       }
     });
     
-    // Grouping by outline points if in debug mode
-    if (isDebugMode && sortedData.sortedItems.length > 0) {
-      const groupedByOutline: Record<string, Array<{key: string, content: string}>> = {};
-      const includedKeys = new Set<string>();
-      
-      sortedData.sortedItems.forEach((item: {key: string, outlinePoint?: string, content?: string}) => {
-        if (item && typeof item.key === 'string') {
-          includedKeys.add(item.key);
-          const outlineKey = item.outlinePoint || 'unassigned';
-          if (!groupedByOutline[outlineKey]) {
-            groupedByOutline[outlineKey] = [];
-          }
-          groupedByOutline[outlineKey].push({
-            key: item.key,
-            content: item.content || 'no preview'
-          });
-        }
-      });
-      
-      console.log("DEBUG: Items grouped by outline points:");
-      Object.entries(groupedByOutline).forEach(([outline, items]) => {
-        console.log(`  [${outline}] (${items.length} items):`);
-        items.forEach(item => {
-          console.log(`    - ${item.key}: ${item.content}`);
-        });
-      });
-    }
-    
-    // Create a map to store AI-assigned outline points for each item
+    // Map of item keys to AI-suggested outline points
     const outlinePointAssignments: Record<string, string> = {};
     
-    // Extract and validate keys from the AI response
+    // Extract AI's suggestions
     const aiSortedKeys = sortedData.sortedItems
       .map((aiItem: any) => {
         if (aiItem && typeof aiItem.key === 'string') {
-          let itemKey: string = aiItem.key;
-          if (!itemsMapByKey[itemKey] && itemKey.length > 4) {
-            // Attempt to correct the key by taking the last 4 characters
-            const correctedKey = itemKey.substring(itemKey.length - 4);
-            if (itemsMapByKey[correctedKey]) {
-              console.log(`DEBUG: Corrected AI key ${itemKey} to ${correctedKey}`);
-              itemKey = correctedKey;
-            }
-          }
+          const itemKey = aiItem.key.trim();
           
           // Store the outline point assignment if available
           if (itemsMapByKey[itemKey] && aiItem.outlinePoint) {
@@ -815,7 +786,16 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     const sortedItems: Item[] = aiSortedKeys.map((key: string) => {
       const item = itemsMapByKey[key];
       
-      // Find matching outline point ID based on the AI-assigned outline text
+      // Check if this item already had an outline point assigned
+      if (itemsWithExistingOutlinePoints[key]) {
+        // Keep the existing outline point
+        if (isDebugMode) {
+          console.log(`DEBUG: Preserving existing outline point for item ${key}`);
+        }
+        return item;
+      }
+      
+      // Find matching outline point ID based on the AI-assigned outline text for unassigned items
       if (outlinePointAssignments[key] && outlinePoints.length > 0) {
         const aiAssignedOutlineText = outlinePointAssignments[key];
         

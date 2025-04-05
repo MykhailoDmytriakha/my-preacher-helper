@@ -73,17 +73,24 @@ export default function EditThoughtModal({
   const allOutlinePoints: { id: string; text: string; section: string }[] = [];
   
   if (sermonOutline) {
-    sermonOutline.introduction.forEach(point => {
-      allOutlinePoints.push({ ...point, section: t('outline.introduction') });
-    });
+    // Add null checks for each section before using forEach
+    if (sermonOutline.introduction && Array.isArray(sermonOutline.introduction)) {
+      sermonOutline.introduction.forEach(point => {
+        allOutlinePoints.push({ ...point, section: t('outline.introduction') });
+      });
+    }
     
-    sermonOutline.main.forEach(point => {
-      allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
-    });
+    if (sermonOutline.main && Array.isArray(sermonOutline.main)) {
+      sermonOutline.main.forEach(point => {
+        allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
+      });
+    }
     
-    sermonOutline.conclusion.forEach(point => {
-      allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
-    });
+    if (sermonOutline.conclusion && Array.isArray(sermonOutline.conclusion)) {
+      sermonOutline.conclusion.forEach(point => {
+        allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
+      });
+    }
   }
 
   // Find the selected outline point text for display
@@ -95,15 +102,18 @@ export default function EditThoughtModal({
   if (sermonOutline) {
     if (containerSection === 'introduction' || containerSection === 'main' || containerSection === 'conclusion') {
       // Only show points from current section
-      filteredOutlinePoints = {
-        [containerSection]: sermonOutline[containerSection as keyof Outline]
-      };
+      const sectionPoints = sermonOutline[containerSection as keyof Outline];
+      if (sectionPoints && Array.isArray(sectionPoints)) {
+        filteredOutlinePoints = {
+          [containerSection]: sectionPoints
+        };
+      }
     } else {
       // If in ambiguous section or containerSection is unknown, show all points
       filteredOutlinePoints = {
-        introduction: sermonOutline.introduction,
-        main: sermonOutline.main,
-        conclusion: sermonOutline.conclusion
+        introduction: Array.isArray(sermonOutline.introduction) ? sermonOutline.introduction : [],
+        main: Array.isArray(sermonOutline.main) ? sermonOutline.main : [],
+        conclusion: Array.isArray(sermonOutline.conclusion) ? sermonOutline.conclusion : []
       };
     }
   }

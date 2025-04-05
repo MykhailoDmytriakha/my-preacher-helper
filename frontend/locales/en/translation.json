@@ -178,7 +178,8 @@
     "addThoughtError": "Error adding thought",
     "aiSortingError": "Error sorting items with AI. Please try again.",
     "saveOutlineError": "Failed to save outline",
-    "fetchOutlineError": "Failed to fetch outline"
+    "fetchOutlineError": "Failed to fetch outline",
+    "copyError": "Failed to copy text to clipboard"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -299,7 +300,10 @@
     "generating": "Generating...",
     "generate": "Generate",
     "generateSuccess": "Plan generated successfully!",
-    "error": "Error generating plan"
+    "error": "Error generating plan",
+    "regenerate": "Regenerate",
+    "regenerateSuccess": "regenerated successfully!",
+    "regenerateError": "Error regenerating"
   },
   "copy": {
     "title": "Copy Content",
