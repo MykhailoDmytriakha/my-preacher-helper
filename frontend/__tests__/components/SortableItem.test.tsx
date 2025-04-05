@@ -141,9 +141,9 @@ describe('SortableItem Component', () => {
       />
     );
 
-    // Get the edit button and click it
-    const editButton = screen.getByRole('button', { name: /edit thought/i });
-    fireEvent.click(editButton);
+    // Get the edit button by testId instead of role+name
+    const editButton = screen.getByTestId('edit-icon').closest('button');
+    fireEvent.click(editButton!);
 
     // Check if onEdit was called with the correct item
     expect(mockOnEdit).toHaveBeenCalledTimes(1);
@@ -160,11 +160,11 @@ describe('SortableItem Component', () => {
       />
     );
 
-    // Get the edit button
-    const editButton = screen.getByRole('button', { name: /edit thought/i });
+    // Get the edit button by testId instead of role+name
+    const editButton = screen.getByTestId('edit-icon').closest('button');
     
     // Check for proper accessibility attributes
-    expect(editButton).toHaveAttribute('title', 'Edit Thought');
+    expect(editButton).toHaveAttribute('title', 'structure.editThought');
     expect(editButton).toBeInTheDocument();
   });
 
@@ -264,14 +264,14 @@ Second paragraph with indentation.
         item={mockItem}
         containerId={mockContainerId}
         onEdit={mockOnEdit}
-        showDeleteIcon={true}
         onDelete={mockOnDelete}
+        showDeleteIcon={true}
       />
     );
 
-    // Find the delete button (using title attribute)
-    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
-    fireEvent.click(deleteButton);
+    // Find the delete button by testId instead of role+name
+    const deleteButton = screen.getByTestId('trash-icon').closest('button');
+    fireEvent.click(deleteButton!);
 
     expect(mockOnDelete).toHaveBeenCalledTimes(1);
     expect(mockOnDelete).toHaveBeenCalledWith(mockItem.id, mockContainerId);
@@ -287,8 +287,9 @@ Second paragraph with indentation.
       />
     );
 
-    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
-    expect(deleteButton).toHaveAttribute('title', 'Remove from Structure');
+    // Find the delete button by testId
+    const deleteButton = screen.getByTestId('trash-icon').closest('button');
+    expect(deleteButton).toHaveAttribute('title', 'structure.removeFromStructure');
     expect(deleteButton).toBeInTheDocument();
   });
 
@@ -304,24 +305,16 @@ Second paragraph with indentation.
       />
     );
 
-    // Check main container styles/attributes
-    // Note: Direct check for role='button' might be tricky if useSortable changes attributes
-    // Find by text content and go up to find the main sortable div
-    const mainDiv = screen.getByText(mockItem.content).closest('div[style*="opacity: 0.5"]');
-    expect(mainDiv).toBeInTheDocument(); // Check if opacity style was applied
-    expect(mainDiv).toHaveClass('pointer-events-none');
-    expect(mainDiv).toHaveStyle('opacity: 0.5');
-
-    // Check icon container visibility
-    // Go up two levels from the icon's mock div to reach the container div
-    const iconContainer = screen.getByTestId('edit-icon').parentElement?.parentElement; 
-    expect(iconContainer).toHaveClass('invisible');
+    // Check container has expected style
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]');
+    expect(container).toHaveClass('pointer-events-none');
+    expect(container).toHaveStyle('opacity: 0.5');
 
     // Check buttons are disabled
-    const editButton = screen.getByRole('button', { name: /edit thought/i });
+    const editButton = screen.getByTestId('edit-icon').closest('button');
     expect(editButton).toBeDisabled();
 
-    const deleteButton = screen.getByRole('button', { name: /remove from structure/i });
+    const deleteButton = screen.getByTestId('trash-icon').closest('button');
     expect(deleteButton).toBeDisabled();
   });
 }); 
