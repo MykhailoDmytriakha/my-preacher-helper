@@ -140,8 +140,12 @@
     "noThoughts": "No thoughts for this sermon",
     "deleteThoughtConfirm": "Are you sure you want to delete this thought?\n{{text}}",
     "outline": "Sermon Outline",
-    "createOutline": "Create Sermon Outline",
-    "viewOutline": "View Sermon Outline"
+    "createOutline": "Build Plan Draft",
+    "viewOutline": "View Plan Draft",
+    "createPlan": "Build Plan Point-by-Point",
+    "viewPlan": "View Plan Point-by-Point",
+    "draftMode": "Draft",
+    "pointMode": "Point-by-Point"
   },
   "filters": {
     "filter": "Filter",
@@ -179,7 +183,12 @@
     "aiSortingError": "Error sorting items with AI. Please try again.",
     "saveOutlineError": "Failed to save outline",
     "fetchOutlineError": "Failed to fetch outline",
-    "copyError": "Failed to copy text to clipboard"
+    "copyError": "Failed to copy text to clipboard",
+    "sermonNotFound": "Sermon not found",
+    "failedToLoadSermon": "Failed to load sermon",
+    "outlinePointNotFound": "Outline point not found",
+    "failedToGenerateContent": "Failed to generate content",
+    "failedToSavePlan": "Failed to save plan"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -191,7 +200,12 @@
     "missingTags": "If needed tag is missing, go to {link}",
     "missingRequiredTag": "This entry is missing a required tag. Don't forget to add «{{intro}}», «{{main}}» or «{{conclusion}}»!",
     "inconsistentSection": "Inconsistency: thought has tag \"{{actualTag}}\" but assigned to {{expectedSection}} outline point",
-    "multipleStructureTags": "Inconsistency: multiple structure tags detected. A thought should only have one structure tag."
+    "multipleStructureTags": "Inconsistency: multiple structure tags detected. A thought should only have one structure tag.",
+    "generate": "Generate",
+    "generating": "Generating...",
+    "regenerate": "Regenerate",
+    "regenerateSuccess": "regenerated successfully!",
+    "regenerateError": "Error regenerating"
   },
   "editThought": {
     "editTitle": "Edit Thought",
@@ -272,7 +286,8 @@
     "showSearch": "Show search",
     "hideSearch": "Hide search",
     "loading": "Loading...",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "scripture": "Scripture"
   },
   "outline": {
     "introduction": "Introduction",
@@ -296,22 +311,52 @@
     "errorMessage": "Sorry, there was a problem sending your feedback. Please try again."
   },
   "plan": {
-    "noContent": "No content available yet. Click generate to create a plan.",
-    "copyFullPlan": "Copy Full Outline",
-    "generating": "Generating...",
-    "generate": "Generate",
-    "generateSuccess": "Plan generated successfully!",
+    "pageTitle": "Sermon Plan",
+    "editor": "Editor",
+    "copyFullPlan": "Copy Full Plan",
+    "showThoughts": "Show Thoughts",
+    "hideThoughts": "Hide Thoughts",
+    "thoughts": "Thoughts",
+    "noThoughts": "No attached thoughts",
+    "generate": "Generate Content",
+    "generateSuccess": "Plan successfully generated!",
     "error": "Error generating plan",
-    "regenerate": "Regenerate",
-    "regenerateSuccess": "regenerated successfully!",
-    "regenerateError": "Error regenerating"
+    "regenerate": "Regenerate Content",
+    "regenerateSuccess": "successfully regenerated!",
+    "regenerateError": "Error regenerating content",
+    "generating": "Generating...",
+    "generatingAll": "Generating...",
+    "generateAll": "Generate All",
+    "contentGenerated": "Content generated",
+    "planSaved": "Plan saved",
+    "pointSaved": "Point saved",
+    "sectionSaved": "{{section}} section saved",
+    "saved": "Saved",
+    "outlinePointSaved": "Outline point saved",
+    "copiedToClipboard": "Copied to clipboard",
+    "thoughtsNotAssigned": "Thoughts not assigned",
+    "assignThoughtsFirst": "Please assign all thoughts to outline points first",
+    "noOutlinePoints": "No outline points defined",
+    "noContent": "No content yet. Generate or write something",
+    "save": "Save",
+    "viewMode": "View mode",
+    "editMode": "Edit mode"
   },
   "copy": {
-    "title": "Copy Content",
-    "markdown": "Raw Markdown",
-    "formatted": "Formatted Text",
-    "copyText": "Copy",
+    "copyText": "Copy Text",
     "copyMarkdown": "Copy Markdown",
     "copyFormatted": "Copy Formatted"
+  },
+  "sections": {
+    "introduction": "Introduction",
+    "main": "Main Part",
+    "conclusion": "Conclusion"
+  },
+  "actions": {
+    "save": "Save",
+    "back": "Back",
+    "backToSermon": "Back to sermon",
+    "copyAll": "Copy All",
+    "goToOutline": "Go to Outline"
   }
 } 

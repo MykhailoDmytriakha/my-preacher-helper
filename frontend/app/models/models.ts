@@ -111,12 +111,15 @@ export interface User {
 export interface Plan {
   introduction: {
     outline: string;
+    outlinePoints?: Record<string, string>;
   }
   main: {
     outline: string;
+    outlinePoints?: Record<string, string>;
   }
   conclusion: {
     outline: string;
+    outlinePoints?: Record<string, string>;
   }
 }
 

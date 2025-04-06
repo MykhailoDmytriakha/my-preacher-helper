@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
-import { generatePlanForSection } from '@clients/openAI.client';
+import { generatePlanForSection, generatePlanPointContent } from '@clients/openAI.client';
 
 // Define the plan types locally to avoid import issues
 interface PlanSection {
   outline: string;
+  outlinePoints?: Record<string, string>;
 }
 
 interface SermonPlan {
@@ -15,12 +16,19 @@ interface SermonPlan {
 
 // GET /api/sermons/:id/plan - generates full plan by default
 // GET /api/sermons/:id/plan?section=introduction|main|conclusion - generates plan for specific section
+// GET /api/sermons/:id/plan?outlinePointId=<id> - generates content for a specific outline point
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
   const section = request.nextUrl.searchParams.get('section');
+  const outlinePointId = request.nextUrl.searchParams.get('outlinePointId');
+  
+  // If outlinePointId is provided, generate content for the specific outline point
+  if (outlinePointId) {
+    return generateOutlinePointContent(id, outlinePointId);
+  }
   
   // If no section is specified, generate plans for all sections
   if (!section) {
@@ -196,6 +204,143 @@ async function generateFullPlan(sermonId: string) {
     console.error(`Error generating full sermon plan:`, error);
     return NextResponse.json(
       { error: 'Failed to generate full plan', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to generate content for a specific outline point
+async function generateOutlinePointContent(sermonId: string, outlinePointId: string) {
+  try {
+    // Fetch the sermon
+    const sermon = await sermonsRepository.fetchSermonById(sermonId);
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+    
+    // Find the outline point in the sermon structure
+    let outlinePoint;
+    let sectionName;
+    
+    if (sermon.outline?.introduction.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.introduction.find(op => op.id === outlinePointId);
+      sectionName = 'introduction';
+    } else if (sermon.outline?.main.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.main.find(op => op.id === outlinePointId);
+      sectionName = 'main';
+    } else if (sermon.outline?.conclusion.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.conclusion.find(op => op.id === outlinePointId);
+      sectionName = 'conclusion';
+    }
+    
+    if (!outlinePoint || !sectionName) {
+      return NextResponse.json(
+        { error: 'Outline point not found in sermon structure' },
+        { status: 404 }
+      );
+    }
+    
+    // Find thoughts related to this outline point
+    const relatedThoughts = sermon.thoughts.filter(thought => 
+      thought.outlinePointId === outlinePointId
+    );
+    
+    if (relatedThoughts.length === 0) {
+      return NextResponse.json(
+        { error: 'No thoughts associated with this outline point' },
+        { status: 400 }
+      );
+    }
+    
+    // Generate content for the outline point
+    const result = await generatePlanPointContent(
+      sermon.title,
+      sermon.verse,
+      outlinePoint.text,
+      relatedThoughts.map(t => t.text),
+      sectionName
+    );
+    
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Failed to generate content for outline point' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({ content: result.content });
+  } catch (error: any) {
+    console.error(`Error generating content for outline point ${outlinePointId}:`, error);
+    return NextResponse.json(
+      { error: 'Failed to generate content', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/sermons/:id/plan - saves sermon plan to database
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params;
+
+  try {
+    // Get the sermon to confirm it exists
+    const sermon = await sermonsRepository.fetchSermonById(id);
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+
+    // Parse the request body to get the plan
+    const planData = await request.json();
+    console.log("get new planData to save", planData);
+    
+    // Validate the plan structure
+    if (!planData || typeof planData !== 'object') {
+      return NextResponse.json({ error: 'Invalid plan data' }, { status: 400 });
+    }
+    
+    // Ensure the plan has all required sections
+    const plan: SermonPlan = {
+      introduction: { outline: '' },
+      main: { outline: '' },
+      conclusion: { outline: '' }
+    };
+    
+    // Update with provided data, maintaining nested structure
+    if (planData.introduction) {
+      plan.introduction = {
+        outline: planData.introduction.outline || '',
+        ...(planData.introduction.outlinePoints && { outlinePoints: planData.introduction.outlinePoints })
+      };
+      console.log("saved introduction plan", plan.introduction);
+    }
+    
+    if (planData.main) {
+      plan.main = {
+        outline: planData.main.outline || '',
+        ...(planData.main.outlinePoints && { outlinePoints: planData.main.outlinePoints })
+      };
+      console.log("saved main plan", plan.main);
+    }
+    
+    if (planData.conclusion) {
+      plan.conclusion = {
+        outline: planData.conclusion.outline || '',
+        ...(planData.conclusion.outlinePoints && { outlinePoints: planData.conclusion.outlinePoints })
+      };
+      console.log("saved conclusion plan", plan.conclusion);
+    }
+    
+    // Save plan to database
+    await sermonsRepository.updateSermonPlan(id, plan);
+    
+    return NextResponse.json({ success: true, plan });
+  } catch (error: any) {
+    console.error(`Error saving plan for sermon ${id}:`, error);
+    return NextResponse.json(
+      { error: 'Failed to save plan', details: error.message },
       { status: 500 }
     );
   }

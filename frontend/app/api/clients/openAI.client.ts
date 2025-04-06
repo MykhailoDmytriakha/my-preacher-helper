@@ -304,7 +304,7 @@ async function withOpenAILogging<T>(
 ): Promise<T> {
   // Default options
   const {
-    logFullResponse = false,
+    logFullResponse = true,
     logMaxLength = 2000
   } = options;
   
@@ -1046,5 +1046,107 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
     // Return an empty array on error for consistent handling
     return [];
+  }
+}
+
+/**
+ * Generate plan content for a specific outline point based on related thoughts
+ * @param sermonTitle The title of the sermon
+ * @param sermonVerse The Bible verse for the sermon
+ * @param outlinePointText The text of the outline point
+ * @param relatedThoughtsTexts Array of texts from related thoughts
+ * @param sectionName The section name (introduction, main, conclusion)
+ * @returns The generated content and success status
+ */
+export async function generatePlanPointContent(
+  sermonTitle: string,
+  sermonVerse: string,
+  outlinePointText: string,
+  relatedThoughtsTexts: string[],
+  sectionName: string
+): Promise<{ content: string; success: boolean }> {
+  // Detect language - simple heuristic based on non-Latin characters
+  const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermonTitle + sermonVerse);
+  const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
+  
+  if (isDebugMode) {
+    console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
+    console.log(`DEBUG: Generating structured plan for outline point in ${sectionName} section`);
+  }
+  
+  try {
+    // Construct the prompt for generating a structured plan for the outline point
+    const systemPrompt = `You are a helpful assistant for sermon preparation.
+
+Your task is to generate a simple outline plan for a specific point in a sermon, based ONLY on the thoughts provided.
+
+IMPORTANT: 
+1. Always generate the plan in the SAME LANGUAGE as the input. Do not translate.
+2. Keep the plan simple with just main points and a single level of bullet points underneath.
+3. DO NOT create deeply nested or highly detailed plans.
+4. Focus ONLY on the specific outline point and its related thoughts.
+5. Maintain the theological perspective from the original thoughts.
+6. Do not add new theological content or Bible references that aren't in the provided thoughts.
+7. Organize ideas in a logical sequence that will help with sermon delivery.
+8. Include only the most important key ideas from the provided thoughts.
+9. Format the response using Markdown:
+   - Use ### for main points (DO NOT include the outline point itself as a heading)
+   - Use only a single level of bullet points (* ) for supporting details
+
+Your response should be a simple outline with just main points and their direct sub-points.`;
+
+    // Prepare the user message
+    const userMessage = `Please generate a simple, not-too-detailed plan outline for the following point in the ${sectionName.toUpperCase()} section of my sermon:
+
+SERMON TITLE: ${sermonTitle}
+SCRIPTURE: ${sermonVerse}
+OUTLINE POINT: "${outlinePointText}"
+
+Based on these related thoughts:
+${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
+
+IMPORTANT INSTRUCTIONS:
+1. Generate the plan in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
+2. Provide only main points and a single level of bullet points - DO NOT create a deeply nested hierarchy.
+3. Keep it concise - I need only the high-level structure, not detailed development.
+4. Identify just 2-4 key points that support the outline point.
+5. Include only brief notes on illustrations or examples where essential.
+6. Add scripture references in *italic* and key theological concepts in **bold**.
+7. Make sure this plan fits within the ${sectionName} section of a sermon.
+8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
+
+Format your response as a simple outline with just main points and their direct sub-points using Markdown. Do not write full paragraphs or create deeply nested points.`;
+
+    // Prepare request options
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(systemPrompt, userMessage)
+    };
+    
+    // Log operation info
+    const inputInfo = {
+      sermonTitle,
+      sermonVerse,
+      outlinePointText,
+      sectionName,
+      thoughtsCount: relatedThoughtsTexts.length,
+      detectedLanguage
+    };
+    
+    // Make API call
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Plan Point Structure',
+      requestOptions,
+      inputInfo
+    );
+    
+    // Extract the content from the response
+    const content = response.choices[0]?.message?.content?.trim() || "";
+    
+    return { content, success: content.length > 0 };
+  } catch (error) {
+    console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
+    return { content: "", success: false };
   }
 } 
