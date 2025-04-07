@@ -160,14 +160,18 @@ describe('ExportButtons', () => {
     const mockProps = {
       content: 'Test export content',
       onClose: jest.fn(),
-      getExportContent: jest.fn().mockResolvedValue('Test export content')
+      getExportContent: jest.fn().mockImplementation((format, options) => {
+        return Promise.resolve('Test export content');
+      })
     };
     
     beforeEach(() => {
       // Reset mocks before each test in this suite
       mockProps.onClose.mockClear();
       mockProps.getExportContent.mockClear();
-      mockProps.getExportContent.mockResolvedValue('Test export content'); // Reset to default success mock
+      mockProps.getExportContent.mockImplementation((format, options) => {
+        return Promise.resolve('Test export content');
+      }); // Reset to default success mock
       
       // Clean up portal root before each test
       const portalRoot = document.getElementById('portal-root');
@@ -281,7 +285,9 @@ describe('ExportButtons', () => {
   describe('ExportButtons', () => {
     const mockProps = {
       sermonId: 'test-sermon',
-      getExportContent: jest.fn().mockResolvedValue('Test export content')
+      getExportContent: jest.fn().mockImplementation((format, options) => {
+        return Promise.resolve('Test export content');
+      })
     };
 
     // Clean up all modals after each test in this suite
@@ -307,7 +313,9 @@ describe('ExportButtons', () => {
       const mockContent = 'Test export content';
       const mockProps = {
         sermonId: '123',
-        getExportContent: jest.fn().mockResolvedValue(mockContent),
+        getExportContent: jest.fn().mockImplementation((format, options) => {
+          return Promise.resolve(mockContent);
+        }),
       };
       
       render(
@@ -333,7 +341,9 @@ describe('ExportButtons', () => {
       const mockError = new Error('Test error');
       const mockProps = {
         sermonId: '123',
-        getExportContent: jest.fn().mockRejectedValue(mockError),
+        getExportContent: jest.fn().mockImplementation((format, options) => {
+          return Promise.reject(mockError);
+        }),
       };
       
       render(
@@ -371,7 +381,9 @@ describe('ExportButtons', () => {
       
       const mockProps = {
         sermonId: '123',
-        getExportContent: jest.fn().mockResolvedValue('Test content'),
+        getExportContent: jest.fn().mockImplementation((format, options) => {
+          return Promise.resolve('Test content');
+        }),
       };
       
       render(

@@ -74,7 +74,7 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                 <ExportButtons
                   sermonId={sermon.id}
                   orientation="horizontal"
-                  getExportContent={() => getExportContent(sermon)}
+                  getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
                   className="scale-90 sm:scale-100 origin-top-left sm:origin-center"
                 />
               </div>

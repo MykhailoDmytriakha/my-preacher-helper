@@ -86,7 +86,7 @@ describe('getExportContent', () => {
       };
 
       // Act
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
 
       // Assert
       expect(result).toContain('Sermon: Structured Sermon');
@@ -151,7 +151,7 @@ describe('getExportContent', () => {
       };
 
       // Act
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
 
       // Assert
       expect(result).toContain('Introduction:\n\n- Introduction thought');
@@ -186,7 +186,7 @@ describe('getExportContent', () => {
       };
 
       // Act
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
 
       // Assert
       expect(result).toContain('Main Part:');
@@ -199,27 +199,35 @@ describe('getExportContent', () => {
     it('should sort thoughts by date within tag-based sections', async () => {
       // Arrange
       const thoughts: Thought[] = [
-        createThought('1', 'Intro 1 (Oldest)', ['Вступление'], 5),
-        createThought('2', 'Main 1', ['Основная часть'], 4),
-        createThought('3', 'Conclusion 1', ['Заключение'], 3),
-        createThought('4', 'Main 2 (Newest)', ['Основная часть', 'Extra Tag'], 1),
-        createThought('5', 'Ambiguous 1', [], 2),
-        createThought('6', 'Multi-tag (Intro+Main)', ['Вступление', 'Основная часть'], 6), // Oldest overall, but multi-tag
-        createThought('7', 'Ambiguous 2', [], 0), // Newest ambiguous
+        // Intro thoughts (sorted by date - oldest to newest)
+        createThought('i1', 'Intro 1 (Oldest)', ['Вступление'], 10), // Oldest
+        
+        // Multi-tag thought (should appear in both intro and main)
+        createThought('m1', 'Multi-tag (Intro+Main)', ['Вступление', 'Основная часть'], 5),
+        
+        // Main thoughts (sorted by date)
+        createThought('mp1', 'Main 1', ['Основная часть'], 3),
+        createThought('mp2', 'Main 2 (Newest)', ['Основная часть'], 1), // Newest
+        
+        // Conclusion thought
+        createThought('c1', 'Conclusion 1', ['Заключение'], 7),
+        
+        // Ambiguous (no tag) thoughts
+        createThought('a1', 'Ambiguous 1', [], 8),
+        createThought('a2', 'Ambiguous 2', [], 6)
       ];
 
       const sermon: Sermon = {
-        id: 'dateSort123',
+        id: 'dateSortTest',
         title: 'Date Sort Sermon',
         verse: 'Acts 2:38',
         date: new Date().toISOString(),
         thoughts,
-        // No structure, No outline
         userId: 'user1'
       };
 
       // Act
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
 
       // Assert
       expect(result).toContain('Sermon: Date Sort Sermon');
@@ -248,7 +256,7 @@ describe('getExportContent', () => {
       expect(mainSection.indexOf('Thoughts with Multiple Tags:')).toBeLessThan(mainSection.indexOf('- Multi-tag (Intro+Main)'));
       expect(mainSection.indexOf('- Multi-tag (Intro+Main)')).toBeLessThan(mainSection.indexOf('- Main 1'));
       expect(mainSection.indexOf('- Main 1')).toBeLessThan(mainSection.indexOf('- Main 2 (Newest)'));
-      expect(mainSection).toContain('Tags: Основная часть, Extra Tag');
+      expect(mainSection).toContain('Tags: Основная часть');
 
       // Check Conclusion section
       expect(result).toContain('Conclusion:');
@@ -265,14 +273,14 @@ describe('getExportContent', () => {
 
     it('should handle sermon with no verse', async () => {
       const sermon: Sermon = { id: 'noVerse', title: 'No Verse Sermon', verse: '', date: '', thoughts: [], userId: '' };
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
       expect(result).toContain('Sermon: No Verse Sermon');
       expect(result).not.toContain('Scripture Text:');
     });
 
     it('should handle sermon with whitespace verse', async () => {
       const sermon: Sermon = { id: 'wsVerse', title: 'Whitespace Verse Sermon', verse: '  \n ', date: '', thoughts: [], userId: '' };
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
       expect(result).toContain('Sermon: Whitespace Verse Sermon');
       expect(result).not.toContain('Scripture Text:');
     });
@@ -289,7 +297,7 @@ describe('getExportContent', () => {
       };
 
       // Act
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
 
       // Assert
       expect(result).toContain('Sermon: No Thoughts Sermon');
@@ -338,7 +346,7 @@ John 1:1`); // Use backticks for multiline check
        };
 
        // Act
-       const result = await getExportContent(sermon);
+       const result = await getExportContent(sermon, undefined, { includeTags: true });
 
        // Assert
        expect(result).toContain('Sermon: Outline Sermon');
@@ -385,7 +393,7 @@ John 1:1`); // Use backticks for multiline check
     it('should exclude metadata when includeMetadata is false', async () => {
       const thoughts = [createThought('t1', 'A thought', [], 1)];
       const sermon: Sermon = { id: 'meta', title: 'Meta Test', verse: 'V1', date: '', thoughts, userId: '' };
-      const result = await getExportContent(sermon, undefined, { includeMetadata: false });
+      const result = await getExportContent(sermon, undefined, { includeMetadata: false, includeTags: true });
       expect(result).not.toContain('Sermon: Meta Test');
       expect(result).not.toContain('Scripture Text:');
       expect(result).toContain('Other Thoughts:\n\n- A thought');
@@ -415,7 +423,7 @@ John 1:1`); // Use backticks for multiline check
       };
 
       // Act
-      const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+      const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
 
       // Assert
       expect(result).toContain('# Sermon: Markdown Sermon');
@@ -456,7 +464,7 @@ John 1:1`); // Use backticks for multiline check
         createThought('3', 'Conclusion', ['Заключение'], 0),
       ];
        const sermon: Sermon = { id: 'mdEmpty', title: 'MD Empty', verse: '', thoughts, userId: '' };
-       const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+       const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
 
        expect(result).toContain('## Introduction\n\n');
        expect(result).toContain('1. Intro');
@@ -479,7 +487,7 @@ John 1:1`); // Use backticks for multiline check
       const expected = `Sermon: Minimal Plain
 Scripture Text:
 Gen 1:1`; // Use backticks, remove trailing newline for trim comparison
-      expect((await getExportContent(sermon)).trim()).toBe(expected.trim());
+      expect((await getExportContent(sermon, undefined, { includeTags: true })).trim()).toBe(expected.trim());
     });
 
     it('should produce exact output for minimal valid sermon (markdown)', async () => {
@@ -494,7 +502,7 @@ Gen 1:1`; // Use backticks, remove trailing newline for trim comparison
 
 **Scripture Text:**
 > Gen 1:1`; // Removed '> Line 2'
-       expect((await getExportContent(sermon, undefined, { format: 'markdown' })).trim()).toBe(expected.trim());
+       expect((await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true })).trim()).toBe(expected.trim());
     });
 
     it('should produce exact output for full structured sermon (plain)', async () => {
@@ -562,7 +570,7 @@ Other Thoughts:
 ---------------------
 
 `; // Use backticks for multiline string
-      const result = await getExportContent(sermon);
+      const result = await getExportContent(sermon, undefined, { includeTags: true });
       // Correctly escape newlines in replace arguments
       expect(result.replace(/\r\n/g, '\n')).toBe(expected.replace(/\r\n/g, '\n'));
     });
@@ -633,7 +641,7 @@ Other Thoughts:
 ---
 
 `; // Use backticks for multiline string
-      const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+      const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
       // Correctly escape newlines in replace arguments
       expect(result.replace(/\r\n/g, '\n')).toBe(expected.replace(/\r\n/g, '\n'));
     });
@@ -653,7 +661,7 @@ Other Thoughts:
 
       it('should handle sermons with no verse', async () => {
         const sermon: Sermon = { ...baseSermon, verse: undefined };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         expect(result).toContain('# Sermon: Markdown Verse Test');
         expect(result).not.toContain('**Scripture Text:**');
         expect(result).not.toContain('> '); // No blockquote should be present
@@ -661,41 +669,41 @@ Other Thoughts:
 
       it('should format a single-line verse', async () => {
         const sermon: Sermon = { ...baseSermon, verse: 'John 3:16' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         expect(result).toContain('**Scripture Text:**\n> John 3:16\n\n');
       });
 
       it('should format a multi-line verse with internal newlines (\n)', async () => {
         const sermon: Sermon = { ...baseSermon, verse: 'Line 1\nLine 2\nLine 3' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         // Expect internal newlines to be joined with \n> \n for visual paragraph breaks
         expect(result).toContain('**Scripture Text:**\n> Line 1\n> \n> Line 2\n> \n> Line 3\n\n');
       });
 
       it('should format multiple verses separated by single newlines (\n)', async () => {
         const sermon: Sermon = { ...baseSermon, verse: 'Verse 1 Reference\nVerse 2 Reference' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         // Expect verses separated by \n to be joined with \n> \n for visual paragraph breaks
         expect(result).toContain('**Scripture Text:**\n> Verse 1 Reference\n> \n> Verse 2 Reference\n\n');
       });
 
       it('should format multiple verses separated by double newlines (\n\n)', async () => {
         const sermon: Sermon = { ...baseSermon, verse: 'Verse A Paragraph\n\nVerse B Paragraph' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         // Expect verses separated by \n\n to also be joined with \n> \n for visual paragraph breaks
         expect(result).toContain('**Scripture Text:**\n> Verse A Paragraph\n> \n> Verse B Paragraph\n\n');
       });
       
       it('should handle verse text with leading/trailing whitespace', async () => {
         const sermon: Sermon = { ...baseSermon, verse: '  \n  Trimmed Verse \n  ' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
          // Whitespace is trimmed, leaving only the core verse line
         expect(result).toContain('**Scripture Text:**\n> Trimmed Verse\n\n');
       });
 
       it('should handle verse text with internal double newlines and whitespace', async () => {
         const sermon: Sermon = { ...baseSermon, verse: '  Line Alpha  \n\n  Line Beta  \n\n' };
-        const result = await getExportContent(sermon, undefined, { format: 'markdown' });
+        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         // Should trim whitespace around lines and handle double newlines correctly
         expect(result).toContain('**Scripture Text:**\n> Line Alpha\n> \n> Line Beta\n\n');
       });

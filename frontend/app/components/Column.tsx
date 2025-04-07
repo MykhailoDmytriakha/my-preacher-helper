@@ -26,7 +26,7 @@ interface ColumnProps {
   onAiSort?: () => void; // Callback for AI sorting
   isLoading?: boolean; // Whether the AI sorting is in progress
   className?: string; // Custom class name for the column container
-  getExportContent?: () => Promise<string>; // Function to get export content
+  getExportContent?: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>; // Function to get export content
   sermonId?: string; // Add sermonId prop for export functionality
   onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
   onOutlineUpdate?: (updatedOutline: Outline) => void; // Add callback for outline updates propagating back to parent

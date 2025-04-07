@@ -67,7 +67,7 @@ interface ExportTxtModalProps {
   isOpen: boolean;
   onClose: () => void;
   content?: string;
-  getContent?: (format: 'plain' | 'markdown') => Promise<string>;
+  getContent?: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
   format?: 'plain' | 'markdown';
 }
 
@@ -80,6 +80,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [activeFormat, setActiveFormat] = useState<'plain' | 'markdown'>(format);
+  const [showTags, setShowTags] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
   const [exportContent, setExportContent] = useState<string>('');
   const [error, setError] = useState<boolean>(false);
@@ -95,6 +96,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
     };
   }, []);
 
+  // Initial content loading and when format/tags change
   useEffect(() => {
     if (isOpen) {
       setIsLoading(true);
@@ -104,7 +106,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
         setExportContent(content);
         setIsLoading(false);
       } else if (getContent) {
-        getContent(activeFormat)
+        getContent(activeFormat, { includeTags: showTags })
           .then((result) => {
             setExportContent(result);
             setIsLoading(false);
@@ -117,26 +119,16 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
           });
       }
     }
-  }, [isOpen, content, getContent, activeFormat]);
+  }, [isOpen, content, getContent, activeFormat, showTags]);
   
+  // No longer need to fetch content in these handlers since the useEffect will handle it
   const handleFormatChange = (newFormat: 'plain' | 'markdown') => {
     setActiveFormat(newFormat);
-    setIsLoading(true);
-    setError(false);
-    
-    if (getContent) {
-      getContent(newFormat)
-        .then((result) => {
-          setExportContent(result);
-          setIsLoading(false);
-        })
-        .catch((err) => {
-          console.error('Error getting export content:', err);
-          setExportContent('Error preparing export');
-          setError(true);
-          setIsLoading(false);
-        });
-    }
+  };
+
+  const handleTagsToggle = () => {
+    const newShowTags = !showTags;
+    setShowTags(newShowTags);
   };
   
   // Handle copy to clipboard
@@ -184,31 +176,56 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
           </button>
         </div>
         
-        {/* Format selection */}
-        <div className="flex items-center mb-4 text-sm flex-shrink-0">
-          <span className="mr-2">{t('export.format')}:</span>
-          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
-            <button
-              className={`px-3 py-1 rounded ${
-                activeFormat === 'plain'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-              onClick={() => handleFormatChange('plain')}
+        {/* Options row - Format selection and Tags toggle */}
+        <div className="flex flex-wrap items-center mb-4 text-sm flex-shrink-0 gap-4">
+          {/* Format selection */}
+          <div className="flex items-center">
+            <span className="mr-2">{t('export.format')}:</span>
+            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+              <button
+                className={`px-3 py-1 rounded ${
+                  activeFormat === 'plain'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+                onClick={() => handleFormatChange('plain')}
+                disabled={isLoading}
+              >
+                {t('export.formatPlain')}
+              </button>
+              <button
+                className={`px-3 py-1 rounded ${
+                  activeFormat === 'markdown'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+                onClick={() => handleFormatChange('markdown')}
+                disabled={isLoading}
+              >
+                {t('export.formatMarkdown')}
+              </button>
+            </div>
+          </div>
+          
+          {/* Tags toggle switch */}
+          <div className="flex items-center ml-auto">
+            <span className="mr-2">{t('export.includeTags')}:</span>
+            <button 
+              onClick={handleTagsToggle}
+              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              role="switch"
+              aria-checked={showTags}
+              aria-label={showTags ? t('export.hideTags') : t('export.showTags')}
+              style={{ 
+                backgroundColor: showTags ? '#3b82f6' : '#e5e7eb',
+              }}
               disabled={isLoading}
             >
-              {t('export.formatPlain')}
-            </button>
-            <button
-              className={`px-3 py-1 rounded ${
-                activeFormat === 'markdown'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
-              onClick={() => handleFormatChange('markdown')}
-              disabled={isLoading}
-            >
-              {t('export.formatMarkdown')}
+              <span 
+                className={`${
+                  showTags ? 'translate-x-6' : 'translate-x-1'
+                } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+              />
             </button>
           </div>
         </div>
@@ -262,9 +279,11 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
 
 interface ExportButtonsContainerProps {
   sermonId: string;
-  getExportContent: (format: 'plain' | 'markdown') => Promise<string>;
+  getExportContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
   orientation?: "horizontal" | "vertical";
   className?: string;
+  showTxtModalDirectly?: boolean;
+  onTxtModalClose?: () => void;
 }
 
 const TooltipStyles = () => (
@@ -342,13 +361,27 @@ export default function ExportButtons({
   getExportContent,
   orientation = "horizontal",
   className = "",
+  showTxtModalDirectly = false,
+  onTxtModalClose,
 }: ExportButtonsContainerProps) {
   const { t } = useTranslation();
-  const [showTxtModal, setShowTxtModal] = useState(false);
+  const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly);
+
+  // Update modal state when the direct prop changes
+  useEffect(() => {
+    setShowTxtModal(showTxtModalDirectly);
+  }, [showTxtModalDirectly]);
 
   const handleTxtClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowTxtModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowTxtModal(false);
+    if (onTxtModalClose) {
+      onTxtModalClose();
+    }
   };
 
   const handlePdfClick = () => { console.log("PDF Export clicked (disabled)"); };
@@ -358,17 +391,19 @@ export default function ExportButtons({
     <div className={`relative ${className}`}>
       <TooltipStyles />
       
-      <ExportButtonsLayout
-        onTxtClick={handleTxtClick}
-        onPdfClick={handlePdfClick}
-        onWordClick={handleWordClick}
-        orientation={orientation}
-      />
+      {!showTxtModalDirectly && (
+        <ExportButtonsLayout
+          onTxtClick={handleTxtClick}
+          onPdfClick={handlePdfClick}
+          onWordClick={handleWordClick}
+          orientation={orientation}
+        />
+      )}
 
       {showTxtModal && (
         <ExportTxtModal
           isOpen={showTxtModal}
-          onClose={() => setShowTxtModal(false)}
+          onClose={handleCloseModal}
           getContent={getExportContent}
         />
       )}

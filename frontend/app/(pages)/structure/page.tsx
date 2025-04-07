@@ -770,13 +770,16 @@ function StructurePageContent() {
     }
   };
 
-  const getExportContentForFocusedColumn = async () => {
+  const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !sermon) {
       return '';
     }
     
-    // Используем общую функцию getExportContent с указанием focusedColumn и формата markdown
-    return getExportContent(sermon, focusedColumn, { format: 'markdown' });
+    // Pass format and includeTags parameters to getExportContent
+    return getExportContent(sermon, focusedColumn, { 
+      format, 
+      includeTags: options?.includeTags
+    });
   };
 
   const handleAiSort = async (columnId: string) => {

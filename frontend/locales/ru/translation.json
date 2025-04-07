@@ -97,7 +97,11 @@
     "noEntries": "Нет записей",
     "format": "Формат",
     "formatPlain": "Обычный текст",
-    "formatMarkdown": "Markdown"
+    "formatMarkdown": "Markdown",
+    "copyAll": "Копировать всё",
+    "showTags": "Показать теги",
+    "hideTags": "Скрыть теги",
+    "includeTags": "Включать теги"
   },
   "tags": {
     "introduction": "Вступление",
@@ -140,10 +144,10 @@
     "noThoughts": "Нет мыслей для этой проповеди",
     "deleteThoughtConfirm": "Вы уверены, что хотите удалить эту мысль?\n{{text}}",
     "outline": "План проповеди",
-    "createOutline": "Создать план (черновик)",
-    "viewOutline": "Просмотреть план (черновик)",
-    "createPlan": "Собрать План по Пунктам",
-    "viewPlan": "Просмотреть План по Пунктам",
+    "createOutline": "Создать черновик",
+    "viewOutline": "Смотреть черновик",
+    "createPlan": "Собрать по Пунктам",
+    "viewPlan": "Смотреть по Пунктам",
     "draftMode": "Черновик",
     "pointMode": "по Пунктам"
   },
@@ -287,7 +291,8 @@
     "hideSearch": "Скрыть поиск",
     "loading": "Загрузка...",
     "copied": "Скопировано!",
-    "scripture": "Священное Писание"
+    "scripture": "Священное Писание",
+    "actions": "Действия"
   },
   "outline": {
     "introduction": "Вступление",

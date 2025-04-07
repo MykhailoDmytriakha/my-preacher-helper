@@ -131,7 +131,7 @@ export function getExportContent(
   // Default options
   const {
     format = 'plain',
-    includeTags = true,
+    includeTags = false,
     includeMetadata = true
   } = options;
 

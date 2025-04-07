@@ -97,7 +97,11 @@
     "noEntries": "Немає записів",
     "format": "Формат",
     "formatPlain": "Звичайний текст",
-    "formatMarkdown": "Markdown"
+    "formatMarkdown": "Markdown",
+    "copyAll": "Копіювати все",
+    "showTags": "Показати теги",
+    "hideTags": "Сховати теги",
+    "includeTags": "Включати теги"
   },
   "tags": {
     "introduction": "Вступ",
@@ -280,14 +284,15 @@
     "saving": "Збереження...",
     "dragToReorder": "Перетягніть для зміни порядку",
     "savingChanges": "Збереження змін...",
-    "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) призначено до цього пункту",
+    "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) прив'язано до цього пункту",
     "save": "Зберегти",
     "cancel": "Скасувати",
     "showSearch": "Показати пошук",
     "hideSearch": "Сховати пошук",
     "loading": "Завантаження...",
     "copied": "Скопійовано!",
-    "scripture": "Святе Письмо"
+    "scripture": "Священне Писання",
+    "actions": "Дії"
   },
   "outline": {
     "introduction": "Вступ",

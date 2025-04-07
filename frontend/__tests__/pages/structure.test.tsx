@@ -64,7 +64,7 @@ jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
   default: (props: any) => (
     <div data-testid="export-buttons">
-      <button onClick={() => props.getExportContent()} data-testid="export-txt-button">
+      <button onClick={() => props.getExportContent('plain', { includeTags: false })} data-testid="export-txt-button">
         Export TXT
       </button>
     </div>
@@ -152,7 +152,7 @@ const MockStructurePageContent = () => {
     setFocusedColumn(null);
   };
 
-  const getExportContentForFocusedColumn = async () => {
+  const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown' = 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !containers[focusedColumn as keyof typeof containers]) {
       return '';
     }
@@ -179,7 +179,8 @@ const MockStructurePageContent = () => {
     } else {
       items.forEach((item, index) => {
         content += `${index + 1}. ${item.content}\n`;
-        if (item.customTagNames && item.customTagNames.length > 0) {
+        // Always include tags unless explicitly false
+        if (options?.includeTags !== false && item.customTagNames && item.customTagNames.length > 0) {
           // Extract tag names from the customTagNames objects
           const tagNames = item.customTagNames.map(tag => tag.name);
           content += `   Tags: ${tagNames.join(', ')}\n`;
@@ -208,7 +209,7 @@ const MockStructurePageContent = () => {
               {/* Mock ExportButtons component */}
               <div data-testid="export-buttons">
                 <button 
-                  onClick={() => getExportContentForFocusedColumn()} 
+                  onClick={() => getExportContentForFocusedColumn('plain', { includeTags: true })} 
                   data-testid="export-txt-button"
                 >
                   Export TXT

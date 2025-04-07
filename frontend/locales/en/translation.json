@@ -97,7 +97,11 @@
     "noEntries": "No entries",
     "format": "Format",
     "formatPlain": "Plain Text",
-    "formatMarkdown": "Markdown"
+    "formatMarkdown": "Markdown",
+    "copyAll": "Copy All",
+    "showTags": "Show Tags",
+    "hideTags": "Hide Tags",
+    "includeTags": "Include Tags"
   },
   "tags": {
     "introduction": "Introduction",
@@ -287,7 +291,8 @@
     "hideSearch": "Hide search",
     "loading": "Loading...",
     "copied": "Copied!",
-    "scripture": "Scripture"
+    "scripture": "Scripture",
+    "actions": "Actions"
   },
   "outline": {
     "introduction": "Introduction",
