@@ -1087,7 +1087,7 @@ Your task is to generate a simple outline plan for a specific point in a sermon,
 
 IMPORTANT: 
 1. Always generate the plan in the SAME LANGUAGE as the input. Do not translate.
-2. Keep the plan simple with just main points and a single level of bullet points underneath.
+2. Keep the plan simple with just main points (using ###) and a single level of bullet points (* ) underneath.
 3. DO NOT create deeply nested or highly detailed plans.
 4. Focus ONLY on the specific outline point and its related thoughts.
 5. Maintain the theological perspective from the original thoughts.
@@ -1095,9 +1095,10 @@ IMPORTANT:
 7. Organize ideas in a logical sequence that will help with sermon delivery.
 8. Include only the most important key ideas from the provided thoughts.
 9. Format the response using Markdown:
-   - Use ### for main points (DO NOT include the outline point itself as a heading)
-   - Use only a single level of bullet points (* ) for supporting details
-${keyFragments.length > 0 ? '10. You MUST naturally incorporate all provided key fragments into your response.' : ''}
+   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a very concise summary (2-5 words) representing the core idea of the bullet points immediately following it.
+   - Use only a single level of bullet points (* ) for supporting details.
+10. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
+${keyFragments.length > 0 ? '11. You MUST naturally incorporate all provided key fragments into your response.' : ''}
 
 Your response should be a simple outline with just main points and their direct sub-points.`;
 
@@ -1114,19 +1115,21 @@ ${keyFragments.map(frag => `- "${frag}"`).join('\n')}
 ====================================
 
 ` : ''}
-Based on these related thoughts:
+Based on these related thoughts (maintain this order in your plan):
 ${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
 
 IMPORTANT INSTRUCTIONS:
 1. Generate the plan in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
-2. Provide only main points and a single level of bullet points - DO NOT create a deeply nested hierarchy.
+2. Provide only main points (###) and a single level of bullet points (* ) - DO NOT create a deeply nested hierarchy.
 3. Keep it concise - I need only the high-level structure, not detailed development.
-4. Identify just 2-4 key points that support the outline point.
+4. Identify just 2-4 key points that support the outline point, grouped logically under headings.
 5. Include only brief notes on illustrations or examples where essential.
 6. Add scripture references in *italic* and key theological concepts in **bold**.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
-${keyFragments.length > 0 ? '9. CRITICAL: Ensure all provided Key Fragments are present in your response.' : ''}
+9. CRITICAL: Each main point heading (###) MUST be a very short summary (2-5 words) of the content below it.
+10. CRITICAL: The order of the main points (###) and their content in your plan MUST strictly follow the order of the provided THOUGHTS above.
+${keyFragments.length > 0 ? '11. CRITICAL: Ensure all provided Key Fragments are present in your response.' : ''}
 
 Format your response as a simple outline with just main points and their direct sub-points using Markdown. Do not write full paragraphs or create deeply nested points.`;
 

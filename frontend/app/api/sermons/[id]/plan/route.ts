@@ -240,10 +240,24 @@ async function generateOutlinePointContent(sermonId: string, outlinePointId: str
       );
     }
     
-    // Find thoughts related to this outline point
-    const relatedThoughts = sermon.thoughts.filter(thought => 
+    // Find thoughts related to this outline point AND sort them based on structure
+    const structureIds = sermon.structure?.[sectionName as keyof typeof sermon.structure];
+    const structureIdsArray: string[] = Array.isArray(structureIds) ? structureIds : 
+                             (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
+
+    const thoughtsForPoint = sermon.thoughts.filter(thought => 
       thought.outlinePointId === outlinePointId
     );
+
+    const relatedThoughts = structureIdsArray.length > 0 ? 
+      thoughtsForPoint.sort((a, b) => {
+        const indexA = structureIdsArray.indexOf(a.id);
+        const indexB = structureIdsArray.indexOf(b.id);
+        if (indexA === -1) return 1; // Put thoughts not in structure at the end
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      }) : 
+      thoughtsForPoint; // Use unsorted if structure is empty
     
     if (relatedThoughts.length === 0) {
       return NextResponse.json(
@@ -252,32 +266,33 @@ async function generateOutlinePointContent(sermonId: string, outlinePointId: str
       );
     }
     
-    // Collect all key fragments from related thoughts
-    const allKeyFragments = relatedThoughts.reduce((acc: string[], thought) => {
+    // Extract texts and key fragments from the (now sorted) thoughts
+    const relatedThoughtsTexts = relatedThoughts.map(thought => thought.text);
+    const keyFragments = relatedThoughts.reduce((acc: string[], thought) => {
       if (thought.keyFragments && thought.keyFragments.length > 0) {
-        acc.push(...thought.keyFragments);
+        return acc.concat(thought.keyFragments);
       }
       return acc;
     }, []);
     
-    // Generate content for the outline point
-    const result = await generatePlanPointContent(
+    // Generate the content using the AI client
+    const { content, success } = await generatePlanPointContent(
       sermon.title,
       sermon.verse,
       outlinePoint.text,
-      relatedThoughts.map(t => t.text),
+      relatedThoughtsTexts, // Pass sorted texts
       sectionName,
-      allKeyFragments // Pass the collected key fragments
+      keyFragments // Pass combined key fragments
     );
     
-    if (!result.success) {
+    if (!success) {
       return NextResponse.json(
         { error: 'Failed to generate content for outline point' },
         { status: 500 }
       );
     }
     
-    return NextResponse.json({ content: result.content });
+    return NextResponse.json({ content });
   } catch (error: any) {
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);
     return NextResponse.json(
