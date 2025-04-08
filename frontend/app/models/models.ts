@@ -4,6 +4,7 @@ export interface Thought {
   tags: string[];
   date: string;
   outlinePointId?: string;
+  keyFragments?: string[]; // Store important text fragments for AI generation
 }
 
 export interface OutlinePoint {

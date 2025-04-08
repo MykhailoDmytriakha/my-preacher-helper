@@ -1056,6 +1056,7 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
  * @param outlinePointText The text of the outline point
  * @param relatedThoughtsTexts Array of texts from related thoughts
  * @param sectionName The section name (introduction, main, conclusion)
+ * @param keyFragments Array of key fragments to include in the prompt
  * @returns The generated content and success status
  */
 export async function generatePlanPointContent(
@@ -1063,7 +1064,8 @@ export async function generatePlanPointContent(
   sermonVerse: string,
   outlinePointText: string,
   relatedThoughtsTexts: string[],
-  sectionName: string
+  sectionName: string,
+  keyFragments: string[] = []
 ): Promise<{ content: string; success: boolean }> {
   // Detect language - simple heuristic based on non-Latin characters
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermonTitle + sermonVerse);
@@ -1072,6 +1074,9 @@ export async function generatePlanPointContent(
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
     console.log(`DEBUG: Generating structured plan for outline point in ${sectionName} section`);
+    if (keyFragments.length > 0) {
+      console.log(`DEBUG: Including ${keyFragments.length} key fragments in the generation`);
+    }
   }
   
   try {
@@ -1092,6 +1097,7 @@ IMPORTANT:
 9. Format the response using Markdown:
    - Use ### for main points (DO NOT include the outline point itself as a heading)
    - Use only a single level of bullet points (* ) for supporting details
+${keyFragments.length > 0 ? '10. You MUST naturally incorporate all provided key fragments into your response.' : ''}
 
 Your response should be a simple outline with just main points and their direct sub-points.`;
 
@@ -1102,6 +1108,12 @@ SERMON TITLE: ${sermonTitle}
 SCRIPTURE: ${sermonVerse}
 OUTLINE POINT: "${outlinePointText}"
 
+${keyFragments.length > 0 ? `==== KEY FRAGMENTS (MUST INCLUDE) ====
+The following key fragments MUST be naturally integrated into the generated content for this outline point:
+${keyFragments.map(frag => `- "${frag}"`).join('\n')}
+====================================
+
+` : ''}
 Based on these related thoughts:
 ${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
 
@@ -1114,6 +1126,7 @@ IMPORTANT INSTRUCTIONS:
 6. Add scripture references in *italic* and key theological concepts in **bold**.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
+${keyFragments.length > 0 ? '9. CRITICAL: Ensure all provided Key Fragments are present in your response.' : ''}
 
 Format your response as a simple outline with just main points and their direct sub-points using Markdown. Do not write full paragraphs or create deeply nested points.`;
 
@@ -1130,6 +1143,7 @@ Format your response as a simple outline with just main points and their direct 
       outlinePointText,
       sectionName,
       thoughtsCount: relatedThoughtsTexts.length,
+      keyFragmentsCount: keyFragments.length,
       detectedLanguage
     };
     

@@ -252,13 +252,22 @@ async function generateOutlinePointContent(sermonId: string, outlinePointId: str
       );
     }
     
+    // Collect all key fragments from related thoughts
+    const allKeyFragments = relatedThoughts.reduce((acc: string[], thought) => {
+      if (thought.keyFragments && thought.keyFragments.length > 0) {
+        acc.push(...thought.keyFragments);
+      }
+      return acc;
+    }, []);
+    
     // Generate content for the outline point
     const result = await generatePlanPointContent(
       sermon.title,
       sermon.verse,
       outlinePoint.text,
       relatedThoughts.map(t => t.text),
-      sectionName
+      sectionName,
+      allKeyFragments // Pass the collected key fragments
     );
     
     if (!result.success) {

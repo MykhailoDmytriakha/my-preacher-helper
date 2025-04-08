@@ -165,7 +165,10 @@
     "failedToLoadSermon": "Не вдалося завантажити проповідь",
     "outlinePointNotFound": "Пункт плану не знайдено",
     "failedToGenerateContent": "Не вдалося згенерувати вміст",
-    "failedToSavePlan": "Не вдалося зберегти текст проповіді"
+    "failedToSavePlan": "Не вдалося зберегти текст проповіді",
+    "thoughtNotFound": "Запис не знайдено",
+    "failedToAddFragment": "Не вдалося додати ключовий фрагмент",
+    "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент"
   },
   "audio": {
     "processing": "Обробка...",
@@ -329,6 +332,7 @@
     "showThoughts": "Показати думки",
     "hideThoughts": "Сховати думки",
     "thoughts": "Думки",
+    "thought": "Думка",
     "noThoughts": "Немає прикріплених думок",
     "generateAll": "Згенерувати все",
     "generatingAll": "Генерація...",
@@ -345,7 +349,15 @@
     "noContent": "Поки що немає змісту. Згенеруйте або напишіть щось",
     "save": "Зберегти",
     "viewMode": "Режим перегляду",
-    "editMode": "Режим редагування"
+    "editMode": "Режим редагування",
+    "keyFragments": "Ключові фрагменти",
+    "markKeyFragments": "Позначити ключові фрагменти",
+    "keyFragmentsFor": "Ключові фрагменти для",
+    "selectTextToMarkAsKeyFragment": "Виберіть текст у думці, щоб позначити його як ключовий фрагмент. Ключові фрагменти будуть включені в контент, згенерований ШІ.",
+    "noKeyFragments": "Немає позначених ключових фрагментів",
+    "addAsKeyFragment": "Додати як ключовий фрагмент",
+    "fragmentAdded": "Фрагмент успішно додано",
+    "fragmentRemoved": "Фрагмент успішно видалено"
   },
   "copy": {
     "title": "Копіювання вмісту",
@@ -365,6 +377,8 @@
     "back": "Назад",
     "backToSermon": "Назад до проповіді",
     "copyAll": "Копіювати все",
-    "goToOutline": "Перейти до плану"
+    "goToOutline": "Перейти до плану",
+    "remove": "Видалити",
+    "close": "Закрити"
   }
 } 

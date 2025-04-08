@@ -192,7 +192,10 @@
     "failedToLoadSermon": "Failed to load sermon",
     "outlinePointNotFound": "Outline point not found",
     "failedToGenerateContent": "Failed to generate content",
-    "failedToSavePlan": "Failed to save plan"
+    "failedToSavePlan": "Failed to save plan",
+    "thoughtNotFound": "Thought not found",
+    "failedToAddFragment": "Failed to add key fragment",
+    "failedToRemoveFragment": "Failed to remove key fragment"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -322,6 +325,7 @@
     "showThoughts": "Show Thoughts",
     "hideThoughts": "Hide Thoughts",
     "thoughts": "Thoughts",
+    "thought": "Thought",
     "noThoughts": "No attached thoughts",
     "generate": "Generate Content",
     "generateSuccess": "Plan successfully generated!",
@@ -345,7 +349,15 @@
     "noContent": "No content yet. Generate or write something",
     "save": "Save",
     "viewMode": "View mode",
-    "editMode": "Edit mode"
+    "editMode": "Edit mode",
+    "keyFragments": "Key Fragments",
+    "markKeyFragments": "Mark Key Fragments",
+    "keyFragmentsFor": "Key Fragments for",
+    "selectTextToMarkAsKeyFragment": "Select text in a thought to mark it as a key fragment. Key fragments will be included in AI-generated content.",
+    "noKeyFragments": "No key fragments marked",
+    "addAsKeyFragment": "Add as Key Fragment",
+    "fragmentAdded": "Fragment added successfully",
+    "fragmentRemoved": "Fragment removed successfully"
   },
   "copy": {
     "copyText": "Copy Text",
@@ -362,6 +374,8 @@
     "back": "Back",
     "backToSermon": "Back to sermon",
     "copyAll": "Copy All",
-    "goToOutline": "Go to Outline"
+    "goToOutline": "Go to Outline",
+    "remove": "Remove",
+    "close": "Close"
   }
 } 

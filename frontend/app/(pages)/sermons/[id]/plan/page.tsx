@@ -3,16 +3,17 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
-import { Outline, OutlinePoint, Plan, Sermon, Thought } from "@/models/models";
+import { Outline, OutlinePoint, Plan, Sermon, Thought, Structure } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, NotepadText, FileText, Pencil } from "lucide-react";
+import { Save, NotepadText, FileText, Pencil, Bookmark } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -130,6 +131,8 @@ interface OutlinePointCardProps {
   onGenerate: (outlinePointId: string) => Promise<void>;
   generatedContent: string | null;
   isGenerating: boolean;
+  sermonId: string;
+  onOpenFragmentsModal: (outlinePointId: string) => void;
 }
 
 const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>(({
@@ -139,6 +142,8 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
   onGenerate,
   generatedContent,
   isGenerating,
+  sermonId,
+  onOpenFragmentsModal,
 }, ref) => {
   const { t } = useTranslation();
   
@@ -148,6 +153,11 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
   // Get the colors for this section
   const sectionColors = SERMON_SECTION_COLORS[themeSectionName];
   
+  // Count key fragments across all thoughts for this outline point
+  const keyFragmentsCount = thoughts.reduce((count, thought) => {
+    return count + (thought.keyFragments?.length || 0);
+  }, 0);
+  
   return (
     <Card 
       ref={ref}
@@ -155,31 +165,57 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
     >
       <h3 className={`font-semibold text-lg mb-2 text-${sectionColors.text.split('-')[1]} flex justify-between items-center`}>
         {outlinePoint.text}
-        <Button
-          onClick={() => onGenerate(outlinePoint.id)}
-          variant="section"
-          sectionColor={sectionColors}
-          className="text-sm px-2 py-1 h-8"
-          disabled={isGenerating}
-          title={isGenerating ? t("plan.generating") : generatedContent ? t("plan.regenerate") : t("plan.generate")}
-        >
-          {isGenerating ? (
-            <LoadingSpinner size="small" />
-          ) : (
-            <NotepadText className="h-4 w-4" />
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => onOpenFragmentsModal(outlinePoint.id)}
+            variant="section"
+            sectionColor={sectionColors}
+            className="text-sm px-2 py-1 h-8 relative"
+            title={t("plan.markKeyFragments")}
+          >
+            <Bookmark className="h-4 w-4" />
+            {keyFragmentsCount > 0 && (
+              <span className="absolute -top-1 -right-1 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold border"
+                style={{ borderColor: sectionColors.light }}
+              >
+                {keyFragmentsCount}
+              </span>
+            )}
+          </Button>
+          <Button
+            onClick={() => onGenerate(outlinePoint.id)}
+            variant="section"
+            sectionColor={sectionColors}
+            className="text-sm px-2 py-1 h-8"
+            disabled={isGenerating}
+            title={isGenerating ? t("plan.generating") : generatedContent ? t("plan.regenerate") : t("plan.generate")}
+          >
+            {isGenerating ? (
+              <LoadingSpinner size="small" />
+            ) : (
+              <NotepadText className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </h3>
       
-      <div className="mb-3">
-        <div className={`text-sm mb-2 text-${sectionColors.text.split('-')[1]}`}>
-          {t("plan.thoughts")} ({thoughts.length})
-        </div>
-        
+      <div className="mb-3">        
         <ul className="mt-2 ml-4 text-base">
           {thoughts.map((thought) => (
             <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base">
               • {thought.text}
+              {thought.keyFragments && thought.keyFragments.length > 0 && (
+                <div className="mt-1 ml-2">
+                  {thought.keyFragments.map((fragment, index) => (
+                    <span 
+                      key={index} 
+                      className="inline-block mr-2 mb-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs rounded-full"
+                    >
+                      "{fragment}"
+                    </span>
+                  ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -239,6 +275,8 @@ export default function PlanPage() {
   
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
+  
+  const [modalOutlinePointId, setModalOutlinePointId] = useState<string | null>(null);
   
   // Function to synchronize heights
   const syncHeights = () => {
@@ -404,9 +442,53 @@ export default function PlanPage() {
   const getThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
     if (!sermon) return [];
     
-    return sermon.thoughts.filter(
-      (thought) => thought.outlinePointId === outlinePointId
-    );
+    // 1. Найти точку плана и определить, к какой секции она относится
+    let sectionName: string | null = null;
+    
+    if (sermon.outline?.introduction.some(op => op.id === outlinePointId)) {
+      sectionName = "introduction";
+    } else if (sermon.outline?.main.some(op => op.id === outlinePointId)) {
+      sectionName = "main";
+    } else if (sermon.outline?.conclusion.some(op => op.id === outlinePointId)) {
+      sectionName = "conclusion";
+    }
+    
+    if (!sectionName) {
+      // Если секция не найдена, возвращаем мысли в порядке по умолчанию
+      return sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
+    }
+    
+    // 2. Получаем упорядоченный массив ID мыслей из структуры для данной секции
+    const structureIds = sermon.structure?.[sectionName as keyof Structure];
+    const structureIdsArray = Array.isArray(structureIds) ? structureIds : 
+                           (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
+    
+    // 3. Отфильтровываем все мысли, связанные с данной точкой плана
+    const thoughtsForPoint = sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
+    
+    // 4. Если массив структуры пуст, возвращаем мысли без сортировки
+    if (!structureIdsArray.length) {
+      return thoughtsForPoint;
+    }
+    
+    // 5. Сортируем мысли в соответствии с порядком в структуре
+    return thoughtsForPoint.sort((a, b) => {
+      const indexA = structureIdsArray.indexOf(a.id);
+      const indexB = structureIdsArray.indexOf(b.id);
+      
+      // Если мысль не найдена в структуре, помещаем её в конец
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      
+      // Сортировка по порядку в структуре
+      return indexA - indexB;
+    });
+  };
+
+  // Find thoughts for an outline point
+  const findThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
+    // Используем существующую функцию с учетом порядка из структуры
+    return getThoughtsForOutlinePoint(outlinePointId);
   };
 
   // Generate content for an outline point
@@ -702,6 +784,36 @@ export default function PlanPage() {
     setTimeout(debouncedSyncHeights, 50);
   };
   
+  // Handle thought update from key fragments modal
+  const handleThoughtUpdate = (updatedThought: Thought) => {
+    setSermon(prevSermon => {
+      if (!prevSermon) return null;
+      return {
+        ...prevSermon,
+        thoughts: prevSermon.thoughts.map(t => 
+          t.id === updatedThought.id ? updatedThought : t
+        )
+      };
+    });
+  };
+  
+  // Find outline point by id
+  const findOutlinePointById = (outlinePointId: string): OutlinePoint | undefined => {
+    if (!sermon || !sermon.outline) return undefined;
+    
+    let outlinePoint;
+    
+    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.introduction.find(op => op.id === outlinePointId);
+    } else if (sermon.outline.main.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.main.find(op => op.id === outlinePointId);
+    } else if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) {
+      outlinePoint = sermon.outline.conclusion.find(op => op.id === outlinePointId);
+    }
+    
+    return outlinePoint;
+  };
+  
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -848,6 +960,8 @@ export default function PlanPage() {
                   onGenerate={generateOutlinePointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
+                  sermonId={sermonId}
+                  onOpenFragmentsModal={setModalOutlinePointId}
                 />
               ))}
               {sermon.outline?.introduction.length === 0 && (
@@ -992,6 +1106,8 @@ export default function PlanPage() {
                   onGenerate={generateOutlinePointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
+                  sermonId={sermonId}
+                  onOpenFragmentsModal={setModalOutlinePointId}
                 />
               ))}
               {sermon.outline?.main.length === 0 && (
@@ -1136,6 +1252,8 @@ export default function PlanPage() {
                   onGenerate={generateOutlinePointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
+                  sermonId={sermonId}
+                  onOpenFragmentsModal={setModalOutlinePointId}
                 />
               ))}
               {sermon.outline?.conclusion.length === 0 && (
@@ -1259,6 +1377,22 @@ export default function PlanPage() {
             </div>
           </div>
         </div>
+
+        {/* Key Fragments Modal */}
+        {modalOutlinePointId && (() => {
+          const outlinePoint = findOutlinePointById(modalOutlinePointId);
+          if (!outlinePoint) return null;
+          return (
+            <KeyFragmentsModal
+              isOpen={!!modalOutlinePointId}
+              onClose={() => setModalOutlinePointId(null)}
+              outlinePoint={outlinePoint}
+              thoughts={getThoughtsForOutlinePoint(modalOutlinePointId)}
+              sermonId={sermonId}
+              onThoughtUpdate={handleThoughtUpdate}
+            />
+          );
+        })()}
       </div>
     </div>
   );

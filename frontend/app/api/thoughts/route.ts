@@ -191,6 +191,11 @@ export async function PUT(request: Request) {
       updatedThought.outlinePointId = updatedThoughtNew.outlinePointId;
     }
     
+    // Add keyFragments if it exists
+    if (updatedThoughtNew.keyFragments) {
+      updatedThought.keyFragments = updatedThoughtNew.keyFragments;
+    }
+    
     // verify that updatedThought has everything that is needed
     if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {
       console.error("Thoughts route: Thought is missing required fields");
