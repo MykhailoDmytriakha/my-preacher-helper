@@ -40,9 +40,6 @@ npm run test:components
 # Запуск тестов только для утилит
 npm run test:utils
 
-# Запуск тестов в режиме наблюдения (во время разработки)
-npm run test:watch
-
 # Запуск с генерацией отчёта о покрытии
 npm run test:coverage
 ```

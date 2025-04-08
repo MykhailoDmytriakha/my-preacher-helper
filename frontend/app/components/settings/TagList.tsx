@@ -50,6 +50,7 @@ const TagList: React.FC<TagListProps> = ({
                    transition-colors shadow-sm"
         >
           <div 
+            data-testid="tag-color-preview"
             className={`
               relative flex-shrink-0 w-12 h-12 rounded-lg mr-4 shadow-sm
               ${editable && onEditColor ? 'cursor-pointer group' : ''}

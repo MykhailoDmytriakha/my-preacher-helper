@@ -7,6 +7,7 @@ import { PlusIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
+import { toast } from 'sonner';
 
 interface AddThoughtManualProps {
   sermonId: string;
@@ -21,9 +22,12 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedText = text.trim();
+    if (!trimmedText) return;
+
     const newThought: Thought = {
       id: '',
-      text,
+      text: trimmedText,
       tags: [],
       date: new Date().toISOString()
     };
@@ -32,11 +36,12 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
       setIsSubmitting(true);
       const savedThought = await createManualThought(sermonId, newThought);
       onNewThought(savedThought);
+      toast.success(t('manualThought.addedSuccess'));
       setText("");
       setOpen(false);
     } catch (error) {
       console.error("Error adding thought manually:", error);
-      alert(t('errors.addThoughtError'));
+      toast.error(t('errors.addThoughtError') || 'Failed to add thought. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -57,10 +62,13 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
           onClick={() => setOpen(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manual-thought-modal-title"
             className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
+            <h2 id="manual-thought-modal-title" className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
             <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
               <div className="mb-6 flex-grow overflow-auto">
                 <TextareaAutosize
@@ -85,7 +93,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                 <button
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !text.trim()}
                 >
                   {isSubmitting ? t('buttons.saving') : t('buttons.save')}
                 </button>

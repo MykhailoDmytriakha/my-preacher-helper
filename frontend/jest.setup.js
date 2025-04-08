@@ -202,6 +202,19 @@ jest.mock('next/router', () => ({
   }),
 }));
 
+// Mock Next.js navigation
+jest.mock('next/navigation', () => ({
+  usePathname: jest.fn().mockReturnValue('/'),
+  useRouter: () => ({
+    route: '/',
+    pathname: '',
+    push: jest.fn(),
+    replace: jest.fn(),
+    refresh: jest.fn(),
+    back: jest.fn(),
+  }),
+}));
+
 // Mock i18next for translations
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
@@ -220,6 +233,7 @@ jest.mock('react-i18next', () => ({
       },
       i18n: {
         changeLanguage: jest.fn(),
+        language: 'en',
       },
     };
   },
@@ -254,3 +268,122 @@ jest.mock('i18next', () => {
 
 // Mock i18n module - REMOVED as it conflicts with react-i18next mock
 // jest.mock('@locales/i18n', () => {}, { virtual: true }); 
+
+// Mock Firebase auth to avoid API key issues during tests
+jest.mock('firebase/auth', () => {
+  const mockUser = {
+    uid: 'test-user-id',
+    email: 'test@example.com',
+    displayName: 'Test User',
+    metadata: {
+      creationTime: new Date().toISOString()
+    },
+    isAnonymous: false
+  };
+
+  // Mock auth object that includes currentUser and properly implemented onAuthStateChanged
+  const mockAuth = {
+    currentUser: mockUser,
+    onAuthStateChanged: jest.fn((auth, callback) => {
+      // Immediately fire the callback with the mock user
+      callback(mockUser);
+      // Return mock unsubscribe function
+      return jest.fn();
+    })
+  };
+
+  return {
+    getAuth: jest.fn().mockReturnValue(mockAuth),
+    signInWithPopup: jest.fn().mockResolvedValue({ user: mockUser }),
+    GoogleAuthProvider: jest.fn(() => ({ 
+      providerId: 'google.com',
+      addScope: jest.fn()
+    })),
+    signOut: jest.fn().mockResolvedValue(undefined),
+    onAuthStateChanged: jest.fn((auth, callback) => {
+      // Immediately fire the callback with the mock user
+      callback(mockUser);
+      // Return mock unsubscribe function
+      return jest.fn();
+    }),
+    createUserWithEmailAndPassword: jest.fn().mockResolvedValue({ user: mockUser }),
+    signInWithEmailAndPassword: jest.fn().mockResolvedValue({ user: mockUser }),
+    setPersistence: jest.fn(),
+    browserLocalPersistence: 'local',
+    signInAnonymously: jest.fn().mockResolvedValue({ user: {...mockUser, isAnonymous: true} })
+  };
+});
+
+// Mock Firebase auth service with a proper auth object
+jest.mock('@/services/firebaseAuth.service', () => {
+  const mockUser = {
+    uid: 'test-user-id',
+    email: 'test@example.com',
+    displayName: 'Test User',
+    metadata: {
+      creationTime: new Date().toISOString()
+    },
+    isAnonymous: false
+  };
+
+  return {
+    auth: {
+      currentUser: mockUser,
+      onAuthStateChanged: jest.fn((callback) => {
+        // Immediately fire the callback with the mock user
+        callback(mockUser);
+        // Return mock unsubscribe function
+        return jest.fn();
+      })
+    },
+    signInWithGoogle: jest.fn().mockResolvedValue(mockUser),
+    logOut: jest.fn().mockResolvedValue(undefined),
+    signInAsGuest: jest.fn().mockResolvedValue({...mockUser, isAnonymous: true}),
+    checkGuestExpiration: jest.fn().mockReturnValue(true)
+  };
+});
+
+// Mock Firebase app
+jest.mock('firebase/app', () => {
+  const app = {
+    initializeApp: jest.fn().mockReturnValue({}),
+    getApps: jest.fn().mockReturnValue([]),
+  };
+  return app;
+});
+
+// Mock Firebase Firestore
+jest.mock('firebase/firestore', () => {
+  return {
+    getFirestore: jest.fn().mockReturnValue({}),
+    collection: jest.fn(),
+    doc: jest.fn(),
+    getDocs: jest.fn(),
+    getDoc: jest.fn(),
+    setDoc: jest.fn(),
+    addDoc: jest.fn(),
+    deleteDoc: jest.fn(),
+    updateDoc: jest.fn(),
+    query: jest.fn(),
+    where: jest.fn(),
+    orderBy: jest.fn(),
+    limit: jest.fn(),
+    onSnapshot: jest.fn(),
+    Timestamp: {
+      now: jest.fn().mockReturnValue({ toDate: jest.fn() }),
+      fromDate: jest.fn().mockReturnValue({}),
+    }
+  };
+});
+
+// Mock react-markdown to avoid ESM module issues
+jest.mock('react-markdown', () => ({
+  __esModule: true,
+  default: ({ children }) => <div data-testid="markdown">{children}</div>
+}));
+
+// Mock remark-gfm
+jest.mock('remark-gfm', () => ({
+  __esModule: true,
+  default: {}
+})); 

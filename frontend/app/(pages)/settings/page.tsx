@@ -4,18 +4,18 @@ import React, { useState, useEffect } from 'react';
 import { User } from "firebase/auth";
 import { auth } from "@services/firebaseAuth.service";
 import { useTranslation } from 'react-i18next';
-import TagsSection from "@components/settings/TagsSection";
-import UserSettingsSection from "@components/settings/UserSettingsSection";
-import SettingsLayout from "@components/settings/SettingsLayout";
+import UserSettingsSection from "@/components/settings/UserSettingsSection";
+import TagsSection from "@/components/settings/TagsSection";
+import SettingsLayout from "@/components/settings/SettingsLayout";
 import SettingsNav from "@components/settings/SettingsNav";
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import "@locales/i18n";
 
 export default function SettingsPage() {
+  const [activeSection, setActiveSection] = useState<'user' | 'tags'>('user');
   const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<'user' | 'tags'>('user');
   const [pageTitle, setPageTitle] = useState('');
 
   useEffect(() => {
@@ -75,28 +75,13 @@ export default function SettingsPage() {
 
   // Отображаем содержимое страницы настроек
   return (
-    <>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <LanguageInitializer />
-      <SettingsLayout title={pageTitle}>
-        {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
-        <div className="block md:hidden mb-4">
-          <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
-            <SettingsNav
-              activeSection={activeSection}
-              onNavigate={(sectionId) => {
-                if (sectionId === 'user' || sectionId === 'tags') {
-                  handleSectionChange(sectionId);
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Desktop Layout (side-by-side) - only visible on desktop */}
-        <div className="hidden md:flex md:flex-row md:gap-8">
-          {/* Navigation sidebar for desktop */}
-          <div className="w-64 flex-shrink-0">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+      <main role="main" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
+        <SettingsLayout title={pageTitle}>
+          {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
+          <div className="block md:hidden mb-4">
+            <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
               <SettingsNav
                 activeSection={activeSection}
                 onNavigate={(sectionId) => {
@@ -107,18 +92,35 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-          
-          {/* Main content area for desktop */}
-          <div className="flex-1 transition-opacity duration-200 ease-in-out">
+
+          {/* Desktop Layout (side-by-side) - only visible on desktop */}
+          <div className="hidden md:flex md:flex-row md:gap-8">
+            {/* Navigation sidebar for desktop */}
+            <div className="w-64 flex-shrink-0">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                <SettingsNav
+                  activeSection={activeSection}
+                  onNavigate={(sectionId) => {
+                    if (sectionId === 'user' || sectionId === 'tags') {
+                      handleSectionChange(sectionId);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            
+            {/* Main content area for desktop */}
+            <div className="flex-1 transition-opacity duration-200 ease-in-out">
+              {renderActiveSection()}
+            </div>
+          </div>
+
+          {/* Mobile Content Area - only visible on mobile */}
+          <div className="block md:hidden transition-opacity duration-200 ease-in-out">
             {renderActiveSection()}
           </div>
-        </div>
-
-        {/* Mobile Content Area - only visible on mobile */}
-        <div className="block md:hidden transition-opacity duration-200 ease-in-out">
-          {renderActiveSection()}
-        </div>
-      </SettingsLayout>
-    </>
+        </SettingsLayout>
+      </main>
+    </div>
   );
 } 

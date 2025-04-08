@@ -466,6 +466,7 @@ export default function SermonPage() {
                         setIsFilterOpen(!isFilterOpen);
                       }}
                       className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      data-testid="thought-filter-button"
                     >
                       {t('filters.filter')}
                       {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
@@ -482,6 +483,7 @@ export default function SermonPage() {
                         onClick={(e) => e.stopPropagation()}
                         className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10"
                         style={{ maxWidth: 'calc(100vw - 32px)' }}
+                        data-testid="thought-filter-controls"
                       >
                         <div className="py-1 divide-y divide-gray-200 dark:divide-gray-700">
                           {/* View options */}
@@ -699,25 +701,27 @@ export default function SermonPage() {
                       </button>
                     </div>
                   ) : (
-                    getFilteredThoughts().map((thought, index) => {
-                      const requiredTags = ["Вступление", "Основная часть", "Заключение"];
-                      const hasRequiredTag = thought.tags.some((tag) =>
-                        requiredTags.includes(tag)
-                      );
+                    <div data-testid="sermon-thoughts-container" className="space-y-5">
+                      {getFilteredThoughts().map((thought, index) => {
+                        const requiredTags = ["Вступление", "Основная часть", "Заключение"];
+                        const hasRequiredTag = thought.tags.some((tag) =>
+                          requiredTags.includes(tag)
+                        );
 
-                      return (
-                        <ThoughtCard
-                          key={index}
-                          thought={thought}
-                          index={index}
-                          allowedTags={allowedTags}
-                          currentTag={""}
-                          sermonOutline={sermon.outline}
-                          onDelete={(indexToDelete) => handleDeleteThought(indexToDelete, thought.id)}
-                          onEditStart={(thought, index) => setEditingModalData({ thought, index })}
-                        />
-                      );
-                    })
+                        return (
+                          <ThoughtCard
+                            key={index}
+                            thought={thought}
+                            index={index}
+                            allowedTags={allowedTags}
+                            currentTag={""}
+                            sermonOutline={sermon.outline}
+                            onDelete={(indexToDelete) => handleDeleteThought(indexToDelete, thought.id)}
+                            onEditStart={(thought, index) => setEditingModalData({ thought, index })}
+                          />
+                        );
+                      })}
+                    </div>
                   )
                 )}
               </div>

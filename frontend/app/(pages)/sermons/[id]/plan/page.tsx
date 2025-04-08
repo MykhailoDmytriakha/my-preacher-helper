@@ -372,6 +372,7 @@ export default function PlanPage() {
       setIsLoading(true);
       try {
         const sermonData = await getSermonById(sermonId);
+        
         if (!sermonData) {
           setError(t("errors.sermonNotFound"));
           return;
@@ -382,9 +383,9 @@ export default function PlanPage() {
         // Initialize the combined plan if a plan already exists
         if (sermonData.plan) {
           setCombinedPlan({
-            introduction: sermonData.plan.introduction.outline || "",
-            main: sermonData.plan.main.outline || "",
-            conclusion: sermonData.plan.conclusion.outline || "",
+            introduction: sermonData.plan.introduction?.outline || "",
+            main: sermonData.plan.main?.outline || "", 
+            conclusion: sermonData.plan.conclusion?.outline || "",
           });
           
           // Initialize generatedContent from saved outlinePoints if they exist
@@ -394,11 +395,10 @@ export default function PlanPage() {
           // Extract all saved outline point content
           ['introduction', 'main', 'conclusion'].forEach(sectionKey => {
             const section = sermonData.plan?.[sectionKey as keyof Plan];
-            const outlinePoints = section?.outlinePoints || {};
+            const outlinePoints = section?.outlinePoints || {}; 
             
             Object.entries(outlinePoints).forEach(([pointId, content]) => {
               savedContent[pointId] = content;
-              // Mark as saved
               savedPoints[pointId] = true;
             });
           });
@@ -850,7 +850,10 @@ export default function PlanPage() {
   }
   
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 p-4">
+    <div 
+      className="min-h-screen bg-white dark:bg-gray-900 p-4"
+      data-testid="sermon-plan-page-container"
+    >
       <style jsx global>{sectionButtonStyles}</style>
       <style jsx global>{`
         /* Markdown content styling */
@@ -940,7 +943,10 @@ export default function PlanPage() {
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Intro Left & Right */}
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}>
+          <div 
+            data-testid="plan-introduction-left-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-blue-500 dark:bg-blue-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
               {t("sections.introduction")}
             </h2>
@@ -970,7 +976,10 @@ export default function PlanPage() {
             </div>
           </div>
           
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}>
+          <div 
+            data-testid="plan-introduction-right-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-blue-500 dark:bg-blue-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
               {t("sections.introduction")}
             </h2>
@@ -1086,7 +1095,10 @@ export default function PlanPage() {
           </div>
           
           {/* Main Left & Right */}
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}>
+          <div 
+            data-testid="plan-main-left-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-purple-500 dark:bg-purple-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
               {t("sections.main")}
             </h2>
@@ -1116,7 +1128,10 @@ export default function PlanPage() {
             </div>
           </div>
           
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}>
+          <div 
+            data-testid="plan-main-right-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-purple-500 dark:bg-purple-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
               {t("sections.main")}
             </h2>
@@ -1232,7 +1247,10 @@ export default function PlanPage() {
           </div>
           
           {/* Conclusion Left & Right */}
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}>
+          <div 
+            data-testid="plan-conclusion-left-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-green-500 dark:bg-green-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
               {t("sections.conclusion")}
             </h2>
@@ -1262,7 +1280,10 @@ export default function PlanPage() {
             </div>
           </div>
           
-          <div className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}>
+          <div 
+            data-testid="plan-conclusion-right-section"
+            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
+          >
             <h2 className={`text-xl font-semibold p-3 bg-green-500 dark:bg-green-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
               {t("sections.conclusion")}
             </h2>
@@ -1384,6 +1405,7 @@ export default function PlanPage() {
           if (!outlinePoint) return null;
           return (
             <KeyFragmentsModal
+              data-testid="key-fragments-modal-instance"
               isOpen={!!modalOutlinePointId}
               onClose={() => setModalOutlinePointId(null)}
               outlinePoint={outlinePoint}

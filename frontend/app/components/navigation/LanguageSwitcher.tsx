@@ -11,13 +11,13 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 export default function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
   const currentLang = SUPPORTED_LANGUAGES.find((lang) => 
-    lang.code === i18n.language
+    lang.code === (i18n?.language || 'en')
   ) || SUPPORTED_LANGUAGES[0];
 
   const toggleDropdown = () => {

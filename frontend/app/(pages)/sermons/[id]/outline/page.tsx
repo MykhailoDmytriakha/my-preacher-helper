@@ -64,21 +64,17 @@ export default function SermonOutlinePage() {
       setError(null);
       
       try {
-        console.log("sermon", sermon);
         if (sermon === null) {
           // Sermon is still loading, wait for it
           return;
         }
         
         if (sermon && sermon.plan) {
-          console.log("Using existing plan from sermon data");
           setPlan(sermon.plan);
         } else {
-          console.log("No plan in sermon data, checking API");
           // Don't attempt to generate a new plan automatically
         }
       } catch (err) {
-        console.error("Error fetching sermon plan:", err);
         setError(t('errors.fetchPlanError'));
       } finally {
         setLoading(false);
@@ -111,7 +107,6 @@ export default function SermonOutlinePage() {
         setError(t('plan.error'));
       }
     } catch (err) {
-      console.error("Error generating sermon plan:", err);
       setError(t('plan.error'));
     } finally {
       setIsGenerating(false);
@@ -159,7 +154,6 @@ export default function SermonOutlinePage() {
       setTimeout(() => setSuccessMessage(null), 3000);
       
     } catch (err) {
-      console.error(`Error regenerating ${section}:`, err);
       setError(`${t('plan.regenerateError')} ${section}`);
     } finally {
       setGeneratingSections(prev => ({ ...prev, [section]: false }));
@@ -207,7 +201,6 @@ export default function SermonOutlinePage() {
           setShowCopyModal(false);
         },
         (err) => {
-          console.error("Could not copy text: ", err);
           setError(t('errors.copyError'));
         }
       );

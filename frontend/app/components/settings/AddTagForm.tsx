@@ -46,7 +46,11 @@ const AddTagForm: React.FC<AddTagFormProps> = ({ onAddTag }) => {
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+      <form 
+        data-testid="add-tag-form-element"
+        onSubmit={handleSubmit} 
+        className="flex flex-col sm:flex-row gap-4 mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+      >
         <div className="flex-1 flex flex-col">
           <label htmlFor="tagName" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             <span suppressHydrationWarning={true}>{t('settings.tagName')}</span>

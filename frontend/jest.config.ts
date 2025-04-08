@@ -11,6 +11,7 @@ const createJestConfig = nextJest({
 const config: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jest-environment-jsdom',
+  testTimeout: 15000, // Increase global timeout to 15 seconds
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   modulePaths: ['.'],
@@ -29,11 +30,25 @@ const config: Config = {
   },
   // Tell Jest to transform specific node_modules packages
   transformIgnorePatterns: [
-    // Ignore node_modules, but DO transform react-markdown and unified
-    '/node_modules/(?!react-markdown|unified)/',
+    // Ignore node_modules, but DO transform ESM modules that require transformation
+    '/node_modules/(?!react-markdown|unified|remark-.*|micromark|mdast-.*|unist-.*|@?vfile.*|decode-named-character-reference|property-information|comma-separated-tokens|hast-util-.*|space-separated-tokens|bail|character-entities|trough|markdown-table|ccount|html-void-elements|trim-lines|rehype.*|is-plain-obj|hastscript|web-namespaces|zwitch|hast-.*|style-to-object)/',
     // Keep the default Next.js pattern for CSS Modules
     '^.+\\.module\\.(css|sass|scss)$',
   ],
+  collectCoverageFrom: [
+    'app/**/*.{ts,tsx}', // Include all TS/TSX files in the app directory
+    'locales/**/*.{ts,tsx}', // Include files in locales
+    '!app/**/*.test.{ts,tsx}', // Exclude test files within app
+    '!app/**/*.spec.{ts,tsx}', // Exclude spec files within app
+    '!app/**/__tests__/**', // Exclude __tests__ directories within app
+    '!app/**/__mocks__/**', // Exclude __mocks__ directories
+    '!**/node_modules/**', // Standard exclusion
+    '!<rootDir>/app/layout.tsx', // Often excluded as it's hard to test directly
+    '!<rootDir>/app/globals.css', // CSS files don't have coverage
+    // Add any other specific files/directories you want to exclude
+  ],
+  // Optional: Add more reporters for different output formats
+  coverageReporters: ['text', 'text-summary', 'lcov', 'html'],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

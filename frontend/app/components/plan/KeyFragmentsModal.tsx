@@ -221,6 +221,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
             <p className="text-gray-500">{t("plan.noThoughtsAssigned")}</p>
           ) : (
             <div
+              data-testid="thoughts-container"
               className="space-y-6"
               onMouseUp={handleMouseUp}
             >
@@ -234,6 +235,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
                   <div
                     className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-gray-800 dark:text-gray-200 user-select-text"
                     data-thought-id={thought.id}
+                    data-testid={`thought-text-${thought.id}`}
                     style={{ userSelect: "text" }}
                   >
                     {thought.text}
@@ -289,6 +291,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
         {activeSelection && (
           <div
             ref={selectionPopupRef}
+            data-testid="selection-popup"
             className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2 z-50"
             style={{
               top: `${

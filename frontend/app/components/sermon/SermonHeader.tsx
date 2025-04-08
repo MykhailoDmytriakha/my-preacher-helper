@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import type { Sermon } from '@/models/models';
 import useSermonValidator from '@/hooks/useSermonValidator';
 
-interface SermonHeaderProps {
+export interface SermonHeaderProps {
   sermon: Sermon;
 }
 

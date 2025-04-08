@@ -1,13 +1,10 @@
 module.exports = {
-  presets: [
-    ['@babel/preset-env', { targets: { node: 'current' } }],
-    ['@babel/preset-react', { 
-      runtime: 'automatic',
-      importSource: 'react'
-    }],
-    '@babel/preset-typescript',
-  ],
-  plugins: [
-    '@babel/plugin-transform-react-jsx'
-  ]
+  presets: ['@babel/preset-env'],
+  env: {
+    test: {
+      plugins: [
+        // Add any babel plugins needed for tests
+      ],
+    },
+  },
 }; 

@@ -47,7 +47,8 @@ jest.mock('sonner', () => ({
 
 // Mock outline service
 jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn(() => Promise.resolve({ success: true }))
+  updateSermonOutline: jest.fn(() => Promise.resolve({ success: true })),
+  getSermonOutline: jest.fn(() => Promise.resolve({ introduction: [], main: [], conclusion: [] }))
 }));
 
 // Mock react-markdown to prevent ESM errors
@@ -228,18 +229,21 @@ describe('Column Component', () => {
     
     const mockToggleFocus = jest.fn();
     const mockSermonId = 'sermon-123';
-    const { updateSermonOutline } = require('@/services/outline.service');
+    const { getSermonOutline, updateSermonOutline } = require('@/services/outline.service');
     const { toast } = require('sonner');
     
     beforeEach(() => {
       // Reset mocks
+      getSermonOutline.mockClear();
       updateSermonOutline.mockClear();
       mockToggleFocus.mockClear();
       toast.success.mockClear();
       toast.error.mockClear();
       
-      // Mock the implementation of updateSermonOutline
+      // Mock the implementation of updateSermonOutline (service call)
       updateSermonOutline.mockImplementation(() => Promise.resolve({ success: true }));
+      // Explicitly mock getSermonOutline to resolve
+      getSermonOutline.mockResolvedValue({ introduction: [], main: [], conclusion: [] });
       
       // Mock setTimeout to execute immediately
       jest.useFakeTimers();
@@ -249,7 +253,7 @@ describe('Column Component', () => {
       jest.useRealTimers();
     });
     
-    it.skip('adds a new outline point in focus mode', async () => {
+    it('adds a new outline point in focus mode', async () => {
       render(
         <Column 
           title="Introduction"
@@ -281,8 +285,13 @@ describe('Column Component', () => {
         jest.advanceTimersByTime(300);
       });
       
-      // Should have called the API
-      expect(updateSermonOutline).toHaveBeenCalled();
+      // Should have called the API (which also acts as the prop mock here)
+      await waitFor(() => {
+        // Check if called at least once (for the service call)
+        expect(updateSermonOutline).toHaveBeenCalled();
+        // Optionally, check for the second call (prop call)
+        // expect(updateSermonOutline).toHaveBeenCalledTimes(2);
+      });
       
       // Should update the UI with the new point
       await waitFor(() => {
@@ -290,7 +299,7 @@ describe('Column Component', () => {
       });
     });
     
-    it.skip('edits an existing outline point in focus mode', async () => {
+    it('edits an existing outline point in focus mode', async () => {
       render(
         <Column 
           title="Introduction"
@@ -322,16 +331,18 @@ describe('Column Component', () => {
         jest.advanceTimersByTime(300);
       });
       
-      // Verify API was called with updated data
-      expect(updateSermonOutline).toHaveBeenCalledWith(
-        mockSermonId, 
-        expect.objectContaining({ 
-          introduction: [{ id: 'point1', text: 'Updated outline point' }]
-        })
-      );
+      // Verify API was called with updated data (checking the prop call specifically)
+      await waitFor(() => {
+        expect(updateSermonOutline).toHaveBeenCalledWith(
+          mockSermonId,
+          expect.objectContaining({
+            introduction: [{ id: 'point1', text: 'Updated outline point' }]
+          })
+        );
+      });
     });
     
-    it.skip('deletes an outline point when delete is confirmed', async () => {
+    it('deletes an outline point when delete is confirmed', async () => {
       // Mock window.confirm to return true
       const originalConfirm = window.confirm;
       window.confirm = jest.fn().mockReturnValue(true);
@@ -363,13 +374,13 @@ describe('Column Component', () => {
         jest.advanceTimersByTime(300);
       });
       
-      // Wait for API call to be made
+      // Wait for API call to be made (checking the prop call specifically)
       await waitFor(() => {
         expect(updateSermonOutline).toHaveBeenCalledWith(
           mockSermonId,
           expect.objectContaining({ introduction: [] })
         );
-      }, { timeout: 1000 });
+      }, { timeout: 1000 }); // Keep existing timeout adjustment
       
       // Restore original window.confirm
       window.confirm = originalConfirm;

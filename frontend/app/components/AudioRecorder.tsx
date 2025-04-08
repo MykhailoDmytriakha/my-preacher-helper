@@ -137,9 +137,9 @@ export const AudioRecorder = ({
           </div>
         </div>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+      <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mt-4" data-testid="audio-progress-bar-container">
         <div
-          className="bg-blue-600 h-2 rounded-full"
+          className="bg-blue-600 h-2.5 rounded-full transition-all duration-1000 ease-linear"
           style={{ width: `${(recordingTime / 60) * 100}%` }}
         />
       </div>
