@@ -27,7 +27,9 @@
       "@clients/*": ["./app/api/clients/*"],
       "@repositories/*": ["./app/api/repositories/*"],
       "@utils/*": ["./app/utils/*"],
-      "@locales/*": ["./locales/*"]
+      "@locales/*": ["./locales/*"],
+      "@hooks/*": ["./hooks/*"],
+      "@lib/*": ["./lib/*"]
     },
     "types": ["cypress", "node", "jest", "@testing-library/jest-dom"]
   },

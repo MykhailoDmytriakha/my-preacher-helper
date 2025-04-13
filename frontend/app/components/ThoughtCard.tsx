@@ -8,6 +8,8 @@ import { getContrastColor } from "@utils/color";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle } from "@utils/tagUtils";
+import { useState, useRef, useEffect } from "react";
+import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 
 // Types
 type TagInfo = { 
@@ -33,7 +35,6 @@ interface ThoughtCardProps {
   thought: Thought;
   index: number;
   allowedTags: TagInfo[];
-  currentTag: string;
   sermonOutline?: Outline;
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
@@ -59,12 +60,30 @@ const ThoughtCard = ({
   thought,
   index,
   allowedTags,
-  currentTag,
   sermonOutline,
   onDelete,
   onEditStart
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown if clicked outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
+        setIsOptionsOpen(false);
+      }
+    }
+    if (isOptionsOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOptionsOpen]);
 
   // Shared translation helper
   const getSectionName = useCallback((sectionKey?: string) => {
@@ -127,12 +146,8 @@ const ThoughtCard = ({
       return 'border border-red-500 bg-red-50 dark:bg-red-900 dark:border-red-500';
     }
     
-    if (currentTag && thought.tags.includes(currentTag)) {
-      return 'border border-blue-500 bg-blue-50 dark:bg-blue-900 dark:border-blue-500';
-    }
-    
     return 'bg-gray-50 dark:bg-gray-700';
-  }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, currentTag, thought.tags]);
+  }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, thought.tags]);
 
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
@@ -170,11 +185,56 @@ const ThoughtCard = ({
 
   return (
     <div className={`relative p-4 rounded-lg ${cardStyle}`} role="article" aria-labelledby={`thought-${thought.id}-text`}>
+      <div ref={optionsMenuRef} className="absolute top-4 right-4 z-10">
+        <button
+          onClick={() => setIsOptionsOpen(!isOptionsOpen)}
+          className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+          aria-label={t('thought.optionsMenuLabel', 'Thought options')}
+          aria-haspopup="true"
+          aria-expanded={isOptionsOpen}
+        >
+          <EllipsisVerticalIcon className="w-5 h-5" />
+        </button>
+
+        {isOptionsOpen && (
+          <div
+            className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 border border-gray-200 dark:border-gray-700 z-20"
+            role="menu"
+            aria-orientation="vertical"
+            aria-labelledby="options-menu"
+          >
+            <button
+              onClick={() => {
+                onEditStart(thought, index);
+                setIsOptionsOpen(false);
+              }}
+              className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              role="menuitem"
+            >
+              <span className="inline-flex items-center justify-center w-5 h-5 mr-2 flex-shrink-0">
+                <EditIcon className="w-4 h-4" />
+              </span>
+              {t('common.edit', 'Edit')}
+            </button>
+            <button
+              onClick={() => {
+                onDelete(index, thought.id);
+                setIsOptionsOpen(false);
+              }}
+              className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-gray-700"
+              role="menuitem"
+            >
+              <span className="inline-flex items-center justify-center w-5 h-5 mr-2 flex-shrink-0">
+                <TrashIcon className="w-4 h-4" />
+              </span>
+              {t('common.delete', 'Delete')}
+            </button>
+          </div>
+        )}
+      </div>
+
       <ThoughtHeader 
         thought={thought}
-        index={index}
-        onDelete={onDelete}
-        onEditStart={onEditStart}
         allowedTags={allowedTags}
       />
       
@@ -193,47 +253,32 @@ const ThoughtCard = ({
 };
 
 // Sub-components
-const ThoughtHeader = memo(({ 
-  thought, 
-  index, 
-  onDelete, 
-  onEditStart,
-  allowedTags 
-}: { 
-  thought: Thought; 
-  index: number; 
-  onDelete: (index: number, thoughtId: string) => void; 
-  onEditStart: (thought: Thought, index: number) => void;
-  allowedTags: TagInfo[]; 
+const ThoughtHeader = memo(({
+  thought,
+  allowedTags
+}: {
+  thought: Thought;
+  allowedTags: TagInfo[];
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
-      <div className="flex items-center gap-2 flex-wrap">
+    // Main container: col on mobile, row with space-between on sm
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 mb-2">
+
+      {/* Left Group: Date, ID, Tags (wraps internally) */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 order-first">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {formatDate(thought.date)}
         </span>
-        <button
-          onClick={() => onDelete(index, thought.id)}
-          className="text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded-full transition-colors"
-          aria-label="Delete thought"
-        >
-          <TrashIcon/>
-        </button>
-        <button
-          onClick={() => onEditStart(thought, index)}
-          className="text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 p-1.5 rounded-full transition-colors"
-          aria-label="Edit thought"
-        >
-          <EditIcon className="w-5 h-5" />
-        </button>
         <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
           ID: {thought.id}
         </span>
+        {thought.tags && thought.tags.length > 0 && (
+          // Use 'contents' so TagsDisplay's internal flex items integrate with this group's flex layout
+          <div className="contents">
+            <TagsDisplay tags={thought.tags} allowedTags={allowedTags} />
+          </div>
+        )}
       </div>
-
-      {thought.tags && thought.tags.length > 0 && (
-        <TagsDisplay tags={thought.tags} allowedTags={allowedTags} />
-      )}
     </div>
   );
 });
@@ -306,7 +351,12 @@ interface WarningMessageWithHelperProps extends WarningMessageProps {
   getSectionName: (section?: string) => string;
 }
 
-function WarningMessage({ type, sectionName, actualTag, getSectionName }: WarningMessageWithHelperProps) {
+function WarningMessage({ 
+  type, 
+  sectionName, 
+  actualTag, 
+  getSectionName 
+}: WarningMessageWithHelperProps) {
   const { t } = useTranslation();
 
   if (type === 'inconsistentSection') {
@@ -334,9 +384,9 @@ function WarningMessage({ type, sectionName, actualTag, getSectionName }: Warnin
     return (
       <p className="text-red-500 text-sm mt-2" role="alert">
         {t('thought.missingRequiredTag', {
-          intro: t('tags.introduction'),
-          main: t('tags.mainPart'), 
-          conclusion: t('tags.conclusion')
+          intro: getSectionName('introduction'), 
+          main: getSectionName('main'), 
+          conclusion: getSectionName('conclusion')
         })}
       </p>
     );
