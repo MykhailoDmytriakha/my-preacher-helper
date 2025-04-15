@@ -362,7 +362,9 @@
     "noKeyFragments": "No key fragments marked",
     "addAsKeyFragment": "Add as Key Fragment",
     "fragmentAdded": "Fragment added successfully",
-    "fragmentRemoved": "Fragment removed successfully"
+    "fragmentRemoved": "Fragment removed successfully",
+    "showSection": "View Section in Full",
+    "viewFullPlan": "View Full Plan"
   },
   "copy": {
     "copyText": "Copy Text",

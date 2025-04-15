@@ -10,10 +10,11 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, NotepadText, FileText, Pencil, Bookmark } from "lucide-react";
+import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
+import ReactDOM from "react-dom/client";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -277,6 +278,26 @@ export default function PlanPage() {
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
   
   const [modalOutlinePointId, setModalOutlinePointId] = useState<string | null>(null);
+  
+  const [showSectionMenu, setShowSectionMenu] = useState<boolean>(false);
+  const sectionMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Close section menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sectionMenuRef.current && !sectionMenuRef.current.contains(event.target as Node)) {
+        setShowSectionMenu(false);
+      }
+    }
+    
+    if (showSectionMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSectionMenu]);
   
   // Function to synchronize heights
   const syncHeights = () => {
@@ -937,6 +958,289 @@ export default function PlanPage() {
                   </p>
                 </div>
               )}
+              
+              {/* View Plan Buttons */}
+              <div className="flex flex-wrap gap-3 mt-6">
+                <div className="relative" ref={sectionMenuRef}>
+                  <Button
+                    onClick={() => setShowSectionMenu(!showSectionMenu)}
+                    variant="primary"
+                    className="flex items-center gap-2"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    {t("plan.showSection")}
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                  
+                  {showSectionMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-30 min-w-[180px]">
+                      <button 
+                        className="w-full text-left px-4 py-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-800 dark:text-blue-300 flex items-center"
+                        onClick={() => {
+                          setShowSectionMenu(false);
+                          // Create a modal for viewing the introduction section
+                          const modal = document.createElement('div');
+                          modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+                          
+                          // Create the content container
+                          const content = document.createElement('div');
+                          content.className = 'bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg';
+                          
+                          // Add header
+                          const header = document.createElement('div');
+                          header.className = 'flex justify-between items-center mb-4';
+                          
+                          const title = document.createElement('h2');
+                          title.className = 'text-xl font-bold';
+                          title.textContent = `${t("plan.pageTitle")} - ${t("sections.introduction")}`;
+                          
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          
+                          header.appendChild(title);
+                          content.appendChild(header);
+                          modal.appendChild(content);
+                          modal.appendChild(closeButton);
+                          
+                          // Add markdown content
+                          const markdownContent = document.createElement('div');
+                          markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Render React component inside the div
+                          const root = ReactDOM.createRoot(markdownContent);
+                          root.render(
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.introduction || t("plan.noContent")} 
+                            />
+                          );
+                          
+                          content.appendChild(markdownContent);
+                          modal.appendChild(content);
+                          document.body.appendChild(modal);
+                          
+                          // Add event listener to close button
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                        }}
+                      >
+                        <div className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-700 mr-2"></div>
+                        {t("sections.introduction")}
+                      </button>
+                      
+                      <button 
+                        className="w-full text-left px-4 py-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-800 dark:text-purple-300 flex items-center"
+                        onClick={() => {
+                          setShowSectionMenu(false);
+                          // Create a modal for viewing the main section
+                          const modal = document.createElement('div');
+                          modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+                          
+                          // Create the content container
+                          const content = document.createElement('div');
+                          content.className = 'bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg';
+                          
+                          // Add header
+                          const header = document.createElement('div');
+                          header.className = 'flex justify-between items-center mb-4';
+                          
+                          const title = document.createElement('h2');
+                          title.className = 'text-xl font-bold';
+                          title.textContent = `${t("plan.pageTitle")} - ${t("sections.main")}`;
+                          
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          
+                          header.appendChild(title);
+                          content.appendChild(header);
+                          modal.appendChild(content);
+                          modal.appendChild(closeButton);
+                          
+                          // Add markdown content
+                          const markdownContent = document.createElement('div');
+                          markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Render React component inside the div
+                          const root = ReactDOM.createRoot(markdownContent);
+                          root.render(
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.main || t("plan.noContent")} 
+                            />
+                          );
+                          
+                          content.appendChild(markdownContent);
+                          modal.appendChild(content);
+                          document.body.appendChild(modal);
+                          
+                          // Add event listener to close button
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                        }}
+                      >
+                        <div className="w-3 h-3 rounded-full bg-purple-500 dark:bg-purple-700 mr-2"></div>
+                        {t("sections.main")}
+                      </button>
+                      
+                      <button 
+                        className="w-full text-left px-4 py-2 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center"
+                        onClick={() => {
+                          setShowSectionMenu(false);
+                          // Create a modal for viewing the conclusion section
+                          const modal = document.createElement('div');
+                          modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+                          
+                          // Create the content container
+                          const content = document.createElement('div');
+                          content.className = 'bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg';
+                          
+                          // Add header
+                          const header = document.createElement('div');
+                          header.className = 'flex justify-between items-center mb-4';
+                          
+                          const title = document.createElement('h2');
+                          title.className = 'text-xl font-bold';
+                          title.textContent = `${t("plan.pageTitle")} - ${t("sections.conclusion")}`;
+                          
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          
+                          header.appendChild(title);
+                          content.appendChild(header);
+                          modal.appendChild(content);
+                          modal.appendChild(closeButton);
+                          
+                          // Add markdown content
+                          const markdownContent = document.createElement('div');
+                          markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Render React component inside the div
+                          const root = ReactDOM.createRoot(markdownContent);
+                          root.render(
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.conclusion || t("plan.noContent")} 
+                            />
+                          );
+                          
+                          content.appendChild(markdownContent);
+                          modal.appendChild(content);
+                          document.body.appendChild(modal);
+                          
+                          // Add event listener to close button
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                        }}
+                      >
+                        <div className="w-3 h-3 rounded-full bg-green-500 dark:bg-green-700 mr-2"></div>
+                        {t("sections.conclusion")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                <Button
+                  onClick={() => {
+                    // Create a modal for viewing the full plan
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+                    
+                    // Create the content container
+                    const content = document.createElement('div');
+                    content.className = 'bg-white dark:bg-gray-800 rounded-lg max-w-5xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg';
+                    
+                    // Add header
+                    const header = document.createElement('div');
+                    header.className = 'flex justify-between items-center mb-4';
+                    
+                    const title = document.createElement('h2');
+                    title.className = 'text-xl font-bold';
+                    title.textContent = `${t("plan.pageTitle")} - ${sermon.title}`;
+                    
+                    const closeButton = document.createElement('button');
+                    closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
+                    closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                    
+                    header.appendChild(title);
+                    content.appendChild(header);
+                    modal.appendChild(content);
+                    modal.appendChild(closeButton);
+                    
+                    // Add markdown content
+                    const markdownContent = document.createElement('div');
+                    markdownContent.className = 'prose dark:prose-invert max-w-none';
+                    
+                    // Render React component inside the div
+                    const root = ReactDOM.createRoot(markdownContent);
+                    
+                    // Combine all sections in a full plan view
+                    root.render(
+                      <>
+                        {sermon.verse && (
+                          <div className="mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 border-blue-500 dark:border-blue-600">
+                            <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
+                              {sermon.verse}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                              {t("common.scripture")}
+                            </p>
+                          </div>
+                        )}
+                        
+                        <div className="mb-8 pb-6 border-b-2 border-blue-300 dark:border-blue-700">
+                          <h2 className="text-2xl font-bold text-blue-700 dark:text-blue-400 mb-4 pb-2 border-b border-blue-200 dark:border-blue-800">
+                            {t("sections.introduction")}
+                          </h2>
+                          <div className="pl-2 border-l-4 border-blue-400 dark:border-blue-600">
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.introduction || t("plan.noContent")} 
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="mb-8 pb-6 border-b-2 border-purple-300 dark:border-purple-700">
+                          <h2 className="text-2xl font-bold text-purple-700 dark:text-purple-400 mb-4 pb-2 border-b border-purple-200 dark:border-purple-800">
+                            {t("sections.main")}
+                          </h2>
+                          <div className="pl-2 border-l-4 border-purple-400 dark:border-purple-600">
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.main || t("plan.noContent")} 
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="mb-4">
+                          <h2 className="text-2xl font-bold text-green-700 dark:text-green-400 mb-4 pb-2 border-b border-green-200 dark:border-green-800">
+                            {t("sections.conclusion")}
+                          </h2>
+                          <div className="pl-2 border-l-4 border-green-400 dark:border-green-600">
+                            <MarkdownRenderer 
+                              markdown={combinedPlan.conclusion || t("plan.noContent")} 
+                            />
+                          </div>
+                        </div>
+                      </>
+                    );
+                    
+                    content.appendChild(markdownContent);
+                    modal.appendChild(content);
+                    document.body.appendChild(modal);
+                    
+                    // Add event listener to close button
+                    closeButton.addEventListener('click', () => {
+                      document.body.removeChild(modal);
+                    });
+                  }}
+                  variant="primary" 
+                  className="flex items-center gap-2"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  {t("plan.viewFullPlan") || "View Full Plan"}
+                </Button>
+              </div>
             </div>
           )}
         </div>
