@@ -23,7 +23,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
   const { t } = useTranslation();
   
   // Re-introduce mode state here, as SermonActionsMenu expects it as a prop
-  const [mode, setMode] = useState<SermonMode>('framework'); 
+  const [mode, setMode] = useState<SermonMode>('content'); 
 
   const generateExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     return getExportContent(sermon, undefined, { 
