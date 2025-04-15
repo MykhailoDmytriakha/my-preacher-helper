@@ -232,7 +232,12 @@
     "addThoughtToSection": "Додати думку до {{section}}",
     "editPointPlaceholder": "Редагувати пункт плану",
     "addPointPlaceholder": "Введіть новий пункт плану",
-    "addPointButton": "Додати пункт плану"
+    "addPointButton": "Додати пункт плану",
+    "generate": "Створити",
+    "generateOutlinePoints": "Згенерувати пункти плану",
+    "generateOutlinePointsError": "Не вдалося згенерувати пункти плану",
+    "outlinePointsGenerated": "Успішно згенеровано {{count}} пунктів плану",
+    "outlinePointsExist": "Пункти плану вже існують"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

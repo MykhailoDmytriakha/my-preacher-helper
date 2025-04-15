@@ -64,4 +64,36 @@ export const updateSermonOutline = async (sermonId: string, outline: Outline): P
     console.error(`Error updating outline for sermon ${sermonId}:`, error);
     return null;
   }
+};
+
+/**
+ * Generates outline points for a specific section of a sermon
+ * @param sermonId The ID of the sermon
+ * @param section The section to generate points for ('introduction', 'main', 'conclusion')
+ * @returns Array of generated outline points or empty array if generation failed
+ */
+export const generateOutlinePointsForSection = async (
+  sermonId: string, 
+  section: 'introduction' | 'main' | 'conclusion'
+): Promise<OutlinePoint[]> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ section })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate outline points: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.outlinePoints || [];
+  } catch (error) {
+    console.error(`Error generating outline points for sermon ${sermonId}, section ${section}:`, error);
+    throw error;
+  }
 }; 

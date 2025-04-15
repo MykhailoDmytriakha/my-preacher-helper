@@ -254,7 +254,12 @@
     "addThoughtToSection": "Добавить мысль в {{section}}",
     "editPointPlaceholder": "Редактировать пункт плана",
     "addPointPlaceholder": "Введите новый пункт плана",
-    "addPointButton": "Добавить пункт плана"
+    "addPointButton": "Добавить пункт плана",
+    "generate": "Создать",
+    "generateOutlinePoints": "Сгенерировать пункты плана",
+    "generateOutlinePointsError": "Не удалось сгенерировать пункты плана",
+    "outlinePointsGenerated": "Успешно сгенерировано {{count}} пунктов плана",
+    "outlinePointsExist": "Пункты плана уже существуют"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

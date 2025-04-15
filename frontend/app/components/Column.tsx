@@ -4,12 +4,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { updateSermonOutline, getSermonOutline } from "@/services/outline.service";
+import { updateSermonOutline, getSermonOutline, generateOutlinePointsForSection } from "@/services/outline.service";
 import SortableItem from "./SortableItem";
 import { Item, OutlinePoint, Outline } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 
@@ -89,6 +89,7 @@ export default function Column({
   const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
   const [newPointText, setNewPointText] = useState<string>('');
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
+  const [isGeneratingOutlinePoints, setIsGeneratingOutlinePoints] = useState<boolean>(false);
   
   // Refs for focus management
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -276,6 +277,39 @@ export default function Column({
       }[id]
     : "";
 
+  // Add a new function to handle generating outline points
+  const handleGenerateOutlinePoints = async () => {
+    if (!sermonId || !isFocusMode) return;
+    
+    // Map id to the section name expected by API
+    const sectionName = id === 'main' ? 'main' : id;
+    
+    try {
+      setIsGeneratingOutlinePoints(true);
+      
+      const newPoints = await generateOutlinePointsForSection(sermonId, sectionName as 'introduction' | 'main' | 'conclusion');
+      
+      if (newPoints.length === 0) {
+        toast.error(t('structure.generateOutlinePointsError', { defaultValue: 'Failed to generate outline points' }));
+        return;
+      }
+      
+      // Add new points to existing ones (if there are any)
+      const updatedPoints = [...localOutlinePoints, ...newPoints];
+      
+      // Update state and save
+      setLocalOutlinePoints(updatedPoints);
+      triggerSaveOutline(updatedPoints);
+      
+      toast.success(t('structure.outlinePointsGenerated', { defaultValue: 'Outline points generated successfully', count: newPoints.length }));
+    } catch (error) {
+      console.error('Error generating outline points:', error);
+      toast.error(t('structure.generateOutlinePointsError', { defaultValue: 'Failed to generate outline points' }));
+    } finally {
+      setIsGeneratingOutlinePoints(false);
+    }
+  };
+
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
     return (
@@ -403,7 +437,31 @@ export default function Column({
             {/* Outline points - Now includes editing capabilities */}
             {isFocusMode && (
               <div className="p-5 flex-grow overflow-y-auto flex flex-col">
-                <h3 className="text-lg font-semibold text-white mb-3">{t('structure.outlinePoints')}</h3>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg font-semibold text-white">{t('structure.outlinePoints')}</h3>
+                  
+                  {/* Generate outline points button */}
+                  {sermonId && (
+                    <button
+                      onClick={handleGenerateOutlinePoints}
+                      disabled={isGeneratingOutlinePoints || localOutlinePoints.length > 0}
+                      className={`flex items-center text-xs font-medium px-2 py-1 bg-white bg-opacity-20 rounded transition-colors ${localOutlinePoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30'} text-white`}
+                      title={localOutlinePoints.length > 0 
+                        ? t('structure.outlinePointsExist', { defaultValue: 'Outline points already exist' }) 
+                        : t('structure.generateOutlinePoints', { defaultValue: 'Generate outline points' })}
+                    >
+                      {isGeneratingOutlinePoints ? (
+                        <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <SparklesIcon className="h-3 w-3 mr-1" />
+                      )}
+                      {isGeneratingOutlinePoints ? t('common.generating', { defaultValue: 'Generating...' }) : t('structure.generate', { defaultValue: 'Generate' })}
+                    </button>
+                  )}
+                </div>
                 <DragDropContext onDragEnd={handleDragEnd}>
                   <Droppable droppableId={`outline-${id}`}>
                     {(provided) => (

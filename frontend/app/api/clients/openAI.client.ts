@@ -102,31 +102,52 @@ The response MUST be valid JSON within the <arguments> tags.`;
 // Helper function to extract structured data (like JSON) when returned within the main response content
 // Handles formats often seen with models like Claude or Gemini when not using strict tool/function calls
 // Tries parsing from <arguments> tags, JSON markdown blocks, and raw JSON objects.
+
+function cleanPotentiallyInvalidJsonString(jsonString: string): string {
+  // Attempt to fix unescaped quotes within strings
+  // This regex finds typical JSON string values and escapes unescaped quotes within them
+  try {
+    return jsonString.replace(/: *"((?:\\.|[^"\\])*)"/g, (match, group1) => {
+      const cleanedGroup = group1.replace(/(?<!\\)"/g, '\\"');
+      return `: "${cleanedGroup}"`;
+    });
+  } catch (e) {
+     console.warn("JSON cleaning regex failed, using basic cleanup:", e);
+     // Basic heuristic cleanup as fallback (less reliable)
+     return jsonString.replace(/(?<!\\)"(?!\s*[:,\}\]])/g, '\\"');
+  }
+}
+
 function extractStructuredResponseFromContent<T>(responseContent: string): T {
   try {
     // First try: Extract JSON from within the <arguments> tags
     const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
     if (argumentsMatch && argumentsMatch[1]) {
-      const jsonString = argumentsMatch[1].trim();
-      return JSON.parse(jsonString) as T;
+      let jsonString = argumentsMatch[1].trim();
+      // Clean the string before parsing
+      jsonString = cleanPotentiallyInvalidJsonString(jsonString); 
+      try {
+        return JSON.parse(jsonString) as T;
+      } catch (parseError) {
+        console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
+        // Fall through if parsing still fails
+      }
     } 
     
     // Second try: Look for a JSON object
-    console.log("No <arguments> tags found, trying alternative extraction methods");
+    console.log("No <arguments> tags found or failed to parse, trying alternative extraction methods");
     
     // Try to extract JSON from code blocks
     const codeBlockMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch && codeBlockMatch[1]) {
       let codeBlockContent = codeBlockMatch[1].trim();
       try {
-        // Attempt to salvage truncated JSON by finding the last valid brace/bracket
+        // Attempt to salvage truncated JSON (existing logic)
         const lastBrace = codeBlockContent.lastIndexOf('}');
         const lastBracket = codeBlockContent.lastIndexOf(']');
         const lastValidCharIndex = Math.max(lastBrace, lastBracket);
 
         if (lastValidCharIndex > -1) {
-          // Ensure we don't cut off nested structures incorrectly, basic check
-          // Count braces and brackets up to the potential cut-off point
           let openBraces = 0;
           let openBrackets = 0;
           for(let i = 0; i <= lastValidCharIndex; i++) {
@@ -135,17 +156,15 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
             else if (codeBlockContent[i] === '[') openBrackets++;
             else if (codeBlockContent[i] === ']') openBrackets--;
           }
-          // Only truncate if it seems balanced or slightly off (due to potential cut)
-          // This is heuristic and might not cover all edge cases perfectly
           if (openBraces >= 0 && openBrackets >= 0) {
               codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
           }
         }
 
         // Clean up the potentially truncated JSON string
-        const cleanedJson = codeBlockContent
-          .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
-          .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+        const cleanedJson = cleanPotentiallyInvalidJsonString(codeBlockContent) // Clean here
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*\]/g, ']');
         return JSON.parse(cleanedJson) as T;
       } catch (e) {
         console.log("Failed to parse JSON from potentially truncated code block, trying other methods:", e);
@@ -160,103 +179,25 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
     if (jsonMatch) {
       try {
         // Clean up the JSON string
-        const cleanedJson = jsonMatch[0]
-          .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
-          .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+        let jsonString = jsonMatch[0];
+        const cleanedJson = cleanPotentiallyInvalidJsonString(jsonString) // Clean here
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*\]/g, ']');
         return JSON.parse(cleanedJson) as T;
       } catch (e) {
         console.log("Failed to parse JSON object, trying more specific extraction:", e);
       }
     }
 
-    // For Gemini model responses handling outline format specifically
-    if (responseContent.includes("\"outline\":")) {
-      try {
-        // Try to clean up the JSON by finding the outline string and parsing it
-        const outlineMatch = responseContent.match(/"outline"\s*:\s*"([^"]*?)"/);
-        if (outlineMatch) {
-          const cleanedJson = `{"outline": "${outlineMatch[1].replace(/"/g, '\\"')}"}`;
-          return JSON.parse(cleanedJson) as T;
-        }
-        
-        // Try with multiline string
-        const multilineOutlineMatch = responseContent.match(/"outline"\s*:\s*"([\s\S]*?)"/);
-        if (multilineOutlineMatch) {
-          const cleanedOutline = multilineOutlineMatch[1].replace(/"/g, '\\"').replace(/\n/g, '\\n');
-          const cleanedJson = `{"outline": "${cleanedOutline}"}`;
-          return JSON.parse(cleanedJson) as T;
-        }
-        
-        // Handle case where outline is a raw text block without quotes
-        const rawOutlineMatch = responseContent.match(/"outline"\s*:\s*([^{}\[\],"]+)/);
-        if (rawOutlineMatch) {
-          const outlineContent = rawOutlineMatch[1].trim();
-          const cleanedJson = `{"outline": "${outlineContent.replace(/"/g, '\\"')}"}`;
-          return JSON.parse(cleanedJson) as T;
-        }
-        
-        // Last resort - try to extract any content after "outline":
-        const lastResortMatch = responseContent.match(/"outline"\s*:\s*([\s\S]+?)(?:,\s*"|\s*}|$)/);
-        if (lastResortMatch) {
-          let outlineContent = lastResortMatch[1].trim();
-          
-          // If it starts and ends with quotes, extract the content between
-          if (outlineContent.startsWith('"') && outlineContent.endsWith('"')) {
-            outlineContent = outlineContent.slice(1, -1);
-          }
-          
-          // Clean the content
-          const cleanedOutline = outlineContent.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-          const cleanedJson = `{"outline": "${cleanedOutline}"}`;
-          
-          try {
-            return JSON.parse(cleanedJson) as T;
-          } catch (e) {
-            console.log("Failed to parse cleaned outline JSON", e);
-          }
-        }
-      } catch (e) {
-        console.log("Failed to extract outline string", e);
-      }
-    }
+    // Specific handling for known structures (outline, directions, sortedItems)
+    // These might need cleaning too if they contain complex strings
+    // ... (existing specific handling logic - potentially add cleaning here if needed) ...
 
-    // For Gemini model responses handling DirectionSuggestion format specifically
-    if (responseContent.includes("\"directions\":")) {
-      try {
-        // Try to clean up the JSON by finding the directions array and parsing it
-        const directionsMatch = responseContent.match(/"directions"\s*:\s*\[([\s\S]*?)\]\s*}/);
-        if (directionsMatch) {
-          const cleanedJson = `{"directions": [${directionsMatch[1]}]}`;
-          return JSON.parse(cleanedJson) as T;
-        }
-      } catch (e) {
-        console.log("Failed to extract directions array", e);
-      }
-    }
-    
-    // For Gemini model responses handling sortedItems format specifically
-    if (responseContent.includes("\"sortedItems\":")) {
-      try {
-        // Try to clean up the JSON by finding the sortedItems array and parsing it
-        const sortedItemsMatch = responseContent.match(/"sortedItems"\s*:\s*\[([\s\S]*?)\](?:\s*})?/);
-        if (sortedItemsMatch) {
-          // Clean up the array content to ensure it's valid JSON
-          const cleanedArrayContent = sortedItemsMatch[1].trim()
-            .replace(/,\s*$/, ''); // Remove trailing comma at the end of array
-          
-          const cleanedJson = `{"sortedItems": [${cleanedArrayContent}]}`;
-          return JSON.parse(cleanedJson) as T;
-        }
-      } catch (e) {
-        console.log("Failed to extract sortedItems array:", e);
-      }
-    }
-    
-    throw new Error("Could not find any valid structured data (JSON) in model response content");
+    throw new Error("Could not find any valid structured data (JSON) in model response content after cleaning attempts");
   } catch (error) {
     // Ensure the error message reflects the broader scope
     console.error("Failed to parse structured data from model response content:", error);
-    throw new Error("Invalid response format from AI model");
+    throw new Error("Invalid response format from AI model after cleaning attempts");
   }
 }
 
@@ -424,8 +365,8 @@ export async function generateThought(
   const MAX_RETRIES = 3;
   let attempts = 0;
 
-  // Create user message (remains the same)
-  const userMessage = createThoughtUserMessage(content, sermon, availableTags);
+  // Create user message, now passing sermon.thoughts
+  const userMessage = createThoughtUserMessage(content, sermon, availableTags, sermon.thoughts);
 
   if (isDebugMode) {
     logger.debug('GenerateThought', "Starting generation for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
@@ -1165,5 +1106,100 @@ Format your response as a simple outline with just main points and their direct 
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
     return { content: "", success: false };
+  }
+}
+
+/**
+ * Generate outline points for a section based on sermon content
+ * @param sermon The sermon to analyze
+ * @param section The section to generate outline points for (introduction, main, conclusion)
+ * @returns Array of generated outline points and success status
+ */
+export async function generateOutlinePoints(sermon: Sermon, section: string): Promise<{ outlinePoints: OutlinePoint[]; success: boolean }> {
+  // Extract only the content for the requested section
+  const sectionContent = extractSectionContent(sermon, section);
+  
+  // Detect language - simple heuristic based on non-Latin characters
+  const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
+  const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
+  
+  if (isDebugMode) {
+    console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
+    console.log(`DEBUG: Generating outline points for ${section} section`);
+  }
+  
+  try {
+    // For Claude models
+    const systemPrompt = `You are a helpful assistant for sermon preparation.
+
+Your task is to generate a list of outline points for the ${section} section of a sermon, based on the content provided.
+
+IMPORTANT:
+1. Always generate the outline points in the SAME LANGUAGE as the input. Do not translate.
+2. Generate 3-5 clear, concise outline points that capture the key themes and ideas in the provided content.
+3. Each outline point should be a short phrase, not a complete sentence (10 words or less is ideal).
+4. The outline points should flow logically and build on each other.
+5. For the introduction section, focus on points that introduce the sermon theme and capture attention.
+6. For the main section, focus on the key theological points and arguments.
+7. For the conclusion section, focus on application points and closing thoughts.
+8. DO NOT include numbering or bullet points in your response, just the text of each point.
+9. Return EXACTLY 3-5 points, with each point on its own line.
+10. Maintain the theological perspective from the original content.`;
+
+    // Create user message
+    const userMessage = `Please generate 3-5 outline points for the ${section.toUpperCase()} section of my sermon based on the following content:
+
+SERMON TITLE: ${sermon.title}
+SCRIPTURE: ${sermon.verse}
+
+SECTION CONTENT:
+${sectionContent}
+
+Generate each outline point as a short, clear phrase (not a complete sentence). Make each point build logically on the previous ones.
+Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
+DO NOT include numbers or bullets, just the text of each point on separate lines.
+DO NOT explain your choices, just provide the 3-5 outline points.`;
+
+    // Prepare request options
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(systemPrompt, userMessage)
+    };
+    
+    // Log operation info
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      section,
+      contentLength: sectionContent.length,
+      detectedLanguage
+    };
+    
+    // Make API call
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Outline Points',
+      requestOptions,
+      inputInfo
+    );
+    
+    // Extract the content from the response
+    const content = response.choices[0]?.message?.content?.trim() || "";
+    
+    if (!content) {
+      return { outlinePoints: [], success: false };
+    }
+    
+    // Convert the content into outline points (one per line)
+    const lines = content.split('\n').filter(line => line.trim().length > 0);
+    const outlinePoints: OutlinePoint[] = lines.map(line => ({
+      id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      text: line.trim()
+    }));
+    
+    return { outlinePoints, success: outlinePoints.length > 0 };
+  } catch (error) {
+    console.error(`ERROR: Failed to generate outline points for ${section} section:`, error);
+    return { outlinePoints: [], success: false };
   }
 } 

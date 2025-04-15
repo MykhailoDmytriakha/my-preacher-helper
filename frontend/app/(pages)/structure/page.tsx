@@ -20,7 +20,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Column from "@/components/Column";
 import SortableItem from "@/components/SortableItem";
-import { Item, Sermon, OutlinePoint, Thought, Outline } from "@/models/models";
+import { Item, Sermon, OutlinePoint, Thought, Outline, Tag } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import ExportButtons from "@/components/ExportButtons";
 import { getTags } from "@/services/tag.service";
@@ -37,6 +37,22 @@ import CardContent from "@/components/CardContent";
 import { getExportContent } from "@/utils/exportContent";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import debounce from 'lodash/debounce';
+import { useSermonStructureData } from "@/hooks/useSermonStructureData";
+
+interface UseSermonStructureDataReturn {
+  sermon: Sermon | null;
+  setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
+  containers: Record<string, Item[]>;
+  setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
+  outlinePoints: { introduction: OutlinePoint[]; main: OutlinePoint[]; conclusion: OutlinePoint[] };
+  requiredTagColors: { introduction?: string; main?: string; conclusion?: string };
+  allowedTags: { name: string; color: string }[];
+  loading: boolean;
+  error: string | null;
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isAmbiguousVisible: boolean;
+  setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
+}
 
 function DummyDropZone({ container }: { container: string }) {
   const { t } = useTranslation();
@@ -69,22 +85,30 @@ export default function StructurePage() {
 function StructurePageContent() {
   const searchParams = useSearchParams();
   const sermonId = searchParams?.get("sermonId");
-  const [sermon, setSermon] = useState<Sermon | null>(null);
-  const [containers, setContainers] = useState<Record<string, Item[]>>({
-    introduction: [],
-    main: [],
-    conclusion: [],
-    ambiguous: [],
-  });
-  const [outlinePoints, setOutlinePoints] = useState<{
-    introduction: OutlinePoint[];
-    main: OutlinePoint[];
-    conclusion: OutlinePoint[];
-  }>({
-    introduction: [],
-    main: [],
-    conclusion: [],
-  });
+  const { t } = useTranslation();
+  const [isClient, setIsClient] = useState(false);
+
+  // Use effect to mark when component is mounted on client
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Use the new hook to manage data fetching and related state
+  const {
+    sermon,
+    setSermon,
+    containers,
+    setContainers,
+    outlinePoints,
+    requiredTagColors,
+    allowedTags,
+    loading,
+    error,
+    setLoading,
+    isAmbiguousVisible,
+    setIsAmbiguousVisible
+  }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t);
+
   // Ref to hold the latest containers state
   const containersRef = useRef(containers);
   useEffect(() => {
@@ -98,17 +122,7 @@ function StructurePageContent() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalContainer, setOriginalContainer] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
-  const [requiredTagColors, setRequiredTagColors] = useState<{
-    introduction?: string;
-    main?: string;
-    conclusion?: string;
-  }>({});
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
-  const { t } = useTranslation();
-  const [isClient, setIsClient] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
   const [isSorting, setIsSorting] = useState(false);
   const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
@@ -120,190 +134,6 @@ function StructurePageContent() {
     conclusion: t('structure.conclusion'),
     ambiguous: t('structure.underConsideration'),
   };
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  useEffect(() => {
-    async function initializeSermon() {
-      if (!sermonId) {
-        setLoading(false);
-        return;
-      }
-  
-      try {
-        const fetchedSermon = await getSermonById(sermonId);
-        if (!fetchedSermon) {
-          throw new Error("Failed to fetch sermon");
-        }
-        setSermon(fetchedSermon);
-  
-        const tagsData = await getTags(fetchedSermon.userId);
-        const allTags: Record<string, { name: string; color?: string }> = {};
-        tagsData.requiredTags.forEach((tag: any) => {
-          const normalizedName = tag.name.trim().toLowerCase();
-          allTags[normalizedName] = { name: tag.name, color: tag.color };
-        });
-        tagsData.customTags.forEach((tag: any) => {
-          const normalizedName = tag.name.trim().toLowerCase();
-          allTags[normalizedName] = { name: tag.name, color: tag.color };
-        });
-
-        // Set required tag colors directly from the theme, ignore fetched tag colors for these
-        setRequiredTagColors({
-          introduction: SERMON_SECTION_COLORS.introduction.base,
-          main: SERMON_SECTION_COLORS.mainPart.base,
-          conclusion: SERMON_SECTION_COLORS.conclusion.base,
-        });
-  
-        // Filter allowed tags and ensure a default color is provided if missing
-        const filteredAllowedTags = Object.values(allTags)
-          .filter(
-            (tag) =>
-              !["вступление", "основная часть", "заключение"].includes(tag.name.toLowerCase())
-          )
-          .map(tag => ({
-            ...tag,
-            color: tag.color || "#808080" // Provide default gray color if missing
-          }));
-        setAllowedTags(filteredAllowedTags);
-  
-        const allThoughtItems: Record<string, Item> = {};
-        fetchedSermon.thoughts.forEach((thought: any) => {
-          const stableId = thought.id;
-          const normalizedTags = thought.tags.map((tag: string) => tag.trim().toLowerCase());
-          const customTagNames = normalizedTags.filter(
-            (tag: string) => !["вступление", "основная часть", "заключение"].includes(tag)
-          );
-          const enrichedCustomTags = customTagNames.map((tagName: string) => {
-            const tagInfo = allTags[tagName];
-            const color = tagInfo?.color || "#4c51bf";
-            return {
-              name: tagInfo?.name || tagName,
-              color: color,
-            };
-          });
-  
-          const relevantTags = normalizedTags.filter((tag: string) =>
-            ["вступление", "основная часть", "заключение"].includes(tag)
-          );
-  
-          // Find associated outline point if available
-          let outlinePoint;
-          if (thought.outlinePointId && fetchedSermon.outline) {
-            // Check in each section
-            const outlineSections = ['introduction', 'main', 'conclusion'] as const;
-            const sectionTranslations: Record<string, string> = {
-              'introduction': t('outline.introduction') || 'Introduction',
-              'main': t('outline.mainPoints') || 'Main Points',
-              'conclusion': t('outline.conclusion') || 'Conclusion'
-            };
-            
-            for (const section of outlineSections) {
-              const point = fetchedSermon.outline[section]?.find((p: OutlinePoint) => p.id === thought.outlinePointId);
-              if (point) {
-                outlinePoint = {
-                  text: point.text,
-                  section: '' // Don't show section in structure page
-                };
-                break;
-              }
-            }
-          }
-
-          const item: Item = {
-            id: stableId,
-            content: thought.text,
-            customTagNames: enrichedCustomTags,
-            requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
-            outlinePoint: outlinePoint,
-            outlinePointId: thought.outlinePointId
-          };
-          allThoughtItems[stableId] = item;
-        });
-  
-        let intro: Item[] = [];
-        let main: Item[] = [];
-        let concl: Item[] = [];
-        let ambiguous: Item[] = [];
-        const usedIds = new Set<string>();
-  
-        // Step 1: Process structure (skip ambiguous)
-        if (fetchedSermon.structure) {
-          let structureObj = typeof fetchedSermon.structure === "string" ? JSON.parse(fetchedSermon.structure) : fetchedSermon.structure;
-          if (structureObj) {
-            // Only process intro, main, concl
-            ["introduction", "main", "conclusion"].forEach((section) => {
-              if (Array.isArray(structureObj[section])) {
-                const target = section === "introduction" ? intro : section === "main" ? main : concl;
-                const tag = columnTitles[section];
-                structureObj[section].forEach((thoughtId) => {
-                  const item = allThoughtItems[thoughtId];
-                  if (item) {
-                    item.requiredTags = [tag];
-                    target.push(item);
-                    usedIds.add(thoughtId);
-                  }
-                });
-              }
-            });
-            // Do not process ambiguous here
-          }
-        }
-
-        // Step 2: Process all remaining items by tags
-        Object.values(allThoughtItems).forEach((item) => {
-          if (!usedIds.has(item.id)) {
-            if (item.requiredTags?.length === 1) {
-              const tagLower = item.requiredTags[0].toLowerCase();
-              if (tagLower === "вступление") intro.push(item);
-              else if (tagLower === "основная часть") main.push(item);
-              else if (tagLower === "заключение") concl.push(item);
-              else ambiguous.push(item);
-            } else {
-              ambiguous.push(item);
-            }
-          }
-        });
-  
-        setContainers({ introduction: intro, main, conclusion: concl, ambiguous });
-        setIsAmbiguousVisible(ambiguous.length > 0);
-
-        const structure = {
-          introduction: intro.map((item) => item.id),
-          main: main.map((item) => item.id),
-          conclusion: concl.map((item) => item.id),
-          ambiguous: ambiguous.map((item) => item.id),
-        }
-        if (isStructureChanged(fetchedSermon.structure || {}, structure)) {
-          await updateStructure(sermonId, structure);
-        }
-
-        // Fetch outline data
-        try {
-          const outlineData = await getSermonOutline(sermonId);
-          console.log(`Outline data: ${JSON.stringify(outlineData)}`);
-          if (outlineData) {
-            setOutlinePoints({
-              introduction: outlineData.introduction || [],
-              main: outlineData.main || [],
-              conclusion: outlineData.conclusion || [],
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching sermon outline:", error);
-        }
-      } catch (error) {
-        console.error("Error initializing sermon:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-  
-    initializeSermon();
-  }, [sermonId]);
-  
 
   const handleEdit = (item: Item) => {
     setEditingItem(item);
@@ -387,9 +217,12 @@ function StructurePageContent() {
         };
         
         // Update sermon state
-        setSermon({
-          ...sermon,
-          thoughts: [...sermon.thoughts, addedThought]
+        setSermon((prevSermon: Sermon | null) => {
+          if (!prevSermon) return null;
+          return {
+            ...prevSermon,
+            thoughts: [...prevSermon.thoughts, addedThought]
+          };
         });
         
         // Update containers
@@ -435,7 +268,7 @@ function StructurePageContent() {
         const updatedThoughts = sermon.thoughts.map((thought: Thought) =>
           thought.id === updatedItem.id ? updatedThought : thought
         );
-        setSermon({ ...sermon, thoughts: updatedThoughts });
+        setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, thoughts: updatedThoughts } : null);
 
         // Find outline point info if available
         let outlinePoint: { text: string; section: string } | undefined;
@@ -735,7 +568,7 @@ function StructurePageContent() {
           const newThoughts = sermon.thoughts.map((thought: Thought) =>
             thought.id === updatedItem.id ? updatedThought : thought
           );
-          setSermon({ ...sermon, thoughts: newThoughts });
+          setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, thoughts: newThoughts } : null);
         } catch (error) {
           console.error("Error updating thought:", error);
         }
@@ -753,7 +586,7 @@ function StructurePageContent() {
     const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
     if (changesDetected) {
       await updateStructure(sermon.id, newStructure);
-      setSermon((prev) => (prev ? { ...prev, structure: newStructure} : prev));
+      setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure} : prev));
     }
     
     setActiveId(null);
@@ -801,9 +634,13 @@ function StructurePageContent() {
       
       // Limit to reasonable number for AI
       const MAX_THOUGHTS_FOR_SORTING = 25;
+      const totalItems = containers[columnId].length;
       const itemsToSort = containers[columnId].slice(0, MAX_THOUGHTS_FOR_SORTING);
+      const remainingItems = totalItems > MAX_THOUGHTS_FOR_SORTING ? 
+        containers[columnId].slice(MAX_THOUGHTS_FOR_SORTING) : 
+        [];
       
-      console.log(`handleAiSort: Processing ${itemsToSort.length} items in column ${columnId}`);
+      console.log(`handleAiSort: Processing ${itemsToSort.length} items in column ${columnId}, ${remainingItems.length} items will remain unchanged`);
       
       if (itemsToSort.length === 0) {
         toast.info(t('structure.noItemsToSort'));
@@ -850,6 +687,9 @@ function StructurePageContent() {
         }
       }
       
+      // Combine sorted items with remaining items
+      const finalSortedItems = [...sortedItems, ...remainingItems];
+      
       // Only enter diff mode if any changes were made
       const hasChanges = Object.keys(newHighlightedItems).length > 0;
       
@@ -861,7 +701,7 @@ function StructurePageContent() {
         // Update containers with the new sorted items
         setContainers(prev => ({
           ...prev,
-          [columnId]: sortedItems
+          [columnId]: finalSortedItems
         }));
         
         // Notify the user of changes
@@ -1190,7 +1030,7 @@ function StructurePageContent() {
               await updateStructure(sermonId, newStructure);
               console.log("[Structure] Database structure updated successfully after deletion.");
               // Ensure the final sermon state reflects the latest structure
-              setSermon(prevSermon => prevSermon ? { ...prevSermon, structure: newStructure } : prevSermon);
+              setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, structure: newStructure } : prevSermon);
           } catch (structureError) {
               console.error("[Structure] Error updating database structure after deletion:", structureError);
               toast.error(t('errors.savingError') || "Error saving structure changes after deleting item.");
@@ -1231,12 +1071,11 @@ function StructurePageContent() {
       try {
         const updatedThought = await updateThought(sermonId, thought);
         console.log("Debounced thought save completed:", updatedThought.id);
-        // Update sermon state with updated thought
-        setSermon((prev) => {
+        setSermon((prev: Sermon | null) => {
           if (!prev) return prev;
           return {
             ...prev,
-            thoughts: prev.thoughts.map((t) => (t.id === updatedThought.id ? updatedThought : t)),
+            thoughts: prev.thoughts.map((t: Thought) => (t.id === updatedThought.id ? updatedThought : t)),
           };
         });
       } catch (error) {
@@ -1244,7 +1083,7 @@ function StructurePageContent() {
         toast.error(t('errors.failedToSaveThought'));
       }
     }, 500),
-    []
+    [setSermon]
   );
 
   // Calculate counts of thoughts per outline point
@@ -1277,8 +1116,7 @@ function StructurePageContent() {
 
   // Function to handle outline updates from Column components
   const handleOutlineUpdate = (updatedOutline: Outline) => {
-    // Update sermon state with new outline
-    setSermon(prevSermon => {
+    setSermon((prevSermon: Sermon | null) => {
       if (!prevSermon) return null;
       
       // Merge the updated outline sections with existing ones
@@ -1295,20 +1133,19 @@ function StructurePageContent() {
     });
   };
 
+  // Add loading and error handling based on the hook's state
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        {isClient ? t('structure.loadingSermon') : 'Loading...'}
-      </div>
-    );
+    // Fix hydration error by using consistent rendering between server and client
+    return <div>{isClient ? t('common.loading') : "Loading"}...</div>;
   }
 
-  if (!sermonId || !sermon) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        {t('structure.notFound')}
-      </div>
-    );
+  if (error) {
+    // Display error message from hook, potentially already handled by toast in hook
+    return <div className="text-red-500">{isClient ? t('errors.fetchSermonStructureError') : "Error"}: {error}</div>;
+  }
+
+  if (!sermon) {
+    return <div>{isClient ? t('structure.sermonNotFound') : "Sermon not found"}</div>; // Or handle case where sermonId is missing/invalid
   }
 
   return (

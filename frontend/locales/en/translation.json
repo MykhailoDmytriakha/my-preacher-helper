@@ -254,7 +254,12 @@
     "addThoughtToSection": "Add thought to {{section}}",
     "editPointPlaceholder": "Edit outline point",
     "addPointPlaceholder": "Enter new outline point",
-    "addPointButton": "Add outline point"
+    "addPointButton": "Add outline point",
+    "generate": "Generate",
+    "generateOutlinePoints": "Generate outline points",
+    "generateOutlinePointsError": "Failed to generate outline points",
+    "outlinePointsGenerated": "{{count}} outline points generated successfully",
+    "outlinePointsExist": "Outline points already exist"
   },
   "knowledge": {
     "title": "Sermon Insights",
