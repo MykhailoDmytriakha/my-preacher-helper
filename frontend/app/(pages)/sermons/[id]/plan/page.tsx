@@ -111,9 +111,12 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
   );
 };
 
-const MarkdownRenderer = ({ markdown }: { markdown: string }) => {
+const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: 'introduction' | 'main' | 'conclusion' }) => {
+  const sectionClass = section ? `prose-${section}` : '';
+  const sectionDivClass = section ? `${section}-section` : '';
+
   return (
-    <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content">
+    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {markdown}
       </ReactMarkdown>
@@ -894,6 +897,32 @@ export default function PlanPage() {
           margin-top: 1em;
           margin-bottom: 0.5em;
         }
+        /* Indentation for hierarchical structure */
+        .markdown-content h2 {
+          margin-left: 0;
+        }
+        .markdown-content h3 {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+          margin-left: 3rem;
+        }
+        /* Indent paragraphs and lists to align with their headings */
+        .markdown-content h2 + p, .markdown-content h2 + ul, .markdown-content h2 + ol {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h3 + p, .markdown-content h3 + ul, .markdown-content h3 + ol {
+          margin-left: 3rem;
+        }
+        .markdown-content h4 + p, .markdown-content h4 + ul, .markdown-content h4 + ol,
+        .markdown-content h5 + p, .markdown-content h5 + ul, .markdown-content h5 + ol,
+        .markdown-content h6 + p, .markdown-content h6 + ul, .markdown-content h6 + ol {
+          margin-left: 4.5rem;
+        }
+        /* Continuing indentation for paragraphs without headings */
+        .markdown-content p + p, .markdown-content ul + p, .markdown-content ol + p {
+          margin-left: inherit;
+        }
         .markdown-content ul, 
         .markdown-content ol {
           margin-top: 0.5em;
@@ -920,6 +949,104 @@ export default function PlanPage() {
         /* Ensure first element doesn't create unwanted space */
         .markdown-content > *:first-child {
           margin-top: 0;
+        }
+        
+        /* Visual markers for different heading levels */
+        .markdown-content h2::before {
+          content: "";
+          display: inline-block;
+          width: 6px;
+          height: 20px;
+          background-color: #2563eb; /* Introduction base color - Blue-600 */
+          margin-right: 10px;
+          border-radius: 2px;
+          vertical-align: text-top;
+        }
+        
+        /* Use section context to style bullets */
+        /* Introduction bullets (h3) */
+        .prose-introduction h3::before,
+        .introduction-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: #3b82f6; /* Blue-500 */
+          font-weight: bold;
+        }
+        
+        /* Main section bullets (h3) */
+        .prose-main h3::before,
+        .main-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: #a855f7; /* Purple-500 */
+          font-weight: bold;
+        }
+        
+        /* Conclusion bullets (h3) */
+        .prose-conclusion h3::before,
+        .conclusion-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: #22c55e; /* Green-500 */
+          font-weight: bold;
+        }
+        
+        /* Default h3 bullets - only apply when no section class is present */
+        .markdown-content h3:not(.prose-introduction h3):not(.prose-main h3):not(.prose-conclusion h3):not(.introduction-section h3):not(.main-section h3):not(.conclusion-section h3)::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: #7e22ce; /* Main Part base color - Purple-700 */
+          font-weight: bold;
+        }
+        
+        /* Default h4 circles */
+        .markdown-content h4::before {
+          content: "○";
+          display: inline-block;
+          margin-right: 8px;
+          color: #16a34a; /* Conclusion base color - Green-600 */
+          font-weight: bold;
+        }
+        
+        /* Section-specific styles for introduction section */
+        .prose-introduction h2::before {
+          background-color: #2563eb; /* Blue-600 */
+        }
+        .prose-introduction h4::before {
+          color: #1d4ed8; /* Blue-700 */
+        }
+        
+        /* Section-specific styles for main section */
+        .prose-main h2::before {
+          background-color: #7e22ce; /* Purple-700 */
+        }
+        .prose-main h4::before {
+          color: #6b21a8; /* Purple-800 */
+        }
+        
+        /* Section-specific styles for conclusion section */
+        .prose-conclusion h2::before {
+          background-color: #16a34a; /* Green-600 */
+        }
+        .prose-conclusion h4::before {
+          color: #15803d; /* Green-700 */
+        }
+
+        /* Dark mode colors */
+        @media (prefers-color-scheme: dark) {
+          .markdown-content h2::before {
+            background-color: #3b82f6; /* Blue-500 */
+          }
+          .markdown-content h3:not(.prose-introduction h3):not(.prose-main h3):not(.prose-conclusion h3):not(.introduction-section h3):not(.main-section h3):not(.conclusion-section h3)::before {
+            color: #a855f7; /* Purple-500 */
+          }
+          .markdown-content h4::before {
+            color: #22c55e; /* Green-500 */
+          }
         }
       `}</style>
       <div className="w-full">
@@ -1012,6 +1139,7 @@ export default function PlanPage() {
                           root.render(
                             <MarkdownRenderer 
                               markdown={combinedPlan.introduction || t("plan.noContent")} 
+                              section="introduction"
                             />
                           );
                           
@@ -1067,6 +1195,7 @@ export default function PlanPage() {
                           root.render(
                             <MarkdownRenderer 
                               markdown={combinedPlan.main || t("plan.noContent")} 
+                              section="main"
                             />
                           );
                           
@@ -1122,6 +1251,7 @@ export default function PlanPage() {
                           root.render(
                             <MarkdownRenderer 
                               markdown={combinedPlan.conclusion || t("plan.noContent")} 
+                              section="conclusion"
                             />
                           );
                           
@@ -1194,9 +1324,10 @@ export default function PlanPage() {
                           <h2 className="text-2xl font-bold text-blue-700 dark:text-blue-400 mb-4 pb-2 border-b border-blue-200 dark:border-blue-800">
                             {t("sections.introduction")}
                           </h2>
-                          <div className="pl-2 border-l-4 border-blue-400 dark:border-blue-600">
+                          <div className="pl-2 border-l-4 border-blue-400 dark:border-blue-600 prose-introduction">
                             <MarkdownRenderer 
                               markdown={combinedPlan.introduction || t("plan.noContent")} 
+                              section="introduction"
                             />
                           </div>
                         </div>
@@ -1205,9 +1336,10 @@ export default function PlanPage() {
                           <h2 className="text-2xl font-bold text-purple-700 dark:text-purple-400 mb-4 pb-2 border-b border-purple-200 dark:border-purple-800">
                             {t("sections.main")}
                           </h2>
-                          <div className="pl-2 border-l-4 border-purple-400 dark:border-purple-600">
+                          <div className="pl-2 border-l-4 border-purple-400 dark:border-purple-600 prose-main">
                             <MarkdownRenderer 
                               markdown={combinedPlan.main || t("plan.noContent")} 
+                              section="main"
                             />
                           </div>
                         </div>
@@ -1216,9 +1348,10 @@ export default function PlanPage() {
                           <h2 className="text-2xl font-bold text-green-700 dark:text-green-400 mb-4 pb-2 border-b border-green-200 dark:border-green-800">
                             {t("sections.conclusion")}
                           </h2>
-                          <div className="pl-2 border-l-4 border-green-400 dark:border-green-600">
+                          <div className="pl-2 border-l-4 border-green-400 dark:border-green-600 prose-conclusion">
                             <MarkdownRenderer 
                               markdown={combinedPlan.conclusion || t("plan.noContent")} 
+                              section="conclusion"
                             />
                           </div>
                         </div>
@@ -1385,7 +1518,10 @@ export default function PlanPage() {
                           </Button>
                         </div>
                         <div className="p-3 pr-12">
-                          <MarkdownRenderer markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} />
+                          <MarkdownRenderer 
+                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
+                            section="introduction"
+                          />
                         </div>
                       </div>
                     )}
@@ -1537,7 +1673,10 @@ export default function PlanPage() {
                           </Button>
                         </div>
                         <div className="p-3 pr-12">
-                          <MarkdownRenderer markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} />
+                          <MarkdownRenderer 
+                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
+                            section="main"
+                          />
                         </div>
                       </div>
                     )}
@@ -1689,7 +1828,10 @@ export default function PlanPage() {
                           </Button>
                         </div>
                         <div className="p-3 pr-12">
-                          <MarkdownRenderer markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} />
+                          <MarkdownRenderer 
+                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
+                            section="conclusion"
+                          />
                         </div>
                       </div>
                     )}
