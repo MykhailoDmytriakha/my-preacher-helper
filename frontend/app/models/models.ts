@@ -56,6 +56,7 @@ export interface Sermon {
   userId: string;
   insights?: Insights;
   plan?: Plan;
+  isPreached?: boolean;
 }
 
 export interface Tag {

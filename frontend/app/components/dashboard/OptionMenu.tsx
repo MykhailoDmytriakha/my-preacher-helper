@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSermon } from "@services/sermon.service";
+import { deleteSermon, updateSermon } from "@services/sermon.service";
 import { Sermon } from "@/models/models";
 import { DotsVerticalIcon } from "@components/Icons";
 import EditSermonModal from "@components/EditSermonModal";
@@ -78,6 +78,26 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
     }
   };
 
+  const handleTogglePreached = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const updated = await updateSermon({ 
+        ...sermon, 
+        isPreached: !sermon.isPreached 
+      });
+      if (updated && onUpdate) {
+        onUpdate(updated);
+      } else if (!onUpdate) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error updating preached status:", error);
+      alert(t('optionMenu.updateError'));
+    }
+    setOpen(false);
+  };
+
   return (
     <div ref={menuRef} className="relative">
       <button
@@ -89,7 +109,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-40 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
+        <div className="absolute right-0 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
           <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
             <button
               onClick={handleEdit}
@@ -99,8 +119,19 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               <span>{t('optionMenu.edit')}</span>
             </button>
             <button
-              onClick={handleDelete}
+              onClick={handleTogglePreached}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
+              role="menuitem"
+            >
+              <span>
+                {sermon.isPreached 
+                  ? t('optionMenu.markAsNotPreached') 
+                  : t('optionMenu.markAsPreached')}
+              </span>
+            </button>
+            <button
+              onClick={handleDelete}
+              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
             >
               <span>{t('optionMenu.delete')}</span>

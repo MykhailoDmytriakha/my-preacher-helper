@@ -13,6 +13,7 @@ import { Plan } from "@/models/models";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "@locales/i18n";
+import { Copy, Check } from 'lucide-react';
 
 export default function SermonOutlinePage() {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +31,7 @@ export default function SermonOutlinePage() {
     conclusion: false,
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [copyStatus, setCopyStatus] = useState<Record<string, boolean>>({
+  const [copyFeedback, setCopyFeedback] = useState<Record<string, boolean>>({
     introduction: false,
     main: false,
     conclusion: false,
@@ -164,44 +165,41 @@ export default function SermonOutlinePage() {
     setCurrentCopyContent(text);
     setCurrentCopySection(section);
     setShowCopyModal(true);
-    // Reset to default view when opening modal
     setIsFormattedText(false);
+    setCopyFeedback(prev => ({ ...prev, [section]: false }));
   };
 
   const handleCopyFromModal = () => {
-    // If in formatted mode, get HTML from the formatted div
+    const copySuccess = () => {
+      setCopyFeedback(prev => ({ ...prev, [currentCopySection]: true }));
+      setTimeout(() => {
+        setCopyFeedback(prev => ({ ...prev, [currentCopySection]: false }));
+        if (!isFormattedText) {
+          setShowCopyModal(false);
+        }
+      }, 1500);
+    };
+
     if (isFormattedText && formattedTextRef.current) {
-      // Create a range and selection
       const range = document.createRange();
       const selection = window.getSelection();
-      
       range.selectNodeContents(formattedTextRef.current);
       selection?.removeAllRanges();
       selection?.addRange(range);
-      
-      // Copy the selected content
-      document.execCommand('copy');
+      try {
+        document.execCommand('copy');
+        copySuccess();
+      } catch (err) {
+        setError(t('errors.copyError'));
+      }
       selection?.removeAllRanges();
-      
-      // Update copy status
-      setCopyStatus({ ...copyStatus, [currentCopySection]: true });
-      setTimeout(() => {
-        setCopyStatus({ ...copyStatus, [currentCopySection]: false });
-      }, 2000);
-      
       setShowCopyModal(false);
     } else {
-      // Otherwise copy the raw markdown
       navigator.clipboard.writeText(currentCopyContent).then(
-        () => {
-          setCopyStatus({ ...copyStatus, [currentCopySection]: true });
-          setTimeout(() => {
-            setCopyStatus({ ...copyStatus, [currentCopySection]: false });
-          }, 2000);
-          setShowCopyModal(false);
-        },
+        copySuccess,
         (err) => {
           setError(t('errors.copyError'));
+          setShowCopyModal(false);
         }
       );
     }
@@ -214,91 +212,55 @@ export default function SermonOutlinePage() {
   const handleCopyFullPlan = () => {
     if (!plan) return;
     
-    // Prepare each section with proper headings
-    let introContent = plan.introduction.outline || '';
-    let mainContent = plan.main.outline || '';
-    let conclusionContent = plan.conclusion.outline || '';
-    
-    // Clean any existing section headers
-    const introTitleRegex = new RegExp(`^\\s*#\\s+introduction\\s*$`, 'im');
-    const mainTitleRegex = new RegExp(`^\\s*#\\s+main\\s*$`, 'im');
-    const conclusionTitleRegex = new RegExp(`^\\s*#\\s+conclusion\\s*$`, 'im');
-    
-    introContent = introContent.replace(introTitleRegex, '').trim();
-    mainContent = mainContent.replace(mainTitleRegex, '').trim();
-    conclusionContent = conclusionContent.replace(conclusionTitleRegex, '').trim();
-    
-    // Add proper level 1 headings for each section
-    if (introContent) {
-      introContent = `# ${t('outline.introduction')}\n\n${introContent}`;
-    }
-    
-    if (mainContent) {
-      mainContent = `# ${t('outline.mainPoints')}\n\n${mainContent}`;
-    }
-    
-    if (conclusionContent) {
-      conclusionContent = `# ${t('outline.conclusion')}\n\n${conclusionContent}`;
-    }
-    
-    // Join all sections with proper spacing
     const fullText = [
-      introContent,
-      mainContent,
-      conclusionContent
+      plan.introduction.outline || '',
+      plan.main.outline || '',
+      plan.conclusion.outline || ''
     ].filter(Boolean).join('\n\n');
     
-    handleOpenCopyModal(fullText, 'full');
+    navigator.clipboard.writeText(fullText).then(() => {
+      setCopyFeedback(prev => ({ ...prev, full: true }));
+      setTimeout(() => setCopyFeedback(prev => ({ ...prev, full: false })), 1500);
+    }).catch(err => {
+      setError(t('errors.copyError'));
+    });
   };
 
   const renderSectionContent = (sectionKey: 'introduction' | 'main' | 'conclusion', title: string) => {
-    let content = plan?.[sectionKey]?.outline || '';
-    
-    // Remove section title from the beginning if it exists
-    // Check for "# INTRODUCTION", "# MAIN", or "# CONCLUSION" at the start of content
-    const sectionTitleRegex = new RegExp(`^\\s*#\\s+${sectionKey}\\s*$`, 'im');
-    content = content.replace(sectionTitleRegex, '').trim();
-    
-    // Prepend proper level 1 heading with the appropriate section name based on the current language
-    // This ensures consistent structure across all sections
-    if (content) {
-      content = `# ${title}\n\n${content}`;
-    }
-    
+    const sectionContent = plan?.[sectionKey]?.outline || '';
+    const isSectionGenerating = generatingSections[sectionKey];
+    const isSectionCopied = copyFeedback[sectionKey];
+
     return (
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">{title}</h2>
+      <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{title}</h2>
           <div className="flex gap-2">
             <button
-              onClick={() => !isAnyGenerating && handleRegenerateSection(sectionKey)}
-              className={`p-1.5 bg-green-600 hover:bg-green-700 text-white rounded-full transition-opacity duration-200 ${isAnyGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={t('plan.regenerate')}
+              onClick={() => handleCopyToClipboard(sectionContent, sectionKey)}
+              disabled={isSectionCopied}
+              className={`px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1 ${isSectionCopied ? 'bg-green-100 text-green-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
             >
-              {generatingSections[sectionKey] ? (
-                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              )}
+              {isSectionCopied ? <Check size={14} /> : <Copy size={14} />}
+              {isSectionCopied ? t('common.copied') : t('common.copy')}
             </button>
             <button
-              onClick={() => !isAnyGenerating && handleCopyToClipboard(content, sectionKey)}
-              className={`px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-opacity duration-200 ${isAnyGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => handleRegenerateSection(sectionKey)}
+              disabled={isAnyGenerating}
+              className="px-3 py-1.5 text-xs rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
-              {copyStatus[sectionKey] ? t('common.copied') : t('buttons.copy')}
+              {isSectionGenerating ? <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div> : null}
+              {isSectionGenerating ? t('common.generating') : t('common.regenerate')}
             </button>
           </div>
         </div>
-        <div className="prose prose-sm md:prose-base lg:prose-lg dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-800 p-4 rounded-lg compact-markdown">
-          {content ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        <div className="p-4 prose prose-sm sm:prose dark:prose-invert max-w-none">
+          {isSectionGenerating ? (
+            <div className="text-center py-4 text-gray-500">{t('common.generating')}...</div>
+          ) : sectionContent ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{sectionContent}</ReactMarkdown>
           ) : (
-            <p>{t('plan.noContent')}</p>
+            <p className="text-gray-500 italic">{t('plan.noContentYet')}</p>
           )}
         </div>
       </div>
@@ -351,7 +313,7 @@ export default function SermonOutlinePage() {
               onClick={() => !isAnyGenerating && handleCopyFullPlan()}
               className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-opacity duration-200 ${isAnyGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {copyStatus.full ? t('common.copied') : t('plan.copyFullPlan')}
+              {copyFeedback.full ? t('common.copied') : t('plan.copyFullPlan')}
             </button>
           </div>
         </div>
@@ -380,79 +342,66 @@ export default function SermonOutlinePage() {
         </div>
       </div>
       
-      {/* Copy Modal */}
       {showCopyModal && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-3xl mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
-                {t('copy.title')}
-              </h3>
-              <button 
-                onClick={() => setShowCopyModal(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">{t('copy.title')} - {t(`sections.${currentCopySection}`)}</h3>
             
-            <div className="flex justify-center mb-4">
-              <div className="inline-flex rounded-md shadow-sm" role="group">
-                <button
-                  type="button"
+            <div className="mb-4 flex justify-center">
+              <div className="inline-flex rounded-md shadow-sm bg-gray-100 dark:bg-gray-700 p-1">
+                <button 
                   onClick={() => setIsFormattedText(false)}
-                  className={`px-4 py-2 text-sm font-medium ${!isFormattedText 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-gray-700 dark:bg-gray-700 dark:text-gray-200'} 
-                    border border-gray-200 dark:border-gray-600 rounded-l-lg`}
+                  className={`px-4 py-2 rounded-l-md text-sm font-medium transition-colors ${!isFormattedText ? 'bg-blue-500 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                 >
                   {t('copy.markdown')}
                 </button>
-                <button
-                  type="button"
+                <button 
                   onClick={() => setIsFormattedText(true)}
-                  className={`px-4 py-2 text-sm font-medium ${isFormattedText 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white text-gray-700 dark:bg-gray-700 dark:text-gray-200'} 
-                    border border-gray-200 dark:border-gray-600 rounded-r-lg`}
+                  className={`px-4 py-2 rounded-r-md text-sm font-medium transition-colors ${isFormattedText ? 'bg-blue-500 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                 >
                   {t('copy.formatted')}
                 </button>
               </div>
             </div>
-            
-            <div className="mt-4 mb-6">
-              {!isFormattedText ? (
-                <div className="overflow-auto max-h-96 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg whitespace-pre-wrap font-mono text-sm">
-                  {currentCopyContent}
+
+            <div className="bg-gray-50 dark:bg-gray-900 rounded p-4 mb-4 max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700">
+              {isFormattedText ? (
+                <div ref={formattedTextRef} className="prose prose-sm sm:prose dark:prose-invert max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentCopyContent}</ReactMarkdown>
                 </div>
               ) : (
-                <div 
-                  ref={formattedTextRef}
-                  className="overflow-auto max-h-96 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg prose prose-sm md:prose-base dark:prose-invert max-w-none compact-markdown"
-                >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {currentCopyContent}
-                  </ReactMarkdown>
-                </div>
+                <pre className="whitespace-pre-wrap text-sm font-mono">{currentCopyContent}</pre>
               )}
             </div>
-            
-            <div className="flex justify-end">
-              <button
-                onClick={handleCopyFromModal}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowCopyModal(false)} 
+                className="px-4 py-2 text-sm rounded-md bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"
               >
-                {copyStatus[currentCopySection] ? t('common.copied') : t('buttons.copy')}
+                {t('common.cancel')}
+              </button>
+              <button 
+                onClick={handleCopyFromModal} 
+                disabled={copyFeedback[currentCopySection]}
+                className={`px-4 py-2 text-sm rounded-md text-white flex items-center justify-center gap-1.5 min-w-[120px] transition-colors ${copyFeedback[currentCopySection] ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {copyFeedback[currentCopySection] ? (
+                  <>
+                    <Check size={16} />
+                    {t('common.copied')}
+                  </>
+                ) : (
+                  <>
+                    <Copy size={16} />
+                    {isFormattedText ? t('copy.copyFormatted') : t('copy.copyMarkdown')}
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
       
-      {/* Custom styling for compact markdown */}
       <style jsx global>{`
         .compact-markdown p {
           margin-top: 0.5em;
@@ -476,7 +425,6 @@ export default function SermonOutlinePage() {
           margin-top: 0;
           margin-bottom: 0;
         }
-        /* Remove borders from all elements */
         .compact-markdown * {
           border: none !important;
         }

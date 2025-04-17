@@ -38,6 +38,7 @@
     "thought": "thought",
     "thoughts": "thoughts",
     "hasOutline": "Has outline",
+    "preached": "Preached",
     "stats": {
       "totalSermons": "Total Sermons",
       "totalThoughts": "Total Thoughts",
@@ -60,7 +61,11 @@
     "edit": "Edit",
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this sermon?",
-    "deleteError": "Failed to delete sermon"
+    "deleteError": "Failed to delete sermon. Please try again.",
+    "options": "Options",
+    "markAsPreached": "Mark as Preached",
+    "markAsNotPreached": "Mark as Not Preached",
+    "updateError": "Failed to update sermon status. Please try again."
   },
   "editSermon": {
     "editSermon": "Edit Sermon",
@@ -81,10 +86,15 @@
   "export": {
     "soonAvailable": "Coming soon!",
     "txtTitle": "TXT Export",
+    "pdfTitle": "PDF Export",
     "copy": "Copy",
     "copied": "Copied!",
     "downloadTxt": "Download TXT",
     "downloadMarkdown": "Download MD",
+    "savePdf": "Save as PDF",
+    "pdfSuccess": "PDF exported successfully",
+    "pdfError": "Error exporting PDF",
+    "errorPreparingPdf": "Error preparing PDF content",
     "prepareError": "Error preparing export content",
     "sermonTitle": "Sermon: ",
     "scriptureText": "Scripture Text: ",
@@ -101,7 +111,8 @@
     "copyAll": "Copy All",
     "showTags": "Show Tags",
     "hideTags": "Hide Tags",
-    "includeTags": "Include Tags"
+    "includeTags": "Include Tags",
+    "soon": "Soon"
   },
   "tags": {
     "introduction": "Introduction",
@@ -300,7 +311,10 @@
     "loading": "Loading...",
     "copied": "Copied!",
     "scripture": "Scripture",
-    "actions": "Actions"
+    "actions": "Actions",
+    "copy": "Copy",
+    "regenerate": "Regenerate",
+    "generating": "Generating..."
   },
   "outline": {
     "introduction": "Introduction",
@@ -364,9 +378,14 @@
     "fragmentAdded": "Fragment added successfully",
     "fragmentRemoved": "Fragment removed successfully",
     "showSection": "View Section in Full",
-    "viewFullPlan": "View Full Plan"
+    "viewFullPlan": "View Full Plan",
+    "copySuccess": "Plan copied to clipboard!",
+    "copyError": "Failed to copy to clipboard"
   },
   "copy": {
+    "title": "Copy Content",
+    "markdown": "Markdown",
+    "formatted": "Formatted",
     "copyText": "Copy Text",
     "copyMarkdown": "Copy Markdown",
     "copyFormatted": "Copy Formatted"
@@ -383,6 +402,7 @@
     "copyAll": "Copy All",
     "goToOutline": "Go to Outline",
     "remove": "Remove",
-    "close": "Close"
+    "close": "Close",
+    "cancel": "Cancel"
   }
 } 

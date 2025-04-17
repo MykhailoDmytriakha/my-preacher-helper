@@ -10,11 +10,12 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown } from "lucide-react";
+import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import ReactDOM from "react-dom/client";
+import ExportButtons from "@/components/ExportButtons";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -838,6 +839,98 @@ export default function PlanPage() {
     return outlinePoint;
   };
   
+  // Generate content for export as text
+  const getExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }): Promise<string> => {
+    if (!sermon) return '';
+    
+    const titleSection = `# ${sermon.title}\n\n`;
+    const verseSection = sermon.verse ? `> ${sermon.verse}\n\n` : '';
+    
+    // Format the outline points and their content
+    const introSection = `## ${t("sections.introduction")}\n\n${combinedPlan.introduction || t("plan.noContent")}\n\n`;
+    const mainSection = `## ${t("sections.main")}\n\n${combinedPlan.main || t("plan.noContent")}\n\n`;
+    const conclusionSection = `## ${t("sections.conclusion")}\n\n${combinedPlan.conclusion || t("plan.noContent")}\n\n`;
+    
+    // Combine all sections
+    const markdown = `${titleSection}${verseSection}${introSection}${mainSection}${conclusionSection}`;
+    
+    // For plain text, we need to strip markdown formatting
+    if (format === 'plain') {
+      // A very simple markdown to plain text conversion - for a proper conversion, use a library
+      return markdown
+        .replace(/#{1,6}\s(.*)/g, '$1\n') // headers
+        .replace(/\*\*(.*?)\*\*/g, '$1') // bold
+        .replace(/\*(.*?)\*/g, '$1') // italic
+        .replace(/\[(.*?)\]\((.*?)\)/g, '$1 ($2)') // links
+        .replace(/\n>/g, '\n') // blockquotes
+        .replace(/>/g, '') // blockquotes at start
+        .replace(/\n\n+/g, '\n\n'); // multiple line breaks
+    }
+    
+    return markdown;
+  };
+
+  // Generate content for PDF export
+  const getPdfContent = async (): Promise<React.ReactNode> => {
+    if (!sermon) return null;
+    
+    return (
+      <div className="p-6 bg-white text-black" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <h1 className="text-3xl font-bold mb-4">{sermon.title}</h1>
+        
+        {sermon.verse && (
+          <div className="mb-8 p-4 bg-gray-50 rounded-md border-l-4 border-blue-500">
+            <p className="text-gray-700 italic text-lg whitespace-pre-line">
+              {sermon.verse}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              {t("common.scripture")}
+            </p>
+          </div>
+        )}
+        
+        <div className="mb-8 pb-6 border-b-2 border-blue-300">
+          <h2 className="text-2xl font-bold text-blue-700 mb-4">
+            {t("sections.introduction")}
+          </h2>
+          <div className="pl-2 border-l-4 border-blue-400">
+            <div className="prose max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {combinedPlan.introduction || t("plan.noContent")}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mb-8 pb-6 border-b-2 border-purple-300">
+          <h2 className="text-2xl font-bold text-purple-700 mb-4">
+            {t("sections.main")}
+          </h2>
+          <div className="pl-2 border-l-4 border-purple-400">
+            <div className="prose max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {combinedPlan.main || t("plan.noContent")}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mb-4">
+          <h2 className="text-2xl font-bold text-green-700 mb-4">
+            {t("sections.conclusion")}
+          </h2>
+          <div className="pl-2 border-l-4 border-green-400">
+            <div className="prose max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {combinedPlan.conclusion || t("plan.noContent")}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1290,11 +1383,81 @@ export default function PlanPage() {
                     title.className = 'text-xl font-bold';
                     title.textContent = `${t("plan.pageTitle")} - ${sermon.title}`;
                     
+                    const buttonsContainer = document.createElement('div');
+                    buttonsContainer.className = 'flex gap-2';
+                    
+                    // Create copy button
+                    const copyButton = document.createElement('button');
+                    copyButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-purple-600 text-white hover:bg-purple-700';
+                    copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><span>${t("copy.copyFormatted") || "Copy Formatted"}</span>`;
+                    
+                    copyButton.addEventListener('click', () => {
+                      const tempDiv = document.createElement('div');
+                      tempDiv.style.position = 'absolute';
+                      tempDiv.style.left = '-9999px';
+                      // Clone the formatted content and append to tempDiv
+                      const contentToCopy = markdownContent.cloneNode(true); 
+                      tempDiv.appendChild(contentToCopy);
+                      
+                      // Append to body BEFORE trying to copy
+                      document.body.appendChild(tempDiv);
+                      
+                      const originalButtonHtml = copyButton.innerHTML;
+                      const copiedHtml = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg><span>${t("common.copied") || "Copied!"}</span>`;
+                      
+                      const showCopiedState = () => {
+                        copyButton.innerHTML = copiedHtml;
+                        copyButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                        copyButton.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                        copyButton.disabled = true;
+                        setTimeout(() => {
+                          copyButton.innerHTML = originalButtonHtml;
+                          copyButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+                          copyButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                          copyButton.disabled = false;
+                        }, 1500);
+                      };
+
+                      try {
+                        // Execute copy command (or use clipboard API)
+                        const successful = document.execCommand('copy');
+                        if (successful) {
+                          showCopiedState();
+                        } else {
+                          navigator.clipboard.writeText(tempDiv.innerText)
+                            .then(() => {
+                              showCopiedState();
+                              toast.success(t("plan.copySuccess") || "Plan copied to clipboard!");
+                            })
+                            .catch(err => {
+                              toast.error(t("plan.copyError") || "Failed to copy");
+                              console.error('Copy error:', err);
+                            });
+                        }
+                      } catch (err) {
+                        navigator.clipboard.writeText(tempDiv.innerText)
+                          .then(() => {
+                            showCopiedState();
+                            toast.success(t("plan.copySuccess") || "Plan copied to clipboard!");
+                          })
+                          .catch(err => {
+                            toast.error(t("plan.copyError") || "Failed to copy");
+                            console.error('Copy error:', err);
+                          });
+                      }
+                      
+                      // Cleanup (now tempDiv should be a child)
+                      document.body.removeChild(tempDiv);
+                    });
+                    
+                    buttonsContainer.appendChild(copyButton);
+                    header.appendChild(title);
+                    header.appendChild(buttonsContainer);
+                    
                     const closeButton = document.createElement('button');
                     closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
                     closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
                     
-                    header.appendChild(title);
                     content.appendChild(header);
                     modal.appendChild(content);
                     modal.appendChild(closeButton);
@@ -1373,6 +1536,16 @@ export default function PlanPage() {
                   <BookOpen className="h-4 w-4" />
                   {t("plan.viewFullPlan") || "View Full Plan"}
                 </Button>
+                
+                {/* Add Export Buttons */}
+                <ExportButtons
+                  sermonId={sermonId}
+                  getExportContent={getExportContent}
+                  getPdfContent={getPdfContent}
+                  title={sermon.title || "Sermon Plan"}
+                  className="ml-auto"
+                  disabledFormats={['pdf']} // Add this prop to disable PDF
+                />
               </div>
             </div>
           )}

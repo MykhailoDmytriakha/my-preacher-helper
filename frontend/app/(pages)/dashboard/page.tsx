@@ -51,8 +51,13 @@ export default function DashboardPage() {
           sermon.verse.toLowerCase().includes(searchQuery.toLowerCase()))
       : sermons;
     
-    // Then sort based on selected option
+    // Then sort: prioritize non-preached, then apply selected option
     return [...filtered].sort((a, b) => {
+      // Primary sort: Move preached sermons to the bottom
+      if (a.isPreached && !b.isPreached) return 1; // a comes after b
+      if (!a.isPreached && b.isPreached) return -1; // a comes before b
+
+      // Secondary sort: Apply the user-selected sort option
       switch (sortOption) {
         case "newest":
           return new Date(b.date).getTime() - new Date(a.date).getTime();

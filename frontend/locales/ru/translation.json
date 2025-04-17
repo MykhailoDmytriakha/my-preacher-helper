@@ -38,6 +38,7 @@
     "thought": "запись",
     "thoughts": "записей",
     "hasOutline": "Есть план",
+    "preached": "Проповедано",
     "stats": {
       "totalSermons": "Всего проповедей",
       "totalThoughts": "Всего записей",
@@ -59,8 +60,12 @@
   "optionMenu": {
     "edit": "Редактировать",
     "delete": "Удалить",
-    "deleteConfirm": "Вы уверены, что хотите удалить проповедь?",
-    "deleteError": "Не удалось удалить проповедь"
+    "deleteConfirm": "Вы уверены, что хотите удалить эту проповедь?",
+    "deleteError": "Не удалось удалить проповедь. Пожалуйста, попробуйте еще раз.",
+    "options": "Опции",
+    "markAsPreached": "Отметить как проповеданную",
+    "markAsNotPreached": "Снять отметку \"проповедано\"",
+    "updateError": "Не удалось обновить статус проповеди. Пожалуйста, попробуйте еще раз."
   },
   "editSermon": {
     "editSermon": "Редактировать проповедь",
@@ -81,10 +86,15 @@
   "export": {
     "soonAvailable": "Скоро добавим!",
     "txtTitle": "Экспорт в TXT",
+    "pdfTitle": "Экспорт в PDF",
     "copy": "Копировать",
     "copied": "Скопировано!",
     "downloadTxt": "Скачать TXT",
     "downloadMarkdown": "Скачать MD",
+    "savePdf": "Сохранить как PDF",
+    "pdfSuccess": "PDF успешно экспортирован",
+    "pdfError": "Ошибка экспорта PDF",
+    "errorPreparingPdf": "Ошибка подготовки содержимого PDF",
     "prepareError": "Ошибка подготовки экспорта",
     "sermonTitle": "Проповедь: ",
     "scriptureText": "Текст из Писания: ",
@@ -101,7 +111,8 @@
     "copyAll": "Копировать всё",
     "showTags": "Показать теги",
     "hideTags": "Скрыть теги",
-    "includeTags": "Включать теги"
+    "includeTags": "Включать теги",
+    "soon": "Скоро"
   },
   "tags": {
     "introduction": "Вступление",
@@ -300,7 +311,10 @@
     "loading": "Загрузка...",
     "copied": "Скопировано!",
     "scripture": "Священное Писание",
-    "actions": "Действия"
+    "actions": "Действия",
+    "copy": "Копировать",
+    "regenerate": "Перегенерировать",
+    "generating": "Генерация..."
   },
   "outline": {
     "introduction": "Вступление",
@@ -324,21 +338,21 @@
     "errorMessage": "К сожалению, возникла проблема при отправке вашего отзыва. Пожалуйста, попробуйте еще раз."
   },
   "plan": {
+    "pageTitle": "План проповеди",
+    "editor": "Редактор",
     "copyFullPlan": "Копировать полный план",
-    "generating": "Генерация...",
+    "showThoughts": "Показать мысли",
+    "hideThoughts": "Скрыть мысли",
+    "thoughts": "Мысли",
+    "thought": "Мысль",
+    "noThoughts": "Нет прикрепленных мыслей",
     "generate": "Сгенерировать",
     "generateSuccess": "План успешно сгенерирован!",
     "error": "Ошибка генерации плана",
     "regenerate": "Пересоздать",
     "regenerateSuccess": "успешно пересоздан!",
     "regenerateError": "Ошибка при пересоздании",
-    "pageTitle": "План проповеди",
-    "editor": "Редактор",
-    "showThoughts": "Показать мысли",
-    "hideThoughts": "Скрыть мысли",
-    "thoughts": "Мысли",
-    "thought": "Мысль",
-    "noThoughts": "Нет прикрепленных мыслей",
+    "generating": "Генерация...",
     "generatingAll": "Генерация...",
     "generateAll": "Сгенерировать всё",
     "contentGenerated": "Содержание сгенерировано",
@@ -364,7 +378,9 @@
     "fragmentAdded": "Фрагмент успешно добавлен",
     "fragmentRemoved": "Фрагмент успешно удален",
     "showSection": "Просмотреть раздел полностью",
-    "viewFullPlan": "Просмотреть полный план"
+    "viewFullPlan": "Просмотреть полный план",
+    "copySuccess": "План скопирован в буфер обмена!",
+    "copyError": "Не удалось скопировать в буфер обмена"
   },
   "copy": {
     "title": "Копирование содержимого",
@@ -386,6 +402,7 @@
     "copyAll": "Копировать все",
     "goToOutline": "Перейти к плану",
     "remove": "Удалить",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "cancel": "Отмена"
   }
 } 

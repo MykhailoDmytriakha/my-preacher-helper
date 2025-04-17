@@ -38,6 +38,7 @@
     "thought": "запис",
     "thoughts": "записів",
     "hasOutline": "Є план",
+    "preached": "Проповідано",
     "stats": {
       "totalSermons": "Всього проповідей",
       "totalThoughts": "Всього записів",
@@ -59,8 +60,12 @@
   "optionMenu": {
     "edit": "Редагувати",
     "delete": "Видалити",
-    "deleteConfirm": "Ви впевнені, що хочете видалити проповідь?",
-    "deleteError": "Не вдалося видалити проповідь"
+    "deleteConfirm": "Ви впевнені, що хочете видалити цю проповідь?",
+    "deleteError": "Не вдалося видалити проповідь. Будь ласка, спробуйте ще раз.",
+    "options": "Опції",
+    "markAsPreached": "Відзначити як проповідану",
+    "markAsNotPreached": "Зняти позначку \"проповідано\"",
+    "updateError": "Не вдалося оновити статус проповіді. Будь ласка, спробуйте ще раз."
   },
   "editSermon": {
     "editSermon": "Редагувати проповідь",
@@ -81,10 +86,15 @@
   "export": {
     "soonAvailable": "Скоро додамо!",
     "txtTitle": "Експорт у TXT",
+    "pdfTitle": "Експорт у PDF",
     "copy": "Копіювати",
     "copied": "Скопійовано!",
     "downloadTxt": "Завантажити TXT",
     "downloadMarkdown": "Завантажити MD",
+    "savePdf": "Зберегти як PDF",
+    "pdfSuccess": "PDF успішно експортовано",
+    "pdfError": "Помилка експорту PDF",
+    "errorPreparingPdf": "Помилка підготовки вмісту PDF",
     "prepareError": "Помилка підготовки експорту",
     "sermonTitle": "Проповідь: ",
     "scriptureText": "Текст з Писання: ",
@@ -101,7 +111,8 @@
     "copyAll": "Копіювати все",
     "showTags": "Показати теги",
     "hideTags": "Сховати теги",
-    "includeTags": "Включати теги"
+    "includeTags": "Включати теги",
+    "soon": "Скоро"
   },
   "tags": {
     "introduction": "Вступ",
@@ -151,29 +162,51 @@
     "draftMode": "Черновик",
     "pointMode": "за Пунктами"
   },
-  "errors": {
-    "audioProcessing": "Помилка обробки аудіо",
-    "thoughtDeleteError": "Помилка видалення запису. Будь ласка, спробуйте ще раз.",
-    "thoughtUpdateError": "Помилка оновлення запису в базі даних",
-    "microphoneUnavailable": "Мікрофон недоступний",
-    "addThoughtError": "Помилка додавання запису",
-    "aiSortingError": "Помилка сортування елементів за допомогою ШІ. Будь ласка, спробуйте ще раз.",
-    "saveOutlineError": "Не вдалося зберегти план",
-    "fetchOutlineError": "Не вдалося завантажити план",
-    "copyError": "Не вдалося скопіювати текст у буфер обміну",
-    "sermonNotFound": "Проповідь не знайдено",
-    "failedToLoadSermon": "Не вдалося завантажити проповідь",
-    "outlinePointNotFound": "Пункт плану не знайдено",
-    "failedToGenerateContent": "Не вдалося згенерувати вміст",
-    "failedToSavePlan": "Не вдалося зберегти текст проповіді",
-    "thoughtNotFound": "Запис не знайдено",
-    "failedToAddFragment": "Не вдалося додати ключовий фрагмент",
-    "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент"
+  "filters": {
+    "filter": "Фільтр",
+    "all": "Всі думки",
+    "missingTags": "Без обов'язкових тегів",
+    "byStructure": "Фільтр за структурою",
+    "byTags": "Фільтр за тегами",
+    "allStructure": "Всі частини структури",
+    "viewOptions": "Параметри перегляду",
+    "selectTags": "Виберіть теги",
+    "reset": "Скинути",
+    "apply": "Застосувати",
+    "clear": "Очистити фільтри",
+    "noMatchingThoughts": "Немає думок, які відповідають вашим фільтрам",
+    "resetFilters": "Скинути всі фільтри",
+    "searchThoughts": "Пошук у думках",
+    "activeFilters": "Активні фільтри",
+    "sortOrder": "Порядок сортування",
+    "sortByDate": "За датою (спочатку нові)",
+    "sortByStructure": "За структурою (вступ → основна частина → висновок)",
+    "noStructureTagsPresent": "Немає тегів структури",
+    "requiresStructureTags": "Потрібні теги структури"
   },
   "audio": {
     "processing": "Обробка...",
     "stopRecording": "Зупинити запис",
     "newRecording": "Новий запис"
+  },
+  "errors": {
+    "audioProcessing": "Error processing audio",
+    "thoughtDeleteError": "Error deleting thought. Please try again.",
+    "thoughtUpdateError": "Error updating thought in database",
+    "microphoneUnavailable": "Microphone unavailable",
+    "addThoughtError": "Error adding thought",
+    "aiSortingError": "Error sorting items with AI. Please try again.",
+    "saveOutlineError": "Failed to save outline",
+    "fetchOutlineError": "Failed to fetch outline",
+    "copyError": "Failed to copy text to clipboard",
+    "sermonNotFound": "Sermon not found",
+    "failedToLoadSermon": "Failed to load sermon",
+    "outlinePointNotFound": "Outline point not found",
+    "failedToGenerateContent": "Failed to generate content",
+    "failedToSavePlan": "Failed to save plan",
+    "thoughtNotFound": "Thought not found",
+    "failedToAddFragment": "Failed to add key fragment",
+    "failedToRemoveFragment": "Failed to remove key fragment"
   },
   "manualThought": {
     "addManual": "Додати запис вручну",
@@ -258,28 +291,6 @@
     "clickToExpand": "Натисніть на стрілку вище, щоб переглянути аналітику",
     "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із 20"
   },
-  "filters": {
-    "filter": "Фільтр",
-    "all": "Всі думки",
-    "missingTags": "Без обов'язкових тегів",
-    "byStructure": "Фільтр за структурою",
-    "byTags": "Фільтр за тегами",
-    "allStructure": "Всі частини структури",
-    "viewOptions": "Параметри перегляду",
-    "selectTags": "Виберіть теги",
-    "reset": "Скинути",
-    "apply": "Застосувати",
-    "clear": "Очистити фільтри",
-    "noMatchingThoughts": "Немає думок, які відповідають вашим фільтрам",
-    "resetFilters": "Скинути всі фільтри",
-    "searchThoughts": "Пошук у думках",
-    "activeFilters": "Активні фільтри",
-    "sortOrder": "Порядок сортування",
-    "sortByDate": "За датою (спочатку нові)",
-    "sortByStructure": "За структурою (вступ → основна частина → висновок)",
-    "noStructureTagsPresent": "Немає тегів структури",
-    "requiresStructureTags": "Потрібні теги структури"
-  },
   "common": {
     "comingSoon": "Скоро буде доступно",
     "implementedSoon": "Буде реалізовано найближчим часом",
@@ -300,7 +311,10 @@
     "loading": "Завантаження...",
     "copied": "Скопійовано!",
     "scripture": "Священне Писання",
-    "actions": "Дії"
+    "actions": "Дії",
+    "copy": "Копіювати",
+    "regenerate": "Перегенерувати",
+    "generating": "Генерація..."
   },
   "outline": {
     "introduction": "Вступ",
@@ -327,20 +341,20 @@
     "pageTitle": "План проповіді",
     "editor": "Редактор",
     "copyFullPlan": "Копіювати повний план",
-    "generating": "Генерація...",
+    "showThoughts": "Показати думки",
+    "hideThoughts": "Сховати думки",
+    "thoughts": "Думки",
+    "thought": "Думка",
+    "noThoughts": "Немає прикріплених думок",
     "generate": "Згенерувати",
     "generateSuccess": "План успішно згенерований!",
     "error": "Помилка генерації плану",
     "regenerate": "Перестворити",
     "regenerateSuccess": "успішно перестворено!",
     "regenerateError": "Помилка при перестворенні",
-    "showThoughts": "Показати думки",
-    "hideThoughts": "Сховати думки",
-    "thoughts": "Думки",
-    "thought": "Думка",
-    "noThoughts": "Немає прикріплених думок",
-    "generateAll": "Згенерувати все",
+    "generating": "Генерація...",
     "generatingAll": "Генерація...",
+    "generateAll": "Згенерувати все",
     "contentGenerated": "Зміст згенеровано",
     "planSaved": "План збережено",
     "pointSaved": "Пункт збережено",
@@ -364,7 +378,9 @@
     "fragmentAdded": "Фрагмент успішно додано",
     "fragmentRemoved": "Фрагмент успішно видалено",
     "showSection": "Переглянути розділ повністю",
-    "viewFullPlan": "Переглянути повний план"
+    "viewFullPlan": "Переглянути повний план",
+    "copySuccess": "План скопійовано в буфер обміну!",
+    "copyError": "Не вдалося скопіювати в буфер обміну"
   },
   "copy": {
     "title": "Копіювання вмісту",
@@ -386,6 +402,7 @@
     "copyAll": "Копіювати все",
     "goToOutline": "Перейти до плану",
     "remove": "Видалити",
-    "close": "Закрити"
+    "close": "Закрити",
+    "cancel": "Скасувати"
   }
 } 
