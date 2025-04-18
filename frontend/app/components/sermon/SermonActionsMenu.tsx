@@ -115,20 +115,21 @@ const SermonActionsMenu: React.FC<SermonActionsMenuProps> = ({
                 href={
                   mode === 'framework'
                     ? (isPlanAccessible ? `/sermons/${sermon.id}/outline` : '#')
-                    : (areAllThoughtsAssignedToOutlinePoints ? `/sermons/${sermon.id}/plan` : '#')
+                    : (isPlanAccessible && areAllThoughtsAssignedToOutlinePoints ? `/sermons/${sermon.id}/plan` : '#')
                 }
                 onClick={(e) => {
                   if (mode === 'framework' && !isPlanAccessible) e.preventDefault();
-                  if (mode === 'content' && !areAllThoughtsAssignedToOutlinePoints) e.preventDefault();
+                  if (mode === 'content' && (!isPlanAccessible || !areAllThoughtsAssignedToOutlinePoints)) e.preventDefault();
                   setMenuOpen(false); // Close menu on link click/navigation
                 }}
                 className={`block w-full mt-2 px-3 py-2 text-sm text-center rounded-md text-white ${
                   mode === 'framework'
                     ? (isPlanAccessible ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 cursor-not-allowed')
-                    : (areAllThoughtsAssignedToOutlinePoints ? 'bg-green-600 hover:bg-green-700' : 'bg-green-400 cursor-not-allowed')
+                    : (isPlanAccessible && areAllThoughtsAssignedToOutlinePoints ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 cursor-not-allowed')
                 }`}
                 title={
                     mode === 'framework' && !isPlanAccessible ? t('sermon.createOutlineTooltip') :
+                    mode === 'content' && !isPlanAccessible ? t('sermon.createOutlineTooltip') : 
                     mode === 'content' && !areAllThoughtsAssignedToOutlinePoints ? t('sermon.assignThoughtsTooltip') : ''
                 }
               >
