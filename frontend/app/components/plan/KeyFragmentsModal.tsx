@@ -233,7 +233,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
                   
                   {/* Thought Text - Selectable */}
                   <div
-                    className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-gray-800 dark:text-gray-200 user-select-text"
+                    className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-gray-800 dark:text-gray-200 user-select-text whitespace-pre-wrap"
                     data-thought-id={thought.id}
                     data-testid={`thought-text-${thought.id}`}
                     style={{ userSelect: "text" }}
