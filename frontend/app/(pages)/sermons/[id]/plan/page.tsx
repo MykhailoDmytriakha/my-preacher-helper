@@ -10,7 +10,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown, Copy } from "lucide-react";
+import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown, Copy, Minimize2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
@@ -1214,18 +1214,33 @@ export default function PlanPage() {
                           title.className = 'text-xl font-bold';
                           title.textContent = `${t("plan.pageTitle")} - ${t("sections.introduction")}`;
                           
-                          const closeButton = document.createElement('button');
-                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
-                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          const buttonsContainer = document.createElement('div');
+                          buttonsContainer.className = 'flex gap-2';
                           
+                          // Create close button
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          closeButton.title = t("actions.close") || "Close";
+                          
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                          
+                          buttonsContainer.appendChild(closeButton);
                           header.appendChild(title);
+                          header.appendChild(buttonsContainer);
+                          
                           content.appendChild(header);
                           modal.appendChild(content);
-                          modal.appendChild(closeButton);
                           
                           // Add markdown content
                           const markdownContent = document.createElement('div');
                           markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Create content wrapper with vertical border
+                          const contentWrapper = document.createElement('div');
+                          contentWrapper.className = 'pl-2 border-l-4 border-blue-400 dark:border-blue-600 prose-introduction';
                           
                           // Render React component inside the div
                           const root = ReactDOM.createRoot(markdownContent);
@@ -1236,14 +1251,10 @@ export default function PlanPage() {
                             />
                           );
                           
-                          content.appendChild(markdownContent);
+                          contentWrapper.appendChild(markdownContent);
+                          content.appendChild(contentWrapper);
                           modal.appendChild(content);
                           document.body.appendChild(modal);
-                          
-                          // Add event listener to close button
-                          closeButton.addEventListener('click', () => {
-                            document.body.removeChild(modal);
-                          });
                         }}
                       >
                         <div className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-700 mr-2"></div>
@@ -1270,18 +1281,33 @@ export default function PlanPage() {
                           title.className = 'text-xl font-bold';
                           title.textContent = `${t("plan.pageTitle")} - ${t("sections.main")}`;
                           
-                          const closeButton = document.createElement('button');
-                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
-                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          const buttonsContainer = document.createElement('div');
+                          buttonsContainer.className = 'flex gap-2';
                           
+                          // Create close button
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          closeButton.title = t("actions.close") || "Close";
+                          
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                          
+                          buttonsContainer.appendChild(closeButton);
                           header.appendChild(title);
+                          header.appendChild(buttonsContainer);
+                          
                           content.appendChild(header);
                           modal.appendChild(content);
-                          modal.appendChild(closeButton);
                           
                           // Add markdown content
                           const markdownContent = document.createElement('div');
                           markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Create content wrapper with vertical border
+                          const contentWrapper = document.createElement('div');
+                          contentWrapper.className = 'pl-2 border-l-4 border-purple-400 dark:border-purple-600 prose-main';
                           
                           // Render React component inside the div
                           const root = ReactDOM.createRoot(markdownContent);
@@ -1292,14 +1318,10 @@ export default function PlanPage() {
                             />
                           );
                           
-                          content.appendChild(markdownContent);
+                          contentWrapper.appendChild(markdownContent);
+                          content.appendChild(contentWrapper);
                           modal.appendChild(content);
                           document.body.appendChild(modal);
-                          
-                          // Add event listener to close button
-                          closeButton.addEventListener('click', () => {
-                            document.body.removeChild(modal);
-                          });
                         }}
                       >
                         <div className="w-3 h-3 rounded-full bg-purple-500 dark:bg-purple-700 mr-2"></div>
@@ -1326,18 +1348,33 @@ export default function PlanPage() {
                           title.className = 'text-xl font-bold';
                           title.textContent = `${t("plan.pageTitle")} - ${t("sections.conclusion")}`;
                           
-                          const closeButton = document.createElement('button');
-                          closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
-                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          const buttonsContainer = document.createElement('div');
+                          buttonsContainer.className = 'flex gap-2';
                           
+                          // Create close button
+                          const closeButton = document.createElement('button');
+                          closeButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
+                          closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                          closeButton.title = t("actions.close") || "Close";
+                          
+                          closeButton.addEventListener('click', () => {
+                            document.body.removeChild(modal);
+                          });
+                          
+                          buttonsContainer.appendChild(closeButton);
                           header.appendChild(title);
+                          header.appendChild(buttonsContainer);
+                          
                           content.appendChild(header);
                           modal.appendChild(content);
-                          modal.appendChild(closeButton);
                           
                           // Add markdown content
                           const markdownContent = document.createElement('div');
                           markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+                          
+                          // Create content wrapper with vertical border
+                          const contentWrapper = document.createElement('div');
+                          contentWrapper.className = 'pl-2 border-l-4 border-green-400 dark:border-green-600 prose-conclusion';
                           
                           // Render React component inside the div
                           const root = ReactDOM.createRoot(markdownContent);
@@ -1348,14 +1385,10 @@ export default function PlanPage() {
                             />
                           );
                           
-                          content.appendChild(markdownContent);
+                          contentWrapper.appendChild(markdownContent);
+                          content.appendChild(contentWrapper);
                           modal.appendChild(content);
                           document.body.appendChild(modal);
-                          
-                          // Add event listener to close button
-                          closeButton.addEventListener('click', () => {
-                            document.body.removeChild(modal);
-                          });
                         }}
                       >
                         <div className="w-3 h-3 rounded-full bg-green-500 dark:bg-green-700 mr-2"></div>
@@ -1385,6 +1418,53 @@ export default function PlanPage() {
                     
                     const buttonsContainer = document.createElement('div');
                     buttonsContainer.className = 'flex gap-2';
+                    
+                    // Create fullscreen button
+                    const fullscreenButton = document.createElement('button');
+                    fullscreenButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
+                    fullscreenButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+                    fullscreenButton.title = t("plan.fullscreen") || "Fullscreen";
+                    
+                    // Flag to track fullscreen state
+                    let isFullscreen = false;
+                    
+                    fullscreenButton.addEventListener('click', () => {
+                      isFullscreen = !isFullscreen;
+                      
+                      if (isFullscreen) {
+                        // Enter fullscreen mode
+                        content.classList.remove('max-w-5xl', 'max-h-[90vh]');
+                        content.classList.add('w-screen', 'h-screen', 'max-w-none', 'max-h-none', 'rounded-none');
+                        modal.classList.remove('p-4');
+                        
+                        // Update button icon to show minimize
+                        fullscreenButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+                        fullscreenButton.title = t("plan.exitFullscreen") || "Exit Fullscreen";
+                      } else {
+                        // Exit fullscreen mode
+                        content.classList.add('max-w-5xl', 'max-h-[90vh]');
+                        content.classList.remove('w-screen', 'h-screen', 'max-w-none', 'max-h-none', 'rounded-none');
+                        modal.classList.add('p-4');
+                        
+                        // Update button icon to show maximize
+                        fullscreenButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+                        fullscreenButton.title = t("plan.fullscreen") || "Fullscreen";
+                      }
+                    });
+                    
+                    buttonsContainer.appendChild(fullscreenButton);
+                    
+                    // Create close button
+                    const closeButton = document.createElement('button');
+                    closeButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
+                    closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+                    closeButton.title = t("actions.close") || "Close";
+                    
+                    closeButton.addEventListener('click', () => {
+                      document.body.removeChild(modal);
+                    });
+                    
+                    buttonsContainer.appendChild(closeButton);
                     
                     // Create copy button
                     const copyButton = document.createElement('button');
@@ -1454,13 +1534,8 @@ export default function PlanPage() {
                     header.appendChild(title);
                     header.appendChild(buttonsContainer);
                     
-                    const closeButton = document.createElement('button');
-                    closeButton.className = 'fixed z-50 top-6 right-6 w-10 h-10 flex items-center justify-center bg-gray-800/70 dark:bg-gray-600/70 hover:bg-gray-700 dark:hover:bg-gray-500 text-white rounded-full shadow-lg transition-colors';
-                    closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
-                    
                     content.appendChild(header);
                     modal.appendChild(content);
-                    modal.appendChild(closeButton);
                     
                     // Add markdown content
                     const markdownContent = document.createElement('div');
@@ -1524,11 +1599,6 @@ export default function PlanPage() {
                     content.appendChild(markdownContent);
                     modal.appendChild(content);
                     document.body.appendChild(modal);
-                    
-                    // Add event listener to close button
-                    closeButton.addEventListener('click', () => {
-                      document.body.removeChild(modal);
-                    });
                   }}
                   variant="primary" 
                   className="flex items-center gap-2"

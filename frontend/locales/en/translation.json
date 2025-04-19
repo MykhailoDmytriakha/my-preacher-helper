@@ -380,7 +380,9 @@
     "showSection": "View Section in Full",
     "viewFullPlan": "View Full Plan",
     "copySuccess": "Plan copied to clipboard!",
-    "copyError": "Failed to copy to clipboard"
+    "copyError": "Failed to copy to clipboard",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit Fullscreen"
   },
   "copy": {
     "title": "Copy Content",
