@@ -1,6 +1,6 @@
 import { Sermon, Thought } from "@/models/models";
 
-const MAX_EXAMPLE_THOUGHTS = 10; // Define a limit for examples
+const MAX_EXAMPLE_THOUGHTS = 20; // Define a limit for examples
 
 export function createThoughtUserMessage(
   thoughtText: string,
