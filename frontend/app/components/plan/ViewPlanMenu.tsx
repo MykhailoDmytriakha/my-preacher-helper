@@ -14,7 +14,7 @@ interface ViewPlanMenuProps {
     main: string;
     conclusion: string;
   };
-  sectionMenuRef: React.RefObject<HTMLDivElement>;
+  sectionMenuRef: React.RefObject<HTMLDivElement | null>;
   showSectionMenu: boolean;
   setShowSectionMenu: (show: boolean) => void;
 }

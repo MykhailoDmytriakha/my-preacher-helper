@@ -254,17 +254,17 @@ export default function PlanPage() {
   // Currently generating outline point ID
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   
-  // Combined plan for the editor
-  const [combinedPlan, setCombinedPlan] = useState<Record<string, string>>({
-    introduction: "",
-    main: "",
-    conclusion: "",
-  });
+  // State to hold the combined generated content for each section
+  const [combinedPlan, setCombinedPlan] = useState<{
+    introduction: string;
+    main: string;
+    conclusion: string;
+  }>({ introduction: '', main: '', conclusion: '' });
   
-  // Refs for height synchronization
-  const introPointRefs = useRef<Record<string, {left: HTMLDivElement | null, right: HTMLDivElement | null}>>({});
-  const mainPointRefs = useRef<Record<string, {left: HTMLDivElement | null, right: HTMLDivElement | null}>>({});
-  const conclusionPointRefs = useRef<Record<string, {left: HTMLDivElement | null, right: HTMLDivElement | null}>>({});
+  // Refs for the outline point cards in each column
+  const introPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
+  const mainPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
+  const conclusionPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   
   // Track saved outline points
   const [savedOutlinePoints, setSavedOutlinePoints] = useState<Record<string, boolean>>({});
@@ -567,7 +567,7 @@ export default function PlanPage() {
       }));
       
       // Update the combined plan
-      updateCombinedPlan(outlinePointId, outlinePoint.text, data.content, section);
+      updateCombinedPlan(outlinePointId, outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
       
       toast.success(t("plan.contentGenerated"));
     } catch (err) {
@@ -583,7 +583,7 @@ export default function PlanPage() {
     outlinePointId: string,
     outlinePointText: string,
     content: string,
-    section: string
+    section: 'introduction' | 'main' | 'conclusion'
   ) => {
     setCombinedPlan((prev) => {
       // Create a heading with the outline point text
