@@ -17,6 +17,8 @@ jest.mock('@utils/color', () => ({
 jest.mock('@components/Icons', () => ({
   TrashIcon: () => <div data-testid="trash-icon" />,
   EditIcon: () => <div data-testid="edit-icon" />,
+  CopyIcon: () => <div data-testid="copy-icon" />,
+  CheckIcon: () => <div data-testid="check-icon" />,
 }));
 
 // Mock EllipsisVerticalIcon from heroicons
@@ -37,6 +39,20 @@ jest.mock('@utils/tagUtils', () => ({
 // Mock the entire i18n module
 jest.mock('@locales/i18n', () => {}, { virtual: true });
 
+// Mock useClipboard hook
+const mockCopyToClipboard = jest.fn();
+const mockReset = jest.fn();
+
+jest.mock('@/hooks/useClipboard', () => ({
+  useClipboard: jest.fn(() => ({
+    isCopied: false,
+    isLoading: false,
+    error: null,
+    copyToClipboard: mockCopyToClipboard,
+    reset: mockReset,
+  })),
+}));
+
 // Mock the useTranslation hook
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -44,6 +60,8 @@ jest.mock('react-i18next', () => ({
       const translations: { [key: string]: string } = {
         'thought.optionsMenuLabel': 'Thought options',
         'common.edit': 'Edit',
+        'common.copy': 'Copy',
+        'common.copied': 'Copied!',
         'common.delete': 'Delete',
         'thought.tagsLabel': 'Tags',
         'thought.availableTags': 'Available tags',
@@ -108,6 +126,8 @@ describe('ThoughtCard Component', () => {
   
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCopyToClipboard.mockClear();
+    mockReset.mockClear();
   });
   
   it('renders basic thought information correctly', () => {
@@ -180,6 +200,20 @@ describe('ThoughtCard Component', () => {
     await waitFor(() => {
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     });
+  });
+
+  it('copies thought text to clipboard when Copy option is clicked', async () => {
+    mockCopyToClipboard.mockResolvedValue(true);
+
+    render(<ThoughtCard {...defaultProps} />);
+    const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
+    fireEvent.click(optionsButton!);
+    
+    const copyOption = screen.getByText('Copy');
+    fireEvent.click(copyOption);
+    
+    expect(mockCopyToClipboard).toHaveBeenCalledTimes(1);
+    expect(mockCopyToClipboard).toHaveBeenCalledWith('This is a test thought');
   });
 
   it('closes options menu when clicking outside', () => {

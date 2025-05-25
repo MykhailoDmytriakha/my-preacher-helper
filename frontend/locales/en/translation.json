@@ -59,13 +59,16 @@
   },
   "optionMenu": {
     "edit": "Edit",
+    "copy": "Copy",
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this sermon?",
     "deleteError": "Failed to delete sermon. Please try again.",
     "options": "Options",
     "markAsPreached": "Mark as Preached",
     "markAsNotPreached": "Mark as Not Preached",
-    "updateError": "Failed to update sermon status. Please try again."
+    "updateError": "Failed to update sermon status. Please try again.",
+    "copySuccess": "Sermon copied to clipboard!",
+    "copyError": "Failed to copy sermon. Please try again."
   },
   "editSermon": {
     "editSermon": "Edit Sermon",
@@ -187,7 +190,14 @@
   "audio": {
     "processing": "Processing...",
     "stopRecording": "Stop Recording",
-    "newRecording": "New Recording"
+    "newRecording": "New Recording",
+    "cancelRecording": "Cancel Recording",
+    "initializing": "Initializing...",
+    "recording": "REC",
+    "audioLevel": "Audio Level",
+    "keyboardShortcuts": "Keyboard shortcuts",
+    "toRecord": "to record",
+    "toCancel": "to cancel"
   },
   "errors": {
     "audioProcessing": "Error processing audio",

@@ -59,13 +59,16 @@
   },
   "optionMenu": {
     "edit": "Редагувати",
+    "copy": "Копіювати",
     "delete": "Видалити",
     "deleteConfirm": "Ви впевнені, що хочете видалити цю проповідь?",
     "deleteError": "Не вдалося видалити проповідь. Будь ласка, спробуйте ще раз.",
     "options": "Опції",
     "markAsPreached": "Відзначити як проповідану",
     "markAsNotPreached": "Зняти позначку \"проповідано\"",
-    "updateError": "Не вдалося оновити статус проповіді. Будь ласка, спробуйте ще раз."
+    "updateError": "Не вдалося оновити статус проповіді. Будь ласка, спробуйте ще раз.",
+    "copySuccess": "Проповідь скопійовано в буфер обміну!",
+    "copyError": "Не вдалося скопіювати проповідь. Будь ласка, спробуйте ще раз."
   },
   "editSermon": {
     "editSermon": "Редагувати проповідь",
@@ -187,7 +190,14 @@
   "audio": {
     "processing": "Обробка...",
     "stopRecording": "Зупинити запис",
-    "newRecording": "Новий запис"
+    "newRecording": "Новий запис",
+    "cancelRecording": "Скасувати запис",
+    "initializing": "Ініціалізація...",
+    "recording": "ЗАП",
+    "audioLevel": "Рівень звуку",
+    "keyboardShortcuts": "Гарячі клавіші",
+    "toRecord": "для запису",
+    "toCancel": "для скасування"
   },
   "errors": {
     "audioProcessing": "Error processing audio",

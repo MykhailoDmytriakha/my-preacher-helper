@@ -1,14 +1,25 @@
 "use client";
 
-import { formatDate } from "@utils/dateFormatter";
-import { TrashIcon, EditIcon } from "@components/Icons";
-import { Thought, Outline } from "@/models/models";
-import { useCallback, useMemo, memo } from "react";
-import { getContrastColor } from "@utils/color";
+import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle } from "@utils/tagUtils";
-import { useState, useRef, useEffect } from "react";
+
+// Utils imports
+import { formatDate } from "@utils/dateFormatter";
+import { isStructureTag, getStructureIcon, getTagStyle } from "@utils/tagUtils";
+
+// Components
+import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// Constants
+import { SPACING } from "@/constants/ui";
+
+// Type imports
+import type { Thought, Outline } from "@/models/models";
+
+// Icons imports
+import { EditIcon, TrashIcon, CopyIcon, CheckIcon } from "@components/Icons";
 import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 
 // Types
@@ -28,7 +39,7 @@ const STRUCTURE_SECTIONS: Record<string, string> = {
   'introduction': 'Вступление',
   'main': 'Основная часть',
   'conclusion': 'Заключение'
-};
+} as const;
 
 // Props for the main component and sub-components
 interface ThoughtCardProps {
@@ -65,25 +76,6 @@ const ThoughtCard = ({
   onEditStart
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
-  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
-  const optionsMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown if clicked outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
-        setIsOptionsOpen(false);
-      }
-    }
-    if (isOptionsOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOptionsOpen]);
 
   // Shared translation helper
   const getSectionName = useCallback((sectionKey?: string) => {
@@ -140,14 +132,16 @@ const ThoughtCard = ({
   );
   const needsSectionTag = useMemo(() => !hasRequiredTag, [hasRequiredTag]);
 
-  // Determine card style based on status
+  // Determine card style based on status with improved visual hierarchy
   const cardStyle = useMemo(() => {
+    const baseStyle = 'relative p-4 rounded-lg transition-all duration-200 hover:shadow-md';
+    
     if (hasInconsistentSection || hasMultipleStructureTags || needsSectionTag) {
-      return 'border border-red-500 bg-red-50 dark:bg-red-900 dark:border-red-500';
+      return `${baseStyle} border border-red-500 bg-red-50/50 dark:bg-red-900/50 dark:border-red-500 hover:bg-red-50 dark:hover:bg-red-900`;
     }
     
-    return 'bg-gray-50 dark:bg-gray-700';
-  }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, thought.tags]);
+    return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
+  }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag]);
 
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
@@ -184,53 +178,21 @@ const ThoughtCard = ({
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, outlinePoint, thought.tags, getSectionName]);
 
   return (
-    <div className={`relative p-4 rounded-lg ${cardStyle}`} role="article" aria-labelledby={`thought-${thought.id}-text`}>
-      <div ref={optionsMenuRef} className="absolute top-4 right-4 z-10">
-        <button
-          onClick={() => setIsOptionsOpen(!isOptionsOpen)}
-          className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
-          aria-label={t('thought.optionsMenuLabel', 'Thought options')}
-          aria-haspopup="true"
-          aria-expanded={isOptionsOpen}
-        >
-          <EllipsisVerticalIcon className="w-5 h-5" />
-        </button>
-
-        {isOptionsOpen && (
-          <div
-            className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 border border-gray-200 dark:border-gray-700 z-20"
-            role="menu"
-            aria-orientation="vertical"
-            aria-labelledby="options-menu"
-          >
-            <button
-              onClick={() => {
-                onEditStart(thought, index);
-                setIsOptionsOpen(false);
-              }}
-              className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-              role="menuitem"
-            >
-              <span className="inline-flex items-center justify-center w-5 h-5 mr-2 flex-shrink-0">
-                <EditIcon className="w-4 h-4" />
-              </span>
-              {t('common.edit', 'Edit')}
-            </button>
-            <button
-              onClick={() => {
-                onDelete(index, thought.id);
-                setIsOptionsOpen(false);
-              }}
-              className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-gray-700"
-              role="menuitem"
-            >
-              <span className="inline-flex items-center justify-center w-5 h-5 mr-2 flex-shrink-0">
-                <TrashIcon className="w-4 h-4" />
-              </span>
-              {t('common.delete', 'Delete')}
-            </button>
-          </div>
-        )}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.2 }}
+      className={cardStyle}
+      role="article"
+      aria-labelledby={`thought-${thought.id}-text`}
+    >
+      <div className="absolute top-4 right-4 z-10">
+        <ThoughtOptionsMenu
+          thoughtText={thought.text}
+          onEdit={() => onEditStart(thought, index)}
+          onDelete={() => onDelete(index, thought.id)}
+        />
       </div>
 
       <ThoughtHeader 
@@ -238,17 +200,40 @@ const ThoughtCard = ({
         allowedTags={allowedTags}
       />
       
-      {getWarningMessages()}
+      <AnimatePresence>
+        {getWarningMessages().map((warning, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {warning}
+          </motion.div>
+        ))}
+      </AnimatePresence>
       
-      <p 
+      <motion.p 
         id={`thought-${thought.id}-text`}
-        className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+        className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words mt-2 leading-relaxed"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.1 }}
       >
         {thought.text}
-      </p>
+      </motion.p>
 
-      {outlinePoint && <OutlinePointDisplay outlinePoint={outlinePoint} getSectionName={getSectionName} />}
-    </div>
+      {outlinePoint && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <OutlinePointDisplay outlinePoint={outlinePoint} getSectionName={getSectionName} />
+        </motion.div>
+      )}
+    </motion.div>
   );
 };
 
@@ -261,19 +246,15 @@ const ThoughtHeader = memo(({
   allowedTags: TagInfo[];
 }) => {
   return (
-    // Main container: col on mobile, row with space-between on sm
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 mb-2">
-
-      {/* Left Group: Date, ID, Tags (wraps internally) */}
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 mb-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 order-first">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {formatDate(thought.date)}
         </span>
-        <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
+        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
           ID: {thought.id}
         </span>
         {thought.tags && thought.tags.length > 0 && (
-          // Use 'contents' so TagsDisplay's internal flex items integrate with this group's flex layout
           <div className="contents">
             <TagsDisplay tags={thought.tags} allowedTags={allowedTags} />
           </div>
@@ -307,24 +288,32 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
         // Get styling from our utilities
         const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
         
-        // Add size classes
-        const className = `${baseClassName} ${compact ? 'text-xs' : 'text-sm'}`;
+        // Enhanced tag styling
+        const className = `
+          ${baseClassName} 
+          ${compact ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1'} 
+          rounded-full font-medium
+          transition-all duration-200
+          hover:shadow-sm
+          active:scale-95
+        `;
         
-        // Get the structure icon if applicable
         const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
         
         return (
-          <span
+          <motion.span
             key={tag}
             style={style}
             className={className}
             role="listitem"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
             {iconInfo && (
-              <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+              <span className={`${iconInfo.className} mr-1`} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
             )}
             {tagInfo?.translationKey ? t(tagInfo.translationKey) : displayName}
-          </span>
+          </motion.span>
         );
       })}
     </div>
@@ -338,7 +327,7 @@ const OutlinePointDisplay = memo(({ outlinePoint, getSectionName }: OutlinePoint
   
   return (
     <div className="mt-3">
-      <span className="text-sm inline-block rounded-md px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800">
+      <span className="text-sm inline-flex items-center rounded-full px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:border-blue-800 font-medium">
         {getSectionName(outlinePoint.section)}: {outlinePoint.text}
       </span>
     </div>
@@ -359,36 +348,58 @@ function WarningMessage({
 }: WarningMessageWithHelperProps) {
   const { t } = useTranslation();
 
+  const getWarningStyle = () => {
+    const baseStyle = "text-xs font-medium mb-2 flex items-center gap-1.5 px-3 py-2 rounded-lg";
+    
+    switch (type) {
+      case 'inconsistentSection':
+        return `${baseStyle} bg-red-50 text-red-700 dark:bg-red-900/50 dark:text-red-200 border border-red-200 dark:border-red-800`;
+      case 'multipleStructureTags':
+        return `${baseStyle} bg-orange-50 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200 border border-orange-200 dark:border-orange-800`;
+      case 'missingSectionTag':
+        return `${baseStyle} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800`;
+      default:
+        return baseStyle;
+    }
+  };
+
   if (type === 'inconsistentSection') {
     return (
-      <div className="text-red-600 text-xs font-medium mb-2" role="alert">
-        <span className="inline-block mr-1">⚠️</span>
-        {t('thought.inconsistentSection', 'Inconsistency: thought has tag "{{actualTag}}" but assigned to {{expectedSection}} outline point', {
-          actualTag,
-          expectedSection: getSectionName(sectionName)
-        })}
+      <div className={getWarningStyle()} role="alert">
+        <span className="flex-shrink-0">⚠️</span>
+        <span>
+          {t('thought.inconsistentSection', 'Inconsistency: thought has tag "{{actualTag}}" but assigned to {{expectedSection}} outline point', {
+            actualTag,
+            expectedSection: getSectionName(sectionName)
+          })}
+        </span>
       </div>
     );
   }
   
   if (type === 'multipleStructureTags') {
     return (
-      <div className="text-red-600 text-xs font-medium mb-2" role="alert">
-        <span className="inline-block mr-1">⚠️</span>
-        {t('thought.multipleStructureTags', 'Multiple structure tags detected. A thought should only have one structure tag.')}
+      <div className={getWarningStyle()} role="alert">
+        <span className="flex-shrink-0">⚠️</span>
+        <span>
+          {t('thought.multipleStructureTags', 'Multiple structure tags detected. A thought should only have one structure tag.')}
+        </span>
       </div>
     );
   }
   
   if (type === 'missingSectionTag') {
     return (
-      <p className="text-red-500 text-sm mt-2" role="alert">
-        {t('thought.missingRequiredTag', {
-          intro: getSectionName('introduction'), 
-          main: getSectionName('main'), 
-          conclusion: getSectionName('conclusion')
-        })}
-      </p>
+      <div className={getWarningStyle()} role="alert">
+        <span className="flex-shrink-0">ℹ️</span>
+        <span>
+          {t('thought.missingRequiredTag', {
+            intro: getSectionName('introduction'), 
+            main: getSectionName('main'), 
+            conclusion: getSectionName('conclusion')
+          })}
+        </span>
+      </div>
     );
   }
   
