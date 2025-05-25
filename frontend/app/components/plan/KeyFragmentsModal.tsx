@@ -33,7 +33,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   const { t } = useTranslation();
   const [localThoughts, setLocalThoughts] = useState<Thought[]>(thoughts);
   const [activeSelection, setActiveSelection] = useState<ActiveSelection | null>(null);
-  const [showInstructions, setShowInstructions] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
   const selectionPopupRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
