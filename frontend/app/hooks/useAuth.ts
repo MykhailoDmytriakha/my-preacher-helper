@@ -1,40 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, User } from "firebase/auth";
-import { signInWithGoogle, signInAsGuest, logOut } from "@services/firebaseAuth.service";
+import { useCallback } from "react";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithGoogle, signInAsGuest, logOut, auth } from "@services/firebaseAuth.service";
 import { updateUserProfile } from "@services/userSettings.service";
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
+import { useAuth as useAuthProvider } from '@/providers/AuthProvider';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading } = useAuthProvider();
   const router = useRouter();
   const { i18n } = useTranslation();
-  const auth = getAuth();
-
-  useEffect(() => {
-    let isMounted = true;
-    
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (isMounted) {
-        setUser(currentUser);
-        setLoading(false);
-        if (!currentUser) {
-          router.push('/');
-        }
-      }
-    });
-    
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [router]);
 
   const loginWithGoogle = useCallback(async () => {
     try {
       const userData = await signInWithGoogle();
-      setUser(userData);
       localStorage.setItem("guestUser", JSON.stringify(userData));
       return userData;
     } catch (error) {
@@ -46,7 +25,6 @@ export function useAuth() {
   const loginAsGuest = useCallback(async () => {
     try {
       const userData = await signInAsGuest();
-      setUser(userData);
       localStorage.setItem("guestUser", JSON.stringify(userData));
       return userData;
     } catch (error) {
@@ -76,7 +54,6 @@ export function useAuth() {
   const loginWithEmailAndPassword = async (email: string, password: string) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      setUser(userCredential.user);
       
       // Store user email and displayName in settings without affecting language
       await updateUserProfile(

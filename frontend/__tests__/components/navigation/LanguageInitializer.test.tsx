@@ -8,14 +8,15 @@ const mockChangeLanguage = jest.fn().mockResolvedValue(undefined);
 const mockInitializeLanguageFromDB = jest.fn().mockResolvedValue(undefined);
 const mockGetCookieLanguage = jest.fn().mockReturnValue('en');
 
-// Mock dependencies
-const mockUseAuth = jest.fn().mockReturnValue({
+// Mock AuthProvider
+let mockAuthState = {
   user: null,
-  loading: false
-});
+  loading: false,
+  isAuthenticated: false
+};
 
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => mockUseAuth()
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => mockAuthState
 }));
 
 jest.mock('react-i18next', () => ({
@@ -38,10 +39,11 @@ jest.mock('@/services/userSettings.service', () => ({
 describe('LanguageInitializer Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseAuth.mockReturnValue({
+    mockAuthState = {
       user: null,
-      loading: false
-    });
+      loading: false,
+      isAuthenticated: false
+    };
     mockChangeLanguage.mockClear();
     mockInitializeLanguageFromDB.mockClear();
     mockGetCookieLanguage.mockReturnValue('en');
@@ -54,10 +56,9 @@ describe('LanguageInitializer Component', () => {
 
   test('initializes language from DB when user is authenticated', async () => {
     // Mock authenticated user
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'test-user-id' },
-      loading: false
-    });
+    mockAuthState.user = { uid: 'test-user-id' } as any;
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.loading = false;
     
     render(<LanguageInitializer />);
     
@@ -71,13 +72,18 @@ describe('LanguageInitializer Component', () => {
     // Mock different cookie language
     mockGetCookieLanguage.mockReturnValue('ru');
     
-    // Mock i18n language different from cookie
-    const { i18n } = require('react-i18next').useTranslation();
+    // Set unauthenticated state
+    mockAuthState.user = null;
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.loading = false;
     
     render(<LanguageInitializer />);
     
-    // Verify mock functions were called correctly
-    expect(mockGetCookieLanguage).toHaveBeenCalled();
+    // Wait for effects to complete
+    await waitFor(() => {
+      expect(mockGetCookieLanguage).toHaveBeenCalled();
+    });
+    
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
     
     // Since language is different, changeLanguage should be called
@@ -88,10 +94,18 @@ describe('LanguageInitializer Component', () => {
     // Mock cookie language same as current
     mockGetCookieLanguage.mockReturnValue('en');
     
+    // Set unauthenticated state
+    mockAuthState.user = null;
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.loading = false;
+    
     render(<LanguageInitializer />);
     
-    // Verify mock functions were called correctly
-    expect(mockGetCookieLanguage).toHaveBeenCalled();
+    // Wait for effects to complete
+    await waitFor(() => {
+      expect(mockGetCookieLanguage).toHaveBeenCalled();
+    });
+    
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
     
     // Since languages match, changeLanguage should not be called
@@ -100,12 +114,14 @@ describe('LanguageInitializer Component', () => {
 
   test('does nothing while authentication is loading', async () => {
     // Mock loading state
-    mockUseAuth.mockReturnValue({
-      user: null,
-      loading: true
-    });
+    mockAuthState.user = null;
+    mockAuthState.loading = true;
+    mockAuthState.isAuthenticated = false;
     
     render(<LanguageInitializer />);
+    
+    // Wait a bit to ensure no async operations start
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
     expect(mockGetCookieLanguage).not.toHaveBeenCalled();
@@ -116,10 +132,9 @@ describe('LanguageInitializer Component', () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     
     // Mock authenticated user
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'test-user-id' },
-      loading: false
-    });
+    mockAuthState.user = { uid: 'test-user-id' } as any;
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.loading = false;
     
     // Mock DB initialization error
     mockInitializeLanguageFromDB.mockRejectedValueOnce(new Error('DB init failed'));

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import dynamic from 'next/dynamic';
+import { AuthProvider } from './providers/AuthProvider';
 
 // Dynamically import the LanguageInitializer component to ensure it only runs on client-side
 const LanguageInitializer = dynamic(
@@ -31,8 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${interSans.variable} ${robotoMono.variable} antialiased`}
         suppressHydrationWarning={true}
       >
-        <LanguageInitializer />
-        {children}
+        <AuthProvider>
+          <LanguageInitializer />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
