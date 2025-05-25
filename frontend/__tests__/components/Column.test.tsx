@@ -201,8 +201,8 @@ describe('Column Component', () => {
       />
     );
     
-    expect(screen.getByText('Point 1')).toBeInTheDocument();
-    expect(screen.getByText('Point 2')).toBeInTheDocument();
+    expect(screen.getAllByText('Point 1')).toHaveLength(2);
+    expect(screen.getAllByText('Point 2')).toHaveLength(2);
   });
 
   it('displays no entries message when items array is empty', () => {

@@ -216,7 +216,8 @@
     "failedToSavePlan": "Failed to save plan",
     "thoughtNotFound": "Thought not found",
     "failedToAddFragment": "Failed to add key fragment",
-    "failedToRemoveFragment": "Failed to remove key fragment"
+    "failedToRemoveFragment": "Failed to remove key fragment",
+    "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано."
   },
   "manualThought": {
     "addManual": "Додати запис вручну",
@@ -266,10 +267,10 @@
     "tags": "Теги",
     "sortButton": "Сортувати",
     "sorting": "Сортування...",
-    "sortInfo": "Сортування обробляє лише непривʼязані думки, до 25 за раз.",
-    "assigned": "Привʼязані до плану",
-    "unassigned": "Непривʼязані",
-    "assignedUnassignedTooltip": "{{assigned}} привʼязано до пунктів плану / {{unassigned}} не привʼязано",
+    "sortInfo": "Сортування обробляє лише неприв'язані думки, до 25 за раз.",
+    "assigned": "Прив'язані до плану",
+    "unassigned": "Неприв'язані",
+    "assignedUnassignedTooltip": "{{assigned}} прив'язано до пунктів плану / {{unassigned}} неприв'язано",
     "outlineSavedSuccess": "План збережено",
     "deletePointConfirm": "Ви впевнені, що хочете видалити цей пункт плану: \"{{text}}\"?",
     "addThoughtToSection": "Додати думку до {{section}}",
@@ -280,7 +281,12 @@
     "generateOutlinePoints": "Згенерувати пункти плану",
     "generateOutlinePointsError": "Не вдалося згенерувати пункти плану",
     "outlinePointsGenerated": "Успішно згенеровано {{count}} пунктів плану",
-    "outlinePointsExist": "Пункти плану вже існують"
+    "outlinePointsExist": "Пункти плану вже існують",
+    "thought": "думка",
+    "thoughts": "думок",
+    "dropThoughtsHere": "Перетягніть думки сюди",
+    "dropToUnassign": "Перетягніть думки сюди, щоб забрати їх з пунктів плану",
+    "unassignedThoughts": "Неприв'язані думки"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

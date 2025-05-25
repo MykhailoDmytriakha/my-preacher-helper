@@ -129,12 +129,12 @@ describe('PublicRoute', () => {
   });
 
   it('should redirect when guest user is present in localStorage', async () => {
-    const guestUser = { uid: 'guest-uid', isAnonymous: true };
+    const guestUser = { uid: 'guest-uid', isAnonymous: true } as any;
     
     mockUseAuth.mockReturnValue({
-      user: null,
+      user: guestUser,
       loading: false,
-      isAuthenticated: false,
+      isAuthenticated: true,
     });
 
     mockLocalStorage.getItem.mockReturnValue(JSON.stringify(guestUser));

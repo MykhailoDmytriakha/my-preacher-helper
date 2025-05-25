@@ -216,7 +216,8 @@
     "failedToSavePlan": "Не удалось сохранить текст проповеди",
     "thoughtNotFound": "Запись не найдена",
     "failedToAddFragment": "Не удалось добавить ключевой фрагмент",
-    "failedToRemoveFragment": "Не удалось удалить ключевой фрагмент"
+    "failedToRemoveFragment": "Не удалось удалить ключевой фрагмент",
+    "dragDropUpdateFailed": "Не удалось обновить. Изменения отменены."
   },
   "manualThought": {
     "addManual": "Добавить запись вручную",
@@ -280,7 +281,12 @@
     "generateOutlinePoints": "Сгенерировать пункты плана",
     "generateOutlinePointsError": "Не удалось сгенерировать пункты плана",
     "outlinePointsGenerated": "Успешно сгенерировано {{count}} пунктов плана",
-    "outlinePointsExist": "Пункты плана уже существуют"
+    "outlinePointsExist": "Пункты плана уже существуют",
+    "thought": "мысль",
+    "thoughts": "мыслей",
+    "dropThoughtsHere": "Перетащите мысли сюда",
+    "dropToUnassign": "Перетащите мысли сюда, чтобы убрать их из пунктов плана",
+    "unassignedThoughts": "Неназначенные мысли"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

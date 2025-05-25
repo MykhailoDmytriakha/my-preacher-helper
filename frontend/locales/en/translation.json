@@ -216,7 +216,8 @@
     "failedToSavePlan": "Failed to save plan",
     "thoughtNotFound": "Thought not found",
     "failedToAddFragment": "Failed to add key fragment",
-    "failedToRemoveFragment": "Failed to remove key fragment"
+    "failedToRemoveFragment": "Failed to remove key fragment",
+    "dragDropUpdateFailed": "Failed to update. Changes have been reverted."
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -258,7 +259,7 @@
     "introduction": "Introduction",
     "mainPart": "Main Part",
     "conclusion": "Conclusion",
-    "preview": "Structure Preview",
+    "preview": "Structure preview",
     "focusMode": "Focus Mode",
     "normalMode": "Normal Mode",
     "outlinePoints": "Outline Points",
@@ -267,7 +268,7 @@
     "sortButton": "Sort",
     "sorting": "Sorting...",
     "sortInfo": "Sorting only processes unassigned thoughts, up to 25 at a time.",
-    "assigned": "Assigned to outline",
+    "assigned": "Assigned to plan",
     "unassigned": "Unassigned",
     "assignedUnassignedTooltip": "{{assigned}} assigned to outline points / {{unassigned}} unassigned",
     "outlineSavedSuccess": "Outline saved",
@@ -279,8 +280,13 @@
     "generate": "Generate",
     "generateOutlinePoints": "Generate outline points",
     "generateOutlinePointsError": "Failed to generate outline points",
-    "outlinePointsGenerated": "{{count}} outline points generated successfully",
-    "outlinePointsExist": "Outline points already exist"
+    "outlinePointsGenerated": "Successfully generated {{count}} outline points",
+    "outlinePointsExist": "Outline points already exist",
+    "thought": "thought",
+    "thoughts": "thoughts",
+    "dropThoughtsHere": "Drop thoughts here",
+    "dropToUnassign": "Drop thoughts here to unassign them from outline points",
+    "unassignedThoughts": "Unassigned Thoughts"
   },
   "knowledge": {
     "title": "Sermon Insights",

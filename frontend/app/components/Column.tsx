@@ -38,6 +38,7 @@ interface ColumnProps {
   onRevertItem?: (itemId: string, columnId: string) => void;
   onKeepAll?: (columnId: string) => void;
   onRevertAll?: (columnId: string) => void;
+  activeId?: string | null; // Add activeId prop for proper drag state detection
 }
 
 // Define SectionType based on Column ID mapping
@@ -51,6 +52,199 @@ const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
     case 'conclusion': return 'conclusion';
     default: return null; // Handle cases like 'ambiguous' or others
   }
+};
+
+// Component for rendering outline point placeholder with thoughts
+const OutlinePointPlaceholder: React.FC<{
+  point: OutlinePoint;
+  items: Item[];
+  containerId: string;
+  onEdit?: (item: Item) => void;
+  isHighlighted: (itemId: string) => boolean;
+  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
+  onKeepItem?: (itemId: string, columnId: string) => void;
+  onRevertItem?: (itemId: string, columnId: string) => void;
+  headerColor?: string;
+  t: (key: string, options?: any) => string;
+  activeId?: string | null;
+}> = ({ 
+  point, 
+  items, 
+  containerId, 
+  onEdit, 
+  isHighlighted, 
+  getHighlightType, 
+  onKeepItem, 
+  onRevertItem, 
+  headerColor,
+  t,
+  activeId
+}) => {
+  const { setNodeRef, isOver } = useDroppable({ 
+    id: `outline-point-${point.id}`, 
+    data: { container: containerId, outlinePointId: point.id } 
+  });
+
+  const pointItems = items.filter(item => item.outlinePointId === point.id);
+  const hasItems = pointItems.length > 0;
+
+  // Color scheme based on section
+  const getPlaceholderColors = () => {
+    if (headerColor) {
+      return {
+        border: `border-2 border-opacity-30`,
+        bg: 'bg-gray-50',
+        header: 'bg-gray-100',
+        headerText: 'text-gray-700'
+      };
+    }
+
+    switch (containerId) {
+      case 'introduction':
+        return {
+          border: 'border-2 border-blue-200',
+          bg: 'bg-blue-50',
+          header: 'bg-blue-100',
+          headerText: 'text-blue-700'
+        };
+      case 'main':
+        return {
+          border: 'border-2 border-purple-200',
+          bg: 'bg-purple-50',
+          header: 'bg-purple-100',
+          headerText: 'text-purple-700'
+        };
+      case 'conclusion':
+        return {
+          border: 'border-2 border-green-200',
+          bg: 'bg-green-50',
+          header: 'bg-green-100',
+          headerText: 'text-green-700'
+        };
+      default:
+        return {
+          border: 'border-2 border-gray-200',
+          bg: 'bg-gray-50',
+          header: 'bg-gray-100',
+          headerText: 'text-gray-700'
+        };
+    }
+  };
+
+  const colors = getPlaceholderColors();
+
+  return (
+    <div 
+      className={`${colors.border} ${colors.bg} rounded-lg mb-4 transition-all duration-200 ${
+        isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
+      }`}
+      style={headerColor ? { borderColor: headerColor } : {}}
+    >
+      {/* Outline point header */}
+      <div 
+        className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 ${headerColor ? 'bg-gray-100' : colors.header}`}
+        style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
+      >
+        <div className="flex items-center justify-between">
+          <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800' : colors.headerText}`}>
+            {point.text}
+          </h4>
+          <span className={`text-xs ${headerColor ? 'text-gray-600' : colors.headerText} opacity-70`}>
+            {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
+          </span>
+        </div>
+      </div>
+
+      {/* Drop zone for thoughts */}
+      <div 
+        ref={setNodeRef}
+        className={`min-h-[80px] p-4 transition-all ${
+          isOver ? 'bg-blue-100 ring-2 ring-blue-300' : ''
+        }`}
+      >
+        {!hasItems ? (
+          <div className="text-center text-gray-400 text-sm py-6 border-2 border-dashed border-gray-300 rounded">
+            {t('structure.dropThoughtsHere')}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {pointItems.map((item) => (
+              <SortableItem 
+                key={item.id} 
+                item={item} 
+                containerId={containerId} 
+                onEdit={onEdit}
+                isHighlighted={isHighlighted(item.id)}
+                highlightType={getHighlightType(item.id)}
+                onKeep={onKeepItem}
+                onRevert={onRevertItem}
+                activeId={activeId}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Component for rendering unassigned thoughts drop target
+const UnassignedThoughtsDropTarget: React.FC<{
+  items: Item[];
+  containerId: string;
+  onEdit?: (item: Item) => void;
+  isHighlighted: (itemId: string) => boolean;
+  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
+  onKeepItem?: (itemId: string, columnId: string) => void;
+  onRevertItem?: (itemId: string, columnId: string) => void;
+  t: (key: string, options?: any) => string;
+  activeId?: string | null;
+}> = ({ 
+  items, 
+  containerId, 
+  onEdit, 
+  isHighlighted, 
+  getHighlightType, 
+  onKeepItem, 
+  onRevertItem, 
+  t,
+  activeId 
+}) => {
+  const { setNodeRef, isOver } = useDroppable({ 
+    id: `unassigned-${containerId}`, 
+    data: { container: containerId, outlinePointId: null } // null means unassigned
+  });
+
+  return (
+    <div 
+      ref={setNodeRef}
+      className={`min-h-[80px] p-4 transition-all rounded-lg ${
+        isOver ? 'bg-blue-100 ring-2 ring-blue-300' : 'bg-gray-50'
+      }`}
+    >
+      {items.length === 0 ? (
+        <div className="text-center text-gray-400 text-sm py-6 border-2 border-dashed border-gray-300 rounded">
+          {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {items.map((item) => (
+            <SortableItem 
+              key={item.id} 
+              item={item} 
+              containerId={containerId} 
+              onEdit={onEdit}
+              isHighlighted={isHighlighted(item.id)}
+              highlightType={getHighlightType(item.id)}
+              onKeep={onKeepItem}
+              onRevert={onRevertItem}
+              activeId={activeId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default function Column({ 
@@ -77,7 +271,8 @@ export default function Column({
   onKeepItem,
   onRevertItem,
   onKeepAll,
-  onRevertAll
+  onRevertAll,
+  activeId
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -309,6 +504,13 @@ export default function Column({
       setIsGeneratingOutlinePoints(false);
     }
   };
+
+  // Helper functions for highlighting
+  const isItemHighlighted = (itemId: string) => itemId in highlightedItems;
+  const getItemHighlightType = (itemId: string) => highlightedItems[itemId]?.type;
+
+  // Filter unassigned items (not linked to any outline point)
+  const unassignedItemsForDisplay = items.filter(item => !item.outlinePointId);
 
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
@@ -577,7 +779,7 @@ export default function Column({
                 {t('structure.noEntries')}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {items.map((item) => (
                   <SortableItem 
                     key={item.id} 
@@ -588,12 +790,13 @@ export default function Column({
                     highlightType={highlightedItems[item.id]?.type}
                     onKeep={onKeepItem}
                     onRevert={onRevertItem}
+                    activeId={activeId}
                   />
                 ))}
               </div>
             )}
             {/* Extra dummy element to always provide a drop target */}
-            <div id="dummy-drop-zone" className="h-12" />
+            <div id="dummy-drop-zone" className="h-16" />
           </div>
         </SortableContext>
       </div>
@@ -713,12 +916,79 @@ export default function Column({
           className={`min-h-[300px] p-4 bg-white rounded-b-md border-2 shadow-lg transition-all ${borderColor} ${isOver ? "ring-2 ring-blue-400" : ""}`}
           style={headerColor ? { borderColor: headerColor } : {}}
         >
-          {items.length === 0 ? (
+          {/* Show outline points with grouped thoughts */}
+          {localOutlinePoints && localOutlinePoints.length > 0 ? (
+            <div className="space-y-6">
+              {/* Render placeholders for each outline point with their thoughts */}
+              {localOutlinePoints.map((point) => (
+                <OutlinePointPlaceholder
+                  key={point.id}
+                  point={point}
+                  items={items}
+                  containerId={id}
+                  onEdit={onEdit}
+                  isHighlighted={isItemHighlighted}
+                  getHighlightType={getItemHighlightType}
+                  onKeepItem={onKeepItem}
+                  onRevertItem={onRevertItem}
+                  headerColor={headerColor}
+                  t={t}
+                  activeId={activeId}
+                />
+              ))}
+              
+              {/* Show unassigned thoughts section if there are any */}
+              {unassignedItemsForDisplay.length > 0 && (
+                <div className="mt-8">
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="text-sm font-medium text-gray-600 mb-4">
+                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                    </h4>
+                    <UnassignedThoughtsDropTarget
+                      items={unassignedItemsForDisplay}
+                      containerId={id}
+                      onEdit={onEdit}
+                      isHighlighted={isItemHighlighted}
+                      getHighlightType={getItemHighlightType}
+                      onKeepItem={onKeepItem}
+                      onRevertItem={onRevertItem}
+                      t={t}
+                      activeId={activeId}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Always show drop target for unassigned thoughts, even if empty */}
+              {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
+                <div className="mt-8">
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="text-sm font-medium text-gray-600 mb-4">
+                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                    </h4>
+                    <UnassignedThoughtsDropTarget
+                      items={[]}
+                      containerId={id}
+                      onEdit={onEdit}
+                      isHighlighted={isItemHighlighted}
+                      getHighlightType={getItemHighlightType}
+                      onKeepItem={onKeepItem}
+                      onRevertItem={onRevertItem}
+                      t={t}
+                      activeId={activeId}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Fallback: show all items in simple list if no outline points exist */
+            items.length === 0 ? (
             <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300">
               {t('structure.noEntries')}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {items.map((item) => (
                 <SortableItem 
                   key={item.id} 
@@ -729,9 +999,11 @@ export default function Column({
                   highlightType={highlightedItems[item.id]?.type}
                   onKeep={onKeepItem}
                   onRevert={onRevertItem}
+                  activeId={activeId}
                 />
               ))}
             </div>
+            )
           )}
           {/* Extra dummy element to always provide a drop target */}
           <div id="dummy-drop-zone" className="h-8" />

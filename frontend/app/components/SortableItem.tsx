@@ -21,6 +21,7 @@ interface SortableItemProps {
   highlightType?: 'assigned' | 'moved';
   onKeep?: (itemId: string, containerId: string) => void;
   onRevert?: (itemId: string, containerId: string) => void;
+  activeId?: string | null;
 }
 
 export default function SortableItem({ 
@@ -33,7 +34,8 @@ export default function SortableItem({
   isHighlighted = false,
   highlightType = 'moved',
   onKeep,
-  onRevert
+  onRevert,
+  activeId
 }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -43,6 +45,9 @@ export default function SortableItem({
     });
   
   const { t } = useTranslation();
+
+  // Determine if this item is actively being dragged
+  const isActiveItem = activeId === item.id;
 
   const getHighlightStyles = () => {
     if (!isHighlighted) return {};
@@ -60,10 +65,11 @@ export default function SortableItem({
       : <span className="ml-1 text-blue-500">➡️</span>;
   };
 
+  // Use a more aggressive approach: completely disable transform and hide the item when it's being dragged
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || "transform 250ms ease-in-out",
-    opacity: isDragging || isDeleting ? 0.5 : 1,
+    transform: isActiveItem ? "none" : CSS.Transform.toString(transform),
+    transition: isActiveItem ? "none" : (transition || "transform 250ms ease-in-out"),
+    opacity: isActiveItem ? 0 : (isDragging || isDeleting ? 0.5 : 1),
     ...getHighlightStyles()
   };
 
@@ -77,7 +83,7 @@ export default function SortableItem({
       }}
       {...attributes}
       {...listeners}
-      className={`relative group flex items-start space-x-2 mb-4 p-4 bg-white rounded-md ${
+      className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white rounded-md ${
         isHighlighted ? `border-2 shadow-lg ${
           highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
         }` : 'border border-gray-200 shadow-md'

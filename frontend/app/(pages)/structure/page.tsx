@@ -9,12 +9,17 @@ import {
   DragStartEvent,
   DragOverEvent,
   useDroppable,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
   verticalListSortingStrategy,
   rectSortingStrategy,
+  sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -122,11 +127,29 @@ function StructurePageContent() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalContainer, setOriginalContainer] = useState<string | null>(null);
+  const [isDragEnding, setIsDragEnding] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
   const [isSorting, setIsSorting] = useState(false);
   const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  // Track activeId changes
+  useEffect(() => {
+    // Removed debugging logs for production
+  }, [activeId, isDragEnding]);
+
+  // Configure sensors with proper activation constraints
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // Require 5px movement before drag starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const columnTitles: Record<string, string> = {
     introduction: t('structure.introduction'),
@@ -330,24 +353,21 @@ function StructurePageContent() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id);
+    
+    setIsDragEnding(false);
     setActiveId(id);
+    
     // Capture the original container at the start of the drag
     const original = Object.keys(containers).find((key) =>
       containers[key].some((item) => item.id === id)
     );
     setOriginalContainer(original || null);
-    
-    // Log drag start
-    const item = containers[original || ""]?.find(item => item.id === id);
-    console.log(`[DnD] Drag started - Item ID: ${id}`);
-    console.log(`[DnD] Starting container: ${original}`);
-    console.log(`[DnD] Item content: ${item?.content?.substring(0, 30)}${item?.content && item.content.length > 30 ? '...' : ''}`);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     
-    // Early return if no over target or same container
+    // Early return if no over target
     if (!over) return;
     
     const activeId = active.id;
@@ -359,85 +379,34 @@ function StructurePageContent() {
     );
     
     // Find which container the target is in
-    const overContainer = over.data?.current?.container || 
-                         Object.keys(containers).find(
-                           (key) => containers[key].some((item) => item.id === overId)
-                         );
+    let overContainer = over.data?.current?.container;
     
-    // Skip if we couldn't determine the containers
-    if (!activeContainer || !overContainer) return;
-    
-    // If dragging a highlighted item, automatically confirm the change
-    if (activeId in highlightedItems) {
-      // Remove from highlighted items to confirm the change
-      setHighlightedItems(prev => {
-        const newHighlighted = { ...prev };
-        delete newHighlighted[activeId as string];
-        
-        // If no more highlighted items, exit diff mode
-        if (Object.keys(newHighlighted).length === 0) {
-          setIsDiffModeActive(false);
-          setPreSortState(null);
-        }
-        
-        return newHighlighted;
-      });
+    // Handle outline point placeholders
+    if (over.id.toString().startsWith('outline-point-')) {
+      overContainer = over.data?.current?.container;
     }
-    
-    // Skip if same container and not over another item
-    if (activeContainer === overContainer && overId === 'dummy-drop-zone') {
-      return;
+    // Handle unassigned drop targets
+    else if (over.id.toString().startsWith('unassigned-')) {
+      overContainer = over.data?.current?.container;
     }
-    
-    if (
-      !activeContainer ||
-      !overContainer ||
-      activeContainer === overContainer
-    ) {
-      return;
-    }
-    
-    // Find the index of the target item in the destination container
-    let targetIndex = -1;
-    
-    // Check if we're over a specific item in the container
-    if (overId !== overContainer && overId !== 'dummy-drop-zone') {
-      // We're over a specific item, find its index
-      targetIndex = containers[overContainer].findIndex(item => item.id === overId);
-    }
-    
-    setContainers((prev) => {
-      const sourceItems = [...prev[activeContainer]];
-      const destItems = [...prev[overContainer]];
-      const activeIndex = sourceItems.findIndex((item) => item.id === activeId);
+    // If over container is not set, try to infer from over.id
+    else if (!overContainer) {
+      overContainer = over.id.toString();
       
-      if (activeIndex === -1) return prev;
-      
-      const [movedItem] = sourceItems.splice(activeIndex, 1);
-      const requiredTags =
-        overContainer === "ambiguous" ? [] : [columnTitles[overContainer]];
-      
-      const updatedItem = { ...movedItem, requiredTags };
-      
-      // Insert at the appropriate position
-      if (targetIndex !== -1) {
-        // Insert BEFORE the target item
-        destItems.splice(targetIndex, 0, updatedItem);
-      } else {
-        // If we're over the container itself or no valid target was found
-        destItems.push(updatedItem);
+      // Handle special cases
+      if (overId === "dummy-drop-zone") {
+        overContainer = "ambiguous";
+      } else if (!["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)) {
+        // Try to find the container of the target item
+        overContainer = Object.keys(containers).find(
+          (key) => containers[key].some((item) => item.id === overId)
+        );
       }
-      
-      const newState = {
-        ...prev,
-        [activeContainer]: sourceItems,
-        [overContainer]: destItems,
-      };
-      
-      // Update the ref immediately so we have the latest containers
-      containersRef.current = newState;
-      return newState;
-    });
+    }
+    
+    // Just validate - don't move items here, leave all movement to handleDragEnd
+    // This prevents the double-movement issue
+    return;
   };
 
   const isStructureChanged = (
@@ -466,21 +435,23 @@ function StructurePageContent() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
+    // Set drag ending flag immediately to prevent interference
+    setIsDragEnding(true);
+    
     // Early return if no valid drop target
     if (!over || !sermon) {
       setActiveId(null);
       setOriginalContainer(null);
+      setIsDragEnding(false);
       return;
     }
     
     // If the dragged item was a highlighted item, confirm the change
     if (active.id in highlightedItems) {
-      // Remove from highlighted items to confirm the change
       setHighlightedItems(prev => {
         const newHighlighted = { ...prev };
         delete newHighlighted[active.id as string];
         
-        // If no more highlighted items, exit diff mode
         if (Object.keys(newHighlighted).length === 0) {
           setIsDiffModeActive(false);
           setPreSortState(null);
@@ -489,11 +460,22 @@ function StructurePageContent() {
         return newHighlighted;
       });
     }
-    
-    const activeContainer = originalContainer; // Use the original container
+
+    const activeContainer = originalContainer;
     let overContainer = over.data.current?.container;
+    let outlinePointId = over.data.current?.outlinePointId;
     
-    if (over.id === "dummy-drop-zone") {
+    // Check if we're dropping on an outline point placeholder
+    if (over.id.toString().startsWith('outline-point-')) {
+      const dropTargetId = over.id.toString();
+      outlinePointId = dropTargetId.replace('outline-point-', '');
+      overContainer = over.data.current?.container;
+    } 
+    else if (over.id.toString().startsWith('unassigned-')) {
+      outlinePointId = null;
+      overContainer = over.data.current?.container;
+    } 
+    else if (over.id === "dummy-drop-zone") {
       overContainer = "ambiguous";
     } else if (!overContainer) {
       overContainer = String(over.id);
@@ -503,10 +485,11 @@ function StructurePageContent() {
     let targetItemIndex = -1;
     let droppedOnItem = false;
     
-    if (over.id !== overContainer) {
-      // We're dropping onto a specific item, not just the container
+    if (over.id !== overContainer && 
+        !over.id.toString().startsWith('outline-point-') && 
+        !over.id.toString().startsWith('unassigned-')) {
       droppedOnItem = true;
-      targetItemIndex = containersRef.current[overContainer].findIndex(item => item.id === over.id);
+      targetItemIndex = containers[overContainer]?.findIndex(item => item.id === over.id) ?? -1;
     }
     
     if (
@@ -516,81 +499,121 @@ function StructurePageContent() {
     ) {
       setActiveId(null);
       setOriginalContainer(null);
+      setIsDragEnding(false);
       return;
     }
     
-    // Prepare a local copy of containers from the ref
-    let updatedContainers = { ...containersRef.current };
+    // Store the previous state for potential rollback
+    const previousContainers = { ...containers };
+    const previousSermon = { ...sermon };
+    
+    // Perform the UI update immediately for smooth UX
+    let updatedContainers = { ...containers };
     
     if (activeContainer === overContainer) {
       const items = [...updatedContainers[activeContainer]];
       const oldIndex = items.findIndex((item) => item.id === active.id);
-      const newIndex = items.findIndex((item) => item.id === over.id);
       
-      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-        updatedContainers[activeContainer] = arrayMove(items, oldIndex, newIndex);
-        setContainers(updatedContainers);
-        containersRef.current = updatedContainers;
+      if (oldIndex !== -1) {
+        if (droppedOnItem && targetItemIndex !== -1) {
+          const [draggedItem] = items.splice(oldIndex, 1);
+          items.splice(targetItemIndex, 0, draggedItem);
+        } else if (!droppedOnItem) {
+          const [draggedItem] = items.splice(oldIndex, 1);
+          items.push(draggedItem);
+        }
+        
+        updatedContainers[activeContainer] = items;
       }
     } else {
-      // For cross-container movement
-      const newPositionIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
+      const activeItems = [...updatedContainers[activeContainer]];
+      const overItems = [...updatedContainers[overContainer]];
       
-      // Final positioning fix: If the drop target was a specific item but our item ended up elsewhere,
-      // reposition it to the correct place
-      if (droppedOnItem && targetItemIndex !== -1 && newPositionIndex !== targetItemIndex && 
-          newPositionIndex !== -1) {
-        // Remove from current position
-        const items = [...updatedContainers[overContainer]];
-        const [itemToMove] = items.splice(newPositionIndex, 1);
+      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
+      if (activeIndex !== -1) {
+        const [draggedItem] = activeItems.splice(activeIndex, 1);
         
-        // Insert BEFORE the target item
-        items.splice(targetItemIndex, 0, itemToMove);
-        
-        updatedContainers[overContainer] = items;
-        setContainers(updatedContainers);
-        containersRef.current = updatedContainers;
-      }
-      
-      const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
-      
-      if (movedItem) {
-        const updatedItem: Thought = {
-          ...sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id)!,
-          tags: [
-            ...(movedItem.requiredTags || []),
-            ...(movedItem.customTagNames || []).map((tag) => tag.name),
-          ],
-        };
-        
-        try {
-          const updatedThought = await updateThought(sermon.id, updatedItem);
-          const newThoughts = sermon.thoughts.map((thought: Thought) =>
-            thought.id === updatedItem.id ? updatedThought : thought
-          );
-          setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, thoughts: newThoughts } : null);
-        } catch (error) {
-          console.error("Error updating thought:", error);
+        if (droppedOnItem && targetItemIndex !== -1) {
+          overItems.splice(targetItemIndex, 0, draggedItem);
+        } else {
+          overItems.push(draggedItem);
         }
+        
+        updatedContainers[activeContainer] = activeItems;
+        updatedContainers[overContainer] = overItems;
       }
     }
     
-    // Build newStructure using the up-to-date containers from the ref
-    const newStructure = {
-      introduction: containersRef.current.introduction.map((item) => item.id),
-      main: containersRef.current.main.map((item) => item.id),
-      conclusion: containersRef.current.conclusion.map((item) => item.id),
-      ambiguous: containersRef.current.ambiguous.map((item) => item.id),
-    };
-    
-    const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
-    if (changesDetected) {
-      await updateStructure(sermon.id, newStructure);
-      setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure} : prev));
+    // Update outline point ID in the moved item immediately (before API calls)
+    if (activeContainer !== overContainer || outlinePointId !== undefined) {
+      const itemIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
+      if (itemIndex !== -1) {
+        updatedContainers[overContainer][itemIndex] = {
+          ...updatedContainers[overContainer][itemIndex],
+          outlinePointId: outlinePointId
+        };
+      }
     }
     
+    // Apply state updates immediately
+    setContainers(updatedContainers);
+    containersRef.current = updatedContainers;
+    
+    // Clear drag state immediately
     setActiveId(null);
     setOriginalContainer(null);
+    setIsDragEnding(false);
+    
+    // Build newStructure for API update
+    const newStructure = {
+      introduction: updatedContainers.introduction.map((item) => item.id),
+      main: updatedContainers.main.map((item) => item.id),
+      conclusion: updatedContainers.conclusion.map((item) => item.id),
+      ambiguous: updatedContainers.ambiguous.map((item) => item.id),
+    };
+    
+    // Make API calls in background with rollback on error
+    try {
+      // Update outline point assignment if needed (use debounced function for smooth UX)
+      if (activeContainer !== overContainer || outlinePointId !== undefined) {
+        const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
+        
+        if (movedItem && sermon) {
+          const thought = sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id);
+          if (thought) {
+            const updatedItem: Thought = {
+              ...thought,
+              tags: [
+                ...(movedItem.requiredTags || []),
+                ...(movedItem.customTagNames || []).map((tag) => tag.name),
+              ],
+              outlinePointId: outlinePointId
+            };
+            
+            // Use debounced function instead of direct await to prevent UI blocking
+            debouncedSaveThought(sermon.id, updatedItem);
+          }
+        }
+      }
+      
+      // Update structure if needed
+      const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
+      if (changesDetected) {
+        await updateStructure(sermon.id, newStructure);
+        setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure} : prev));
+      }
+      
+    } catch (error) {
+      console.error("Error updating drag and drop:", error);
+      
+      // Rollback optimistic updates on error
+      setContainers(previousContainers);
+      containersRef.current = previousContainers;
+      setSermon(previousSermon);
+      
+      // Show user-friendly error message
+      toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
+    }
   };
 
   const handleToggleFocusMode = (columnId: string) => {
@@ -627,8 +650,6 @@ function StructurePageContent() {
     });
     
     try {
-      console.log(`handleAiSort: Starting AI sort for ${columnId} with ${containers[columnId].length} items`);
-      
       // We'll now sort all items, not just unassigned ones
       const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
       
@@ -639,8 +660,6 @@ function StructurePageContent() {
       const remainingItems = totalItems > MAX_THOUGHTS_FOR_SORTING ? 
         containers[columnId].slice(MAX_THOUGHTS_FOR_SORTING) : 
         [];
-      
-      console.log(`handleAiSort: Processing ${itemsToSort.length} items in column ${columnId}, ${remainingItems.length} items will remain unchanged`);
       
       if (itemsToSort.length === 0) {
         toast.info(t('structure.noItemsToSort'));
@@ -658,7 +677,6 @@ function StructurePageContent() {
       );
       
       if (!sortedItems || !Array.isArray(sortedItems)) {
-        console.error('Invalid AI response:', sortedItems);
         toast.error(t('errors.aiSortFailedFormat'));
         setIsSorting(false);
         setPreSortState(null);
@@ -718,7 +736,6 @@ function StructurePageContent() {
         setPreSortState(null);
       }
     } catch (error) {
-      console.error('Error sorting items:', error);
       toast.error(t('errors.failedToSortItems'));
       // Reset state on error
       setPreSortState(null);
@@ -958,7 +975,6 @@ function StructurePageContent() {
   // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
   const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
     if (!sermonId || !sermon || containerId !== 'ambiguous') {
-      console.error("Cannot remove item: Invalid arguments or not in ambiguous container");
       toast.error(t('errors.removingError') || "Error removing item.");
       return;
     }
@@ -966,7 +982,6 @@ function StructurePageContent() {
     // Find thought first to use its text in confirmation
     const thoughtToDelete = sermon.thoughts.find(t => t.id === itemId);
     if (!thoughtToDelete) {
-      console.error(`[Structure] Could not find thought with ID ${itemId} to delete.`);
       toast.error(t('errors.deletingError') || "Failed to find thought to delete.");
       return;
     }
@@ -976,7 +991,6 @@ function StructurePageContent() {
       text: thoughtToDelete.text
     });
     if (!window.confirm(confirmMessage)) {
-      console.log(`[Structure] Deletion cancelled for thought ${itemId}`);
       return;
     }
 
@@ -984,9 +998,7 @@ function StructurePageContent() {
     setDeletingItemId(itemId);
 
     try {
-      console.log(`[Structure] Attempting to delete thought ${itemId} from sermon ${sermonId}`);
       await deleteThought(sermonId, thoughtToDelete); 
-      console.log(`[Structure] Successfully deleted thought ${itemId} from backend.`);
       
       // --- Update State on Successful Deletion ---
       // Capture previous state for potential rollback (though less critical here)
@@ -1025,27 +1037,17 @@ function StructurePageContent() {
       // 5. Update structure in DB (if changed)
       const structureDidChange = isStructureChanged(previousSermon.structure || {}, newStructure);
       if (structureDidChange) {
-          console.log(`[Structure] Structure changed after deletion. Updating DB.`);
           try {
               await updateStructure(sermonId, newStructure);
-              console.log("[Structure] Database structure updated successfully after deletion.");
-              // Ensure the final sermon state reflects the latest structure
-              setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, structure: newStructure } : prevSermon);
           } catch (structureError) {
-              console.error("[Structure] Error updating database structure after deletion:", structureError);
               toast.error(t('errors.savingError') || "Error saving structure changes after deleting item.");
-              // Note: Thought is deleted, but structure might be out of sync. UI reflects deleted state.
           }
-      } else {
-         console.log(`[Structure] Structure did not change after deletion. DB structure update skipped.`);
       }
 
       toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
 
     } catch (deleteError) {
-      console.error(`[Structure] Error deleting thought ${itemId}:`, deleteError);
       toast.error(t('errors.deletingError') || "Failed to delete thought.");
-      // Do not update UI state if backend deletion fails
     } finally {
       // <<< Clear deleting state AFTER operation (success or error) >>>
       setDeletingItemId(null);
@@ -1057,9 +1059,7 @@ function StructurePageContent() {
     debounce(async (sermonId: string, structure: any) => {
       try {
         await updateStructure(sermonId, structure);
-        console.log("Debounced structure save completed");
       } catch (error) {
-        console.error("Error in debounced structure save:", error);
         toast.error(t('errors.failedToSaveStructure'));
       }
     }, 500),
@@ -1070,7 +1070,6 @@ function StructurePageContent() {
     debounce(async (sermonId: string, thought: Thought) => {
       try {
         const updatedThought = await updateThought(sermonId, thought);
-        console.log("Debounced thought save completed:", updatedThought.id);
         setSermon((prev: Sermon | null) => {
           if (!prev) return prev;
           return {
@@ -1079,7 +1078,6 @@ function StructurePageContent() {
           };
         });
       } catch (error) {
-        console.error("Error in debounced thought save:", error);
         toast.error(t('errors.failedToSaveThought'));
       }
     }, 500),
@@ -1179,6 +1177,7 @@ function StructurePageContent() {
         )} */}
         
         <DndContext
+          sensors={sensors}
           collisionDetection={pointerWithin}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
@@ -1227,6 +1226,7 @@ function StructurePageContent() {
                             showDeleteIcon={true}
                             onDelete={handleRemoveFromStructure}
                             isDeleting={item.id === deletingItemId}
+                            activeId={activeId}
                           />
                         ))
                       )}
@@ -1264,6 +1264,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("introduction")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
+                activeId={activeId}
               />
             )}
             
@@ -1293,6 +1294,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("main")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
+                activeId={activeId}
               />
             )}
             
@@ -1322,6 +1324,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("conclusion")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
+                activeId={activeId}
               />
             )}
           </div>
