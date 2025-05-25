@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { OutlinePoint, Thought } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { useTranslation } from "react-i18next";
-import { X, Plus, Trash2 } from "lucide-react";
+import { X, Plus, Trash2, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 
 interface KeyFragmentsModalProps {
@@ -33,6 +33,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   const { t } = useTranslation();
   const [localThoughts, setLocalThoughts] = useState<Thought[]>(thoughts);
   const [activeSelection, setActiveSelection] = useState<ActiveSelection | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
   const selectionPopupRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -161,6 +162,17 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
     }
   };
 
+  // Remove all fragments from a thought
+  const handleRemoveAllFragments = async (thoughtId: string) => {
+    try {
+      await updateThoughtOnBackend(thoughtId, []);
+      toast.success(t("plan.allFragmentsRemoved"));
+    } catch (error) {
+      console.error("Failed to remove all fragments:", error);
+      toast.error(t("errors.failedToRemoveFragments"));
+    }
+  };
+
   // Update thought on backend
   const updateThoughtOnBackend = async (
     thoughtId: string,
@@ -213,6 +225,38 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
 
         {/* Modal Content */}
         <div className="p-4 overflow-y-auto flex-grow">
+          {/* Collapsible instructions */}
+          <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div 
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => setShowInstructions(!showInstructions)}
+            >
+              <div className="flex items-center space-x-3">
+                <Lightbulb className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <span className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                  {t("plan.howToSelectTextShort")}
+                </span>
+              </div>
+              <button className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors">
+                {showInstructions ? (
+                  <span className="text-xs">▲</span>
+                ) : (
+                  <span className="text-xs">▼</span>
+                )}
+              </button>
+            </div>
+            
+            {showInstructions && (
+              <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
+                <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                  <li>• {t("plan.selectTextTip1")}</li>
+                  <li>• {t("plan.selectTextTip2")}</li>
+                  <li>• {t("plan.selectTextTip3")}</li>
+                </ul>
+              </div>
+            )}
+          </div>
+
           <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
             {t("plan.selectTextToMarkAsKeyFragment")}
           </p>
@@ -233,19 +277,36 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
                   
                   {/* Thought Text - Selectable */}
                   <div
-                    className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-gray-800 dark:text-gray-200 user-select-text whitespace-pre-wrap"
+                    className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-gray-800 dark:text-gray-200 user-select-text whitespace-pre-wrap cursor-text hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors duration-200 border-2 border-transparent hover:border-blue-200 dark:hover:border-blue-700"
                     data-thought-id={thought.id}
                     data-testid={`thought-text-${thought.id}`}
                     style={{ userSelect: "text" }}
+                    title={t("plan.clickAndDragToSelect")}
                   >
                     {thought.text}
                   </div>
 
                   {/* Key Fragments List */}
                   <div className="mt-2">
-                    <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300">
-                      {t("plan.keyFragments")}:
-                    </h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
+                        {t("plan.keyFragments")} 
+                        {thought.keyFragments && thought.keyFragments.length > 0 && (
+                          <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs rounded-full">
+                            {thought.keyFragments.length}
+                          </span>
+                        )}
+                      </h4>
+                      {thought.keyFragments && thought.keyFragments.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveAllFragments(thought.id)}
+                          className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                          title={t("plan.removeAllFragments")}
+                        >
+                          {t("actions.clearAll")}
+                        </button>
+                      )}
+                    </div>
                     
                     {thought.keyFragments && thought.keyFragments.length > 0 ? (
                       <ul className="space-y-2">

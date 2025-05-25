@@ -27,6 +27,7 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -35,16 +36,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isMounted) {
         setUser(currentUser);
         setLoading(false);
+        
+        // Update authentication status
+        const hasGuestUser = typeof window !== 'undefined' ? localStorage.getItem('guestUser') : null;
+        setIsAuthenticated(Boolean(currentUser || hasGuestUser));
       }
     });
 
-    // Check for guest user in localStorage
-    if (!user && !loading) {
+    // Check for guest user in localStorage (only on client side)
+    if (typeof window !== 'undefined' && !user && !loading) {
       const guestData = localStorage.getItem('guestUser');
       if (guestData) {
         try {
           const guestUser = JSON.parse(guestData);
           setUser(guestUser);
+          setIsAuthenticated(true);
         } catch (error) {
           console.error('Error parsing guest user data:', error);
           localStorage.removeItem('guestUser');
@@ -56,9 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [user, loading]);
 
-  const isAuthenticated = Boolean(user || localStorage.getItem('guestUser'));
+  // Update authentication status when user changes
+  useEffect(() => {
+    const hasGuestUser = typeof window !== 'undefined' ? localStorage.getItem('guestUser') : null;
+    setIsAuthenticated(Boolean(user || hasGuestUser));
+  }, [user]);
 
   return (
     <AuthContext.Provider 

@@ -215,8 +215,9 @@
     "failedToGenerateContent": "Failed to generate content",
     "failedToSavePlan": "Failed to save plan",
     "thoughtNotFound": "Thought not found",
-    "failedToAddFragment": "Failed to add key fragment",
-    "failedToRemoveFragment": "Failed to remove key fragment",
+    "failedToAddFragment": "Не вдалося додати ключовий фрагмент",
+    "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент",
+    "failedToRemoveFragments": "Не вдалося видалити ключові фрагменти",
     "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано."
   },
   "manualThought": {
@@ -393,7 +394,16 @@
     "addAsKeyFragment": "Додати як ключовий фрагмент",
     "fragmentAdded": "Фрагмент успішно додано",
     "fragmentRemoved": "Фрагмент успішно видалено",
-    "viewPlan": "Переглянути план",
+    "allFragmentsRemoved": "Всі фрагменти успішно видалено",
+    "removeAllFragments": "Видалити всі фрагменти",
+    "clickAndDragToSelect": "Клікніть і перетягніть для виділення тексту",
+    "howToSelectText": "Як виділяти текст:",
+    "howToSelectTextShort": "Як виділяти текст",
+    "selectTextTip1": "Клікніть і перетягніть мишею по тексту, який хочете виділити",
+    "selectTextTip2": "З'явиться спливаюча підказка з кнопкою 'Додати як ключовий фрагмент'",
+    "selectTextTip3": "Натисніть кнопку, щоб зберегти виділений текст як ключовий фрагмент",
+    "noThoughtsAssigned": "Немає думок, прив'язаних до цієї точки плану",
+    "viewPlan": "Перегляд плану",
     "showSection": "Переглянути розділ повністю",
     "viewFullPlan": "Переглянути повний план",
     "copySuccess": "План скопійовано в буфер обміну!",
@@ -422,6 +432,7 @@
     "goToOutline": "Перейти до плану",
     "remove": "Видалити",
     "close": "Закрити",
-    "cancel": "Скасувати"
+    "cancel": "Скасувати",
+    "clearAll": "Очистити все"
   }
 } 

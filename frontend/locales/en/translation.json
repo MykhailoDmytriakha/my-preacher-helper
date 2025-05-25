@@ -217,6 +217,7 @@
     "thoughtNotFound": "Thought not found",
     "failedToAddFragment": "Failed to add key fragment",
     "failedToRemoveFragment": "Failed to remove key fragment",
+    "failedToRemoveFragments": "Failed to remove key fragments",
     "dragDropUpdateFailed": "Failed to update. Changes have been reverted."
   },
   "manualThought": {
@@ -393,6 +394,15 @@
     "addAsKeyFragment": "Add as Key Fragment",
     "fragmentAdded": "Fragment added successfully",
     "fragmentRemoved": "Fragment removed successfully",
+    "allFragmentsRemoved": "All fragments removed successfully",
+    "removeAllFragments": "Remove all fragments",
+    "clickAndDragToSelect": "Click and drag to select text",
+    "howToSelectText": "How to select text:",
+    "howToSelectTextShort": "How to select text",
+    "selectTextTip1": "Click and drag over the text you want to highlight",
+    "selectTextTip2": "A popup will appear with 'Add as Key Fragment' button",
+    "selectTextTip3": "Click the button to save the selected text as a key fragment",
+    "noThoughtsAssigned": "No thoughts assigned to this outline point",
     "viewPlan": "View Plan",
     "showSection": "View Section in Full",
     "viewFullPlan": "View Full Plan",
@@ -422,6 +432,7 @@
     "goToOutline": "Go to Outline",
     "remove": "Remove",
     "close": "Close",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "clearAll": "Clear All"
   }
 } 

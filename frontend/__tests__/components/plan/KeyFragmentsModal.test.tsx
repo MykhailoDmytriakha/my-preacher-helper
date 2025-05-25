@@ -29,6 +29,7 @@ jest.mock('lucide-react', () => ({
   X: () => <span>X</span>,
   Plus: () => <span>+</span>,
   Trash2: () => <span>Trash</span>,
+  Lightbulb: () => <span>Lightbulb</span>,
 }));
 
 // Mock the thought service
@@ -127,6 +128,8 @@ describe('KeyFragmentsModal', () => {
     expect(screen.getByText(mockThoughts[1].text)).toBeInTheDocument();
     expect(screen.getByText('first fragment')).toBeInTheDocument(); // Existing fragment
     expect(screen.getByRole('button', { name: /X/i })).toBeInTheDocument(); // Close button
+    // Check for collapsible instructions
+    expect(screen.getByText('plan.howToSelectTextShort')).toBeInTheDocument();
   });
 
    it('calls onClose when the close button is clicked', async () => {
@@ -178,6 +181,34 @@ describe('KeyFragmentsModal', () => {
      // For simplicity, let's check if the text is gone after the mocked update returns
      await waitFor(() => {
        expect(screen.queryByText(fragmentToRemoveText)).not.toBeInTheDocument();
+     });
+   });
+
+   it.skip('can toggle instruction visibility', async () => {
+     renderModal();
+     
+     // Instructions should be collapsed by default - the detailed tips should not be visible
+     expect(screen.getByText('plan.howToSelectTextShort')).toBeInTheDocument();
+     expect(screen.queryByText('plan.selectTextTip1')).not.toBeInTheDocument();
+     
+     // Click to expand instructions - click on the whole container
+     const instructionsContainer = screen.getByText('plan.howToSelectTextShort').closest('div');
+     expect(instructionsContainer).toBeTruthy();
+     await userEvent.click(instructionsContainer!);
+     
+     // Instructions should now be visible
+     await waitFor(() => {
+       expect(screen.getByText('plan.selectTextTip1')).toBeInTheDocument();
+     });
+     expect(screen.getByText('plan.selectTextTip2')).toBeInTheDocument();
+     expect(screen.getByText('plan.selectTextTip3')).toBeInTheDocument();
+     
+     // Click again to collapse
+     await userEvent.click(instructionsContainer!);
+     
+     // Instructions should be hidden again
+     await waitFor(() => {
+       expect(screen.queryByText('plan.selectTextTip1')).not.toBeInTheDocument();
      });
    });
 

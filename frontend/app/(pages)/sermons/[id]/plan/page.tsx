@@ -10,7 +10,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, NotepadText, FileText, Pencil, Bookmark, Maximize2, BookOpen, X, ChevronDown, Copy, Minimize2, ScrollText } from "lucide-react";
+import { Save, Sparkles, FileText, Pencil, Key, Maximize2, BookOpen, X, ChevronDown, Copy, Minimize2, ScrollText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
@@ -175,7 +175,7 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
             className="text-sm px-2 py-1 h-8 relative"
             title={t("plan.markKeyFragments")}
           >
-            <Bookmark className="h-4 w-4" />
+            <Key className="h-4 w-4" />
             {keyFragmentsCount > 0 && (
               <span className="absolute -top-1 -right-1 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold border"
                 style={{ borderColor: sectionColors.light }}
@@ -195,7 +195,7 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
             {isGenerating ? (
               <LoadingSpinner size="small" />
             ) : (
-              <NotepadText className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" />
             )}
           </Button>
         </div>
