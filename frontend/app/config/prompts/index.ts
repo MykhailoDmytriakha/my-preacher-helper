@@ -6,6 +6,7 @@ export { topicsSystemPrompt } from './system/topics';
 export { versesSystemPrompt } from './system/verses';
 export { directionsSystemPrompt } from './system/directions';
 export { planSystemPrompt } from './system/plan';
+export { brainstormSystemPrompt } from './system/brainstorm';
 
 // User message templates
 export { createThoughtUserMessage } from './user/thoughtTemplate';
@@ -14,4 +15,5 @@ export { createSortingUserMessage } from './user/sortingTemplate';
 export { createTopicsUserMessage } from './user/topicsTemplate';
 export { createVersesUserMessage } from './user/versesTemplate';
 export { createDirectionsUserMessage } from './user/directionsTemplate';
-export { createPlanUserMessage } from './user/planTemplate'; 
+export { createPlanUserMessage } from './user/planTemplate';
+export { createBrainstormUserMessage } from './user/brainstormTemplate'; 

@@ -218,7 +218,8 @@
     "failedToAddFragment": "Failed to add key fragment",
     "failedToRemoveFragment": "Failed to remove key fragment",
     "failedToRemoveFragments": "Failed to remove key fragments",
-    "dragDropUpdateFailed": "Failed to update. Changes have been reverted."
+    "dragDropUpdateFailed": "Failed to update. Changes have been reverted.",
+    "brainstormGenerationError": "Failed to generate brainstorm suggestion"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -422,6 +423,28 @@
     "copyText": "Copy Text",
     "copyMarkdown": "Copy Markdown",
     "copyFormatted": "Copy Formatted"
+  },
+  "brainstorm": {
+    "title": "Ideas",
+    "subtitle": "Get unstuck with thinking prompts",
+    "generateButton": "Generate",
+    "generating": "...",
+    "newSuggestion": "Another",
+    "clickToStart": "Click 'Generate' to get a thinking prompt",
+    "types": {
+      "text": "Reading",
+      "question": "Question",
+      "context": "Context",
+      "reflection": "Reflection",
+      "relationship": "Relationships",
+      "application": "Application",
+      "TEXT": "Reading",
+      "QUESTION": "Question",
+      "CONTEXT": "Context",
+      "REFLECTION": "Reflection",
+      "RELATIONSHIP": "Relationships",
+      "APPLICATION": "Application"
+    }
   },
   "sections": {
     "introduction": "Introduction",

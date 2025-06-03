@@ -218,7 +218,8 @@
     "failedToAddFragment": "Не вдалося додати ключовий фрагмент",
     "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент",
     "failedToRemoveFragments": "Не вдалося видалити ключові фрагменти",
-    "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано."
+    "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано.",
+    "brainstormGenerationError": "Не вдалося згенерувати підказку для роздумів"
   },
   "manualThought": {
     "addManual": "Додати запис вручну",
@@ -422,6 +423,28 @@
     "copyText": "Копіювати текст",
     "copyMarkdown": "Копіювати Markdown",
     "copyFormatted": "Копіювати форматований текст"
+  },
+  "brainstorm": {
+    "title": "Ідеї",
+    "subtitle": "Отримайте підказки для роздумів, коли заглухли",
+    "generateButton": "Створити",
+    "generating": "...",
+    "newSuggestion": "Ще",
+    "clickToStart": "Натисніть 'Створити' для отримання підказки",
+    "types": {
+      "text": "Читання",
+      "question": "Запитання",
+      "context": "Контекст",
+      "reflection": "Роздуми",
+      "relationship": "Відносини",
+      "application": "Застосування",
+      "TEXT": "Читання",
+      "QUESTION": "Запитання",
+      "CONTEXT": "Контекст",
+      "REFLECTION": "Роздуми",
+      "RELATIONSHIP": "Відносини",
+      "APPLICATION": "Застосування"
+    }
   },
   "sections": {
     "introduction": "Вступ",

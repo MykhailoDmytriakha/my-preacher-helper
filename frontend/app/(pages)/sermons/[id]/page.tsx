@@ -25,6 +25,7 @@ import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import { STRUCTURE_TAGS } from '@lib/constants';
 import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
+import BrainstormModule from '@/components/sermon/BrainstormModule';
 export const dynamic = "force-dynamic";
 
 const AudioRecorder = dynamicImport(
@@ -316,6 +317,8 @@ export default function SermonPage() {
         <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
         
         <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
+
+        <BrainstormModule sermonId={sermon.id} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">

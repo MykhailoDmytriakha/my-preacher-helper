@@ -218,7 +218,8 @@
     "failedToAddFragment": "Не удалось добавить ключевой фрагмент",
     "failedToRemoveFragment": "Не удалось удалить ключевой фрагмент",
     "failedToRemoveFragments": "Не удалось удалить ключевые фрагменты",
-    "dragDropUpdateFailed": "Не удалось обновить. Изменения отменены."
+    "dragDropUpdateFailed": "Не удалось обновить. Изменения отменены.",
+    "brainstormGenerationError": "Не удалось сгенерировать подсказку для размышлений"
   },
   "manualThought": {
     "addManual": "Добавить запись вручную",
@@ -422,6 +423,28 @@
     "copyText": "Копировать текст",
     "copyMarkdown": "Копировать Markdown",
     "copyFormatted": "Копировать форматированный текст"
+  },
+  "brainstorm": {
+    "title": "Идеи",
+    "subtitle": "Получите подсказки для размышлений, когда застряли",
+    "generateButton": "Создать",
+    "generating": "...",
+    "newSuggestion": "Ещё",
+    "clickToStart": "Нажмите 'Создать' для получения подсказки",
+    "types": {
+      "text": "Чтение",
+      "question": "Вопрос",
+      "context": "Контекст",
+      "reflection": "Размышление",
+      "relationship": "Отношения",
+      "application": "Применение",
+      "TEXT": "Чтение",
+      "QUESTION": "Вопрос",
+      "CONTEXT": "Контекст",
+      "REFLECTION": "Размышление",
+      "RELATIONSHIP": "Отношения",
+      "APPLICATION": "Применение"
+    }
   },
   "sections": {
     "introduction": "Вступление",

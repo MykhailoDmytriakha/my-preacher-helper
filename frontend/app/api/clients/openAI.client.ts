@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion, Plan } from "@/models/models";
+import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion, Plan, BrainstormSuggestion } from "@/models/models";
 import { v4 as uuidv4 } from 'uuid';
 import { 
   thoughtSystemPrompt, createThoughtUserMessage,
@@ -8,7 +8,8 @@ import {
   topicsSystemPrompt, createTopicsUserMessage,
   versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
-  planSystemPrompt, createPlanUserMessage
+  planSystemPrompt, createPlanUserMessage,
+  brainstormSystemPrompt, createBrainstormUserMessage
 } from "@/config/prompts";
 import {
   thoughtFunctionSchema,
@@ -17,7 +18,8 @@ import {
   topicsFunctionSchema,
   versesFunctionSchema,
   directionsFunctionSchema,
-  planFunctionSchema
+  planFunctionSchema,
+  brainstormFunctionSchema
 } from "@/config/schemas";
 import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 
@@ -1201,5 +1203,57 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
   } catch (error) {
     console.error(`ERROR: Failed to generate outline points for ${section} section:`, error);
     return { outlinePoints: [], success: false };
+  }
+}
+
+/**
+ * Generate a brainstorm suggestion for a sermon to help overcome mental blocks
+ * @param sermon The sermon to generate brainstorm suggestion for
+ * @returns A single brainstorm suggestion
+ */
+export async function generateBrainstormSuggestion(sermon: Sermon): Promise<BrainstormSuggestion | null> {
+  // Extract sermon content using our helper function
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createBrainstormUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating brainstorm suggestion for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${brainstormSystemPrompt}\n\n${createXmlFunctionDefinition(brainstormFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Brainstorm Suggestion',
+      requestOptions,
+      inputInfo
+    );
+    
+    const result = extractFunctionResponse<{ suggestion: BrainstormSuggestion }>(response);
+    
+    // Add an ID to the suggestion and normalize the type to lowercase
+    const suggestion: BrainstormSuggestion = {
+      ...result.suggestion,
+      type: result.suggestion.type.toLowerCase() as BrainstormSuggestion['type'],
+      id: `bs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    
+    return suggestion;
+  } catch (error) {
+    console.error("ERROR: Failed to generate brainstorm suggestion:", error);
+    return null;
   }
 } 

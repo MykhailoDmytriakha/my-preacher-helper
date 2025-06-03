@@ -34,6 +34,12 @@ export interface DirectionSuggestion {
   id?: string;
 }
 
+export interface BrainstormSuggestion {
+  id: string;
+  text: string;
+  type: 'text' | 'question' | 'context' | 'reflection' | 'relationship' | 'application';
+}
+
 export interface Insights {
   topics: string[];
   relatedVerses: VerseWithRelevance[];
