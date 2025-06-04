@@ -15,7 +15,7 @@ interface WordExportOptions {
   filename?: string;
 }
 
-const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
+export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
     return [
       new Paragraph({
@@ -73,7 +73,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
             }),
           ],
           heading: HeadingLevel.HEADING_3,
-          spacing: { before: 200, after: 100 },
+          spacing: { before: 150, after: 100 },
           indent: { left: 360 },
         })
       );
@@ -91,7 +91,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
             }),
           ],
           heading: HeadingLevel.HEADING_2,
-          spacing: { before: 250, after: 100 },
+          spacing: { before: 150, after: 100 },
         })
       );
     } else if (trimmedLine.startsWith('# ')) {
@@ -107,7 +107,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
             }),
           ],
           heading: HeadingLevel.HEADING_1,
-          spacing: { before: 300, after: 100 },
+          spacing: { before: 150, after: 100 },
         })
       );
     } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
@@ -119,7 +119,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
               text: `• ${trimmedLine.replace(/^[-*] /, '')}`,
             }),
           ],
-          spacing: { after: 80 },
+          spacing: { after: 100 },
           indent: { left: 720 },
         })
       );
@@ -134,7 +134,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
                 text: `${number[1]}. ${number[2]}`,
               }),
             ],
-            spacing: { after: 80 },
+            spacing: { after: 100 },
             indent: { left: 720 },
           })
         );
@@ -150,7 +150,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
               color: '4a5568',
             }),
           ],
-          spacing: { after: 120 },
+          spacing: { after: 100 },
           indent: { left: 720 },
           border: {
             left: {
@@ -173,17 +173,23 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { before: 150, after: 150 },
+          spacing: { before: 100, after: 100 },
         })
       );
     } else {
       // Regular paragraph with markdown formatting
       const children = parseInlineMarkdown(trimmedLine);
+      
+      // Check if this looks like a Bible verse reference (starts with book name and chapter:verse)
+      const isBibleVerse = /^[А-Яа-я\w\s]+\s+\d+:\d+:/.test(trimmedLine);
+      
       elements.push(
         new Paragraph({
           children,
           spacing: { after: 100 },
           alignment: AlignmentType.JUSTIFIED,
+          // Add same left indent for Bible verses to align with list items
+          indent: isBibleVerse ? { left: 720 } : undefined,
         })
       );
     }
@@ -194,7 +200,7 @@ const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Par
   return elements;
 };
 
-const parseTable = (tableLines: string[]): Table | null => {
+export const parseTable = (tableLines: string[]): Table | null => {
   if (tableLines.length < 2) return null;
   
   // Parse table rows
@@ -246,7 +252,7 @@ const parseTable = (tableLines: string[]): Table | null => {
   });
 };
 
-const parseInlineMarkdown = (text: string): TextRun[] => {
+export const parseInlineMarkdown = (text: string): TextRun[] => {
   const runs: TextRun[] = [];
   let currentIndex = 0;
   
