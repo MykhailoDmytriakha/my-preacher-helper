@@ -9,6 +9,11 @@ jest.mock('react-markdown', () => (props: any) => <>{props.children}</>);
 // Mock remark-gfm as well
 jest.mock('remark-gfm', () => ({}));
 
+// Mock Word export functionality
+jest.mock('../../utils/wordExport', () => ({
+  exportToWord: jest.fn().mockResolvedValue(undefined),
+}));
+
 /**
  * These tests were temporarily skipped due to issues with act() in production builds
  * We are now re-enabling them
@@ -144,7 +149,7 @@ describe('ExportButtons', () => {
       expect(mockHandlers.onTxtClick).toHaveBeenCalledTimes(1);
     });
     
-    it('has disabled PDF and Word buttons', () => {
+    it('has disabled PDF button and enabled Word button', () => {
       const { container } = render(<ExportButtonsLayout {...mockHandlers} />);
       
       const buttons = container.querySelectorAll('button');
@@ -152,7 +157,7 @@ describe('ExportButtons', () => {
       const wordButton = buttons[2];
       
       expect(pdfButton).toBeDisabled();
-      expect(wordButton).toBeDisabled();
+      expect(wordButton).not.toBeDisabled();
     });
   });
 
