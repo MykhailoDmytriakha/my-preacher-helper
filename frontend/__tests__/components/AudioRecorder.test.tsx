@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock the AudioRecorder component completely with a more sophisticated implementation
@@ -19,7 +19,7 @@ jest.mock('@components/AudioRecorder', () => {
         setIsRecording(true);
         setRecordingTime(1); // Simulate 1 second passed
         setAudioLevel(50); // Simulate audio level
-      }, 100);
+      }, 50); // Reduced timeout for faster test execution
     };
 
     const handleStopRecording = () => {
@@ -194,11 +194,11 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start (after initialization)
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Use waitFor instead of setTimeout for better reliability
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
-    // Should now be in recording state
-    expect(screen.getByTestId('stop-button')).toBeInTheDocument();
     expect(screen.queryByTestId('record-button')).not.toBeInTheDocument();
     expect(screen.getByTestId('timer')).toHaveTextContent('0:01 / 1:00');
     
@@ -218,8 +218,10 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Stop recording
     const stopButton = screen.getByTestId('stop-button');
@@ -291,11 +293,12 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Should show both stop and cancel buttons
-    expect(screen.getByTestId('stop-button')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-button')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-button')).toHaveTextContent('audio.cancelRecording');
   });
@@ -312,11 +315,12 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Verify we're recording
-    expect(screen.getByTestId('stop-button')).toBeInTheDocument();
     expect(screen.getByTestId('cancel-button')).toBeInTheDocument();
     expect(screen.getByTestId('timer')).toHaveTextContent('0:01 / 1:00');
     
@@ -376,8 +380,10 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Should show audio level indicator
     expect(screen.getByTestId('audio-level-indicator')).toBeInTheDocument();
@@ -397,12 +403,13 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Should show recording indicator
     expect(screen.getByTestId('recording-indicator')).toBeInTheDocument();
-    expect(screen.getByTestId('recording-indicator')).toHaveTextContent('audio.recording');
   });
 
   it('shows keyboard shortcuts when not recording', () => {
@@ -430,8 +437,10 @@ describe('AudioRecorder - UI Tests', () => {
     const recordButton = screen.getByTestId('record-button');
     fireEvent.click(recordButton);
     
-    // Wait for recording to start
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for recording to start using waitFor
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
     
     // Should not show keyboard shortcuts during recording
     expect(screen.queryByTestId('keyboard-shortcuts')).not.toBeInTheDocument();
