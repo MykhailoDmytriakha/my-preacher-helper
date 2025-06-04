@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Check } from 'lucide-react';
+import { exportToWord, PlanData } from '../../utils/wordExport';
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
@@ -56,15 +57,12 @@ export function ExportButtonsLayout({
       <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onWordClick}
-          disabled={true}
-          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md opacity-50 cursor-not-allowed w-full"
-          aria-label="Word export (coming soon)"
+          disabled={false}
+          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition-colors w-full"
+          aria-label="Word export"
         >
           Word
         </button>
-        <span className={`tooltiptext ${orientation === "vertical" ? "tooltiptext-right" : "tooltiptext-top"}`}>
-          {t('export.soonAvailable')}
-        </span>
       </div>
     </div>
   );
@@ -540,8 +538,8 @@ export default function ExportButtons({
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes('pdf');
   // Similarly, check if TXT is disabled (though less likely needed)
   const isTxtDisabled = disabledFormats.includes('txt');
-  // Word is always disabled currently, but check prop for future-proofing
-  const isWordDisabled = true || disabledFormats.includes('word');
+  // Word is now enabled
+  const isWordDisabled = disabledFormats.includes('word');
 
   useEffect(() => {
     setShowTxtModal(showTxtModalDirectly || false);
@@ -572,10 +570,75 @@ export default function ExportButtons({
     setShowPdfModal(false);
   };
 
-  const handleWordClick = () => { 
+  const handleWordClick = async () => { 
     if (isWordDisabled) return;
-    // Future implementation
-    console.log("Word Export clicked (disabled)"); 
+    
+    try {
+      // Get the plan content in markdown format
+      const content = await getExportContent('markdown', { includeTags: false });
+      
+      // Parse the content to extract sections
+      const lines = content.split('\n');
+      let sermonTitle = title || 'План проповеди';
+      let sermonVerse = '';
+      let introduction = '';
+      let main = '';
+      let conclusion = '';
+      let currentSection = '';
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Extract title if it's at the beginning
+        if (i === 0 && line.startsWith('# ')) {
+          sermonTitle = line.replace('# ', '').trim();
+          continue;
+        }
+        
+        // Extract verse if it follows title
+        if (line.includes('Текст из Писания:') || line.includes('Scripture Text:')) {
+          sermonVerse = line.replace(/.*Текст из Писания:\s*/, '').replace(/.*Scripture Text:\s*/, '').trim();
+          continue;
+        }
+        
+        // Check for section headers
+        if (line.includes('Вступление') || line.includes('Introduction')) {
+          currentSection = 'introduction';
+          continue;
+        } else if (line.includes('Основная часть') || line.includes('Main Part')) {
+          currentSection = 'main';
+          continue;
+        } else if (line.includes('Заключение') || line.includes('Conclusion')) {
+          currentSection = 'conclusion';
+          continue;
+        }
+        
+        // Add content to appropriate section
+        if (currentSection && line.trim()) {
+          if (currentSection === 'introduction') {
+            introduction += line + '\n';
+          } else if (currentSection === 'main') {
+            main += line + '\n';
+          } else if (currentSection === 'conclusion') {
+            conclusion += line + '\n';
+          }
+        }
+      }
+      
+      const planData: PlanData = {
+        sermonTitle: sermonTitle,
+        sermonVerse: sermonVerse || undefined,
+        introduction: introduction.trim() || 'Содержание будет добавлено позже...',
+        main: main.trim() || 'Содержание будет добавлено позже...',
+        conclusion: conclusion.trim() || 'Содержание будет добавлено позже...',
+      };
+      
+      await exportToWord({ data: planData });
+      
+    } catch (error) {
+      console.error('Error exporting to Word:', error);
+      // You can add a toast notification here if needed
+    }
   };
 
   return (

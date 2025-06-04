@@ -1,10 +1,11 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, Maximize2, ScrollText } from "lucide-react";
+import { BookOpen, ChevronDown, Maximize2, ScrollText, FileText } from "lucide-react";
 import ReactDOM from "react-dom/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { exportToWord, PlanData } from '../../../utils/wordExport';
 
 interface ViewPlanMenuProps {
   sermonTitle: string;
@@ -283,6 +284,53 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     });
     
     buttonsContainer.appendChild(copyButton);
+    
+    // Create Word export button
+    const wordButton = document.createElement('button');
+    wordButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700';
+    wordButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg><span>${t("export.wordButton") || "Word"}</span>`;
+    wordButton.title = t("export.wordTitle") || 'Export to Word';
+    
+    wordButton.addEventListener('click', async () => {
+      const originalButtonHtml = wordButton.innerHTML;
+      const exportingHtml = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>${t("export.wordExporting") || "Exporting..."}</span>`;
+      
+      try {
+        wordButton.innerHTML = exportingHtml;
+        wordButton.disabled = true;
+        
+        const planData: PlanData = {
+          sermonTitle: sermonTitle,
+          sermonVerse: sermonVerse,
+          introduction: combinedPlan.introduction || 'Содержание будет добавлено позже...',
+          main: combinedPlan.main || 'Содержание будет добавлено позже...',
+          conclusion: combinedPlan.conclusion || 'Содержание будет добавлено позже...',
+        };
+        
+        await exportToWord({ data: planData });
+        
+        // Show success state temporarily
+        const successHtml = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>${t("export.wordExported") || "Exported!"}</span>`;
+        wordButton.innerHTML = successHtml;
+        wordButton.classList.add('bg-green-700');
+        
+        setTimeout(() => {
+          wordButton.innerHTML = originalButtonHtml;
+          wordButton.classList.remove('bg-green-700');
+          wordButton.disabled = false;
+        }, 2000);
+        
+      } catch (error) {
+        console.error('Error exporting to Word:', error);
+        toast.error(t("export.wordError") || 'Ошибка экспорта в Word');
+        
+        wordButton.innerHTML = originalButtonHtml;
+        wordButton.disabled = false;
+      }
+    });
+    
+    buttonsContainer.appendChild(wordButton);
+    
     header.appendChild(title);
     header.appendChild(buttonsContainer);
     
