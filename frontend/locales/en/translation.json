@@ -169,7 +169,9 @@
     "createPlan": "Build Plan Point-by-Point",
     "viewPlan": "View Plan",
     "draftMode": "Draft",
-    "pointMode": "Point-by-Point"
+    "pointMode": "Point-by-Point",
+    "createOutlineTooltip": "Add thoughts to your sermon first, then create an outline",
+    "assignThoughtsTooltip": "All thoughts must be assigned to outline points before creating a plan"
   },
   "filters": {
     "filter": "Filter",
