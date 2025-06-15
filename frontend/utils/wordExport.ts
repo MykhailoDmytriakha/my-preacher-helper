@@ -111,28 +111,30 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
         })
       );
     } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
-      // Handle bullet points
+      // Handle bullet points with markdown formatting
+      const bulletContent = trimmedLine.replace(/^[-*] /, '');
+      const bulletChildren = parseInlineMarkdown(bulletContent);
       elements.push(
         new Paragraph({
           children: [
-            new TextRun({
-              text: `• ${trimmedLine.replace(/^[-*] /, '')}`,
-            }),
+            new TextRun({ text: '• ' }),
+            ...bulletChildren,
           ],
           spacing: { after: 100 },
           indent: { left: 720 },
         })
       );
     } else if (trimmedLine.match(/^\d+\. /)) {
-      // Handle numbered lists
+      // Handle numbered lists with markdown formatting
       const number = trimmedLine.match(/^(\d+)\. (.*)$/);
       if (number) {
+        const listContent = number[2];
+        const listChildren = parseInlineMarkdown(listContent);
         elements.push(
           new Paragraph({
             children: [
-              new TextRun({
-                text: `${number[1]}. ${number[2]}`,
-              }),
+              new TextRun({ text: `${number[1]}. ` }),
+              ...listChildren,
             ],
             spacing: { after: 100 },
             indent: { left: 720 },
@@ -140,16 +142,12 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
         );
       }
     } else if (trimmedLine.startsWith('> ')) {
-      // Handle blockquotes
+      // Handle blockquotes with markdown formatting
+      const quoteContent = trimmedLine.replace('> ', '');
+      const quoteChildren = parseInlineMarkdown(quoteContent);
       elements.push(
         new Paragraph({
-          children: [
-            new TextRun({
-              text: trimmedLine.replace('> ', ''),
-              italics: true,
-              color: '4a5568',
-            }),
-          ],
+          children: quoteChildren,
           spacing: { after: 100 },
           indent: { left: 720 },
           border: {
@@ -253,70 +251,83 @@ export const parseTable = (tableLines: string[]): Table | null => {
 };
 
 export const parseInlineMarkdown = (text: string): TextRun[] => {
+  if (!text || text.trim() === '') {
+    return [new TextRun('')];
+  }
+
   const runs: TextRun[] = [];
   let currentIndex = 0;
-  
-  // Enhanced markdown parsing patterns
+
+  // Define patterns in order of priority (most specific first to avoid conflicts)
   const patterns = [
     { regex: /\*\*\*(.*?)\*\*\*/g, format: { bold: true, italics: true } },
     { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
-    { regex: /\*(.*?)\*/g, format: { italics: true } },
-    { regex: /_(.*?)_/g, format: { italics: true } },
+    { regex: /__(.*?)__/g, format: { bold: true } },
     { regex: /~~(.*?)~~/g, format: { strike: true } },
     { regex: /`(.*?)`/g, format: { font: 'Courier New', shading: { type: ShadingType.SOLID, fill: 'f5f5f5' } } },
     { regex: /\^(.*?)\^/g, format: { superScript: true, size: 16 } },
     { regex: /~(.*?)~/g, format: { subScript: true, size: 16 } },
+    { regex: /\*(.*?)\*/g, format: { italics: true } },
+    { regex: /_(.*?)_/g, format: { italics: true } },
   ];
 
-  const matches: Array<{ start: number; end: number; text: string; format: any }> = [];
+  // Find all matches across all patterns
+  const allMatches: Array<{
+    start: number;
+    end: number;
+    content: string;
+    format: any;
+  }> = [];
 
-  patterns.forEach(pattern => {
+  for (const { regex, format } of patterns) {
     let match;
-    const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+    // Reset regex lastIndex to ensure we start from the beginning
+    regex.lastIndex = 0;
+    
     while ((match = regex.exec(text)) !== null) {
-      matches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[1],
-        format: pattern.format,
-      });
+      const start = match.index;
+      const end = match.index + match[0].length;
+      
+      // Check if this match overlaps with any existing matches
+      const hasOverlap = allMatches.some(existing => 
+        (start < existing.end && end > existing.start)
+      );
+      
+      // Only add if no overlap (first pattern wins)
+      if (!hasOverlap) {
+        allMatches.push({
+          start,
+          end,
+          content: match[1],
+          format
+        });
+      }
     }
-  });
+  }
 
   // Sort matches by start position
-  matches.sort((a, b) => a.start - b.start);
+  allMatches.sort((a, b) => a.start - b.start);
 
-  // Process non-overlapping matches
-  const processedMatches: typeof matches = [];
-  matches.forEach(match => {
-    const hasOverlap = processedMatches.some(processed => 
-      (match.start < processed.end && match.end > processed.start)
-    );
-    if (!hasOverlap) {
-      processedMatches.push(match);
-    }
-  });
-
-  // Build text runs
-  processedMatches.forEach(match => {
-    // Add text before match
+  // Build TextRuns
+  for (const match of allMatches) {
+    // Add unformatted text before this match
     if (match.start > currentIndex) {
       const beforeText = text.slice(currentIndex, match.start);
       if (beforeText) {
         runs.push(new TextRun(beforeText));
       }
     }
-    
+
     // Add formatted text
     runs.push(new TextRun({
-      text: match.text,
+      text: match.content,
       ...match.format,
     }));
-    
-    currentIndex = match.end;
-  });
 
-  // Add remaining text
+    currentIndex = match.end;
+  }
+
+  // Add any remaining unformatted text
   if (currentIndex < text.length) {
     const remainingText = text.slice(currentIndex);
     if (remainingText) {
@@ -324,7 +335,7 @@ export const parseInlineMarkdown = (text: string): TextRun[] => {
     }
   }
 
-  // If no formatting was found, return simple text
+  // If no runs were created, add the original text
   if (runs.length === 0) {
     runs.push(new TextRun(text));
   }

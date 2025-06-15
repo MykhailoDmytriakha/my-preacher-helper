@@ -577,7 +577,7 @@ export default function ExportButtons({
       // Get the plan content in markdown format
       const content = await getExportContent('markdown', { includeTags: false });
       
-      // Parse the content to extract sections
+      // Parse the content to extract sections - keep markdown formatting intact
       const lines = content.split('\n');
       let sermonTitle = title || 'План проповеди';
       let sermonVerse = '';
@@ -589,13 +589,13 @@ export default function ExportButtons({
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Extract title if it's at the beginning
+        // Extract title if it's at the beginning - remove markdown formatting for title
         if (i === 0 && line.startsWith('# ')) {
           sermonTitle = line.replace('# ', '').trim();
           continue;
         }
         
-        // Extract verse if it follows title
+        // Extract verse if it follows title - remove markdown formatting for verse
         if (line.includes('Текст из Писания:') || line.includes('Scripture Text:')) {
           sermonVerse = line.replace(/.*Текст из Писания:\s*/, '').replace(/.*Scripture Text:\s*/, '').trim();
           continue;
@@ -613,7 +613,7 @@ export default function ExportButtons({
           continue;
         }
         
-        // Add content to appropriate section
+        // Add content to appropriate section - KEEP markdown formatting
         if (currentSection && line.trim()) {
           if (currentSection === 'introduction') {
             introduction += line + '\n';

@@ -194,6 +194,33 @@ describe('wordExport', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toBeInstanceOf(Table);
     });
+
+    it('should parse bullet points with bold text correctly', () => {
+      const content = '- В трубу подали **три вещи**: воздух, воду и огонь-свет.';
+      const result = parseMarkdownToParagraphs(content);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBeInstanceOf(Paragraph);
+      // Test passes if function executes without errors and returns a Paragraph
+    });
+
+    it('should parse numbered lists with bold text correctly', () => {
+      const content = '1. Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве.';
+      const result = parseMarkdownToParagraphs(content);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBeInstanceOf(Paragraph);
+      // Test passes if function executes without errors and returns a Paragraph
+    });
+
+    it('should parse blockquotes with bold text correctly', () => {
+      const content = '> Шахтёры собирались **на общее собрание — и начинают молитву**.';
+      const result = parseMarkdownToParagraphs(content);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBeInstanceOf(Paragraph);
+      // Test passes if function executes without errors and returns a Paragraph
+    });
   });
 
   describe('parseTable', () => {
@@ -276,6 +303,25 @@ describe('wordExport', () => {
       expect(result[0]).toBeInstanceOf(TextRun);
       expect(result[1]).toBeInstanceOf(TextRun);
       expect(result[2]).toBeInstanceOf(TextRun);
+    });
+
+    it('should parse Russian bold text correctly', () => {
+      const testText = '**лампы**';
+      const result = parseInlineMarkdown(testText);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBeInstanceOf(TextRun);
+      // Note: TextRun properties are internal and not accessible for testing
+      // The actual formatting is applied during Word document generation
+    });
+
+    it('should parse complex Russian text with bold correctly', () => {
+      const testText = 'Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве';
+      const result = parseInlineMarkdown(testText);
+      
+      expect(result.length).toBeGreaterThan(1);
+      // Note: TextRun properties are internal and not accessible for testing
+      // The actual formatting is applied during Word document generation
     });
 
     it('should parse italic formatting correctly', () => {
