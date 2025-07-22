@@ -455,7 +455,11 @@
       "REFLECTION": "Роздуми",
       "RELATIONSHIP": "Відносини",
       "APPLICATION": "Застосування"
-    }
+    },
+    "copy": "Копіювати",
+    "copied": "Скопійовано!",
+    "copySuggestion": "Копіювати ідею",
+    "copiedToClipboard": "Ідею скопійовано до буфера обміну!"
   },
   "sections": {
     "introduction": "Вступ",

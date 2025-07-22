@@ -339,6 +339,8 @@
     "scripture": "Scripture",
     "actions": "Actions",
     "copy": "Copy",
+    "copySuggestion": "Copy suggestion",
+    "copiedToClipboard": "Suggestion copied to clipboard!",
     "regenerate": "Regenerate",
     "generating": "Generating..."
   },

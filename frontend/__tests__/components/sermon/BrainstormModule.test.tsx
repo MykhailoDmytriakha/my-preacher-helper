@@ -33,6 +33,11 @@ jest.mock('react-i18next', () => ({
         'brainstorm.types.relationship': 'Relationships',
         'brainstorm.types.application': 'Application',
         'errors.brainstormGenerationError': 'Failed to generate suggestion. Please try again.',
+        'brainstorm.generateAnother': 'Generate Another',
+        'brainstorm.copy': 'Copy',
+        'brainstorm.copied': 'Copied!',
+        'brainstorm.copySuggestion': 'Copy suggestion',
+        'brainstorm.copiedToClipboard': 'Suggestion copied to clipboard!',
       };
       return mockTranslations[key] || key;
     }
@@ -88,7 +93,7 @@ describe('BrainstormModule', () => {
 
       // Check header elements - use getAllByTestId to handle multiple icons
       const icons = screen.getAllByTestId('lightbulb-icon');
-      expect(icons).toHaveLength(2); // One in header, one in button
+      expect(icons).toHaveLength(3); // Header, button, and empty state icon
       expect(screen.getByText('Ideas')).toBeInTheDocument();
       
       // Check generate button
@@ -433,8 +438,7 @@ describe('BrainstormModule', () => {
       
       const moduleElement = container.firstChild as HTMLElement;
       expect(moduleElement).toHaveClass(
-        'p-4', 'bg-white', 'dark:bg-gray-800', 'rounded-lg', 
-        'border', 'border-gray-200', 'dark:border-gray-700'
+        'p-6', 'rounded-xl', 'shadow-sm', 'transition-shadow', 'hover:shadow-md'
       );
     });
 
@@ -444,10 +448,10 @@ describe('BrainstormModule', () => {
       const icons = screen.getAllByTestId('lightbulb-icon');
       
       // Header icon
-      expect(icons[0]).toHaveClass('w-5', 'h-5', 'text-yellow-500', 'dark:text-yellow-400');
+      expect(icons[0]).toHaveClass('w-6', 'h-6', 'text-yellow-500', 'dark:text-yellow-400');
       
       // Button icon
-      expect(icons[1]).toHaveClass('w-4', 'h-4');
+      expect(icons[1]).toHaveClass('w-5', 'h-5');
     });
 
     it('displays suggestion with correct styling', async () => {
@@ -467,8 +471,7 @@ describe('BrainstormModule', () => {
       const suggestionContainer = suggestionText.parentElement;
       
       expect(suggestionContainer).toHaveClass(
-        'p-3', 'bg-yellow-50', 'dark:bg-yellow-900/10', 'rounded-md',
-        'border-l-4', 'border-yellow-400', 'dark:border-yellow-500'
+        'p-4', 'bg-yellow-50', 'dark:bg-yellow-900/10', 'rounded-lg', 'border', 'border-yellow-200', 'dark:border-yellow-700'
       );
     });
   });
