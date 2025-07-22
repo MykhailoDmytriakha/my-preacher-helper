@@ -315,7 +315,7 @@
     "showAll": "Show all",
     "hideAll": "Hide all",
     "clickToExpand": "Click the arrow above to view insights",
-    "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of 20 required"
+    "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
     "comingSoon": "Coming Soon",
@@ -436,6 +436,7 @@
     "title": "Ideas",
     "subtitle": "Get unstuck with thinking prompts",
     "generateButton": "Generate",
+    "generateAnother": "Generate Another",
     "generating": "...",
     "newSuggestion": "Another",
     "clickToStart": "Click 'Generate' to get a thinking prompt",
@@ -452,7 +453,11 @@
       "REFLECTION": "Reflection",
       "RELATIONSHIP": "Relationships",
       "APPLICATION": "Application"
-    }
+    },
+    "copy": "Copy",
+    "copied": "Copied!",
+    "copySuggestion": "Copy suggestion",
+    "copiedToClipboard": "Suggestion copied to clipboard!"
   },
   "sections": {
     "introduction": "Introduction",

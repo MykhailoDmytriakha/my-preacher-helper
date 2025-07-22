@@ -207,7 +207,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                      localInsights.topics.length > 0;
   
   // Check if sermon has enough thoughts to generate insights
-  const THOUGHTS_THRESHOLD = 20;
+  const THOUGHTS_THRESHOLD = 10;
   const thoughtsCount = sermon.thoughts?.length || 0;
   const hasEnoughThoughts = thoughtsCount >= THOUGHTS_THRESHOLD;
   const remainingThoughts = THOUGHTS_THRESHOLD - thoughtsCount;
@@ -394,6 +394,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 {t('knowledge.insightsThreshold', {
                   count: remainingThoughts,
                   thoughtsCount: thoughtsCount,
+                  threshold: THOUGHTS_THRESHOLD,
                   defaultValue: `You need {{count}} more thoughts to unlock insights. Currently: ${thoughtsCount}/${THOUGHTS_THRESHOLD}`
                 })}
               </p>

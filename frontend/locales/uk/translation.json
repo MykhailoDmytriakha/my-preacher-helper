@@ -315,7 +315,7 @@
     "showAll": "Показати всі",
     "hideAll": "Сховати всі",
     "clickToExpand": "Натисніть на стрілку вище, щоб переглянути аналітику",
-    "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із 20"
+    "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із {{threshold}}"
   },
   "common": {
     "comingSoon": "Скоро буде доступно",
@@ -339,6 +339,8 @@
     "scripture": "Священне Писання",
     "actions": "Дії",
     "copy": "Копіювати",
+    "copySuggestion": "Копіювати ідею",
+    "copiedToClipboard": "Ідею скопійовано до буфера обміну!",
     "regenerate": "Перегенерувати",
     "generating": "Генерація..."
   },
@@ -436,6 +438,7 @@
     "title": "Ідеї",
     "subtitle": "Отримайте підказки для роздумів, коли заглухли",
     "generateButton": "Створити",
+    "generateAnother": "Створити ще",
     "generating": "...",
     "newSuggestion": "Ще",
     "clickToStart": "Натисніть 'Створити' для отримання підказки",

@@ -315,7 +315,7 @@
     "showAll": "Показать все",
     "hideAll": "Скрыть все",
     "clickToExpand": "Нажмите на стрелку выше, чтобы просмотреть аналитику",
-    "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из 20"
+    "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
     "comingSoon": "Скоро будет доступно",
@@ -436,6 +436,7 @@
     "title": "Идеи",
     "subtitle": "Получите подсказки для размышлений, когда застряли",
     "generateButton": "Создать",
+    "generateAnother": "Создать ещё",
     "generating": "...",
     "newSuggestion": "Ещё",
     "clickToStart": "Нажмите 'Создать' для получения подсказки",
@@ -452,7 +453,11 @@
       "REFLECTION": "Размышление",
       "RELATIONSHIP": "Отношения",
       "APPLICATION": "Применение"
-    }
+    },
+    "copy": "Копировать",
+    "copied": "Скопировано!",
+    "copySuggestion": "Копировать идею",
+    "copiedToClipboard": "Идею скопировано в буфер обмена!"
   },
   "sections": {
     "introduction": "Вступление",
