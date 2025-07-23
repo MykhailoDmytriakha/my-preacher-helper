@@ -121,7 +121,8 @@
     "showTags": "Показати теги",
     "hideTags": "Сховати теги",
     "includeTags": "Включати теги",
-    "soon": "Скоро"
+    "soon": "Скоро",
+    "multipleTagsThoughts": "Думки з кількома тегами"
   },
   "tags": {
     "introduction": "Вступ",
@@ -155,7 +156,9 @@
     "presetColors": "Готові кольори",
     "customColor": "Власний колір",
     "selectColor": "Вибрати колір",
-    "newTag": "Новий тег"
+    "newTag": "Новий тег",
+    "loadingUserData": "Завантаження даних користувача...",
+    "noEmail": "Email не вказано"
   },
   "sermon": {
     "notFound": "Проповідь не знайдено",
@@ -227,11 +230,25 @@
     "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент",
     "failedToRemoveFragments": "Не вдалося видалити ключові фрагменти",
     "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано.",
-    "brainstormGenerationError": "Не вдалося згенерувати підказку для роздумів"
+    "brainstormGenerationError": "Не вдалося згенерувати підказку для роздумів",
+    "aiSortFailedFormat": "Помилка формату сортування ШІ",
+    "deletingError": "Помилка видалення",
+    "failedToAddThought": "Не вдалося додати думку",
+    "failedToSavePoint": "Не вдалося зберегти пункт",
+    "failedToSaveStructure": "Не вдалося зберегти структуру",
+    "failedToSaveThought": "Не вдалося зберегти думку",
+    "failedToSaveTitle": "Не вдалося зберегти заголовок",
+    "failedToSortItems": "Не вдалося відсортувати елементи",
+    "fetchPlanError": "Не вдалося завантажити план",
+    "fetchSermonStructureError": "Не вдалося завантажити структуру проповіді",
+    "fetchTagsError": "Не вдалося завантажити теги",
+    "removingError": "Помилка видалення",
+    "savingError": "Помилка збереження"
   },
   "manualThought": {
     "addManual": "Додати запис вручну",
-    "placeholder": "Введіть ваш запис..."
+    "placeholder": "Введіть ваш запис...",
+    "addedSuccess": "Думку успішно додано"
   },
   "thought": {
     "tagsLabel": "Теги:",
@@ -244,7 +261,8 @@
     "generating": "Генерація...",
     "regenerate": "Перегенерувати",
     "regenerateSuccess": "успішно перегенеровано!",
-    "regenerateError": "Помилка під час перегенерації"
+    "regenerateError": "Помилка під час перегенерації",
+    "optionsMenuLabel": "Опції думки"
   },
   "editThought": {
     "editTitle": "Редагувати запис",
@@ -296,7 +314,25 @@
     "thoughts": "думок",
     "dropThoughtsHere": "Перетягніть думки сюди",
     "dropToUnassign": "Перетягніть думки сюди, щоб забрати їх з пунктів плану",
-    "unassignedThoughts": "Неприв'язані думки"
+    "unassignedThoughts": "Неприв'язані думки",
+    "acceptAll": "Прийняти все",
+    "acceptAllChanges": "Прийняти всі зміни",
+    "aiAssigned": "ШІ призначив",
+    "aiMoved": "ШІ перемістив",
+    "aiSortChangesAccepted": "Зміни сортування ШІ прийняті",
+    "aiSortChangesReverted": "Зміни сортування ШІ скасовані",
+    "aiSortNoChanges": "ШІ сортування без змін",
+    "aiSortSuggestionsReady": "Пропозиції сортування ШІ готові",
+    "aiSuggestions": "Пропозиції ШІ",
+    "editThought": "Редагувати думку",
+    "keepChanges": "Зберегти зміни",
+    "noItemsToSort": "Немає елементів для сортування",
+    "rejectAll": "Відхилити все",
+    "rejectAllChanges": "Відхилити всі зміни",
+    "removeFromStructure": "Видалити зі структури",
+    "revertChanges": "Скасувати зміни",
+    "sermonNotFound": "Проповідь не знайдена",
+    "thoughtDeletedSuccess": "Думку успішно видалено"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",
@@ -342,7 +378,8 @@
     "copySuggestion": "Копіювати ідею",
     "copiedToClipboard": "Ідею скопійовано до буфера обміну!",
     "regenerate": "Перегенерувати",
-    "generating": "Генерація..."
+    "generating": "Генерація...",
+    "editTitleInput": "Редагувати заголовок"
   },
   "outline": {
     "introduction": "Вступ",
@@ -424,7 +461,8 @@
     "copySuccess": "План скопійовано в буфер обміну!",
     "copyError": "Не вдалося скопіювати в буфер обміну",
     "fullscreen": "Повноекранний режим",
-    "exitFullscreen": "Вийти з повноекранного режиму"
+    "exitFullscreen": "Вийти з повноекранного режиму",
+    "noContentYet": "Поки що немає змісту"
   },
   "copy": {
     "title": "Копіювання вмісту",
@@ -449,12 +487,22 @@
       "reflection": "Роздуми",
       "relationship": "Відносини",
       "application": "Застосування",
+      "synthesis": "Синтез",
+      "multi-perspective": "Багатогранність",
       "TEXT": "Читання",
       "QUESTION": "Запитання",
       "CONTEXT": "Контекст",
       "REFLECTION": "Роздуми",
       "RELATIONSHIP": "Відносини",
-      "APPLICATION": "Застосування"
+      "APPLICATION": "Застосування",
+      "SYNTHESIS": "Синтез",
+      "MULTI-PERSPECTIVE": "Багатогранність"
+    },
+    "complexity": {
+      "basic": "Базовий",
+      "moderate": "Середній",
+      "high": "Просунутий",
+      "multi-dimensional": "Багатовимірний"
     },
     "copy": "Копіювати",
     "copied": "Скопійовано!",

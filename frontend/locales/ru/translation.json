@@ -121,7 +121,8 @@
     "showTags": "Показать теги",
     "hideTags": "Скрыть теги",
     "includeTags": "Включать теги",
-    "soon": "Скоро"
+    "soon": "Скоро",
+    "multipleTagsThoughts": "Мысли с несколькими тегами"
   },
   "tags": {
     "introduction": "Вступление",
@@ -155,7 +156,9 @@
     "presetColors": "Готовые цвета",
     "customColor": "Свой цвет",
     "selectColor": "Выбрать цвет",
-    "newTag": "Новый тег"
+    "newTag": "Новый тег",
+    "loadingUserData": "Загрузка данных пользователя...",
+    "noEmail": "Email не указан"
   },
   "sermon": {
     "notFound": "Проповедь не найдена",
@@ -227,11 +230,25 @@
     "failedToRemoveFragment": "Не удалось удалить ключевой фрагмент",
     "failedToRemoveFragments": "Не удалось удалить ключевые фрагменты",
     "dragDropUpdateFailed": "Не удалось обновить. Изменения отменены.",
-    "brainstormGenerationError": "Не удалось сгенерировать подсказку для размышлений"
+    "brainstormGenerationError": "Не удалось сгенерировать подсказку для размышлений",
+    "aiSortFailedFormat": "Ошибка формата сортировки ИИ",
+    "deletingError": "Ошибка удаления",
+    "failedToAddThought": "Не удалось добавить мысль",
+    "failedToSavePoint": "Не удалось сохранить пункт",
+    "failedToSaveStructure": "Не удалось сохранить структуру",
+    "failedToSaveThought": "Не удалось сохранить мысль",
+    "failedToSaveTitle": "Не удалось сохранить заголовок",
+    "failedToSortItems": "Не удалось отсортировать элементы",
+    "fetchPlanError": "Не удалось загрузить план",
+    "fetchSermonStructureError": "Не удалось загрузить структуру проповеди",
+    "fetchTagsError": "Не удалось загрузить теги",
+    "removingError": "Ошибка удаления",
+    "savingError": "Ошибка сохранения"
   },
   "manualThought": {
     "addManual": "Добавить запись вручную",
-    "placeholder": "Введите вашу запись..."
+    "placeholder": "Введите вашу запись...",
+    "addedSuccess": "Мысль успешно добавлена"
   },
   "thought": {
     "tagsLabel": "Теги:",
@@ -244,7 +261,8 @@
     "generating": "Генерация...",
     "regenerate": "Перегенерировать",
     "regenerateSuccess": "успешно перегенерировано!",
-    "regenerateError": "Ошибка при перегенерации"
+    "regenerateError": "Ошибка при перегенерации",
+    "optionsMenuLabel": "Опции мысли"
   },
   "editThought": {
     "editTitle": "Редактировать запись",
@@ -296,7 +314,25 @@
     "thoughts": "мыслей",
     "dropThoughtsHere": "Перетащите мысли сюда",
     "dropToUnassign": "Перетащите мысли сюда, чтобы убрать их из пунктов плана",
-    "unassignedThoughts": "Неназначенные мысли"
+    "unassignedThoughts": "Неназначенные мысли",
+    "acceptAll": "Принять всё",
+    "acceptAllChanges": "Принять все изменения",
+    "aiAssigned": "ИИ назначил",
+    "aiMoved": "ИИ переместил",
+    "aiSortChangesAccepted": "Изменения сортировки ИИ приняты",
+    "aiSortChangesReverted": "Изменения сортировки ИИ отменены",
+    "aiSortNoChanges": "ИИ сортировка без изменений",
+    "aiSortSuggestionsReady": "Предложения сортировки ИИ готовы",
+    "aiSuggestions": "Предложения ИИ",
+    "editThought": "Редактировать мысль",
+    "keepChanges": "Сохранить изменения",
+    "noItemsToSort": "Нет элементов для сортировки",
+    "rejectAll": "Отклонить всё",
+    "rejectAllChanges": "Отклонить все изменения",
+    "removeFromStructure": "Удалить из структуры",
+    "revertChanges": "Отменить изменения",
+    "sermonNotFound": "Проповедь не найдена",
+    "thoughtDeletedSuccess": "Мысль успешно удалена"
   },
   "knowledge": {
     "title": "Размышления над проповедью",
@@ -342,7 +378,8 @@
     "copySuggestion": "Копировать идею",
     "copiedToClipboard": "Идею скопировано в буфер обмена!",
     "regenerate": "Перегенерировать",
-    "generating": "Генерация..."
+    "generating": "Генерация...",
+    "editTitleInput": "Редактировать заголовок"
   },
   "outline": {
     "introduction": "Вступление",
@@ -424,7 +461,8 @@
     "copySuccess": "План скопирован в буфер обмена!",
     "copyError": "Не удалось скопировать в буфер обмена",
     "fullscreen": "Полноэкранный режим",
-    "exitFullscreen": "Выйти из полноэкранного режима"
+    "exitFullscreen": "Выйти из полноэкранного режима",
+    "noContentYet": "Пока нет содержания"
   },
   "copy": {
     "title": "Копирование содержимого",
@@ -449,12 +487,22 @@
       "reflection": "Размышление",
       "relationship": "Отношения",
       "application": "Применение",
+      "synthesis": "Синтез",
+      "multi-perspective": "Многогранность",
       "TEXT": "Чтение",
       "QUESTION": "Вопрос",
       "CONTEXT": "Контекст",
       "REFLECTION": "Размышление",
       "RELATIONSHIP": "Отношения",
-      "APPLICATION": "Применение"
+      "APPLICATION": "Применение",
+      "SYNTHESIS": "Синтез",
+      "MULTI-PERSPECTIVE": "Многогранность"
+    },
+    "complexity": {
+      "basic": "Базовый",
+      "moderate": "Средний",
+      "high": "Продвинутый", 
+      "multi-dimensional": "Многомерный"
     },
     "copy": "Копировать",
     "copied": "Скопировано!",

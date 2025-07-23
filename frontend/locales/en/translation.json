@@ -121,7 +121,8 @@
     "showTags": "Show tags",
     "hideTags": "Hide tags",
     "includeTags": "Include tags",
-    "soon": "Soon"
+    "soon": "Soon",
+    "multipleTagsThoughts": "Thoughts with Multiple Tags"
   },
   "tags": {
     "introduction": "Introduction",
@@ -155,7 +156,9 @@
     "presetColors": "Preset Colors",
     "customColor": "Custom Color",
     "selectColor": "Select color",
-    "newTag": "New Tag"
+    "newTag": "New Tag",
+    "loadingUserData": "Loading user data...",
+    "noEmail": "No email set"
   },
   "sermon": {
     "notFound": "Sermon not found",
@@ -227,11 +230,25 @@
     "failedToRemoveFragment": "Failed to remove key fragment",
     "failedToRemoveFragments": "Failed to remove key fragments",
     "dragDropUpdateFailed": "Failed to update. Changes have been reverted.",
-    "brainstormGenerationError": "Failed to generate brainstorm suggestion"
+    "brainstormGenerationError": "Failed to generate brainstorm suggestion",
+    "aiSortFailedFormat": "AI sorting failed format",
+    "deletingError": "Error deleting",
+    "failedToAddThought": "Failed to add thought",
+    "failedToSavePoint": "Failed to save point",
+    "failedToSaveStructure": "Failed to save structure",
+    "failedToSaveThought": "Failed to save thought",
+    "failedToSaveTitle": "Failed to save title",
+    "failedToSortItems": "Failed to sort items",
+    "fetchPlanError": "Failed to fetch plan",
+    "fetchSermonStructureError": "Failed to fetch sermon structure",
+    "fetchTagsError": "Failed to fetch tags",
+    "removingError": "Error removing",
+    "savingError": "Error saving"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
-    "placeholder": "Enter your thought..."
+    "placeholder": "Enter your thought...",
+    "addedSuccess": "Thought added successfully"
   },
   "thought": {
     "tagsLabel": "Tags:",
@@ -244,7 +261,8 @@
     "generating": "Generating...",
     "regenerate": "Regenerate",
     "regenerateSuccess": "regenerated successfully!",
-    "regenerateError": "Error regenerating"
+    "regenerateError": "Error regenerating",
+    "optionsMenuLabel": "Thought options"
   },
   "editThought": {
     "editTitle": "Edit Thought",
@@ -296,7 +314,25 @@
     "thoughts": "thoughts",
     "dropThoughtsHere": "Drop thoughts here",
     "dropToUnassign": "Drop thoughts here to unassign them from outline points",
-    "unassignedThoughts": "Unassigned Thoughts"
+    "unassignedThoughts": "Unassigned Thoughts",
+    "acceptAll": "Accept All",
+    "acceptAllChanges": "Accept All Changes",
+    "aiAssigned": "AI Assigned",
+    "aiMoved": "AI Moved",
+    "aiSortChangesAccepted": "AI Sort Changes Accepted",
+    "aiSortChangesReverted": "AI Sort Changes Reverted",
+    "aiSortNoChanges": "AI Sort No Changes",
+    "aiSortSuggestionsReady": "AI Sort Suggestions Ready",
+    "aiSuggestions": "AI Suggestions",
+    "editThought": "Edit Thought",
+    "keepChanges": "Keep Changes",
+    "noItemsToSort": "No Items to Sort",
+    "rejectAll": "Reject All",
+    "rejectAllChanges": "Reject All Changes",
+    "removeFromStructure": "Remove From Structure",
+    "revertChanges": "Revert Changes",
+    "sermonNotFound": "Sermon Not Found",
+    "thoughtDeletedSuccess": "Thought Deleted Successfully"
   },
   "knowledge": {
     "title": "Sermon Insights",
@@ -342,7 +378,8 @@
     "copySuggestion": "Copy suggestion",
     "copiedToClipboard": "Suggestion copied to clipboard!",
     "regenerate": "Regenerate",
-    "generating": "Generating..."
+    "generating": "Generating...",
+    "editTitleInput": "Edit title"
   },
   "outline": {
     "introduction": "Introduction",
@@ -424,7 +461,8 @@
     "copySuccess": "Plan copied to clipboard!",
     "copyError": "Failed to copy to clipboard",
     "fullscreen": "Fullscreen",
-    "exitFullscreen": "Exit Fullscreen"
+    "exitFullscreen": "Exit Fullscreen",
+    "noContentYet": "No content yet"
   },
   "copy": {
     "title": "Copy Content",
@@ -449,12 +487,22 @@
       "reflection": "Reflection",
       "relationship": "Relationships",
       "application": "Application",
+      "synthesis": "Synthesis",
+      "multi-perspective": "Multi-Perspective",
       "TEXT": "Reading",
       "QUESTION": "Question",
       "CONTEXT": "Context",
       "REFLECTION": "Reflection",
       "RELATIONSHIP": "Relationships",
-      "APPLICATION": "Application"
+      "APPLICATION": "Application",
+      "SYNTHESIS": "Synthesis",
+      "MULTI-PERSPECTIVE": "Multi-Perspective"
+    },
+    "complexity": {
+      "basic": "Basic",
+      "moderate": "Moderate",
+      "high": "Advanced",
+      "multi-dimensional": "Multi-Dimensional"
     },
     "copy": "Copy",
     "copied": "Copied!",

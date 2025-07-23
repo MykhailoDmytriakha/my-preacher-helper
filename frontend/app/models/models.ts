@@ -37,7 +37,9 @@ export interface DirectionSuggestion {
 export interface BrainstormSuggestion {
   id: string;
   text: string;
-  type: 'text' | 'question' | 'context' | 'reflection' | 'relationship' | 'application';
+  type: 'text' | 'question' | 'context' | 'reflection' | 'relationship' | 'application' | 'synthesis' | 'multi-perspective';
+  complexity?: 'basic' | 'moderate' | 'high' | 'multi-dimensional';
+  dimensions?: string[];
 }
 
 export interface Insights {

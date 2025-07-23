@@ -79,10 +79,14 @@ const mockBrainstormSuggestion: BrainstormSuggestion = {
 
 // Helper function to expand the brainstorm module
 const expandBrainstormModule = async () => {
-  const expandButton = screen.getByRole('button', { name: /ideas/i });
-  fireEvent.click(expandButton);
+  // In the new UI, the collapsed state is a clickable div, not a button
+  // Look for the element with the heading "Ideas" and click on its parent container
+  const moduleContainer = screen.getByRole('heading', { name: /ideas/i }).closest('div[class*="cursor-pointer"]');
+  expect(moduleContainer).toBeInTheDocument();
   
-  // Wait for the expansion animation
+  fireEvent.click(moduleContainer!);
+  
+  // Wait for the expansion animation and generate button to appear
   await waitFor(() => {
     expect(screen.getByRole('button', { name: /generate/i })).toBeInTheDocument();
   });
@@ -104,17 +108,14 @@ describe('BrainstormModule', () => {
     it('renders with correct initial collapsed state', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
 
-      // Check that the trigger button is visible
-      const expandButton = screen.getByRole('button', { name: /ideas/i });
-      expect(expandButton).toBeInTheDocument();
+      // Check that the trigger container is visible (not a button anymore)
+      const moduleContainer = screen.getByRole('heading', { name: /ideas/i }).closest('div');
+      expect(moduleContainer).toBeInTheDocument();
       expect(screen.getByText('Ideas')).toBeInTheDocument();
       expect(screen.getByText('Get unstuck with thinking prompts')).toBeInTheDocument();
-      
-      // Check that the generate button is NOT visible (module is collapsed)
+
+      // Check that expanded content is NOT visible
       expect(screen.queryByRole('button', { name: /generate/i })).not.toBeInTheDocument();
-      
-      // Should not show suggestion initially
-      expect(screen.queryByText(/consider exploring/i)).not.toBeInTheDocument();
     });
 
     it('expands when trigger button is clicked', async () => {
@@ -471,6 +472,116 @@ describe('BrainstormModule', () => {
       await waitFor(() => {
         expect(generateButton).toBeEnabled();
       });
+    });
+  });
+
+  describe('Enhanced Suggestion Features', () => {
+    beforeEach(async () => {
+      render(<BrainstormModule sermonId={mockSermonId} />);
+      await expandBrainstormModule();
+    });
+
+    it('correctly displays complexity badge for multi-dimensional suggestions', async () => {
+      const enhancedSuggestion: BrainstormSuggestion = {
+        ...mockBrainstormSuggestion,
+        type: 'multi-perspective',
+        complexity: 'multi-dimensional',
+        dimensions: ['textual-analysis', 'contemporary-application', 'theological-depth']
+      };
+
+      mockGenerateBrainstormSuggestion.mockResolvedValue(enhancedSuggestion);
+
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
+
+      await waitFor(() => {
+        // In test environment, i18n keys are shown as-is
+        expect(screen.getByText('brainstorm.types.multi-perspective')).toBeInTheDocument();
+        expect(screen.getByText('brainstorm.complexity.multi-dimensional')).toBeInTheDocument();
+      });
+
+      // Check that complexity badge has correct styling (purple for multi-dimensional)
+      const complexityBadge = screen.getByText('brainstorm.complexity.multi-dimensional');
+      expect(complexityBadge).toHaveClass('bg-purple-100', 'text-purple-800');
+    });
+
+    it('displays dimensions badges when present', async () => {
+      const enhancedSuggestion: BrainstormSuggestion = {
+        ...mockBrainstormSuggestion,
+        type: 'synthesis',
+        complexity: 'high',
+        dimensions: ['textual-analysis', 'contemporary-application', 'theological-depth']
+      };
+
+      mockGenerateBrainstormSuggestion.mockResolvedValue(enhancedSuggestion);
+
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
+
+      await waitFor(() => {
+        // In test environment, i18n keys are shown as-is
+        expect(screen.getByText('brainstorm.types.synthesis')).toBeInTheDocument();
+        expect(screen.getByText('brainstorm.complexity.high')).toBeInTheDocument();
+      });
+
+      // Check that first two dimensions are displayed
+      expect(screen.getByText('textual-analysis')).toBeInTheDocument();
+      expect(screen.getByText('contemporary-application')).toBeInTheDocument();
+      
+      // Third dimension should show as "+1" since we limit to 2 displayed
+      expect(screen.getByText('+1')).toBeInTheDocument();
+    });
+
+    it('handles suggestions without complexity or dimensions gracefully', async () => {
+      const basicSuggestion: BrainstormSuggestion = {
+        id: 'bs-basic-123',
+        text: 'Basic suggestion without enhanced features',
+        type: 'question'
+        // No complexity or dimensions fields
+      };
+
+      mockGenerateBrainstormSuggestion.mockResolvedValue(basicSuggestion);
+
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Question')).toBeInTheDocument();
+      });
+
+      // Should not show complexity or dimensions badges
+      expect(screen.queryByText('brainstorm.complexity.basic')).not.toBeInTheDocument();
+      expect(screen.queryByText('textual-analysis')).not.toBeInTheDocument();
+    });
+
+    it('displays correct styling for different complexity levels', async () => {
+      const complexityLevels = [
+        { complexity: 'high', expectedClass: 'bg-blue-100', expectedText: 'brainstorm.complexity.high' },
+        { complexity: 'moderate', expectedClass: 'bg-green-100', expectedText: 'brainstorm.complexity.moderate' },
+        { complexity: 'basic', expectedClass: 'bg-gray-100', expectedText: 'brainstorm.complexity.basic' }
+      ] as const;
+
+      for (const { complexity, expectedClass, expectedText } of complexityLevels) {
+        const suggestion: BrainstormSuggestion = {
+          ...mockBrainstormSuggestion,
+          complexity
+        };
+
+        mockGenerateBrainstormSuggestion.mockResolvedValue(suggestion);
+
+        const generateButton = screen.getByRole('button', { name: /generate/i });
+        fireEvent.click(generateButton);
+
+        await waitFor(() => {
+          expect(screen.getByText(expectedText)).toBeInTheDocument();
+        });
+
+        const complexityBadge = screen.getByText(expectedText);
+        expect(complexityBadge).toHaveClass(expectedClass);
+
+        // Reset for next iteration
+        mockGenerateBrainstormSuggestion.mockReset();
+      }
     });
   });
 

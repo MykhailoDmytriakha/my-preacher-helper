@@ -12,6 +12,7 @@
     "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
     "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
     "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
+    "test:translations": "cross-env NODE_ENV=test jest --verbose locales/__tests__/translationKeyCoverage.test.ts",
     "test:summary": "node show-total-coverage.js",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },
@@ -59,6 +60,7 @@
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/cypress": "^0.1.6",
+    "@types/glob": "^8.1.0",
     "@types/jest": "^29.5.14",
     "@types/lodash": "^4.17.16",
     "@types/node": "^20",
@@ -70,6 +72,7 @@
     "cypress": "^13.6.6",
     "eslint": "^9",
     "eslint-config-next": "15.1.6",
+    "glob": "^11.0.3",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "jest-fetch-mock": "^3.0.3",
