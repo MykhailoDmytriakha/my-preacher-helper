@@ -59,7 +59,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
     <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">{t('structure.title')}</h2>
       <div className="space-y-3 sm:space-y-4">
-        <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
+        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
           <div className="absolute inset-0 flex">
             <div
               className="transition-all duration-500"
@@ -90,7 +90,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
         <div className="flex justify-between text-xs sm:text-sm">
           <div className="text-center" style={{ color: introColor }}>
             <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
               "{t('tags.introduction')}" <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
@@ -98,7 +98,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: mainColor }}>
             <div className="text-base sm:text-lg font-bold">{mainPercentage}%</div>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
               "{t('tags.mainPart')}"
               <br />
               {t('structure.recommended', { percent: 60 })}
@@ -107,7 +107,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: conclusionColor }}>
             <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
               "{t('tags.conclusion')}" <br />
               {t('structure.recommended', { percent: 20 })}
             </span>

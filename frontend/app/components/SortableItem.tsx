@@ -83,10 +83,10 @@ export default function SortableItem({
       }}
       {...attributes}
       {...listeners}
-      className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white rounded-md ${
+      className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white dark:bg-gray-800 rounded-md ${
         isHighlighted ? `border-2 shadow-lg ${
           highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
-        }` : 'border border-gray-200 shadow-md'
+        }` : 'border border-gray-200 dark:border-gray-700 shadow-md'
       } hover:shadow-xl ${isDeleting ? 'pointer-events-none' : ''}`}
     >
       <div className="flex-grow">
@@ -127,11 +127,11 @@ export default function SortableItem({
               e.preventDefault();
               onEdit(item);
             }}
-            className="focus:outline-none border-2 border-gray-200 rounded-full p-1 bg-white hover:shadow-md"
+            className="focus:outline-none border-2 border-gray-200 dark:border-gray-600 rounded-full p-1 bg-white dark:bg-gray-700 hover:shadow-md"
             title={t('structure.editThought', { defaultValue: 'Edit Thought' })}
             disabled={isDeleting}
           >
-            <EditIcon className="h-6 w-6 text-gray-500 hover:text-gray-700" />
+            <EditIcon className="h-6 w-6 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" />
           </button>
         )}
 
@@ -152,7 +152,7 @@ export default function SortableItem({
               e.preventDefault();
               onDelete(item.id, containerId); 
             }}
-            className="focus:outline-none border-2 border-gray-200 rounded-full p-1 bg-white hover:shadow-md"
+            className="focus:outline-none border-2 border-gray-200 dark:border-gray-600 rounded-full p-1 bg-white dark:bg-gray-700 hover:shadow-md"
             title={t('structure.removeFromStructure', { defaultValue: 'Remove from Structure' })}
             disabled={isDeleting}
           >
@@ -177,7 +177,7 @@ export default function SortableItem({
               e.preventDefault();
               onKeep(item.id, containerId);
             }}
-            className="focus:outline-none border-2 border-green-200 rounded-full p-1 bg-white hover:bg-green-50 hover:shadow-md"
+            className="focus:outline-none border-2 border-green-200 dark:border-green-700 rounded-full p-1 bg-white dark:bg-gray-700 hover:bg-green-50 dark:hover:bg-green-900/30 hover:shadow-md"
             title={t('structure.keepChanges', { defaultValue: 'Keep this change' })}
           >
             <CheckIcon className="h-5 w-5 text-green-500 hover:text-green-700" />
@@ -201,7 +201,7 @@ export default function SortableItem({
               e.preventDefault();
               onRevert(item.id, containerId);
             }}
-            className="focus:outline-none border-2 border-orange-200 rounded-full p-1 bg-white hover:bg-orange-50 hover:shadow-md"
+            className="focus:outline-none border-2 border-orange-200 dark:border-orange-700 rounded-full p-1 bg-white dark:bg-gray-700 hover:bg-orange-50 dark:hover:bg-orange-900/30 hover:shadow-md"
             title={t('structure.revertChanges', { defaultValue: 'Revert to original' })}
           >
             <ArrowUturnLeftIcon className="h-5 w-5 text-orange-500 hover:text-orange-700" />

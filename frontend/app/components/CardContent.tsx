@@ -14,7 +14,7 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
   const { t } = useTranslation();
   
   return (
-    <div className={`whitespace-pre-wrap ${className}`}>
+    <div className={`whitespace-pre-wrap dark:text-gray-200 ${className}`}>
       {item.content}
       
       {item.customTagNames && item.customTagNames.length > 0 && (

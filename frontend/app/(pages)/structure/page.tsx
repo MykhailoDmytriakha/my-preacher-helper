@@ -70,7 +70,7 @@ function DummyDropZone({ container }: { container: string }) {
       ref={setNodeRef}
       data-container={container}
       style={{ minHeight: "80px" }}
-      className={`p-4 text-center text-gray-500 border-dashed border-2 border-blue-300 col-span-full ${
+      className={`p-4 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 col-span-full ${
         isOver ? "border-blue-500 border-4" : ""
       }`}
     >
@@ -1147,7 +1147,7 @@ function StructurePageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
       <div className={`${focusedColumn ? 'max-w-7xl mx-auto' : 'w-full'}`}>
         <div className="mb-4">
           <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
@@ -1155,7 +1155,7 @@ function StructurePageContent() {
           </h1>
           {!focusedColumn && (
             <div className="text-center">
-              <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800">
+              <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
                 {t('structure.backToSermon')}
               </Link>
             </div>
@@ -1187,16 +1187,16 @@ function StructurePageContent() {
           {(!focusedColumn || containers.ambiguous.length > 0) && (
             <div className="mt-8">
               <div
-                className={`bg-white rounded-md shadow border ${
-                  containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200"
+                className={`bg-white dark:bg-gray-800 rounded-md shadow border ${
+                  containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200 dark:border-gray-700"
                 }`}
               >
                 <div
                   className="flex items-center justify-between p-4 cursor-pointer"
                   onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
                 >
-                  <h2 className="text-xl font-semibold">
-                    {columnTitles["ambiguous"]} <span className="ml-2 text-sm bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full">{containers.ambiguous.length}</span>
+                  <h2 className="text-xl font-semibold dark:text-white">
+                    {columnTitles["ambiguous"]} <span className="ml-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-0.5 rounded-full">{containers.ambiguous.length}</span>
                   </h2>
                   <svg
                     className={`w-6 h-6 transform transition-transform duration-200 ${

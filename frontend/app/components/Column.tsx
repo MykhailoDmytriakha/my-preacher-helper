@@ -93,40 +93,40 @@ const OutlinePointPlaceholder: React.FC<{
     if (headerColor) {
       return {
         border: `border-2 border-opacity-30`,
-        bg: 'bg-gray-50',
-        header: 'bg-gray-100',
-        headerText: 'text-gray-700'
+        bg: 'bg-gray-50 dark:bg-gray-800',
+        header: 'bg-gray-100 dark:bg-gray-700',
+        headerText: 'text-gray-700 dark:text-gray-200'
       };
     }
 
     switch (containerId) {
       case 'introduction':
         return {
-          border: 'border-2 border-blue-200',
-          bg: 'bg-blue-50',
-          header: 'bg-blue-100',
-          headerText: 'text-blue-700'
+          border: 'border-2 border-blue-200 dark:border-blue-700',
+          bg: 'bg-blue-50 dark:bg-blue-900/20',
+          header: 'bg-blue-100 dark:bg-blue-800/30',
+          headerText: 'text-blue-700 dark:text-blue-200'
         };
       case 'main':
         return {
-          border: 'border-2 border-purple-200',
-          bg: 'bg-purple-50',
-          header: 'bg-purple-100',
-          headerText: 'text-purple-700'
+          border: 'border-2 border-purple-200 dark:border-purple-700',
+          bg: 'bg-purple-50 dark:bg-purple-900/20',
+          header: 'bg-purple-100 dark:bg-purple-800/30',
+          headerText: 'text-purple-700 dark:text-purple-200'
         };
       case 'conclusion':
         return {
-          border: 'border-2 border-green-200',
-          bg: 'bg-green-50',
-          header: 'bg-green-100',
-          headerText: 'text-green-700'
+          border: 'border-2 border-green-200 dark:border-green-700',
+          bg: 'bg-green-50 dark:bg-green-900/20',
+          header: 'bg-green-100 dark:bg-green-800/30',
+          headerText: 'text-green-700 dark:text-green-200'
         };
       default:
         return {
-          border: 'border-2 border-gray-200',
-          bg: 'bg-gray-50',
-          header: 'bg-gray-100',
-          headerText: 'text-gray-700'
+          border: 'border-2 border-gray-200 dark:border-gray-700',
+          bg: 'bg-gray-50 dark:bg-gray-800',
+          header: 'bg-gray-100 dark:bg-gray-700',
+          headerText: 'text-gray-700 dark:text-gray-200'
         };
     }
   };
@@ -142,14 +142,14 @@ const OutlinePointPlaceholder: React.FC<{
     >
       {/* Outline point header */}
       <div 
-        className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 ${headerColor ? 'bg-gray-100' : colors.header}`}
+        className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? 'bg-gray-100 dark:bg-gray-700' : colors.header}`}
         style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
       >
         <div className="flex items-center justify-between">
-          <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800' : colors.headerText}`}>
+          <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}>
             {point.text}
           </h4>
-          <span className={`text-xs ${headerColor ? 'text-gray-600' : colors.headerText} opacity-70`}>
+          <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
             {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
           </span>
         </div>
@@ -163,7 +163,7 @@ const OutlinePointPlaceholder: React.FC<{
         }`}
       >
         {!hasItems ? (
-          <div className="text-center text-gray-400 text-sm py-6 border-2 border-dashed border-gray-300 rounded">
+          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded">
             {t('structure.dropThoughtsHere')}
           </div>
         ) : (
@@ -219,11 +219,11 @@ const UnassignedThoughtsDropTarget: React.FC<{
     <div 
       ref={setNodeRef}
       className={`min-h-[80px] p-4 transition-all rounded-lg ${
-        isOver ? 'bg-blue-100 ring-2 ring-blue-300' : 'bg-gray-50'
+        isOver ? 'bg-blue-100 ring-2 ring-blue-300' : 'bg-gray-50 dark:bg-gray-800'
       }`}
     >
       {items.length === 0 ? (
-        <div className="text-center text-gray-400 text-sm py-6 border-2 border-dashed border-gray-300 rounded">
+        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded">
           {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
         </div>
       ) : (
@@ -771,11 +771,11 @@ export default function Column({
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`flex-grow min-w-[1200px] max-w-[1200px] min-h-[600px] overflow-y-auto p-6 bg-white rounded-lg border-2 shadow-lg transition-all ${borderColor} ${isOver ? "ring-2 ring-blue-400" : ""}`}
+            className={`flex-grow min-w-[1200px] max-w-[1200px] min-h-[600px] overflow-y-auto p-6 bg-white dark:bg-gray-800 rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
             {items.length === 0 ? (
-              <div className="p-8 text-center text-gray-500 border-dashed border-2 border-blue-300 rounded-lg">
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 rounded-lg">
                 {t('structure.noEntries')}
               </div>
             ) : (
@@ -864,8 +864,8 @@ export default function Column({
 
         {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
         {isDiffModeActive && hasHighlightedItems && (
-          <div className="px-3 py-2 bg-gray-100 border-t border-gray-200 flex justify-between items-center">
-            <span className="text-xs font-medium text-gray-600">
+          <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
               {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
             </span>
             <div className="flex space-x-2">
@@ -913,7 +913,7 @@ export default function Column({
       <SortableContext items={items} strategy={sortingStrategy}>
         <div
           ref={setNodeRef}
-          className={`min-h-[300px] p-4 bg-white rounded-b-md border-2 shadow-lg transition-all ${borderColor} ${isOver ? "ring-2 ring-blue-400" : ""}`}
+          className={`min-h-[300px] p-4 bg-white dark:bg-gray-800 rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
           style={headerColor ? { borderColor: headerColor } : {}}
         >
           {/* Show outline points with grouped thoughts */}
@@ -940,10 +940,10 @@ export default function Column({
               {/* Show unassigned thoughts section if there are any */}
               {unassignedItemsForDisplay.length > 0 && (
                 <div className="mt-8">
-                  <div className="border-t border-gray-200 pt-6">
-                    <h4 className="text-sm font-medium text-gray-600 mb-4">
-                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
-                    </h4>
+                                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                  <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                    {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                  </h4>
                     <UnassignedThoughtsDropTarget
                       items={unassignedItemsForDisplay}
                       containerId={id}
@@ -962,10 +962,10 @@ export default function Column({
               {/* Always show drop target for unassigned thoughts, even if empty */}
               {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
                 <div className="mt-8">
-                  <div className="border-t border-gray-200 pt-6">
-                    <h4 className="text-sm font-medium text-gray-600 mb-4">
-                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
-                    </h4>
+                                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                  <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                    {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                  </h4>
                     <UnassignedThoughtsDropTarget
                       items={[]}
                       containerId={id}

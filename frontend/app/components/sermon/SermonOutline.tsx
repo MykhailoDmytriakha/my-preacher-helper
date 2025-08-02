@@ -363,11 +363,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     const totalThoughts = getTotalThoughtsForSection(sectionType);
 
     return (
-      <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white rounded-lg shadow-sm border ${colors.border}`}>
+      <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border ${colors.border}`}>
         {/* Section Header */}
         <button 
           onClick={() => toggleSection(sectionType)}
-          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 ${colors.headerBg} rounded-t-lg ${colors.headerHover} focus:outline-none focus:ring-2 focus:ring-opacity-50 focus:ring-blue-400`}
+          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${colors.headerHover} focus:outline-none focus:ring-2 focus:ring-opacity-50 focus:ring-blue-400`}
         >
           <div className="flex items-center">
             {sectionTitles[sectionType]}
@@ -380,12 +380,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
               </span>
             )}
           </div>
-          <ChevronDownIcon className={`h-5 w-5 text-gray-500 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDownIcon className={`h-5 w-5 text-gray-500 dark:text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
 
         {/* Section Content (Collapsible) */}
         {isExpanded && (
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
             <Droppable droppableId={sectionType} key={sectionType}>
               {(provided: DroppableProvided) => (
                 <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
@@ -396,14 +396,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                           ref={providedDraggable.innerRef}
                           {...providedDraggable.draggableProps}
                           {...providedDraggable.dragHandleProps}
-                          className={`flex items-center group p-2 rounded transition-colors ${snapshot.isDragging ? `${colors.dragBg} shadow-md` : 'hover:bg-gray-50'}`}
+                          className={`flex items-center group p-2 rounded transition-colors ${snapshot.isDragging ? `${colors.dragBg} shadow-md` : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                           style={{
                             ...providedDraggable.draggableProps.style,
                             // Add any custom styles for dragging if needed
                           }}
                         >
                           {/* Drag Handle */}
-                          <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600">
+                          <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
                             <Bars3Icon className="h-5 w-5" />
                           </div>
                           {/* Point Text or Edit Input */}
@@ -414,32 +414,32 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                                 value={editingText}
                                 onChange={(e) => setEditingText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                                className="flex-grow p-1 text-sm bg-gray-100 text-gray-800 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 placeholder={t('structure.editPointPlaceholder')}
                                 autoFocus
                               />
-                              <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-600 hover:text-green-800">
+                              <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">
                                 <CheckIcon className="h-5 w-5" />
                               </button>
-                              <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-600 hover:text-red-800">
+                              <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
                                 <XMarkIcon className="h-5 w-5" />
                               </button>
                             </div>
                           ) : (
                             <>
-                              <span className="text-sm text-gray-800 flex-grow mr-2">{point.text}</span>
+                              <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
                                {/* Thought count badge */}
                               {getThoughtCount(point.id) > 0 && (
-                                <span className="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full mr-2">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full mr-2">
                                   {getThoughtCount(point.id)}
                                 </span>
                               )}
                               {/* Action Buttons (Edit/Delete) - appear on hover */}
                               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-gray-500 hover:text-indigo-600">
+                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400">
                                   <PencilIcon className="h-4 w-4" />
                                 </button>
-                                <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} className="p-1 text-gray-500 hover:text-red-600">
+                                <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} className="p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400">
                                   <TrashIcon className="h-4 w-4" />
                                 </button>
                               </div>
@@ -455,7 +455,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
             </Droppable>
 
             {/* Add New Point Section */}
-            <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
                {addingNewToSection === sectionType ? (
                  <div ref={addInputRef} className="flex items-center space-x-1">
                   <input
@@ -464,13 +464,13 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                     onChange={(e) => setNewPointTexts({...newPointTexts, [sectionType]: e.target.value})}
                     onKeyDown={(e) => { if (e.key === 'Enter') addPoint(sectionType); if (e.key === 'Escape') handleCancelAdd(sectionType); }}
                     placeholder={t('structure.addPointPlaceholder')}
-                    className="flex-grow p-1 text-sm bg-gray-100 text-gray-800 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500"
+                    className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500 dark:placeholder-gray-400"
                     autoFocus
                   />
-                  <button aria-label={t('common.save')} onClick={() => addPoint(sectionType)} className="p-1 text-green-600 hover:text-green-800">
+                  <button aria-label={t('common.save')} onClick={() => addPoint(sectionType)} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">
                     <CheckIcon className="h-5 w-5" />
                   </button>
-                  <button aria-label={t('common.cancel')} onClick={() => handleCancelAdd(sectionType)} className="p-1 text-red-600 hover:text-red-800">
+                  <button aria-label={t('common.cancel')} onClick={() => handleCancelAdd(sectionType)} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -478,7 +478,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                   <button 
                     onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
                     aria-label={t('structure.addPointButton')}
-                    className="flex items-center justify-center w-full p-2 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded border border-dashed border-gray-300 hover:border-indigo-400 transition-colors"
+                    className="flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded border border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
                   >
                     <PlusIcon className="h-4 w-4 mr-1" />
                     {t('structure.addPointButton')}

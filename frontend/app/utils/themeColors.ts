@@ -50,7 +50,9 @@ export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclu
     border: `${colors.border} dark:${colors.darkBorder}`,
     dragBg: `${colors.bg} dark:${colors.darkBg}`,
     // Construct badge classes carefully
-    badge: `bg-${colors.bg.split('-')[1]}-100 ${colors.text} dark:bg-${colors.darkBg.split('-')[1].split('/')[0]}-800 dark:${colors.darkText}`
+    badge: `${colors.bg.split('-')[1] === 'blue' ? 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200' : 
+            colors.bg.split('-')[1] === 'purple' ? 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200' : 
+            'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'}`
   };
 }
 
