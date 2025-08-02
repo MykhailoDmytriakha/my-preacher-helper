@@ -6,11 +6,14 @@ import "@locales/i18n";
 import { 
   generateTopics, 
   generateRelatedVerses, 
-  generatePossibleDirections 
+  generatePossibleDirections,
+  generateThoughtsBasedPlan
 } from "@/services/insights.service";
+import { generateSermonPlan } from "@/services/plan.service";
 import { getSermonById } from "@/services/sermon.service";
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
-import { Sermon, Insights } from '@/models/models';
+import { Sermon, Insights, Plan } from '@/models/models';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
 interface KnowledgeSectionProps {
   sermon: Sermon;
@@ -34,16 +37,19 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   
   // Keep local insights state for immediate UI updates
   const [localInsights, setLocalInsights] = useState<Insights | undefined>(sermon.insights);
+  // Keep local plan state for immediate UI updates
+  const [localPlan, setLocalPlan] = useState<Plan | undefined>(sermon.plan);
   
   // Loading states
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [isGeneratingVerses, setIsGeneratingVerses] = useState(false);
   const [isGeneratingDirections, setIsGeneratingDirections] = useState(false);
   
   // Helper to check if any generation is in progress
   const isAnyGenerating = () => {
-    return isGeneratingAll || isGeneratingTopics || isGeneratingVerses || isGeneratingDirections;
+    return isGeneratingAll || isGeneratingTopics || isGeneratingPlan || isGeneratingVerses || isGeneratingDirections;
   };
   
   // Data extraction functions
@@ -62,6 +68,28 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     return localInsights.possibleDirections;
   };
 
+  // Get plan sections
+  const getPlan = () => {
+    return localPlan;
+  };
+
+  // Get thoughts plan from insights or sermon plan
+  const getThoughtsPlan = () => {
+    // First try to get from insights.thoughtsPlan
+    if (localInsights?.thoughtsPlan) {
+      return localInsights.thoughtsPlan;
+    }
+    // If not available in insights, convert sermon.plan to ThoughtsPlan format
+    if (localPlan) {
+      return {
+        introduction: localPlan.introduction.outline,
+        main: localPlan.main.outline,
+        conclusion: localPlan.conclusion.outline
+      };
+    }
+    return undefined;
+  };
+
   // Update sermon with new insights
   const updateSermonWithInsights = (insights: Insights) => {
     // Update local state immediately for fast UI refresh
@@ -75,6 +103,18 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     // No need for getSermonById anymore as we're already updating our local state
   };
 
+  // Update sermon with new plan
+  const updateSermonWithPlan = (plan: Plan) => {
+    // Update local state immediately for fast UI refresh
+    setLocalPlan(plan);
+    
+    // Then update parent if needed
+    if (updateSermon) {
+      const updatedSermon = { ...sermon, plan };
+      updateSermon(updatedSermon);
+    }
+  };
+
   // Generic function to handle section regeneration
   const regenerateSection = async (
     sectionType: InsightSectionType, 
@@ -83,7 +123,11 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setVisibilityState: React.Dispatch<React.SetStateAction<boolean>>
   ) => {
     if (!sermon?.id) {
-      console.error(`Cannot generate ${sectionType}: sermon or sermon.id is missing`);
+      if (sectionType === 'topics') {
+        console.error("Cannot generate topics: sermon or sermon.id is missing");
+      } else {
+        console.error(`Cannot generate ${sectionType}: sermon or sermon.id is missing`);
+      }
       return;
     }
 
@@ -114,6 +158,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   
   // Generate all insights at once
   const handleGenerateAllInsights = async () => {
+    console.log('🎯 START handleGenerateAllInsights');
+    
     if (!sermon?.id) {
       console.error("Cannot generate insights: sermon or sermon.id is missing");
       return;
@@ -123,6 +169,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setSuccessNotification(false);
     
     try {
+      console.log('📝 Creating empty insights object');
       // Create empty insights object to start with
       const insights: Insights = {
         topics: [],
@@ -130,22 +177,36 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         possibleDirections: []
       };
       
+      console.log('🎯 Starting topics generation...');
       // Generate all sections sequentially
       const topicsResult = await generateTopics(sermon.id);
       if (topicsResult?.topics) {
         insights.topics = topicsResult.topics;
+        console.log('✅ Topics generated:', topicsResult.topics.length);
       }
       
+      console.log('🎯 Starting verses generation...');
       const versesResult = await generateRelatedVerses(sermon.id);
       if (versesResult?.relatedVerses) {
         insights.relatedVerses = versesResult.relatedVerses;
+        console.log('✅ Verses generated:', versesResult.relatedVerses.length);
       }
       
+      console.log('🎯 Starting directions generation...');
       const directionsResult = await generatePossibleDirections(sermon.id);
       if (directionsResult?.possibleDirections) {
         insights.possibleDirections = directionsResult.possibleDirections;
+        console.log('✅ Directions generated:', directionsResult.possibleDirections.length);
+      }
+
+      console.log('🎯 Starting thoughts plan generation...');
+      // Generate thoughts-based plan
+      const thoughtsPlanResult = await generateThoughtsBasedPlan(sermon.id);
+      if (thoughtsPlanResult?.thoughtsPlan) {
+        insights.thoughtsPlan = thoughtsPlanResult.thoughtsPlan;
       }
       
+
       // Update the sermon with all new insights
       updateSermonWithInsights(insights);
       
@@ -158,14 +219,41 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification(true);
       setTimeout(() => setSuccessNotification(false), 3000);
       
+      console.log('🎉 COMPLETED handleGenerateAllInsights successfully');
     } catch (error) {
-      console.error("Failed to generate insights:", error);
+      console.error("❌ FAILED to generate insights:", error);
     } finally {
       setIsGeneratingAll(false);
       setExpanded(true);
     }
   };
   
+  // Generate plan for sermon
+  const handleGeneratePlan = async () => {
+    if (!sermon?.id) {
+      console.error("Cannot generate plan: sermon or sermon.id is missing");
+      return;
+    }
+
+    setIsGeneratingPlan(true);
+    setSuccessNotification(false);
+    
+    try {
+      const plan = await generateSermonPlan(sermon.id);
+      if (plan) {
+        updateSermonWithPlan(plan);
+        
+        // Show success notification
+        setSuccessNotification(true);
+        setTimeout(() => setSuccessNotification(false), 3000);
+      }
+    } catch (error) {
+      console.error("Failed to generate plan:", error);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
   // Regenerate individual sections using the generic function
   const handleRegenerateTopics = () => 
     regenerateSection('topics', generateTopics, setIsGeneratingTopics, setShowAllTopics);
@@ -187,6 +275,11 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   useEffect(() => {
     setLocalInsights(sermon.insights);
   }, [sermon.insights]);
+
+  // Keep localPlan in sync with sermon.plan when it changes from props
+  useEffect(() => {
+    setLocalPlan(sermon.plan);
+  }, [sermon.plan]);
   
   useEffect(() => {
     // Reset states when sermon changes
@@ -201,11 +294,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setTimeout(() => setLoading(false), 500);
   }, [sermon]);
 
-  // Data for rendering
-  const hasInsights = localInsights && 
-                     Array.isArray(localInsights.topics) && 
-                     localInsights.topics.length > 0;
-  
   // Check if sermon has enough thoughts to generate insights
   const THOUGHTS_THRESHOLD = 10;
   const thoughtsCount = sermon.thoughts?.length || 0;
@@ -215,6 +303,26 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const topics = extractTopics();
   const relatedVerses = getRelatedVerses();
   const possibleDirections = getPossibleDirections();
+  const thoughtsPlan = getThoughtsPlan();
+  
+  // Debug logging (commented out for production)
+  // console.log('🔍 Debug Plan:', {
+  //   localInsights,
+  //   thoughtsPlan,
+  //   'thoughtsPlan.introduction': thoughtsPlan?.introduction,
+  //   'thoughtsPlan.main': thoughtsPlan?.main,
+  //   'thoughtsPlan.conclusion': thoughtsPlan?.conclusion
+  // });
+  
+  const hasThoughtsPlan = thoughtsPlan && (thoughtsPlan.introduction || thoughtsPlan.main || thoughtsPlan.conclusion);
+  
+  // Data for rendering
+  const hasInsights = (localInsights && 
+                     Array.isArray(localInsights.topics) && 
+                     localInsights.topics.length > 0) || hasThoughtsPlan;
+  
+  // Check if we have any data to show
+  const hasAnyData = topics.length > 0 || relatedVerses.length > 0 || possibleDirections.length > 0 || hasThoughtsPlan;
 
   // Reusable components
   const LoadingSpinner = () => (
@@ -246,29 +354,26 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         </div>
       )}
       
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2 flex-shrink-0 max-w-[70%]">
+      <div className="flex justify-between items-center mb-4 gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
           <h2 className="text-xl font-semibold break-words">{t('knowledge.title')}</h2>
         </div>
-        {hasInsights ? (
-          <button 
-            onClick={() => setExpanded(!expanded)}
-            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 ml-4 flex-shrink-0"
-            aria-expanded={expanded}
-            aria-label={expanded ? t('knowledge.showLess') : t('knowledge.showMore')}
-          >
-            <ChevronIcon className={`transform ${expanded ? 'rotate-180' : ''}`} />
-          </button>
-        ) : null}
+        <button 
+          onClick={() => setExpanded(!expanded)}
+          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+          aria-label={expanded ? t('knowledge.showLess') : t('knowledge.showMore')}
+        >
+          <ChevronIcon className={`transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
       </div>
       
       {!expanded ? (
         <p className="text-gray-600 dark:text-gray-400 text-sm">
-          {hasInsights ? t('knowledge.clickToExpand') : null}
+          {t('knowledge.clickToExpand')}
         </p>
       ) : null}
       
-      {hasInsights ? (
+      {expanded ? (
         <div className="space-y-6">
           {/* Topics section */}
           <div>
@@ -296,14 +401,11 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="space-y-2 text-gray-600 dark:text-gray-300 mt-2">
               {showAllTopics ? topics.map((topic, index) => (
-                <span 
-                  key={index}
-                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-sm rounded-md"
-                >
-                  {topic}
-                </span>
+                <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div className="font-medium">{topic}</div>
+                </div>
               )) : null}
             </div>
           </div>
@@ -379,41 +481,97 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               )) : null}
             </div>
           </div>
+          
+          {/* Plan section */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="font-medium text-gray-900 dark:text-gray-100">{t('knowledge.suggestedPlan')}</h3>
+                <button 
+                  onClick={handleGeneratePlan}
+                  disabled={isAnyGenerating()}
+                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
+                  aria-label={t('knowledge.refresh')}
+                  title={t('knowledge.refresh')}
+                >
+                  {isGeneratingPlan ? <LoadingSpinner /> : (
+                    <RefreshIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3 mt-2">
+              {hasThoughtsPlan ? (
+                <>
+                  {thoughtsPlan?.introduction && (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                      <h4 className="font-medium text-green-800 dark:text-green-200 mb-1">{t('knowledge.planIntroduction')}</h4>
+                      <div className="text-green-700 dark:text-green-300 text-sm">
+                        <MarkdownRenderer markdown={thoughtsPlan.introduction} section="introduction" />
+                      </div>
+                    </div>
+                  )}
+                  {thoughtsPlan?.main && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">{t('knowledge.planMain')}</h4>
+                      <div className="text-blue-700 dark:text-blue-300 text-sm">
+                        <MarkdownRenderer markdown={thoughtsPlan.main} section="main" />
+                      </div>
+                    </div>
+                  )}
+                  {thoughtsPlan?.conclusion && (
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+                      <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-1">{t('knowledge.planConclusion')}</h4>
+                      <div className="text-purple-700 dark:text-purple-300 text-sm">
+                        <MarkdownRenderer markdown={thoughtsPlan.conclusion} section="conclusion" />
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500 dark:text-gray-400 text-sm">{t('knowledge.noPlan')}</p>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="mt-4 text-center">
-          {hasEnoughThoughts ? (
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              {t('knowledge.noInsights')}
-            </p>
+          {!hasAnyData ? (
+            <>
+              {hasEnoughThoughts ? (
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  {t('knowledge.noInsights')}
+                </p>
+              ) : null}
+              
+              {!hasEnoughThoughts ? (
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md">
+                  <p>
+                    {t('knowledge.insightsThreshold', {
+                      count: remainingThoughts,
+                      thoughtsCount: thoughtsCount,
+                      threshold: THOUGHTS_THRESHOLD,
+                      defaultValue: `You need {{count}} more thoughts to unlock insights. Currently: ${thoughtsCount}/${THOUGHTS_THRESHOLD}`
+                    })}
+                  </p>
+                </div>
+              ) : null}
+              
+              <button
+                className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${
+                  hasEnoughThoughts
+                    ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                }`}
+                onClick={hasEnoughThoughts ? handleGenerateAllInsights : undefined}
+                disabled={!hasEnoughThoughts || isAnyGenerating()}
+                data-testid="generate-insights-button"
+              >
+                {isGeneratingAll ? <LoadingSpinner /> : null}
+                {t('knowledge.generate')}
+              </button>
+            </>
           ) : null}
-          
-          {!hasEnoughThoughts ? (
-            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md">
-              <p>
-                {t('knowledge.insightsThreshold', {
-                  count: remainingThoughts,
-                  thoughtsCount: thoughtsCount,
-                  threshold: THOUGHTS_THRESHOLD,
-                  defaultValue: `You need {{count}} more thoughts to unlock insights. Currently: ${thoughtsCount}/${THOUGHTS_THRESHOLD}`
-                })}
-              </p>
-            </div>
-          ) : null}
-          
-          <button
-            className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${
-              hasEnoughThoughts
-                ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-            }`}
-            onClick={hasEnoughThoughts ? handleGenerateAllInsights : undefined}
-            disabled={!hasEnoughThoughts || isAnyGenerating()}
-            data-testid="generate-insights-button"
-          >
-            {isGeneratingAll ? <LoadingSpinner /> : null}
-            {t('knowledge.generate')}
-          </button>
         </div>
       )}
     </div>

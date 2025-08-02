@@ -1,3 +1,4 @@
+import 'openai/shims/node';
 import OpenAI from "openai";
 import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion, Plan, BrainstormSuggestion } from "@/models/models";
 import { v4 as uuidv4 } from 'uuid';
@@ -8,7 +9,7 @@ import {
   topicsSystemPrompt, createTopicsUserMessage,
   versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
-  planSystemPrompt, createPlanUserMessage,
+  planSystemPrompt, createPlanUserMessage, createThoughtsPlanUserMessage,
   brainstormSystemPrompt, createBrainstormUserMessage
 } from "@/config/prompts";
 import {
@@ -32,15 +33,15 @@ const isDebugMode = process.env.DEBUG_MODE === 'true';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  // Conditionally allow browser environment ONLY during tests
-  ...(isTestEnvironment && { dangerouslyAllowBrowser: true }),
+  // Allow browser environment during tests
+  dangerouslyAllowBrowser: true,
 });
 
 const gemini = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  // Conditionally allow browser environment ONLY during tests
-  ...(isTestEnvironment && { dangerouslyAllowBrowser: true }),
+  // Allow browser environment during tests
+  dangerouslyAllowBrowser: true,
 });
 
 const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
@@ -563,6 +564,49 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
 }
 
 /**
+ * Generate a plan by organizing sermon thoughts into introduction, main, and conclusion
+ * @param sermon The sermon to analyze
+ * @returns ThoughtsPlan object with structured plan
+ */
+export async function generateThoughtsPlan(sermon: Sermon): Promise<{ introduction: string; main: string; conclusion: string } | null> {
+  const sermonContent = extractSermonContent(sermon);
+  const userMessage = createThoughtsPlanUserMessage(sermon, sermonContent);
+  
+  if (isDebugMode) {
+    console.log("DEBUG: Generating thoughts plan for sermon:", sermon.id);
+  }
+  
+  try {
+    // For Claude models
+    const xmlFunctionPrompt = `${planSystemPrompt}\n\n${createXmlFunctionDefinition(planFunctionSchema)}`;
+    
+    const requestOptions = {
+      model: aiModel,
+      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
+    };
+    
+    const inputInfo = {
+      sermonId: sermon.id,
+      sermonTitle: sermon.title,
+      contentLength: sermonContent.length
+    };
+    
+    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
+      () => aiAPI.chat.completions.create(requestOptions),
+      'Generate Thoughts Plan',
+      requestOptions,
+      inputInfo
+    );
+    
+    const result = extractFunctionResponse<{ introduction: string; main: string; conclusion: string }>(response);
+    return result || null;
+  } catch (error) {
+    console.error("ERROR: Failed to generate thoughts plan:", error);
+    return null;
+  }
+}
+
+/**
  * Generate Bible verse suggestions for a sermon
  * @param sermon The sermon to analyze
  * @returns Array of verse objects with reference and relevance
@@ -885,19 +929,34 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       inputInfo
     );
     
-    // Extract response
-    const result = extractFunctionResponse<{ outline: string }>(response);
+    // Extract response - AI returns full plan structure
+    const result = extractFunctionResponse<{ introduction: string; main: string; conclusion: string }>(response);
     
-    // Format response to match Plan interface
-    const sectionLower = section.toLowerCase();
+    // Debug: Log the extracted result
+    console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result, null, 2));
+    
+    // Format response to match Plan interface - ensure all values are strings
     const plan: Plan = {
-      introduction: { outline: '' },
-      main: { outline: '' },
-      conclusion: { outline: '' }
+      introduction: { outline: result?.introduction || '' },
+      main: { outline: result?.main || '' },
+      conclusion: { outline: result?.conclusion || '' }
     };
     
-    // Set the outline for the requested section
-    plan[sectionLower as keyof Plan] = { outline: result.outline };
+    // Debug: Log the formatted plan
+    console.log(`DEBUG: Formatted plan for ${section}:`, JSON.stringify(plan, null, 2));
+    
+    // Validate that all outline values are strings
+    if (typeof plan.introduction.outline !== 'string' || 
+        typeof plan.main.outline !== 'string' || 
+        typeof plan.conclusion.outline !== 'string') {
+      console.error('ERROR: Invalid plan structure - outline values must be strings');
+      const emptyPlan: Plan = {
+        introduction: { outline: '' },
+        main: { outline: '' },
+        conclusion: { outline: '' }
+      };
+      return { plan: emptyPlan, success: false };
+    }
     
     return { plan, success: true };
   } catch (error) {

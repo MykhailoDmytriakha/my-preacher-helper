@@ -108,9 +108,12 @@ describe('TagsSection', () => {
       expect(getTags).toHaveBeenCalledWith(mockUser.uid);
     });
 
-    // Check that both lists are rendered by the mock component
-    expect(screen.getByTestId('tag-list-required')).toBeInTheDocument();
-    expect(screen.getByTestId('tag-list-editable')).toBeInTheDocument();
+    // Wait for the component to update with the fetched data
+    await waitFor(() => {
+      expect(screen.getByTestId('tag-list-required')).toBeInTheDocument();
+      expect(screen.getByTestId('tag-list-editable')).toBeInTheDocument();
+    });
+
     // Check content based on mock list rendering
     expect(screen.getByTestId('tag-list-required')).toHaveTextContent(`Tags: ${mockRequiredTags.length}`);
     expect(screen.getByTestId('tag-list-editable')).toHaveTextContent(`Tags: ${mockCustomTags.length}`);

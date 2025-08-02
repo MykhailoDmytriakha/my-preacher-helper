@@ -84,6 +84,26 @@ export class SermonsRepository {
 
   async updateSermonPlan(sermonId: string, plan: any): Promise<any> {
     console.log(`Updating sermon plan for sermon ${sermonId}`);
+    console.log(`Plan data to update:`, JSON.stringify(plan, null, 2));
+    
+    // Validate plan structure before updating
+    if (!plan || typeof plan !== 'object') {
+      console.error('ERROR: Invalid plan data - plan is not an object');
+      throw new Error('Invalid plan data');
+    }
+    
+    if (!plan.introduction || !plan.main || !plan.conclusion) {
+      console.error('ERROR: Invalid plan structure - missing required sections');
+      throw new Error('Invalid plan structure');
+    }
+    
+    if (typeof plan.introduction.outline !== 'string' || 
+        typeof plan.main.outline !== 'string' || 
+        typeof plan.conclusion.outline !== 'string') {
+      console.error('ERROR: Invalid plan structure - outline values must be strings');
+      throw new Error('Invalid plan structure - outline values must be strings');
+    }
+    
     try {
       const docRef = adminDb.collection("sermons").doc(sermonId);
       const docSnap = await docRef.get();

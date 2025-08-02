@@ -42,10 +42,17 @@ export interface BrainstormSuggestion {
   dimensions?: string[];
 }
 
+export interface ThoughtsPlan {
+  introduction: string;
+  main: string; 
+  conclusion: string;
+}
+
 export interface Insights {
   topics: string[];
   relatedVerses: VerseWithRelevance[];
   possibleDirections: DirectionSuggestion[];
+  thoughtsPlan?: ThoughtsPlan;
 }
 
 export interface VerseWithRelevance {

@@ -99,4 +99,29 @@ export const generatePossibleDirections = async (sermonId: string): Promise<Insi
     console.error('generatePossibleDirections: Error generating possible directions:', error);
     return null;
   }
+};
+
+/**
+ * Generates a thoughts plan for a sermon by calling the API
+ * @param sermonId ID of the sermon to generate thoughts plan for
+ * @returns The updated insights object or null if failed
+ */
+export const generateThoughtsBasedPlan = async (sermonId: string): Promise<Insights | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/insights/plan?sermonId=${sermonId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    if (!response.ok) {
+      console.error(`generateThoughtsBasedPlan: Response not ok for sermon ${sermonId}, status: ${response.status}`);
+      throw new Error('Failed to generate thoughts plan');
+    }
+    
+    const data = await response.json();
+    return data.insights as Insights;
+  } catch (error) {
+    console.error('generateThoughtsBasedPlan: Error generating thoughts plan:', error);
+    return null;
+  }
 }; 

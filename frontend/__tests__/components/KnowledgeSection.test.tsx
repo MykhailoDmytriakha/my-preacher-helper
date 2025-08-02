@@ -1,9 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion } from '@/models/models';
+import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion, Plan, ThoughtsPlan } from '@/models/models';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import * as insightsService from '@/services/insights.service';
+import * as planService from '@/services/plan.service';
 
 // Extend global Window interface to include our test flag
 declare global {
@@ -16,6 +17,13 @@ jest.mock('@/services/insights.service', () => ({
   generateTopics: jest.fn(),
   generateRelatedVerses: jest.fn(),
   generatePossibleDirections: jest.fn(),
+  generateThoughtsBasedPlan: jest.fn(),
+}));
+
+// Mock the plan service
+jest.mock('@/services/plan.service', () => ({
+  generateSermonPlan: jest.fn(),
+  getSermonPlan: jest.fn(),
 }));
 
 // Mock the translations
@@ -27,6 +35,13 @@ jest.mock('react-i18next', () => ({
         'knowledge.showMore': 'Show more',
         'knowledge.showLess': 'Show less',
         'knowledge.coveredTopics': 'Covered Topics',
+        'knowledge.suggestedPlan': 'Suggested Plan',
+        'knowledge.planIntroduction': 'Introduction',
+        'knowledge.planMain': 'Main Part',
+        'knowledge.planConclusion': 'Conclusion',
+        'knowledge.noPlan': 'No plan available yet.',
+        'knowledge.generatePlan': 'Generate Plan',
+        'knowledge.planGenerated': 'Plan generated!',
         'knowledge.relatedVerses': 'Related Verses',
         'knowledge.possibleDirections': 'Possible Directions',
         'knowledge.showAll': 'Show all',
@@ -76,10 +91,47 @@ describe('KnowledgeSection Component', () => {
       { area: 'Grace', suggestion: 'Explain the concept of grace' }
     ]
   };
+
+  const mockPlan: Plan = {
+    introduction: {
+      outline: 'Welcome the congregation and introduce the topic of God\'s love'
+    },
+    main: {
+      outline: 'Explore the depths of God\'s love through scripture and personal testimonies'
+    },
+    conclusion: {
+      outline: 'Call to action: How will you respond to God\'s love today?'
+    }
+  };
+
+  const mockThoughtsPlan: ThoughtsPlan = {
+    introduction: 'Welcome the congregation and introduce the topic of God\'s love',
+    main: 'Explore the depths of God\'s love through scripture and personal testimonies',
+    conclusion: 'Call to action: How will you respond to God\'s love today?'
+  };
   
   const mockSermonWithInsights: Sermon = {
     ...mockSermonWithoutInsights,
     insights: mockInsights
+  };
+
+  const mockSermonWithPlan: Sermon = {
+    ...mockSermonWithoutInsights,
+    insights: {
+      topics: ['Faith', 'Love', 'Redemption'],
+      relatedVerses: [],
+      possibleDirections: [],
+      thoughtsPlan: mockThoughtsPlan
+    }
+  };
+
+  const mockSermonWithInsightsAndPlan: Sermon = {
+    ...mockSermonWithoutInsights,
+    insights: {
+      ...mockInsights,
+      thoughtsPlan: mockThoughtsPlan
+    },
+    plan: mockPlan
   };
 
   beforeEach(() => {
@@ -90,6 +142,10 @@ describe('KnowledgeSection Component', () => {
     (insightsService.generateTopics as jest.Mock).mockResolvedValue({
       ...mockInsights,
       topics: ['New Faith', 'New Love', 'New Redemption']
+    });
+    (insightsService.generateThoughtsBasedPlan as jest.Mock).mockResolvedValue({
+      ...mockInsights,
+      thoughtsPlan: mockThoughtsPlan
     });
     
     (insightsService.generateRelatedVerses as jest.Mock).mockResolvedValue({
@@ -147,7 +203,7 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('expands and collapses when the button is clicked', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(<KnowledgeSection sermon={mockSermonWithInsightsAndPlan} updateSermon={mockUpdateSermon} />);
     
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -163,7 +219,7 @@ describe('KnowledgeSection Component', () => {
     });
     
     // Should show sections when expanded
-    expect(screen.getByText('Covered Topics')).toBeInTheDocument();
+    expect(screen.getByText('Suggested Plan')).toBeInTheDocument();
     expect(screen.getByText('Related Verses')).toBeInTheDocument();
     expect(screen.getByText('Possible Directions')).toBeInTheDocument();
     
@@ -223,8 +279,8 @@ describe('KnowledgeSection Component', () => {
     expect(mockUpdateSermon).toHaveBeenCalled();
   });
 
-  it('shows and hides topics when toggle is clicked', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+  it('shows plan sections when sermon has plan', async () => {
+    render(<KnowledgeSection sermon={mockSermonWithPlan} updateSermon={mockUpdateSermon} />);
     
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -236,28 +292,45 @@ describe('KnowledgeSection Component', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Topics should be visible by default
-    expect(screen.getByText('Faith')).toBeInTheDocument();
-    expect(screen.getByText('Love')).toBeInTheDocument();
-    expect(screen.getByText('Redemption')).toBeInTheDocument();
+    // Plan sections should be visible
+    expect(screen.getByText('Introduction')).toBeInTheDocument();
+    expect(screen.getByText('Main Part')).toBeInTheDocument();
+    expect(screen.getByText('Conclusion')).toBeInTheDocument();
     
-    // Get all Hide all buttons and click the first one (for topics) - wrap in act()
+    // Plan content should be visible
+    expect(screen.getByText('Welcome the congregation and introduce the topic of God\'s love')).toBeInTheDocument();
+    expect(screen.getByText('Explore the depths of God\'s love through scripture and personal testimonies')).toBeInTheDocument();
+    expect(screen.getByText('Call to action: How will you respond to God\'s love today?')).toBeInTheDocument();
+  });
+
+  it('generates plan when the generate button is clicked', async () => {
+    // Mock the generateSermonPlan function
+    (planService.generateSermonPlan as jest.Mock).mockResolvedValue(mockPlan);
+
+    render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
+    
+    // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
-      const hideButtons = screen.getAllByText('Hide all');
-      fireEvent.click(hideButtons[0]);
+      jest.advanceTimersByTime(600);
     });
     
-    // Topics should be hidden
-    expect(screen.queryByText('Faith')).not.toBeInTheDocument();
-    
-    // Get all Show all buttons and click the first one - wrap in act()
+    // Expand the section - wrap in act()
     await act(async () => {
-      const showButtons = screen.getAllByText('Show all');
-      fireEvent.click(showButtons[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
     
-    // Topics should be visible again
-    expect(screen.getByText('Faith')).toBeInTheDocument();
+    // Click the plan generate button - wrap in act()
+    await act(async () => {
+      const refreshButtons = screen.getAllByLabelText('Refresh');
+      // Find the plan refresh button (fourth one in the new layout)
+      fireEvent.click(refreshButtons[3]);
+    });
+    
+    // Should have called generateSermonPlan
+    expect(planService.generateSermonPlan).toHaveBeenCalledWith('sermon1');
+    
+    // Should have called updateSermon
+    expect(mockUpdateSermon).toHaveBeenCalled();
   });
 
   it('regenerates topics when the refresh button is clicked', async () => {
@@ -685,5 +758,34 @@ describe('KnowledgeSection Component', () => {
       console.error = originalConsoleError;
       global.__CONSOLE_OVERRIDDEN_BY_TEST__ = false;
     }
+  });
+
+  it('does not show generate button when data already exists', async () => {
+    const sermonWithData = {
+      ...mockSermonWithInsights,
+      insights: mockInsights,
+      plan: mockPlan
+    };
+    
+    render(<KnowledgeSection sermon={sermonWithData} updateSermon={mockUpdateSermon} />);
+    
+    // Wait for loading state to finish
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    
+    // Expand the section
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+    
+    // Verify that the generate button is NOT present
+    expect(screen.queryByRole('button', { name: 'Generate Insights' })).not.toBeInTheDocument();
+    
+    // Verify that the data sections are present
+    expect(screen.getByText('Covered Topics')).toBeInTheDocument();
+    expect(screen.getByText('Related Verses')).toBeInTheDocument();
+    expect(screen.getByText('Possible Directions')).toBeInTheDocument();
+    expect(screen.getByText('Suggested Plan')).toBeInTheDocument();
   });
 }); 

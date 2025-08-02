@@ -100,4 +100,41 @@ CRITICAL INSTRUCTION:
     - Make sure all quotes within the Markdown are properly escaped with a backslash (\\")
     - Ensure the entire JSON structure is valid
     - Do not use literal line breaks in the JSON string - use \\n instead`;
+}
+
+/**
+ * Creates a user message for the AI thoughts plan generation function
+ * @param sermon The sermon to generate plan for
+ * @param sermonContent The extracted content from the sermon
+ * @returns A formatted user message string
+ */
+export function createThoughtsPlanUserMessage(
+  sermon: Sermon,
+  sermonContent: string
+): string {
+  return `
+    Analyze the preacher's thoughts and organize them into a suggested sermon plan structure:
+    
+    Sermon Title: ${sermon.title}
+    Scripture Verse: ${sermon.verse}
+    
+    Preacher's Thoughts and Notes:
+    ${sermonContent}
+    
+    Based on these thoughts and themes, please organize them into a suggested sermon plan:
+    
+    INTRODUCTION: Suggest how to structure the introduction based on the themes present. What thoughts/topics would work best to open the sermon and introduce the main theme?
+    
+    MAIN PART: Organize the core thoughts and themes into the main body of the sermon. What are the key points that should be developed?
+    
+    CONCLUSION: Suggest how to conclude the sermon based on the themes present. What thoughts would work best to summarize and call to action?
+    
+    IMPORTANT: 
+    - Use the existing thoughts and themes, don't create entirely new content
+    - Suggest specific themes/topics for each section
+    - Your response should be in the EXACT SAME LANGUAGE as the sermon content
+    - Focus on organizing and structuring the preacher's existing ideas
+    - FORMAT YOUR RESPONSE IN MARKDOWN: Use **bold** for important concepts and key themes, *italic* for verses and quotes
+    - Make the text readable and well-structured with proper Markdown formatting
+  `;
 } 

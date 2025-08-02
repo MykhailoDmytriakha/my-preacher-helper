@@ -25,23 +25,29 @@ export async function GET(
   const section = request.nextUrl.searchParams.get('section');
   const outlinePointId = request.nextUrl.searchParams.get('outlinePointId');
   
+  console.log('GET /api/sermons/:id/plan - section:', section, 'outlinePointId:', outlinePointId);
+  
   // If outlinePointId is provided, generate content for the specific outline point
   if (outlinePointId) {
     return generateOutlinePointContent(id, outlinePointId);
   }
   
-  // If no section is specified, generate plans for all sections
-  if (!section) {
-    return generateFullPlan(id);
-  }
-  
-  // Validate section parameter
-  if (!['introduction', 'main', 'conclusion'].includes(section.toLowerCase())) {
+  // Validate section parameter if provided
+  if (section && !['introduction', 'main', 'conclusion'].includes(section.toLowerCase())) {
+    console.log('Invalid section parameter:', section);
     return NextResponse.json(
       { error: 'Invalid section. Must be one of: introduction, main, conclusion' },
       { status: 400 }
     );
   }
+  
+  // If no section is specified, generate plans for all sections
+  if (!section) {
+    console.log('No section specified, generating full plan');
+    return generateFullPlan(id);
+  }
+  
+  console.log('Section specified:', section, 'generating plan for specific section');
   
   try {
     // Fetch the sermon
@@ -64,6 +70,22 @@ export async function GET(
       );
     }
 
+    // Validate and normalize the plan structure
+    const normalizedPlan = {
+      introduction: { outline: '' },
+      main: { outline: '' },
+      conclusion: { outline: '' }
+    };
+
+    // Update only the section that was generated, ensuring all sections exist
+    if (section.toLowerCase() === 'introduction') {
+      normalizedPlan.introduction = result.plan.introduction || { outline: '' };
+    } else if (section.toLowerCase() === 'main') {
+      normalizedPlan.main = result.plan.main || { outline: '' };
+    } else if (section.toLowerCase() === 'conclusion') {
+      normalizedPlan.conclusion = result.plan.conclusion || { outline: '' };
+    }
+
     // Store the updated plan in the database
     try {
       // Get existing plan or create a new one
@@ -82,11 +104,11 @@ export async function GET(
       
       // Type-safe way to update the plan section
       if (section.toLowerCase() === 'introduction') {
-        updatedPlan.introduction = result.plan.introduction;
+        updatedPlan.introduction = normalizedPlan.introduction;
       } else if (section.toLowerCase() === 'main') {
-        updatedPlan.main = result.plan.main;
+        updatedPlan.main = normalizedPlan.main;
       } else if (section.toLowerCase() === 'conclusion') {
-        updatedPlan.conclusion = result.plan.conclusion;
+        updatedPlan.conclusion = normalizedPlan.conclusion;
       }
 
       // Save to database
@@ -97,7 +119,7 @@ export async function GET(
       // Continue and return the plan even if saving fails
     }
     
-    return NextResponse.json(result.plan);
+    return NextResponse.json(normalizedPlan);
   } catch (error: any) {
     console.error(`Error generating plan for section ${section}:`, error);
     return NextResponse.json(
@@ -131,11 +153,27 @@ async function generateFullPlan(sermonId: string) {
     // Track if any section failed to generate
     let hasFailures = false;
     
+    // Declare result variables to check for incomplete structure
+    let introResult: any = null;
+    let mainResult: any = null;
+    let conclusionResult: any = null;
+    
     // Process each section sequentially with proper error handling
     try {
       console.log("Generating introduction plan...");
-      const introResult = await generatePlanForSection(sermon, 'introduction');
-      fullPlan.introduction = introResult.plan.introduction;
+      introResult = await generatePlanForSection(sermon, 'introduction');
+      console.log("Introduction result:", JSON.stringify(introResult, null, 2));
+      
+      // Validate introduction plan structure
+      if (introResult.plan?.introduction?.outline !== undefined && 
+          introResult.plan.introduction.outline !== null && 
+          typeof introResult.plan.introduction.outline === 'string') {
+        fullPlan.introduction = introResult.plan.introduction;
+      } else {
+        console.error("Invalid introduction plan structure:", introResult.plan);
+        fullPlan.introduction = { outline: '' };
+      }
+      
       fullPlan.sectionStatuses.introduction = introResult.success;
       if (!introResult.success) hasFailures = true;
       console.log(introResult.success ? 
@@ -150,8 +188,19 @@ async function generateFullPlan(sermonId: string) {
     
     try {
       console.log("Generating main plan...");
-      const mainResult = await generatePlanForSection(sermon, 'main');
-      fullPlan.main = mainResult.plan.main;
+      mainResult = await generatePlanForSection(sermon, 'main');
+      console.log("Main result:", JSON.stringify(mainResult, null, 2));
+      
+      // Validate main plan structure
+      if (mainResult.plan?.main?.outline !== undefined && 
+          mainResult.plan.main.outline !== null && 
+          typeof mainResult.plan.main.outline === 'string') {
+        fullPlan.main = mainResult.plan.main;
+      } else {
+        console.error("Invalid main plan structure:", mainResult.plan);
+        fullPlan.main = { outline: '' };
+      }
+      
       fullPlan.sectionStatuses.main = mainResult.success;
       if (!mainResult.success) hasFailures = true;
       console.log(mainResult.success ? 
@@ -166,8 +215,19 @@ async function generateFullPlan(sermonId: string) {
     
     try {
       console.log("Generating conclusion plan...");
-      const conclusionResult = await generatePlanForSection(sermon, 'conclusion');
-      fullPlan.conclusion = conclusionResult.plan.conclusion;
+      conclusionResult = await generatePlanForSection(sermon, 'conclusion');
+      console.log("Conclusion result:", JSON.stringify(conclusionResult, null, 2));
+      
+      // Validate conclusion plan structure
+      if (conclusionResult.plan?.conclusion?.outline !== undefined && 
+          conclusionResult.plan.conclusion.outline !== null && 
+          typeof conclusionResult.plan.conclusion.outline === 'string') {
+        fullPlan.conclusion = conclusionResult.plan.conclusion;
+      } else {
+        console.error("Invalid conclusion plan structure:", conclusionResult.plan);
+        fullPlan.conclusion = { outline: '' };
+      }
+      
       fullPlan.sectionStatuses.conclusion = conclusionResult.success;
       if (!conclusionResult.success) hasFailures = true;
       console.log(conclusionResult.success ? 
@@ -182,10 +242,73 @@ async function generateFullPlan(sermonId: string) {
     
     // Store the full plan in the database, excluding sectionStatuses
     const planToStore: SermonPlan = {
-      introduction: fullPlan.introduction,
-      main: fullPlan.main,
-      conclusion: fullPlan.conclusion
+      introduction: {
+        outline: fullPlan.introduction?.outline || '',
+        ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as any).outlinePoints })
+      },
+      main: {
+        outline: fullPlan.main?.outline || '',
+        ...(fullPlan.main && 'outlinePoints' in fullPlan.main && { outlinePoints: (fullPlan.main as any).outlinePoints })
+      },
+      conclusion: {
+        outline: fullPlan.conclusion?.outline || '',
+        ...(fullPlan.conclusion && 'outlinePoints' in fullPlan.conclusion && { outlinePoints: (fullPlan.conclusion as any).outlinePoints })
+      }
     };
+    
+    // Validate that all outline values are strings before saving
+    if (typeof planToStore.introduction.outline !== 'string' || 
+        typeof planToStore.main.outline !== 'string' || 
+        typeof planToStore.conclusion.outline !== 'string') {
+      console.error('ERROR: Invalid plan structure - outline values must be strings');
+      // Use empty strings as fallback
+      planToStore.introduction.outline = planToStore.introduction.outline || '';
+      planToStore.main.outline = planToStore.main.outline || '';
+      planToStore.conclusion.outline = planToStore.conclusion.outline || '';
+    }
+    
+    // Final validation: ensure no undefined values exist in the plan
+    const validatePlanStructure = (plan: any): boolean => {
+      if (!plan || typeof plan !== 'object') return false;
+      if (!plan.introduction || !plan.main || !plan.conclusion) return false;
+      if (typeof plan.introduction.outline !== 'string' || 
+          typeof plan.main.outline !== 'string' || 
+          typeof plan.conclusion.outline !== 'string') return false;
+      return true;
+    };
+    
+    // Check if the AI response is completely malformed (missing sections entirely)
+    const hasMissingSections = !introResult?.plan?.introduction || 
+                               !mainResult?.plan?.main || 
+                               !conclusionResult?.plan?.conclusion;
+    
+    if (hasMissingSections) {
+      console.error('ERROR: AI response missing sections entirely, using fallback plan');
+      planToStore.introduction = { outline: '' };
+      planToStore.main = { outline: '' };
+      planToStore.conclusion = { outline: '' };
+    } else {
+      // Validate each section individually and only reset invalid ones
+      if (!introResult?.plan?.introduction?.outline || 
+          typeof introResult.plan.introduction.outline !== 'string') {
+        console.error('ERROR: Invalid introduction plan structure');
+        planToStore.introduction = { outline: '' };
+      }
+      
+      if (!mainResult?.plan?.main?.outline || 
+          typeof mainResult.plan.main.outline !== 'string') {
+        console.error('ERROR: Invalid main plan structure');
+        planToStore.main = { outline: '' };
+      }
+      
+      if (!conclusionResult?.plan?.conclusion?.outline || 
+          typeof conclusionResult.plan.conclusion.outline !== 'string') {
+        console.error('ERROR: Invalid conclusion plan structure');
+        planToStore.conclusion = { outline: '' };
+      }
+    }
+    
+    console.log('Final plan to store:', JSON.stringify(planToStore, null, 2));
     
     try {
       await sermonsRepository.updateSermonPlan(sermonId, planToStore);
@@ -196,9 +319,21 @@ async function generateFullPlan(sermonId: string) {
     }
     
     // Return with appropriate status code based on success
+    // If all sections failed, return 500 with error message. If some sections failed, return 206
+    const allSectionsFailed = !fullPlan.sectionStatuses.introduction && 
+                              !fullPlan.sectionStatuses.main && 
+                              !fullPlan.sectionStatuses.conclusion;
+    
+    if (allSectionsFailed) {
+      return NextResponse.json(
+        { error: 'Failed to generate full plan' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       fullPlan,
-      { status: hasFailures ? 206 : 200 } // 206 Partial Content if some sections failed
+      { status: hasFailures ? 206 : 200 }
     );
   } catch (error: any) {
     console.error(`Error generating full sermon plan:`, error);
@@ -368,4 +503,4 @@ export async function PUT(
       { status: 500 }
     );
   }
-} 
+}
