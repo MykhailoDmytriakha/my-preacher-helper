@@ -1083,42 +1083,102 @@ export async function generatePlanPointContent(
   
   try {
     // Construct the prompt for generating a structured plan for the outline point
-    const systemPrompt = `You are a helpful assistant for sermon preparation.
+    const systemPrompt = `You are a sermon planning assistant specializing in creating memory-friendly outlines for preachers.
 
-Your task is to generate a simple outline plan for a specific point in a sermon, based ONLY on the thoughts provided.
+Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can be quickly scanned during sermon delivery.
+
+CRITICAL PRINCIPLES:
+1. **INSTANT RECOGNITION**: Each point should be immediately recognizable and trigger memory recall
+2. **MINIMAL WORDS, MAXIMUM MEANING**: Use concise, powerful phrases that capture the essence
+3. **VISUAL SCANNING**: Structure for quick visual scanning during preaching
+4. **MEMORY TRIGGERS**: Use keywords and phrases that instantly recall the full context
+5. **ACTIONABLE FORMAT**: Each point should guide the preacher on what to say next
+
+FORMAT REQUIREMENTS:
+- Use **bold** for main concepts and key theological terms
+- Use *italic* for Bible references and supporting details
+- Use bullet points (*) for quick scanning
+- Keep main points to 3-6 words maximum
+- Use clear, memorable phrases that capture the essence
+- Structure for logical flow that's easy to follow during preaching
+
+MANDATORY BIBLE VERSE REQUIREMENT: 
+CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
+Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
+The preacher must be able to read the full verse directly from the plan without opening a Bible.
+
+LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
 
 IMPORTANT: 
 1. Always generate the plan in the SAME LANGUAGE as the input. Do not translate.
-2. Keep the plan simple with just main points (using ###) and a single level of bullet points (* ) underneath.
-3. DO NOT create deeply nested or highly detailed plans.
-4. Focus ONLY on the specific outline point and its related thoughts.
-5. Maintain the theological perspective from the original thoughts.
-6. Do not add new theological content or Bible references that aren't in the provided thoughts.
-7. Organize ideas in a logical sequence that will help with sermon delivery.
-8. Include only the most important key ideas from the provided thoughts.
-9. Format the response using Markdown:
-   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a very concise summary (2-5 words) representing the core idea of the bullet points immediately following it.
+2. Focus ONLY on the specific outline point and its related thoughts.
+3. Maintain the theological perspective from the original thoughts.
+4. Do not add new theological content or Bible references that aren't in the provided thoughts.
+5. Organize ideas in a logical sequence that will help with sermon delivery.
+6. Include the most important key ideas from the provided thoughts.
+7. Format the response using Markdown:
+   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon.
    - Use only a single level of bullet points (* ) for supporting details.
-10. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
-${keyFragments.length > 0 ? '11. You MUST naturally incorporate all provided key fragments into your response.' : ''}
+8. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
+9. CRITICAL: Each main point should provide a clear theological insight or practical application, not just copy-paste from the original thoughts.
+10. CRITICAL: Explain the connection between modern examples and biblical stories, showing how they illustrate the same spiritual principles.
+11. CRITICAL: Focus on the deeper meaning and application, not just surface-level facts.
+12. CRITICAL: Include ALL Bible verses and quotes COMPLETELY - do not abbreviate, summarize, or reference them partially. Every scripture reference must be written out in full.
+${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments into your response as supporting details, NOT as the main content. Key fragments should complement and enhance the broader ideas from the thoughts, not dominate them.' : ''}
 
-Your response should be a simple outline with just main points and their direct sub-points.`;
+Your response should be a simple outline optimized for quick preaching reference.`;
 
     // Prepare the user message
-    const userMessage = `Please generate a simple, not-too-detailed plan outline for the following point in the ${sectionName.toUpperCase()} section of my sermon:
+    const userMessage = `Create a PREACHING-FRIENDLY plan for the following point in the ${sectionName.toUpperCase()} section that can be quickly scanned during sermon delivery:
 
 SERMON TITLE: ${sermonTitle}
 SCRIPTURE: ${sermonVerse}
 OUTLINE POINT: "${outlinePointText}"
 
-${keyFragments.length > 0 ? `==== KEY FRAGMENTS (MUST INCLUDE) ====
-The following key fragments MUST be naturally integrated into the generated content for this outline point:
+${keyFragments.length > 0 ? `==== SUPPORTING KEY FRAGMENTS ====
+The following key fragments should be naturally integrated as supporting details to enhance the broader ideas:
 ${keyFragments.map(frag => `- "${frag}"`).join('\n')}
 ====================================
 
 ` : ''}
 Based on these related thoughts (maintain this order in your plan):
 ${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
+
+CRITICAL REQUIREMENTS FOR PREACHING:
+
+1. **MEMORY-FRIENDLY FORMAT**: 
+   - Each main point should be 3-6 words maximum
+   - Use **bold** for key concepts that trigger memory
+   - Use *italic* for Bible references and supporting details
+   - Create visual hierarchy for quick scanning
+
+2. **INSTANT RECOGNITION**:
+   - Every point should be immediately recognizable
+   - Use memorable phrases that capture the essence
+   - Include memory triggers that recall full context
+   - Make each point actionable for the preacher
+
+3. **QUICK SCANNING STRUCTURE**:
+   - Use bullet points (*) for easy visual scanning
+   - Keep subpoints to 1-2 words maximum
+   - Use clear transitions between ideas
+   - Structure for logical preaching flow
+
+4. **PREACHING OPTIMIZATION**:
+   - Focus on what the preacher needs to SAY
+   - Include key theological terms in **bold**
+   - Highlight Bible verses in *italic*
+   - Use action-oriented language
+
+MANDATORY BIBLE VERSE REQUIREMENT: 
+CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
+Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
+The preacher must be able to read the full verse directly from the plan without opening a Bible.
+
+THOUGHT FLOW REQUIREMENT:
+Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
+
+LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
 
 IMPORTANT INSTRUCTIONS:
 1. Generate the plan in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
@@ -1129,11 +1189,22 @@ IMPORTANT INSTRUCTIONS:
 6. Add scripture references in *italic* and key theological concepts in **bold**.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
-9. CRITICAL: Each main point heading (###) MUST be a very short summary (2-5 words) of the content below it.
+9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon. The title should be actionable and specific.
 10. CRITICAL: The order of the main points (###) and their content in your plan MUST strictly follow the order of the provided THOUGHTS above.
-${keyFragments.length > 0 ? '11. CRITICAL: Ensure all provided Key Fragments are present in your response.' : ''}
+11. CRITICAL: Focus on theological insights and practical applications, not just copying facts.
+12. CRITICAL: Explain how modern examples connect to biblical principles and spiritual truths.
+13. CRITICAL: Emphasize the deeper meaning and spiritual significance of each example.
+14. CRITICAL: Include ALL Bible verses and quotes COMPLETELY - do not abbreviate, summarize, or reference them partially. Every scripture reference must be written out in full.
+${keyFragments.length > 0 ? '15. CRITICAL: Integrate key fragments naturally as supporting details, not as main content. They should complement the broader ideas from the thoughts.' : ''}
 
-Format your response as a simple outline with just main points and their direct sub-points using Markdown. Do not write full paragraphs or create deeply nested points.`;
+FORMAT EXAMPLE:
+## **Main Concept** 
+*Supporting detail or Bible reference*
+
+* Key subpoint
+* Another subpoint
+
+FINAL CHECK: Each point should be scannable in under 2 seconds and immediately trigger the full context for the preacher.`;
 
     // Prepare request options
     const requestOptions = {

@@ -34,7 +34,7 @@ export function createPlanUserMessage(
                      sermon.outline[sectionLower as keyof typeof sermon.outline] && 
                      (sermon.outline[sectionLower as keyof typeof sermon.outline] as OutlinePoint[]).length > 0;
 
-  return `Please generate a detailed outline for the ${sectionLower.toUpperCase()} section of the following sermon:
+  return `Create a PREACHING-FRIENDLY outline for the ${sectionLower.toUpperCase()} section that can be quickly scanned during sermon delivery:
 
 SERMON TITLE: ${sermon.title}
 SCRIPTURE: ${sermon.verse}${outlinePointsText}
@@ -42,64 +42,54 @@ SCRIPTURE: ${sermon.verse}${outlinePointsText}
 CONTENT:
 ${sermonContent}
 
-IMPORTANT: 
-1. Generate the outline in the SAME LANGUAGE as the sermon content${hasNonLatinChars ? ' (non-English)' : ''}. DO NOT translate.
-2. DO NOT include "${sectionLower.toUpperCase()}" as a title or heading at the beginning of your response. Start directly with the content.
-3. HEADING HIERARCHY: 
-   - All main numbered points should use level 2 headings (##)
-   - DO NOT use level 1 headings (#) for any points
-   - Use proper Markdown structure (##, ### for subsections, etc.)
+CRITICAL REQUIREMENTS FOR PREACHING:
 
-${hasOutline ? `FORMAT REQUIREMENT: 
-1. Format your response in valid Markdown.
-2. Main points MUST begin with the EXACT numbering and text from the outline structure provided above.
-3. For subpoints, use proper Markdown hierarchical formatting:
-   * First level subpoints should use asterisks (*)
-     * Second level subpoints should use indented asterisks
-       * Third level subpoints should use further indented asterisks
-4. Ensure proper indentation to show the hierarchy visually.
-5. Use concise, clear language for each point - keep subpoints to 1-2 short sentences maximum.
-6. HIGHLIGHT KEY TERMS: Use **bold** formatting for important concepts, theological terms, and central ideas. Use *italic* formatting for scripture references, quotes, and secondary emphasis.
-7. Keep all content well-organized and logically grouped under the appropriate point.
-8. FOLLOW THE EXACT THOUGHT ORDER: Respect the logical flow of ideas exactly as presented. Do not rearrange, reorder, or restructure the user's intended progression of thoughts.
+1. **MEMORY-FRIENDLY FORMAT**: 
+   - Each main point should be 3-6 words maximum
+   - Use **bold** for key concepts that trigger memory
+   - Use *italic* for Bible references and supporting details
+   - Create visual hierarchy for quick scanning
 
-STRUCTURAL REQUIREMENT: Maintain the precise structure and ordering of the outline points above in your response. Your final outline must reflect exactly the same logical progression and organizational hierarchy.` : `Please create a well-structured outline in Markdown format specifically for the ${sectionLower} section of this sermon. DO NOT include "${sectionLower.toUpperCase()}" as a title at the beginning.
+2. **INSTANT RECOGNITION**:
+   - Every point should be immediately recognizable
+   - Use memorable phrases that capture the essence
+   - Include memory triggers that recall full context
+   - Make each point actionable for the preacher
 
-IMPORTANT: Follow the thoughts in the exact order as they appear in the sermon content.`}
+3. **QUICK SCANNING STRUCTURE**:
+   - Use bullet points (*) for easy visual scanning
+   - Keep subpoints to 1-2 words maximum
+   - Use clear transitions between ideas
+   - Structure for logical preaching flow
 
-Focus on the guidelines provided for ${sectionLower} sections.
-${hasOutline ? `\nRemember: The success of this outline depends entirely on following the existing structure while adding valuable content under each predefined point.` : ''}
+4. **PREACHING OPTIMIZATION**:
+   - Focus on what the preacher needs to SAY
+   - Include key theological terms in **bold**
+   - Highlight Bible verses in *italic*
+   - Use action-oriented language
 
-KEYWORD HIGHLIGHTING: Highlight key theological concepts, important terms, biblical principles, and central ideas using **bold** formatting. Use *italic* formatting for Bible references, quotes, and supporting points. This makes the outline more scannable and emphasizes the most important elements.
+MANDATORY BIBLE VERSE REQUIREMENT: 
+CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
+Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
+The preacher must be able to read the full verse directly from the plan without opening a Bible.
 
-RESPONSE FORMAT: Your entire response must be in valid Markdown format that can be directly copied and used in a Markdown document. DO NOT include a heading with the section name (${sectionLower.toUpperCase()}) at the beginning of your response.
+THOUGHT FLOW REQUIREMENT:
+Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
 
-CRITICAL INSTRUCTION: 
-1. INCLUDE ALL THOUGHTS from the original notes. Do not omit or skip ANY thought, example, verse reference, or point from the provided content.
-2. Each and every element from the original notes, including all examples, translations, and specific questions must appear in your outline.
-3. MAINTAIN ORIGINAL GROUPING: Thoughts must remain in their original sections. DO NOT move thoughts between different sections (e.g., from "Introduction" to "Main Points"). Each thought must appear under the SAME section heading as in the original notes.
-4. PRESERVE ORIGINAL ORDER: The sequence of thoughts within each section must match the original notes exactly.
-5. DO NOT ADD ANY CONTENT that isn't in the original notes. Do not add formal sermon structure elements like "hook", "roadmap", "thesis", "discussion goal", or similar terms unless they are explicitly mentioned in the original content. 
-6. Do not add theological interpretations or applications that weren't in the original notes. 
-7. Stay strictly within the content provided and only format what's there.
-8. Double-check your output before submitting to ensure EVERY thought from the original notes is represented in its original section.
-9. ALL BIBLE REFERENCES MUST BE PRESENT.
-10. ALWAYS FIX GRAMMAR ERRORS: You MUST correct all spelling errors, syntax errors, punctuation, capitalization, and general grammar issues without changing the meaning or content. This includes:
-    - Correct all misspelled words
-    - Fix incorrect grammar structures
-    - Correct punctuation and spacing issues
-    - Ensure proper capitalization
-    - Fix verb conjugations and noun declensions as appropriate
-    Be thorough in finding and correcting ALL such errors while preserving the original meaning.
-11. FIX HEADING/OUTLINE TITLES: You MUST correct any spelling or grammar errors in the main outline point titles/headings provided to you. For example, "приминение" should be corrected to "применение" in the heading itself. The corrected spelling should appear in both the heading and any subsequent references to it.
-    - CAPITALIZATION: Ensure the first word of each main point starts with a capital letter (e.g., "Очевидное применение" not "очевидное применение")
-    - Apply proper capitalization rules to proper nouns and terms as appropriate for the language
-12. PROPER JSON FORMATTING: When outputting Markdown content within JSON:
-    - Escape special characters properly (especially quotes, backslashes)
-    - Use \\n for line breaks within the JSON string
-    - Make sure all quotes within the Markdown are properly escaped with a backslash (\\")
-    - Ensure the entire JSON structure is valid
-    - Do not use literal line breaks in the JSON string - use \\n instead`;
+LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
+
+FORMAT EXAMPLE:
+## **Main Concept** 
+*Supporting detail or Bible reference*
+
+* Key subpoint
+* Another subpoint
+
+RESPONSE LANGUAGE: Generate in the EXACT SAME LANGUAGE as the sermon content${hasNonLatinChars ? ' (non-English)' : ''}. DO NOT translate.
+
+${hasOutline ? `STRUCTURAL REQUIREMENT: Follow the exact outline points provided above, but format them for quick preaching reference.` : `Create a well-structured outline optimized for preaching delivery.`}
+
+FINAL CHECK: Each point should be scannable in under 2 seconds and immediately trigger the full context for the preacher.`;
 }
 
 /**
@@ -113,7 +103,7 @@ export function createThoughtsPlanUserMessage(
   sermonContent: string
 ): string {
   return `
-    Analyze the preacher's thoughts and organize them into a suggested sermon plan structure:
+    Create a PREACHING-FRIENDLY plan structure from the preacher's thoughts:
     
     Sermon Title: ${sermon.title}
     Scripture Verse: ${sermon.verse}
@@ -121,20 +111,33 @@ export function createThoughtsPlanUserMessage(
     Preacher's Thoughts and Notes:
     ${sermonContent}
     
-    Based on these thoughts and themes, please organize them into a suggested sermon plan:
+    Generate a plan optimized for quick scanning during preaching:
     
-    INTRODUCTION: Suggest how to structure the introduction based on the themes present. What thoughts/topics would work best to open the sermon and introduce the main theme?
+    INTRODUCTION: Create 2-3 memory-friendly points that can be quickly referenced to open the sermon effectively.
     
-    MAIN PART: Organize the core thoughts and themes into the main body of the sermon. What are the key points that should be developed?
+    MAIN PART: Organize into 3-5 key points, each with a memorable phrase that instantly recalls the full context.
     
-    CONCLUSION: Suggest how to conclude the sermon based on the themes present. What thoughts would work best to summarize and call to action?
+    CONCLUSION: Provide 1-2 powerful closing points that can be quickly referenced for strong ending.
     
-    IMPORTANT: 
-    - Use the existing thoughts and themes, don't create entirely new content
-    - Suggest specific themes/topics for each section
-    - Your response should be in the EXACT SAME LANGUAGE as the sermon content
-    - Focus on organizing and structuring the preacher's existing ideas
-    - FORMAT YOUR RESPONSE IN MARKDOWN: Use **bold** for important concepts and key themes, *italic* for verses and quotes
-    - Make the text readable and well-structured with proper Markdown formatting
+    CRITICAL REQUIREMENTS:
+    - Use **bold** for key theological concepts and memory triggers
+    - Use *italic* for Bible references and supporting details
+    - Keep main points to 3-6 words maximum
+    - Make each point immediately recognizable and actionable
+    - Structure for quick visual scanning during preaching
+    - Respond in the EXACT SAME LANGUAGE as the sermon content
+    - Focus on organizing existing thoughts into preaching-friendly format
+    - Use bullet points (*) for easy scanning
+    - Create logical flow that guides the preacher naturally
+    
+    MANDATORY BIBLE VERSE REQUIREMENT: 
+    CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
+    Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
+    The preacher must be able to read the full verse directly from the plan without opening a Bible.
+    
+    THOUGHT FLOW REQUIREMENT:
+    Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
+    
+    LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
   `;
 } 
