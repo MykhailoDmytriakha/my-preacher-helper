@@ -4,10 +4,17 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const createAudioThought = async (
   audioBlob: Blob,
-  sermonId: string
+  sermonId: string,
+  retryCount: number = 0,
+  maxRetries: number = 3
 ): Promise<Thought> => {
+  // If we've exceeded max retries, throw immediately
+  if (retryCount >= maxRetries) {
+    throw new Error(`Transcription failed after all retries: Maximum retry attempts exceeded`);
+  }
+
   try {
-    console.log("transcribeAudio: Starting transcription process.");
+    console.log(`transcribeAudio: Starting transcription process. Attempt ${retryCount + 1}/${maxRetries + 1}`);
 
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
@@ -23,24 +30,81 @@ export const createAudioThought = async (
     });
 
     console.log("transcribeAudio: Received response:", response);
+    
     if (!response.ok) {
       console.error(
         "transcribeAudio: Transcription failed with status",
         response.status
       );
-      throw new Error("Transcription failed");
+      
+      let errorText = `HTTP ${response.status}`;
+      let originalText = null;
+      try {
+        const errorResponse = await response.json();
+        errorText = errorResponse.error || errorText;
+        originalText = errorResponse.originalText || null;
+      } catch (e) {
+        // If we can't parse JSON, use the status text
+        errorText = response.statusText || errorText;
+      }
+      console.error("transcribeAudio: Error response:", errorText);
+      
+      // If we have retries left, throw an error to trigger retry
+      if (retryCount < maxRetries) {
+        // If we have originalText, include it in the error message
+        if (originalText) {
+          throw new Error(`Transcription failed (attempt ${retryCount + 1}/${maxRetries + 1}): ${errorText}. Recognized text: "${originalText}"`);
+        } else {
+          throw new Error(`Transcription failed (attempt ${retryCount + 1}/${maxRetries + 1}): ${errorText}`);
+        }
+      }
+      
+      // If no retries left, show error and throw
+      if (originalText) {
+        toast.error(`Ошибка обработки аудио после всех попыток: ${errorText}. Распознанный текст: "${originalText}"`);
+        throw new Error(`Transcription failed after all retries: ${errorText}. Recognized text: "${originalText}"`);
+      } else {
+        toast.error(`Ошибка обработки аудио после всех попыток: ${errorText}`);
+        throw new Error(`Transcription failed after all retries: ${errorText}`);
+      }
+    }
+
+    // Success - clear stored audio if available
+    if (typeof window !== 'undefined' && (window as any).clearAudioRecorderStorage) {
+      (window as any).clearAudioRecorderStorage();
     }
 
     // Возвращаем полный объект с текстом, тегами и т.д.
     const thought = await response.json();
     console.log("transcribeAudio: Transcription succeeded. Thought:", thought);
+    
+    // Show success message
+    toast.success("Аудио успешно обработано!");
+    
     return thought;
   } catch (error) {
     console.error("createAudioThought: Error creating thought", error);
-    // Добавляем вызов системы уведомлений
+    
+    // If we have retries left, don't show error toast yet
+    if (retryCount < maxRetries) {
+      console.log(`createAudioThought: Will retry. Attempt ${retryCount + 1}/${maxRetries + 1}`);
+      throw error; // Re-throw to trigger retry
+    }
+    
+    // Show error toast only on final failure
     toast.error("Ошибка обработки аудио. Попробуйте ещё раз.");
     throw error;
   }
+};
+
+// New function for retrying transcription
+export const retryAudioTranscription = async (
+  audioBlob: Blob,
+  sermonId: string,
+  retryCount: number,
+  maxRetries: number = 3
+): Promise<Thought> => {
+  return createAudioThought(audioBlob, sermonId, retryCount, maxRetries);
 };
 
 export const deleteThought = async (

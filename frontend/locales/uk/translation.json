@@ -199,16 +199,18 @@
     "requiresStructureTags": "Потрібні теги структури"
   },
   "audio": {
-    "processing": "Обробка...",
-    "stopRecording": "Зупинити запис",
     "newRecording": "Новий запис",
+    "stopRecording": "Зупинити запис",
     "cancelRecording": "Скасувати запис",
+    "processing": "Обробка...",
     "initializing": "Ініціалізація...",
-    "recording": "ЗАП",
+    "retryTranscription": "Повторити транскрипцію",
+    "thoughtGenerationFailed": "Не вдалося створити думку з аудіо. Сенс міг бути змінений.",
     "audioLevel": "Рівень звуку",
     "keyboardShortcuts": "Гарячі клавіші",
-    "toRecord": "для запису",
-    "toCancel": "для скасування"
+    "recording": "Запис",
+    "toCancel": "для скасування",
+    "toRecord": "для запису"
   },
   "errors": {
     "audioProcessing": "Error processing audio",

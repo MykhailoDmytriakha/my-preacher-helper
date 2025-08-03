@@ -8,24 +8,34 @@ import "@locales/i18n";
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing?: boolean;
-  maxDuration?: number; // in seconds, default 60
+  maxDuration?: number; // in seconds, default 90
   onError?: (error: string) => void;
   disabled?: boolean;
   className?: string;
+  onRetry?: () => void;
+  retryCount?: number;
+  maxRetries?: number;
+  transcriptionError?: string | null;
 }
 
 export const AudioRecorder = ({
   onRecordingComplete,
   isProcessing = false,
-  maxDuration = 60,
+  maxDuration = 90,
   onError,
   disabled = false,
   className = "",
+  onRetry,
+  retryCount = 0,
+  maxRetries = 3,
+  transcriptionError,
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
+  const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,6 +109,7 @@ export const AudioRecorder = ({
     if (disabled || isProcessing || isInitializing) return;
 
     setIsInitializing(true);
+    setTranscriptionErrorState(null);
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -140,6 +151,7 @@ export const AudioRecorder = ({
           const blob = new Blob(chunks.current, { 
             type: mediaRecorder.current?.mimeType || "audio/webm" 
           });
+          setStoredAudioBlob(blob);
           onRecordingComplete(blob);
         }
         cleanup();
@@ -185,14 +197,46 @@ export const AudioRecorder = ({
       mediaRecorder.current.stop();
       setIsRecording(false);
       setRecordingTime(0);
+      setStoredAudioBlob(null);
+      setTranscriptionErrorState(null);
       cleanup();
     } catch (error) {
       console.error("Error canceling recording:", error);
       cleanup();
       setIsRecording(false);
       setRecordingTime(0);
+      setStoredAudioBlob(null);
+      setTranscriptionErrorState(null);
     }
   }, [isRecording, cleanup]);
+
+  // Retry transcription function
+  const retryTranscription = useCallback(() => {
+    if (storedAudioBlob && onRetry) {
+      setTranscriptionErrorState(null);
+      onRetry();
+    }
+  }, [storedAudioBlob, onRetry]);
+
+  // Clear stored audio when transcription succeeds
+  const clearStoredAudio = useCallback(() => {
+    setStoredAudioBlob(null);
+    setTranscriptionErrorState(null);
+  }, []);
+
+  // Expose clearStoredAudio to parent component
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).clearAudioRecorderStorage = clearStoredAudio;
+    }
+  }, [clearStoredAudio]);
+
+  // Sync external transcription error with internal state
+  useEffect(() => {
+    if (transcriptionError) {
+      setTranscriptionErrorState(transcriptionError);
+    }
+  }, [transcriptionError]);
 
   // Timer effect
   useEffect(() => {
@@ -362,6 +406,17 @@ export const AudioRecorder = ({
             {t('audio.cancelRecording')}
           </button>
         )}
+
+        {/* Retry button for transcription errors */}
+        {(transcriptionErrorState || transcriptionError) && storedAudioBlob && retryCount < maxRetries && (
+          <button
+            onClick={retryTranscription}
+            className="px-4 py-2 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-600 dark:hover:bg-orange-900/50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+            aria-label={t('audio.retryTranscription')}
+          >
+            {t('audio.retryTranscription')} ({retryCount + 1}/{maxRetries})
+          </button>
+        )}
         
         {/* Timer and audio level indicator */}
         <div className="flex items-center gap-3">
@@ -379,6 +434,18 @@ export const AudioRecorder = ({
           )}
         </div>
       </div>
+
+      {/* Error message */}
+      {(transcriptionErrorState || transcriptionError) && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm font-medium">{transcriptionErrorState || transcriptionError}</span>
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="w-full">

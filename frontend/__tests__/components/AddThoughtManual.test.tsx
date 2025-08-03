@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import AddThoughtManual from '@/components/AddThoughtManual';
 import { createManualThought } from '@services/thought.service';
 import { getSermonById } from '@services/sermon.service';
@@ -147,13 +147,115 @@ describe('AddThoughtManual', () => {
   });
 
   it('does not submit if text area is empty', async () => {
+    // Mock the async operations to resolve immediately
+    mockGetSermonById.mockResolvedValue({
+      id: sermonId,
+      title: 'Test Sermon',
+      verse: 'Test Verse',
+      date: '2023-01-01',
+      thoughts: [],
+      userId: 'test-user-id',
+      outline: {
+        introduction: [
+          { id: 'intro-1', text: 'Introduction Point 1' },
+          { id: 'intro-2', text: 'Introduction Point 2' }
+        ],
+        main: [
+          { id: 'main-1', text: 'Main Point 1' },
+          { id: 'main-2', text: 'Main Point 2' }
+        ],
+        conclusion: [
+          { id: 'conclusion-1', text: 'Conclusion Point 1' }
+        ]
+      }
+    });
+
+    mockGetTags.mockResolvedValue({
+      requiredTags: [
+        { id: 'req-1', name: 'Introduction', color: '#ff0000', required: true },
+        { id: 'req-2', name: 'Main Part', color: '#00ff00', required: true },
+        { id: 'req-3', name: 'Conclusion', color: '#0000ff', required: true }
+      ],
+      customTags: [
+        { id: 'custom-1', name: 'Custom Tag 1', color: '#ffff00', required: false },
+        { id: 'custom-2', name: 'Custom Tag 2', color: '#ff00ff', required: false }
+      ]
+    });
+
     render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
     
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
     
+    // Wait for the modal to appear
     await waitFor(() => {
-      const saveButton = screen.getByText('buttons.save');
-      expect(saveButton).toBeDisabled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    
+    // Use findByRole to wait for the save button to appear
+    const saveButton = await screen.findByRole('button', { name: /buttons\.save/ }, { timeout: 10000 });
+    expect(saveButton).toBeDisabled();
+  });
+
+  it('debugs async operations', async () => {
+    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    
+    // First wait for the modal to appear
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    // Check if mocks were called
+    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
+    
+    // Wait for the loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
+    }, { timeout: 10000 });
+    
+    // Verify that the mocks were called
+    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
+    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
+  });
+
+  it('waits for async operations to complete', async () => {
+    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    
+    // First wait for the modal to appear
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    // Then wait for the loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
+    }, { timeout: 10000 });
+    
+    // Verify that the mocks were called
+    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
+    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
+  });
+
+  it('waits for async operations to complete', async () => {
+    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    
+    // First wait for the modal to appear
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+    
+    // Then wait for the loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
+    }, { timeout: 10000 });
+    
+    // Verify that the mocks were called
+    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
+    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
   });
 });

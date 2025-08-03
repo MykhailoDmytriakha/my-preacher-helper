@@ -199,16 +199,18 @@
     "requiresStructureTags": "Requires structure tags"
   },
   "audio": {
-    "processing": "Processing...",
-    "stopRecording": "Stop Recording",
     "newRecording": "New Recording",
+    "stopRecording": "Stop Recording",
     "cancelRecording": "Cancel Recording",
+    "processing": "Processing...",
     "initializing": "Initializing...",
-    "recording": "REC",
+    "retryTranscription": "Retry Transcription",
+    "thoughtGenerationFailed": "Failed to generate a valid thought from the audio. Meaning might have been altered.",
     "audioLevel": "Audio Level",
-    "keyboardShortcuts": "Keyboard shortcuts",
-    "toRecord": "to record",
-    "toCancel": "to cancel"
+    "keyboardShortcuts": "Keyboard Shortcuts",
+    "recording": "Recording",
+    "toCancel": "to cancel",
+    "toRecord": "to record"
   },
   "errors": {
     "audioProcessing": "Error processing audio",

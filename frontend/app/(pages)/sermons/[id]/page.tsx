@@ -41,6 +41,9 @@ export default function SermonPage() {
   const { sermon, setSermon, loading, refreshSermon } = useSermon(id);
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
   const { t } = useTranslation();
   const [isMounted, setIsMounted] = useState(false);
@@ -225,17 +228,56 @@ export default function SermonPage() {
 
   const handleNewRecording = async (audioBlob: Blob) => {
     setIsProcessing(true);
+    setStoredAudioBlob(audioBlob);
+    setTranscriptionError(null);
+    setRetryCount(0);
+    
     try {
-      const thoughtResponse = await createAudioThought(audioBlob, sermon.id);
+      const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
       const newThought: Thought = { ...thoughtResponse };
       setSermon((prevSermon: Sermon | null) =>
         prevSermon
           ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
           : prevSermon
       );
+      
+      // Clear stored audio on success
+      setStoredAudioBlob(null);
+      setTranscriptionError(null);
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
-      alert(t('errors.audioProcessing'));
+      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      
+      // Don't show alert here - let the AudioRecorder component handle the UI
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRetryTranscription = async () => {
+    if (!storedAudioBlob) return;
+    
+    setIsProcessing(true);
+    const newRetryCount = retryCount + 1;
+    setRetryCount(newRetryCount);
+    setTranscriptionError(null);
+    
+    try {
+      const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
+      const newThought: Thought = { ...thoughtResponse };
+      setSermon((prevSermon: Sermon | null) =>
+        prevSermon
+          ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
+          : prevSermon
+      );
+      
+      // Clear stored audio on success
+      setStoredAudioBlob(null);
+      setTranscriptionError(null);
+      setRetryCount(0);
+    } catch (error) {
+      console.error("handleRetryTranscription: Recording error:", error);
+      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsProcessing(false);
     }
@@ -316,7 +358,14 @@ export default function SermonPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
         <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
         
-        <AudioRecorder onRecordingComplete={handleNewRecording} isProcessing={isProcessing} />
+        <AudioRecorder 
+          onRecordingComplete={handleNewRecording} 
+          isProcessing={isProcessing}
+          onRetry={handleRetryTranscription}
+          retryCount={retryCount}
+          maxRetries={3}
+          transcriptionError={transcriptionError}
+        />
 
         <BrainstormModule sermonId={sermon.id} />
 

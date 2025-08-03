@@ -199,16 +199,18 @@
     "requiresStructureTags": "Требуются теги структуры"
   },
   "audio": {
-    "processing": "Обработка...",
-    "stopRecording": "Остановить запись",
     "newRecording": "Новая запись",
+    "stopRecording": "Остановить запись",
     "cancelRecording": "Отменить запись",
+    "processing": "Обработка...",
     "initializing": "Инициализация...",
-    "recording": "ЗАП",
+    "retryTranscription": "Повторить транскрипцию",
+    "thoughtGenerationFailed": "Не удалось создать мысль из аудио. Смысл мог быть изменен.",
     "audioLevel": "Уровень звука",
     "keyboardShortcuts": "Горячие клавиши",
-    "toRecord": "для записи",
-    "toCancel": "для отмены"
+    "recording": "Запись",
+    "toCancel": "для отмены",
+    "toRecord": "для записи"
   },
   "errors": {
     "audioProcessing": "Ошибка обработки аудио",

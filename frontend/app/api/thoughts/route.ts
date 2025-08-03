@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -6,6 +6,7 @@ import { Sermon, Thought } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
+import enTranslation from '../../../locales/en/translation.json';
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -87,7 +88,33 @@ export async function POST(request: Request) {
       ...(await getRequiredTags()),
       ...(await getCustomTags(sermon.userId))
     ].map(t => t.name);
-    const transcriptionText = await createTranscription(file);
+    
+    let transcriptionText: string;
+    try {
+      transcriptionText = await createTranscription(file);
+    } catch (transcriptionError) {
+      console.error("Thoughts route: Transcription failed:", transcriptionError);
+      
+      // Check if it's a specific OpenAI error
+      if (transcriptionError instanceof Error) {
+        if (transcriptionError.message.includes('Audio file might be corrupted or unsupported')) {
+          return NextResponse.json(
+            { error: 'Audio file might be corrupted or unsupported. Please try recording again.' },
+            { status: 400 }
+          );
+        } else if (transcriptionError.message.includes('400')) {
+          return NextResponse.json(
+            { error: 'Audio file format not supported. Please try recording again.' },
+            { status: 400 }
+          );
+        }
+      }
+      
+      return NextResponse.json(
+        { error: 'Failed to transcribe audio. Please try again.' },
+        { status: 500 }
+      );
+    }
     
     // Call generateThought and get the new result structure
     const generationResult = await generateThought(transcriptionText, sermon, availableTags);
@@ -96,9 +123,13 @@ export async function POST(request: Request) {
     if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {
       // Handle generation failure or meaning not preserved
       console.error("Thoughts route: Failed to generate thought or meaning not preserved.", generationResult);
-      // Optionally, you could return the original transcription if needed
+      // Return the original transcription so user can see what was recognized
       return NextResponse.json(
-        { error: "Failed to generate a valid thought from the audio. Meaning might have been altered.", originalText: generationResult.originalText }, 
+        { 
+          error: enTranslation.audio.thoughtGenerationFailed, 
+          originalText: generationResult.originalText,
+          transcriptionText: transcriptionText
+        }, 
         { status: 500 }
       );
     }
