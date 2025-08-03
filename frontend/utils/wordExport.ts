@@ -73,7 +73,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
             }),
           ],
           heading: HeadingLevel.HEADING_3,
-          spacing: { before: 150, after: 100 },
+          spacing: { before: 0, after: 0 },
           indent: { left: 360 },
         })
       );
@@ -91,7 +91,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
             }),
           ],
           heading: HeadingLevel.HEADING_2,
-          spacing: { before: 150, after: 100 },
+          spacing: { before: 0, after: 0 },
         })
       );
     } else if (trimmedLine.startsWith('# ')) {
@@ -107,7 +107,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
             }),
           ],
           heading: HeadingLevel.HEADING_1,
-          spacing: { before: 150, after: 100 },
+          spacing: { before: 0, after: 0 },
         })
       );
     } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
@@ -120,7 +120,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
             new TextRun({ text: '• ' }),
             ...bulletChildren,
           ],
-          spacing: { after: 100 },
+          spacing: { after: 0 },
           indent: { left: 720 },
         })
       );
@@ -136,7 +136,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
               new TextRun({ text: `${number[1]}. ` }),
               ...listChildren,
             ],
-            spacing: { after: 100 },
+            spacing: { after: 0 },
             indent: { left: 720 },
           })
         );
@@ -148,7 +148,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
       elements.push(
         new Paragraph({
           children: quoteChildren,
-          spacing: { after: 100 },
+          spacing: { after: 0 },
           indent: { left: 720 },
           border: {
             left: {
@@ -171,7 +171,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
             }),
           ],
           alignment: AlignmentType.CENTER,
-          spacing: { before: 100, after: 100 },
+          spacing: { before: 0, after: 0 },
         })
       );
     } else {
@@ -184,7 +184,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
       elements.push(
         new Paragraph({
           children,
-          spacing: { after: 100 },
+          spacing: { after: 0 },
           alignment: AlignmentType.JUSTIFIED,
           // Add same left indent for Bible verses to align with list items
           indent: isBibleVerse ? { left: 720 } : undefined,
@@ -219,7 +219,7 @@ export const parseTable = (tableLines: string[]): Table | null => {
         children: [
           new Paragraph({
             children: parseInlineMarkdown(cellText),
-            spacing: { after: 50 },
+                          spacing: { after: 0 },
           }),
         ],
         shading: rowIndex === 0 ? {
@@ -242,10 +242,10 @@ export const parseTable = (tableLines: string[]): Table | null => {
     rows: tableRows,
     width: { size: 100, type: WidthType.PERCENTAGE },
     margins: {
-      top: 200,
-      bottom: 200,
-      left: 200,
-      right: 200,
+      top: 100,
+      bottom: 100,
+      left: 100,
+      right: 100,
     },
   });
 };
@@ -404,7 +404,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               font: 'Arial',
             },
             paragraph: {
-              spacing: { before: 400, after: 200 },
+              spacing: { before: 0, after: 0 },
               border: {
                 bottom: {
                   color: 'auto',
@@ -419,22 +419,26 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
       },
       sections: [
         {
+          properties: {
+            page: {
+              margin: {
+                top: 288,    // 0.2 inch (minimal)
+                right: 288,  // 0.2 inch (minimal)
+                bottom: 288, // 0.2 inch (minimal)
+                left: 288,   // 0.2 inch (minimal)
+              },
+              size: {
+                width: 15840,  // 11 inches (landscape)
+                height: 12240, // 8.5 inches (landscape)
+              },
+            },
+            column: {
+              space: 300,    // 0.2 inch between columns
+              count: 2,      // Two columns
+              equalWidth: true,
+            },
+          },
           children: [
-            // Title
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: 'ПЛАН ПРОПОВЕДИ',
-                  bold: true,
-                  size: 36,
-                  color: '1e40af',
-                  font: 'Arial',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 200 },
-            }),
-
             // Sermon Title
             new Paragraph({
               children: [
@@ -447,7 +451,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                 }),
               ],
               alignment: AlignmentType.CENTER,
-              spacing: { after: 150 },
+              spacing: { after: 0 },
             }),
 
             // Scripture Verse (if provided)
@@ -463,34 +467,9 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   }),
                 ],
                 alignment: AlignmentType.CENTER,
-                spacing: { after: 150 },
+                spacing: { after: 0 },
               }),
             ] : []),
-
-            // Date
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Дата: ${exportDate}`,
-                  size: 20,
-                  color: '6b7280',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 250 },
-            }),
-
-            // Decorative line
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-                  color: 'e5e7eb',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 250 },
-            }),
 
             // Introduction Section
             new Paragraph({
@@ -505,7 +484,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               ],
               alignment: AlignmentType.CENTER,
               style: 'sectionHeading',
-              spacing: { before: 300, after: 200 },
+              spacing: { before: 0, after: 0 },
             }),
 
             ...parseMarkdownToParagraphs(data.introduction, '2563eb'),
@@ -523,7 +502,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               ],
               alignment: AlignmentType.CENTER,
               style: 'sectionHeading',
-              spacing: { before: 300, after: 200 },
+              spacing: { before: 0, after: 0 },
             }),
 
             ...parseMarkdownToParagraphs(data.main, '7c3aed'),
@@ -541,36 +520,10 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               ],
               alignment: AlignmentType.CENTER,
               style: 'sectionHeading',
-              spacing: { before: 300, after: 200 },
+              spacing: { before: 0, after: 0 },
             }),
 
-            ...parseMarkdownToParagraphs(data.conclusion, '059669'),
-
-            // Footer
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-                  color: 'e5e7eb',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 300, after: 150 },
-            }),
-
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: 'Сгенерировано с помощью My Preacher Helper',
-                  size: 18,
-                  color: '9ca3af',
-                  italics: true,
-                  font: 'Arial',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 100 },
-            }),
+            ...parseMarkdownToParagraphs(data.conclusion, '059669')
           ],
         },
       ],

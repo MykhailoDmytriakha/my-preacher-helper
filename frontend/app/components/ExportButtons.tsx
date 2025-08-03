@@ -596,8 +596,8 @@ export default function ExportButtons({
         }
         
         // Extract verse if it follows title - remove markdown formatting for verse
-        if (line.includes('Текст из Писания:') || line.includes('Scripture Text:')) {
-          sermonVerse = line.replace(/.*Текст из Писания:\s*/, '').replace(/.*Scripture Text:\s*/, '').trim();
+        if (line.startsWith('> ')) {
+          sermonVerse = line.replace('> ', '').trim();
           continue;
         }
         
