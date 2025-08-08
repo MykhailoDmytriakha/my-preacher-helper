@@ -289,7 +289,7 @@ export default function SermonOutlinePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="mx-auto px-4 py-8 max-w-none">
         <div className="mb-6 flex items-center justify-between">
           <Link 
             href={`/sermons/${id}`}
