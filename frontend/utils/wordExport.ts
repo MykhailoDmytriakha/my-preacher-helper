@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
+import { getSectionBaseColor } from '@lib/sections';
 
 interface PlanData {
   sermonTitle: string;
@@ -354,6 +355,11 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
       day: 'numeric'
     });
 
+    // Resolve canonical section colors (strip leading '#')
+    const introHex = getSectionBaseColor('introduction').replace('#', '');
+    const mainHex = getSectionBaseColor('main').replace('#', '');
+    const conclHex = getSectionBaseColor('conclusion').replace('#', '');
+
     // Create document
     const doc = new Document({
       creator: 'My Preacher Helper',
@@ -478,7 +484,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   text: 'ВСТУПЛЕНИЕ',
                   bold: true,
                   size: 28,
-                  color: '2563eb',
+                  color: introHex,
                   font: 'Arial',
                 }),
               ],
@@ -487,7 +493,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               spacing: { before: 0, after: 0 },
             }),
 
-            ...parseMarkdownToParagraphs(data.introduction, '2563eb'),
+            ...parseMarkdownToParagraphs(data.introduction, introHex),
 
             // Main Section
             new Paragraph({
@@ -496,7 +502,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   text: 'ОСНОВНАЯ ЧАСТЬ',
                   bold: true,
                   size: 28,
-                  color: '7c3aed',
+                  color: mainHex,
                   font: 'Arial',
                 }),
               ],
@@ -505,7 +511,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               spacing: { before: 0, after: 0 },
             }),
 
-            ...parseMarkdownToParagraphs(data.main, '7c3aed'),
+            ...parseMarkdownToParagraphs(data.main, mainHex),
 
             // Conclusion Section
             new Paragraph({
@@ -514,7 +520,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                   text: 'ЗАКЛЮЧЕНИЕ',
                   bold: true,
                   size: 28,
-                  color: '059669',
+                  color: conclHex,
                   font: 'Arial',
                 }),
               ],
@@ -523,7 +529,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
               spacing: { before: 0, after: 0 },
             }),
 
-            ...parseMarkdownToParagraphs(data.conclusion, '059669')
+            ...parseMarkdownToParagraphs(data.conclusion, conclHex)
           ],
         },
       ],

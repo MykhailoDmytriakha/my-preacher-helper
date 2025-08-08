@@ -9,6 +9,7 @@ import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
+import { getSectionLabel } from '@lib/sections';
 
 interface SermonOutlineProps {
   sermon: Sermon;
@@ -336,9 +337,9 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
 
   // Mapping for section titles
   const sectionTitles: Record<SectionType, string> = {
-    introduction: t('structure.introduction'),
-    mainPart: t('structure.mainPart'),
-    conclusion: t('structure.conclusion'),
+    introduction: getSectionLabel(t, 'introduction'),
+    mainPart: getSectionLabel(t, 'mainPart'),
+    conclusion: getSectionLabel(t, 'conclusion'),
   };
 
   // Get total thoughts count per section

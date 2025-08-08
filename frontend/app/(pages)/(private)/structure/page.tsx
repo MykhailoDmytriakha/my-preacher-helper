@@ -41,6 +41,7 @@ import { getContrastColor } from '@/utils/color';
 import CardContent from "@/components/CardContent";
 import { getExportContent } from "@/utils/exportContent";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { getSectionLabel } from "@lib/sections";
 import debounce from 'lodash/debounce';
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 
@@ -152,10 +153,10 @@ function StructurePageContent() {
   );
 
   const columnTitles: Record<string, string> = {
-    introduction: t('structure.introduction'),
-    main: t('structure.mainPart'),
-    conclusion: t('structure.conclusion'),
-    ambiguous: t('structure.underConsideration'),
+    introduction: getSectionLabel(t, 'introduction'),
+    main: getSectionLabel(t, 'main'),
+    conclusion: getSectionLabel(t, 'conclusion'),
+    ambiguous: getSectionLabel(t, 'ambiguous'),
   };
 
   const handleEdit = (item: Item) => {

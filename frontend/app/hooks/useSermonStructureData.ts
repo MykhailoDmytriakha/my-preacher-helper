@@ -5,6 +5,7 @@ import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
 import { updateStructure } from '@/services/structure.service';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { getSectionBaseColor } from '@lib/sections';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
 import { toast } from 'sonner';
 
@@ -66,7 +67,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     introduction: t('structure.introduction'),
     main: t('structure.mainPart'),
     conclusion: t('structure.conclusion'),
-    ambiguous: t('structure.underConsideration'), // Needed for tag assignment
+    ambiguous: t('structure.underConsideration'),
   };
 
 
@@ -115,9 +116,9 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         });
 
         setRequiredTagColors({
-          introduction: SERMON_SECTION_COLORS.introduction.base,
-          main: SERMON_SECTION_COLORS.mainPart.base,
-          conclusion: SERMON_SECTION_COLORS.conclusion.base,
+          introduction: getSectionBaseColor('introduction'),
+          main: getSectionBaseColor('main'),
+          conclusion: getSectionBaseColor('conclusion'),
         });
 
         const filteredAllowedTags = Object.values(allTags)
