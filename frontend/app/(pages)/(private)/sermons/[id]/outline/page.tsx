@@ -267,7 +267,7 @@ export default function SermonOutlinePage() {
 
   if (loading || sermonLoading) {
     return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
       </div>
     );
@@ -275,7 +275,7 @@ export default function SermonOutlinePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col items-center justify-center p-4">
+      <div className="flex flex-col items-center justify-center p-4 py-12">
         <h1 className="text-xl text-red-600 mb-4">{error}</h1>
         <button 
           onClick={() => router.back()}
@@ -288,8 +288,7 @@ export default function SermonOutlinePage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <div className="mx-auto px-4 py-8 max-w-none">
+    <div className="py-8">
         <div className="mb-6 flex items-center justify-between">
           <Link 
             href={`/sermons/${id}`}
@@ -338,7 +337,6 @@ export default function SermonOutlinePage() {
           {renderSectionContent('main', t('outline.mainPoints'))}
           {renderSectionContent('conclusion', t('outline.conclusion'))}
         </div>
-      </div>
       
       {showCopyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

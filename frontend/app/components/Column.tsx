@@ -515,7 +515,7 @@ export default function Column({
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
     return (
-      <div className={`flex h-full gap-6 justify-center max-w-[1800px] mx-auto ${className}`}>
+      <div className={`flex h-full gap-6 justify-center w-full ${className}`}>
         {/* Left sidebar - fixed, non-scrollable, with more top spacing when scrolling */}
         <div className="w-72 flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)]">
           <div 
@@ -771,7 +771,7 @@ export default function Column({
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`flex-grow min-w-[1200px] max-w-[1200px] min-h-[600px] overflow-y-auto p-6 bg-white dark:bg-gray-800 rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
+            className={`flex-grow w-full md:min-w-[700px] lg:min-w-[900px] xl:min-w-[1100px] min-h-[600px] overflow-y-auto p-6 bg-white dark:bg-gray-800 rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
             {items.length === 0 ? (

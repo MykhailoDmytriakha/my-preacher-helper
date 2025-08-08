@@ -910,7 +910,7 @@ export default function PlanPage() {
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-12">
         <LoadingSpinner size="large" />
       </div>
     );
@@ -945,7 +945,7 @@ export default function PlanPage() {
   
   return (
     <div 
-      className="min-h-screen bg-white dark:bg-gray-900 p-4"
+      className="p-4"
       data-testid="sermon-plan-page-container"
     >
       <style jsx global>{sectionButtonStyles}</style>

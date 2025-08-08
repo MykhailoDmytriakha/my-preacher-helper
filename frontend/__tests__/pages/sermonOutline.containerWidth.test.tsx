@@ -40,10 +40,13 @@ describe('Sermon outline container width', () => {
     const { container } = render(<SermonOutlinePage />);
     expect(container.querySelector('.max-w-7xl')).toBeNull();
     expect(container.querySelector('.max-w-4xl')).toBeNull();
-    const fluid = Array.from(container.querySelectorAll('div')).find((el) =>
-      el.className.includes('mx-auto') && el.className.includes('px-4')
+    // Page component should not add layout-level containers (provided by private layout)
+    const layoutContainers = Array.from(container.querySelectorAll('div')).filter((el) =>
+      el.className.includes('mx-auto') && (
+        el.className.includes('px-4') || el.className.includes('sm:px-6') || el.className.includes('lg:px-8')
+      )
     );
-    expect(fluid).toBeTruthy();
+    expect(layoutContainers.length).toBe(0);
   });
 });
 

@@ -1148,7 +1148,7 @@ function StructurePageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="p-4">
       <div className={`w-full`}>
         <div className="mb-4">
           <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">

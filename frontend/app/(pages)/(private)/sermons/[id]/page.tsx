@@ -185,7 +185,7 @@ export default function SermonPage() {
 
   if (loading || !sermon) {
     return (
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="py-8">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
           {isMounted ? (
             <>
@@ -350,8 +350,7 @@ export default function SermonPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
         <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
         
         <AudioRecorder 
@@ -493,7 +492,6 @@ export default function SermonPage() {
             {sermon.structure && <StructurePreview sermon={sermon} />}
           </div>
         </div>
-      </div>
       {editingModalData && (
         <EditThoughtModal
           thoughtId={editingModalData.thought.id}

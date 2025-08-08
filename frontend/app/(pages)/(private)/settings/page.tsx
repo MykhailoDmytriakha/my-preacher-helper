@@ -73,12 +73,11 @@ export default function SettingsPage() {
     return null;
   }
 
-  // Отображаем содержимое страницы настроек
+  // Render settings content under the shared private layout container
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <>
       <LanguageInitializer />
-      <main role="main" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
-        <SettingsLayout title={pageTitle}>
+      <SettingsLayout title={pageTitle}>
           {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
           <div className="block md:hidden mb-4">
             <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
@@ -119,8 +118,7 @@ export default function SettingsPage() {
           <div className="block md:hidden transition-opacity duration-200 ease-in-out">
             {renderActiveSection()}
           </div>
-        </SettingsLayout>
-      </main>
-    </div>
+      </SettingsLayout>
+    </>
   );
 } 

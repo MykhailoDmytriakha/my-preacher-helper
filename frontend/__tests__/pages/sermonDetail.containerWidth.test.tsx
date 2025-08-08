@@ -49,11 +49,11 @@ describe('Sermon detail container width', () => {
     // Should not contain legacy fixed width classes
     expect(container.querySelector('.max-w-7xl')).toBeNull();
     expect(container.querySelector('.max-w-4xl')).toBeNull();
-    // Should include the fluid wrapper
-    const fluid = Array.from(container.querySelectorAll('div')).find((el) =>
-      el.className.includes('mx-auto') && el.className.includes('px-4')
+    // Page component itself should not add layout-level containers (provided by private layout)
+    const hasPageLevelContainer = Array.from(container.querySelectorAll('div')).some((el) =>
+      el.className.includes('mx-auto') || el.className.includes('px-4') || el.className.includes('lg:px-8')
     );
-    expect(fluid).toBeTruthy();
+    expect(hasPageLevelContainer).toBe(false);
   });
 });
 

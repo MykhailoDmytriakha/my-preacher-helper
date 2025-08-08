@@ -73,7 +73,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <div className="flex flex-col items-center">
           <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
           <p className="mt-4 text-gray-600 dark:text-gray-400">{t('common.loading')}</p>

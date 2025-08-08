@@ -41,13 +41,8 @@ describe('Settings Page UI Smoke Test', () => {
     render(<SettingsPage />);
   });
 
-  it('renders the main settings page container', async () => {
-    // Wait for the main container to appear (using role="main" added to the component)
-    await waitFor(() => {
-      const container = screen.getByRole('main');
-      expect(container).toBeInTheDocument();
-    });
-  });
+  // No top-level <main> is rendered by the page itself anymore; it is provided by the private layout
+  // Keep smoke tests focused on presence of title/nav/sections
 
   it('renders the main settings heading', async () => {
     await waitFor(() => {

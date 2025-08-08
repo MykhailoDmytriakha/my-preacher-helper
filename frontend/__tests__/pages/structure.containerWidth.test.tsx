@@ -58,8 +58,9 @@ describe('Structure container width', () => {
   it('uses full width without max-w wrapper', () => {
     const { container } = render(<StructurePage />);
     expect(container.querySelector('.max-w-7xl')).toBeNull();
+    // The page itself should not add min-h-screen; that is owned by the private layout
     const wrapper = container.querySelector('div.min-h-screen');
-    expect(wrapper).toBeTruthy();
+    expect(wrapper).toBeNull();
     const inner = Array.from(container.querySelectorAll('div')).find((el) =>
       el.className.includes('w-full')
     );
