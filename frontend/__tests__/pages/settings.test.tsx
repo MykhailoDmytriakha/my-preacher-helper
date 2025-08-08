@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import SettingsPage from '@/(pages)/settings/page'; // Assuming correct path alias
+import SettingsPage from '@/(pages)/(private)/settings/page'; // Assuming correct path alias
 import '@testing-library/jest-dom';
 
 // Mock hooks

@@ -3,7 +3,6 @@
 import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackLink from './BackLink';
-import DashboardNav from '@/components/navigation/DashboardNav';
 
 interface SettingsLayoutProps {
   children: ReactNode;
@@ -20,7 +19,6 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <DashboardNav />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
         {showBackLink && <BackLink to="/dashboard" />}
         

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock the entire page component instead of testing the real one
-jest.mock('@/(pages)/sermons/[id]/outline/page', () => {
+jest.mock('@/(pages)/(private)/sermons/[id]/outline/page', () => {
   return function MockedSermonOutlinePage() {
     return (
       <div data-testid="sermon-outline-page-container">
@@ -35,7 +35,7 @@ jest.mock('@/(pages)/sermons/[id]/outline/page', () => {
 });
 
 // Import the mocked component
-import SermonOutlinePage from '@/(pages)/sermons/[id]/outline/page';
+import SermonOutlinePage from '@/(pages)/(private)/sermons/[id]/outline/page';
 
 describe('Sermon Outline Page - UI Elements', () => {
   beforeEach(() => {

@@ -7,8 +7,6 @@ import { getSermonPlan, generateSermonPlan } from "@/services/plan.service";
 import useSermon from "@/hooks/useSermon";
 import useSermonValidator from "@/hooks/useSermonValidator";
 import Link from "next/link";
-import DashboardNav from "@/components/navigation/DashboardNav";
-import { GuestBanner } from "@components/GuestBanner";
 import { Plan } from "@/models/models";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";

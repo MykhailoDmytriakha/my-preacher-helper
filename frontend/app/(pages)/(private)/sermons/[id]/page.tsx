@@ -6,8 +6,6 @@ import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import type { Sermon, Thought, Outline } from "@/models/models";
 import Link from "next/link";
-import DashboardNav from "@/components/navigation/DashboardNav";
-import { GuestBanner } from "@components/GuestBanner";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
 import ThoughtCard from "@components/ThoughtCard";
@@ -353,8 +351,6 @@ export default function SermonPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      <DashboardNav />
-      <GuestBanner />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
         <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
         

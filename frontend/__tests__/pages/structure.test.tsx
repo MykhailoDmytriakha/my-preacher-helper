@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import StructurePage from '@/(pages)/structure/page';
+import StructurePage from '@/(pages)/(private)/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData'; // Import the hook
 import { Item, Sermon, OutlinePoint, Tag, Thought, Structure, Outline } from '@/models/models'; // Import necessary types
 

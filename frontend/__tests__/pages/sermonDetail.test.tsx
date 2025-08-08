@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import SermonDetailPage from '@/(pages)/sermons/[id]/page'; // Assuming correct path alias
+import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page'; // Assuming correct path alias
 import '@testing-library/jest-dom';
 
 // Mock next/navigation to provide route params

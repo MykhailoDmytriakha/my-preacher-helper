@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import DashboardPage from '@/(pages)/dashboard/page';
+import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import '@testing-library/jest-dom';
 
 // Mock child components for structural testing
