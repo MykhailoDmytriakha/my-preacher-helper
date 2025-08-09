@@ -91,6 +91,10 @@ export async function getCustomTags(userId: string) {
 export async function saveTag(tag: Tag) {
   try {
     const tagsRef = adminDb.collection("tags");
+    // Prevent creating a custom tag with reserved structure names
+    if (isRequiredTag(tag.name)) {
+      throw new Error("RESERVED_NAME");
+    }
     // Check if tag already exists
     const querySnapshot = await tagsRef
       .where("name", "==", tag.name)
@@ -123,6 +127,31 @@ export async function deleteTag(userId: string, tagName: string) {
     
     await tagsRef.doc(querySnapshot.docs[0].id).delete();
     console.log(`Firestore: deleted tag ${tagName} for user ${userId}`);
+    // Cascade: remove tag from all thoughts in all user's sermons
+    const sermonsSnap = await adminDb.collection("sermons").where("userId", "==", userId).get();
+    let affectedThoughts = 0;
+    const batch = adminDb.batch();
+    sermonsSnap.forEach((doc) => {
+      const data = doc.data();
+      const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
+      const updated = thoughts.map((th: any) => ({
+        ...th,
+        tags: Array.isArray(th.tags) ? th.tags.filter((t: string) => t !== tagName) : []
+      }));
+      // Count diffs
+      thoughts.forEach((th: any, idx: number) => {
+        const before = Array.isArray(th.tags) ? th.tags.length : 0;
+        const after = Array.isArray(updated[idx].tags) ? updated[idx].tags.length : 0;
+        if (after < before) affectedThoughts += (before - after);
+      });
+      if (JSON.stringify(updated) !== JSON.stringify(thoughts)) {
+        batch.update(doc.ref, { thoughts: updated });
+      }
+    });
+    if (!sermonsSnap.empty) {
+      await batch.commit();
+    }
+    return { affectedThoughts };
   } catch (error) {
     console.error(`Error deleting tag ${tagName} for user ${userId}:`, error);
     throw error;

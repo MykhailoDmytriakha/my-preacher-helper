@@ -82,8 +82,7 @@ export const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCar
       ref={ref}
       className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
     >
-      <h3 className={`font-semibold text-lg mb-2 flex justify-between items-center`}
-          style={{ color: sectionColors.text }}>
+      <h3 className={`font-semibold text-lg mb-2 flex justify-between items-center ${sectionColors.text} dark:${sectionColors.darkText}`}>
         {outlinePoint.text}
         
         <div className="flex gap-2">

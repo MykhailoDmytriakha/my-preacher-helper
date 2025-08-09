@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 import { toast } from 'sonner';
-import { isStructureTag, getStructureIcon, getTagStyle } from "@utils/tagUtils";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 interface AddThoughtManualProps {
   sermonId: string;
@@ -210,7 +210,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
 
                   <div className="mb-4">
                     <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
-                    <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto">
+                    <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
                       {tags.map((tag, idx) => {
                         const tagInfo = allowedTags.find(t => t.name === tag);
                         let displayName = tag;
@@ -218,12 +218,11 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                         
                         if (tagInfo?.translationKey) {
                           displayName = t(tagInfo.translationKey);
-                        } else if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
-                          displayName = t('tags.introduction');
-                        } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
-                          displayName = t('tags.mainPart');
-                        } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
-                          displayName = t('tags.conclusion');
+                        } else {
+                          const canonical = normalizeStructureTag(tag);
+                          if (canonical === 'intro') displayName = t('tags.introduction');
+                          else if (canonical === 'main') displayName = t('tags.mainPart');
+                          else if (canonical === 'conclusion') displayName = t('tags.conclusion');
                         }
                         
                         const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
@@ -249,19 +248,18 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                       })}
                     </div>
                     <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 overflow-x-hidden">
                       {availableTags.map(tag => {
                         let displayName = tag.name;
                         const structureTagStatus = isStructureTag(tag.name);
                         
                         if (tag.translationKey) {
                           displayName = t(tag.translationKey);
-                        } else if (tag.name.toLowerCase() === "intro" || tag.name.toLowerCase() === "вступление") {
-                          displayName = t('tags.introduction');
-                        } else if (tag.name.toLowerCase() === "main" || tag.name.toLowerCase() === "основная часть") {
-                          displayName = t('tags.mainPart');
-                        } else if (tag.name.toLowerCase() === "conclusion" || tag.name.toLowerCase() === "заключение") {
-                          displayName = t('tags.conclusion');
+                        } else {
+                          const canonical = normalizeStructureTag(tag.name);
+                          if (canonical === 'intro') displayName = t('tags.introduction');
+                          else if (canonical === 'main') displayName = t('tags.mainPart');
+                          else if (canonical === 'conclusion') displayName = t('tags.conclusion');
                         }
                         
                         const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);

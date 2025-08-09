@@ -246,7 +246,8 @@
     "fetchTagsError": "Failed to fetch tags",
     "loadDataError": "Failed to load data",
     "removingError": "Error removing",
-    "savingError": "Error saving"
+    "savingError": "Error saving",
+    "reservedTagName": "This name is reserved for structure tags"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",

@@ -1,6 +1,20 @@
 // Base colors for sermon structure sections
+// Introduction = Amber/Yellow, Main = Blue, Conclusion = Green
 export const SERMON_SECTION_COLORS = {
   introduction: {
+    base: "#d97706",       // Amber-600
+    light: "#f59e0b",      // Amber-500
+    dark: "#b45309",       // Amber-700
+    bg: "bg-amber-50",
+    darkBg: "bg-amber-900/20",
+    border: "border-amber-200",
+    darkBorder: "border-amber-800",
+    hover: "hover:bg-amber-100",
+    darkHover: "hover:bg-amber-800/30",
+    text: "text-amber-800",
+    darkText: "text-amber-200",
+  },
+  mainPart: {
     base: "#2563eb",       // Blue-600
     light: "#3b82f6",      // Blue-500
     dark: "#1d4ed8",       // Blue-700
@@ -12,19 +26,6 @@ export const SERMON_SECTION_COLORS = {
     darkHover: "hover:bg-blue-800/30",
     text: "text-blue-800",
     darkText: "text-blue-200",
-  },
-  mainPart: {
-    base: "#7e22ce",       // Purple-700
-    light: "#a855f7",      // Purple-500
-    dark: "#6b21a8",       // Purple-800
-    bg: "bg-purple-50",
-    darkBg: "bg-purple-900/20",
-    border: "border-purple-200",
-    darkBorder: "border-purple-800",
-    hover: "hover:bg-purple-100",
-    darkHover: "hover:bg-purple-800/30",
-    text: "text-purple-800",
-    darkText: "text-purple-200",
   },
   conclusion: {
     base: "#16a34a",       // Green-600
@@ -50,8 +51,8 @@ export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclu
     border: `${colors.border} dark:${colors.darkBorder}`,
     dragBg: `${colors.bg} dark:${colors.darkBg}`,
     // Construct badge classes carefully
-    badge: `${colors.bg.split('-')[1] === 'blue' ? 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200' : 
-            colors.bg.split('-')[1] === 'purple' ? 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-200' : 
+    badge: `${colors.bg.split('-')[1] === 'amber' ? 'bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200' : 
+            colors.bg.split('-')[1] === 'blue' ? 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200' : 
             'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'}`
   };
 }

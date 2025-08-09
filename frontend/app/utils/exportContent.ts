@@ -1,4 +1,5 @@
 import type { Sermon, Structure, Thought, OutlinePoint } from "@/models/models";
+import { normalizeStructureTag } from "@/utils/tagUtils";
 import { i18n } from '@locales/i18n';
 
 // Debug flag
@@ -378,13 +379,15 @@ function processThoughtsByStructure(thoughts: Thought[], structure: Structure, s
  * Process thoughts by sorting them based on section tags (Intro, Main, Conclusion).
  */
 function processThoughtsByTags(thoughts: Thought[]): Thought[] {
-  const requiredTags = [TRANSLATIONS.introTag, TRANSLATIONS.mainTag, TRANSLATIONS.conclusionTag];
   // Create a copy before sorting
+  const order: Record<string, number> = { intro: 0, main: 1, conclusion: 2 };
   const sorted = [...thoughts].sort((a, b) => {
-    const aTagIndex = getTagPriority(a.tags, requiredTags);
-    const bTagIndex = getTagPriority(b.tags, requiredTags);
-    if (aTagIndex !== bTagIndex) return aTagIndex - bTagIndex;
-    return sortByDateHelper(a, b); // Secondary sort by date
+    const aCanon = a.tags?.map(normalizeStructureTag).find(Boolean) as string | null | undefined;
+    const bCanon = b.tags?.map(normalizeStructureTag).find(Boolean) as string | null | undefined;
+    if (aCanon && bCanon && aCanon !== bCanon) return order[aCanon] - order[bCanon];
+    if (aCanon && !bCanon) return -1;
+    if (!aCanon && bCanon) return 1;
+    return sortByDateHelper(a, b);
   });
   debugLog(`processThoughtsByTags - Sorted ${sorted.length} thoughts`);
   return sorted;
@@ -538,27 +541,16 @@ function sortByDateHelper(a: Thought, b: Thought): number {
 /** Filter thoughts relevant to a specific section key */
 function filterThoughtsBySection(thoughts: Thought[] | undefined, sectionKey: string): Thought[] {
   if (!thoughts) return [];
-  const structureTagsMap: Record<string, string> = {
-      'introduction': TRANSLATIONS.introTag,
-      'main': TRANSLATIONS.mainTag,
-      'conclusion': TRANSLATIONS.conclusionTag
-  };
-  const requiredTag = structureTagsMap[sectionKey];
-
   if (sectionKey === 'ambiguous') {
-      const allStructureTags = Object.values(structureTagsMap);
-      // Ensure tags exists before checking
-      return thoughts.filter(thought =>
-          !thought.tags || !thought.tags.some(tag => allStructureTags.includes(tag))
-      );
+    return thoughts.filter(thought =>
+      !thought.tags?.some(tag => normalizeStructureTag(tag) !== null)
+    );
   }
-
-  if (requiredTag) {
-      // Ensure tags exists before checking
-      return thoughts.filter(thought => thought.tags?.includes(requiredTag));
-  }
-
-  return []; // Should not happen for standard keys
+  const targetCanonical = sectionKey === 'introduction' ? 'intro' : sectionKey === 'main' ? 'main' : sectionKey === 'conclusion' ? 'conclusion' : '';
+  if (!targetCanonical) return [];
+  return thoughts.filter(thought =>
+    thought.tags?.some(tag => normalizeStructureTag(tag) === targetCanonical)
+  );
 }
 
 /** Get localized section title */
@@ -581,9 +573,7 @@ function isValidStructure(structure: Structure | undefined): boolean {
 /** Check if any thoughts have relevant section tags */
 function hasValidSectionTags(thoughts: Thought[]): boolean {
   if (!thoughts) return false;
-  const requiredTags = [TRANSLATIONS.introTag, TRANSLATIONS.mainTag, TRANSLATIONS.conclusionTag];
   return thoughts.some(thought => 
-    // Ensure tags exists before checking
-    thought.tags?.some(tag => requiredTags.includes(tag))
+    thought.tags?.some(tag => normalizeStructureTag(tag) !== null)
   );
 }

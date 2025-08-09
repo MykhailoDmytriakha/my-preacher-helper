@@ -8,6 +8,7 @@ import TagList from './TagList';
 import AddTagForm from './AddTagForm';
 import ColorPickerModal from '@components/ColorPickerModal';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 interface TagsSectionProps {
   user: User | null;
@@ -43,24 +44,32 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       required: false,
     };
     
-    await addCustomTag(newTagObj);
     try {
+      await addCustomTag(newTagObj);
       const tagsData = await getTags(user.uid);
       setTags(tagsData);
-    } catch (error) {
-      console.error('Error updating tags:', error);
+    } catch (error: any) {
+      const message = error?.message === 'Reserved tag name' ? t('errors.reservedTagName') : (t('errors.savingError') || 'Error saving');
+      toast.error(message);
     }
   };
 
   const handleRemoveTag = async (tagName: string) => {
     try {
       if (user?.uid) {
-        await removeCustomTag(user.uid, tagName);
+        const result = await removeCustomTag(user.uid, tagName);
+        if (result?.affectedThoughts != null) {
+          const count = result.affectedThoughts as number;
+          if (count > 0) {
+            toast.success(`${count} ${t('structure.thoughts')} ${t('actions.remove').toLowerCase()}`);
+          }
+        }
         const tagsData = await getTags(user.uid);
         setTags(tagsData);
       }
     } catch (error) {
       console.error('Error removing tag:', error);
+      toast.error(t('errors.removingError') || 'Error removing');
     }
   };
 

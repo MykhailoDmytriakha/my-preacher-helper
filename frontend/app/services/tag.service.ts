@@ -26,7 +26,12 @@ export async function addCustomTag(tag: Tag) {
       body: JSON.stringify(tag)
     });
     if (!res.ok) {
-      throw new Error('Failed to add custom tag');
+      try {
+        const data = await res.json();
+        throw new Error(data?.message || 'Failed to add custom tag');
+      } catch {
+        throw new Error('Failed to add custom tag');
+      }
     }
     return tag;
   } catch (error) {
@@ -43,7 +48,8 @@ export async function removeCustomTag(userId: string, tagName: string) {
     if (!res.ok) {
       throw new Error('Failed to remove custom tag');
     }
-    return tagName;
+    const data = await res.json();
+    return data;
   } catch (error) {
     console.error('removeCustomTag: Error removing custom tag', error);
     throw error;

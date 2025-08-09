@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { getContrastColor } from "@/utils/color";
+import { getTagStyle } from "@/utils/tagUtils";
 import { Item } from "@/models/models";
 import { useTranslation } from "react-i18next";
+import { normalizeStructureTag } from "@utils/tagUtils";
 
 interface CardContentProps {
   item: Item;
@@ -24,19 +25,19 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
             let displayName = tag.name;
             if (tag.translationKey) {
               displayName = t(tag.translationKey);
-            } else if (tag.name.toLowerCase() === "intro" || tag.name.toLowerCase() === "вступление") {
-              displayName = t('tags.introduction');
-            } else if (tag.name.toLowerCase() === "main" || tag.name.toLowerCase() === "основная часть") {
-              displayName = t('tags.mainPart');
-            } else if (tag.name.toLowerCase() === "conclusion" || tag.name.toLowerCase() === "заключение") {
-              displayName = t('tags.conclusion');
+            } else {
+              const canonical = normalizeStructureTag(tag.name);
+              if (canonical === 'intro') displayName = t('tags.introduction');
+              else if (canonical === 'main') displayName = t('tags.mainPart');
+              else if (canonical === 'conclusion') displayName = t('tags.conclusion');
             }
             
+            const { className, style } = getTagStyle(tag.name, tag.color);
             return (
-              <span 
+              <span
                 key={tag.name}
-                style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
-                className="text-xs text-white px-2 py-1 rounded-full"
+                style={style}
+                className={`text-xs ${className}`}
               >
                 {displayName}
               </span>

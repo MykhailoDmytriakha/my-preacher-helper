@@ -119,7 +119,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
         className={`w-full mt-4 sm:mt-6 px-4 py-2 ${
           hasInconsistentThoughts 
             ? 'bg-gray-400 cursor-not-allowed' 
-            : 'bg-purple-600 hover:bg-purple-700'
+            : 'bg-blue-600 hover:bg-blue-700'
         } text-white rounded-lg transition-colors text-sm sm:text-base`}
         disabled={hasInconsistentThoughts}
         title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning', 'Some thoughts have inconsistent tags. Please fix tag inconsistencies before working on structure.') : ''}

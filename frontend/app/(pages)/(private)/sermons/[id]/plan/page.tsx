@@ -206,12 +206,13 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
           {thoughts.map((thought) => (
             <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base">
               • {thought.text}
-              {thought.keyFragments && thought.keyFragments.length > 0 && (
+                     {thought.keyFragments && thought.keyFragments.length > 0 && (
                 <div className="mt-1 ml-2">
                   {thought.keyFragments.map((fragment, index) => (
                     <span 
                       key={index} 
-                      className="inline-block mr-2 mb-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs rounded-full"
+                             className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
+                             style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
                     >
                       "{fragment}"
                     </span>
@@ -866,11 +867,11 @@ export default function PlanPage() {
           </div>
         )}
         
-        <div className="mb-8 pb-6 border-b-2 border-blue-300">
-          <h2 className="text-2xl font-bold text-blue-700 mb-4">
+        <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} mb-4`}>
             {t("sections.introduction")}
           </h2>
-          <div className="pl-2 border-l-4 border-blue-400">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {combinedPlan.introduction || t("plan.noContent")}
@@ -879,11 +880,11 @@ export default function PlanPage() {
           </div>
         </div>
         
-        <div className="mb-8 pb-6 border-b-2 border-purple-300">
-          <h2 className="text-2xl font-bold text-purple-700 mb-4">
+        <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} mb-4`}>
             {t("sections.main")}
           </h2>
-          <div className="pl-2 border-l-4 border-purple-400">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {combinedPlan.main || t("plan.noContent")}
@@ -893,10 +894,10 @@ export default function PlanPage() {
         </div>
         
         <div className="mb-4">
-          <h2 className="text-2xl font-bold text-green-700 mb-4">
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} mb-4`}>
             {t("sections.conclusion")}
           </h2>
-          <div className="pl-2 border-l-4 border-green-400">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {combinedPlan.conclusion || t("plan.noContent")}
@@ -1027,7 +1028,7 @@ export default function PlanPage() {
           display: inline-block;
           width: 6px;
           height: 20px;
-          background-color: #2563eb; /* Introduction base color - Blue-600 */
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
           margin-right: 10px;
           border-radius: 2px;
           vertical-align: text-top;
@@ -1040,7 +1041,7 @@ export default function PlanPage() {
           content: "•";
           display: inline-block;
           margin-right: 8px;
-          color: #3b82f6; /* Blue-500 */
+          color: ${SERMON_SECTION_COLORS.introduction.light};
           font-weight: bold;
         }
         
@@ -1050,7 +1051,7 @@ export default function PlanPage() {
           content: "•";
           display: inline-block;
           margin-right: 8px;
-          color: #a855f7; /* Purple-500 */
+          color: ${SERMON_SECTION_COLORS.mainPart.light};
           font-weight: bold;
         }
         
@@ -1060,7 +1061,7 @@ export default function PlanPage() {
           content: "•";
           display: inline-block;
           margin-right: 8px;
-          color: #22c55e; /* Green-500 */
+          color: ${SERMON_SECTION_COLORS.conclusion.light};
           font-weight: bold;
         }
         
@@ -1069,7 +1070,7 @@ export default function PlanPage() {
           content: "•";
           display: inline-block;
           margin-right: 8px;
-          color: #7e22ce; /* Main Part base color - Purple-700 */
+          color: ${SERMON_SECTION_COLORS.mainPart.base};
           font-weight: bold;
         }
         
@@ -1078,44 +1079,44 @@ export default function PlanPage() {
           content: "○";
           display: inline-block;
           margin-right: 8px;
-          color: #16a34a; /* Conclusion base color - Green-600 */
+          color: ${SERMON_SECTION_COLORS.conclusion.base};
           font-weight: bold;
         }
         
         /* Section-specific styles for introduction section */
         .prose-introduction h2::before {
-          background-color: #2563eb; /* Blue-600 */
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
         }
         .prose-introduction h4::before {
-          color: #1d4ed8; /* Blue-700 */
+          color: ${SERMON_SECTION_COLORS.introduction.dark};
         }
         
         /* Section-specific styles for main section */
         .prose-main h2::before {
-          background-color: #7e22ce; /* Purple-700 */
+          background-color: ${SERMON_SECTION_COLORS.mainPart.base};
         }
         .prose-main h4::before {
-          color: #6b21a8; /* Purple-800 */
+          color: ${SERMON_SECTION_COLORS.mainPart.dark};
         }
         
         /* Section-specific styles for conclusion section */
         .prose-conclusion h2::before {
-          background-color: #16a34a; /* Green-600 */
+          background-color: ${SERMON_SECTION_COLORS.conclusion.base};
         }
         .prose-conclusion h4::before {
-          color: #15803d; /* Green-700 */
+          color: ${SERMON_SECTION_COLORS.conclusion.dark};
         }
 
         /* Dark mode colors */
         @media (prefers-color-scheme: dark) {
           .markdown-content h2::before {
-            background-color: #3b82f6; /* Blue-500 */
+            background-color: ${SERMON_SECTION_COLORS.introduction.light};
           }
           .markdown-content h3:not(.prose-introduction h3):not(.prose-main h3):not(.prose-conclusion h3):not(.introduction-section h3):not(.main-section h3):not(.conclusion-section h3)::before {
-            color: #a855f7; /* Purple-500 */
+            color: ${SERMON_SECTION_COLORS.mainPart.light};
           }
           .markdown-content h4::before {
-            color: #22c55e; /* Green-500 */
+            color: ${SERMON_SECTION_COLORS.conclusion.light};
           }
         }
       `}</style>
@@ -1187,7 +1188,10 @@ export default function PlanPage() {
             data-testid="plan-introduction-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-blue-500 dark:bg-blue-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.introduction.light }}
+            >
               {t("sections.introduction")}
             </h2>
             <div className="p-3">
@@ -1220,7 +1224,10 @@ export default function PlanPage() {
             data-testid="plan-introduction-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-blue-500 dark:bg-blue-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.introduction.light }}
+            >
               {t("sections.introduction")}
             </h2>
             <div className="p-3">
@@ -1235,7 +1242,7 @@ export default function PlanPage() {
                   }}
                   className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
                 >
-                  <h3 className={`font-semibold text-lg mb-2 text-blue-800 dark:text-blue-400 flex justify-between items-center`}>
+                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} flex justify-between items-center`}>
                     {outlinePoint.text}
                     <div className="flex space-x-2">
                       <Button
@@ -1342,7 +1349,10 @@ export default function PlanPage() {
             data-testid="plan-main-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-purple-500 dark:bg-purple-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.mainPart.light }}
+            >
               {t("sections.main")}
             </h2>
             <div className="p-3">
@@ -1375,7 +1385,10 @@ export default function PlanPage() {
             data-testid="plan-main-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-purple-500 dark:bg-purple-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.mainPart.light }}
+            >
               {t("sections.main")}
             </h2>
             <div className="p-3">
@@ -1390,7 +1403,7 @@ export default function PlanPage() {
                   }}
                   className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
                 >
-                  <h3 className={`font-semibold text-lg mb-2 text-purple-800 dark:text-purple-400 flex justify-between items-center`}>
+                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} flex justify-between items-center`}>
                     {outlinePoint.text}
                     <div className="flex space-x-2">
                       <Button
@@ -1497,7 +1510,10 @@ export default function PlanPage() {
             data-testid="plan-conclusion-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-green-500 dark:bg-green-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.conclusion.light }}
+            >
               {t("sections.conclusion")}
             </h2>
             <div className="p-3">
@@ -1530,7 +1546,10 @@ export default function PlanPage() {
             data-testid="plan-conclusion-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
           >
-            <h2 className={`text-xl font-semibold p-3 bg-green-500 dark:bg-green-700 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+            <h2
+              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}
+              style={{ backgroundColor: SERMON_SECTION_COLORS.conclusion.light }}
+            >
               {t("sections.conclusion")}
             </h2>
             <div className="p-3">
@@ -1545,7 +1564,7 @@ export default function PlanPage() {
                   }}
                   className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
                 >
-                  <h3 className={`font-semibold text-lg mb-2 text-green-800 dark:text-green-400 flex justify-between items-center`}>
+                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} flex justify-between items-center`}>
                     {outlinePoint.text}
                     <div className="flex space-x-2">
                       <Button

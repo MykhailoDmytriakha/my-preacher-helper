@@ -1,14 +1,14 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import type { Thought, Sermon } from '@/models/models';
-import { STRUCTURE_TAGS, UKRAINIAN_STRUCTURE_TAGS } from '@lib/constants';
+import { STRUCTURE_TAGS } from '@lib/constants';
 
 // Mock Data
 const mockThoughts: Thought[] = [
   { id: '1', text: 'Intro thought 1', tags: [STRUCTURE_TAGS.INTRODUCTION], date: '2023-10-26T10:00:00Z', outlinePointId: 'p1' },
   { id: '2', text: 'Main thought 1', tags: [STRUCTURE_TAGS.MAIN_BODY, 'custom1'], date: '2023-10-26T11:00:00Z', outlinePointId: 'p2' },
   { id: '3', text: 'Conclusion thought 1', tags: [STRUCTURE_TAGS.CONCLUSION], date: '2023-10-26T12:00:00Z', outlinePointId: 'p3' },
-  { id: '4', text: 'Main thought 2 (Uk)', tags: [UKRAINIAN_STRUCTURE_TAGS.MAIN_BODY, 'custom2'], date: '2023-10-26T09:00:00Z', outlinePointId: 'p4' },
+  { id: '4', text: 'Main thought 2 (Uk)', tags: ['Основна частина', 'custom2'], date: '2023-10-26T09:00:00Z', outlinePointId: 'p4' },
   { id: '5', text: 'Thought with no structure tag', tags: ['custom1'], date: '2023-10-26T08:00:00Z', outlinePointId: 'p5' },
   { id: '6', text: 'Thought with missing required tag', tags: ['custom2'], date: '2023-10-26T13:00:00Z' }, // Removed status and userId
 ];
@@ -67,9 +67,9 @@ describe('useThoughtFiltering Hook', () => {
     });
 
     expect(result.current.structureFilter).toBe(STRUCTURE_TAGS.MAIN_BODY);
-    // Only thought 2 should remain ( Uk tag filtered out by primary structure tag filter)
-    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['2']);
-    expect(result.current.activeCount).toBe(1);
+    // Both thought 2 (RU main) and 4 (UK main) remain due to normalization
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['2','4']);
+    expect(result.current.activeCount).toBe(2);
   });
 
   it('should filter by tagFilters (single tag)', () => {
@@ -180,13 +180,9 @@ describe('useThoughtFiltering Hook', () => {
   });
 
   it('should sort by date when sortOrder is "structure" but no thoughts have structure tags', () => {
-    const thoughtsWithoutStructureTags = mockThoughts.filter(t => !
-        t.tags.includes(STRUCTURE_TAGS.INTRODUCTION) && 
-        !t.tags.includes(STRUCTURE_TAGS.MAIN_BODY) && 
-        !t.tags.includes(STRUCTURE_TAGS.CONCLUSION) &&
-        !t.tags.includes(UKRAINIAN_STRUCTURE_TAGS.INTRODUCTION) &&
-        !t.tags.includes(UKRAINIAN_STRUCTURE_TAGS.MAIN_BODY) &&
-        !t.tags.includes(UKRAINIAN_STRUCTURE_TAGS.CONCLUSION)
+    const structureStrings = ['Вступление','Основная часть','Заключение','Вступ','Основна частина','Висновок','Introduction','Main Part','Conclusion'];
+    const thoughtsWithoutStructureTags = mockThoughts.filter(t =>
+      !(t.tags || []).some(tag => structureStrings.includes(tag))
     );
     // Should only contain thoughts 5 and 6
     expect(thoughtsWithoutStructureTags.map(t => t.id)).toEqual(['5', '6']);

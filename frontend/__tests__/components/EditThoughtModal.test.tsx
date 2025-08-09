@@ -221,4 +221,14 @@ describe('EditThoughtModal Component', () => {
     expect(options[1].value).toBe('intro1');
     expect(options[2].value).toBe('intro2');
   });
+
+  test('tag containers use overflow-x-hidden (no horizontal scrollbar)', () => {
+    render(<EditThoughtModal {...mockProps} />);
+    const lists = screen.getAllByText(/Tags|Available tags/i);
+    // Find the nearest container with role list or div wrapper
+    const wrappers = document.querySelectorAll('div');
+    // Expect at least one container to have overflow-x-hidden (selected tags list)
+    const hasHiddenOverflow = Array.from(wrappers).some((el) => /overflow-x-hidden/.test(el.className));
+    expect(hasHiddenOverflow).toBe(true);
+  });
 }); 

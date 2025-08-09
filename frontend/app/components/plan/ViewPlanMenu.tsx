@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { BookOpen, ChevronDown, Maximize2, ScrollText, FileText } from "lucide-react";
 import ReactDOM from "react-dom/client";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -51,41 +52,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
   const openSectionModal = (section: 'introduction' | 'main' | 'conclusion') => {
     setShowSectionMenu(false);
     
-    // Section colors and content based on the section
-    const sectionColors = {
-      introduction: {
-        bg: 'bg-blue-100',
-        border: 'border-blue-400',
-        dark: 'dark:border-blue-600',
-        text: 'text-blue-800',
-        darkText: 'dark:text-blue-300',
-        hover: 'hover:bg-blue-100',
-        darkHover: 'dark:hover:bg-blue-900/30',
-        dot: 'bg-blue-500',
-        darkDot: 'dark:bg-blue-700',
-      },
-      main: {
-        bg: 'bg-purple-100',
-        border: 'border-purple-400',
-        dark: 'dark:border-purple-600',
-        text: 'text-purple-800',
-        darkText: 'dark:text-purple-300',
-        hover: 'hover:bg-purple-100',
-        darkHover: 'dark:hover:bg-purple-900/30',
-        dot: 'bg-purple-500',
-        darkDot: 'dark:bg-purple-700',
-      },
-      conclusion: {
-        bg: 'bg-green-100',
-        border: 'border-green-400',
-        dark: 'dark:border-green-600',
-        text: 'text-green-800',
-        darkText: 'dark:text-green-300',
-        hover: 'hover:bg-green-100',
-        darkHover: 'dark:hover:bg-green-900/30',
-        dot: 'bg-green-500',
-        darkDot: 'dark:bg-green-700',
-      }
+    // Map to canonical section colors
+    const getSectionColors = (sec: 'introduction' | 'main' | 'conclusion') => {
+      const colors = sec === 'main' ? SERMON_SECTION_COLORS.mainPart : SERMON_SECTION_COLORS[sec];
+      return colors;
     };
     
     const sectionContent = combinedPlan[section] || t("plan.noContent");
@@ -133,7 +103,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     
     // Create content wrapper with vertical border
     const contentWrapper = document.createElement('div');
-    contentWrapper.className = `pl-2 border-l-4 ${sectionColors[section].border} ${sectionColors[section].dark} prose-${section}`;
+    {
+      const sc = getSectionColors(section);
+      contentWrapper.className = `pl-2 border-l-4 ${sc.border.split(' ')[0]} dark:${sc.darkBorder} prose-${section}`;
+    }
     
     // Render React component inside the div
     const root = ReactDOM.createRoot(markdownContent);
@@ -221,7 +194,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     
     // Create copy button
     const copyButton = document.createElement('button');
-    copyButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-purple-600 text-white hover:bg-purple-700';
+    copyButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700';
     copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><span>${t("copy.copyFormatted") || "Copy Formatted"}</span>`;
     
     copyButton.addEventListener('click', () => {
@@ -241,12 +214,12 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
       const showCopiedState = () => {
         copyButton.innerHTML = copiedHtml;
         copyButton.classList.add('bg-green-600', 'hover:bg-green-700');
-        copyButton.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+        copyButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
         copyButton.disabled = true;
         setTimeout(() => {
           copyButton.innerHTML = originalButtonHtml;
           copyButton.classList.remove('bg-green-600', 'hover:bg-green-700');
-          copyButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
+          copyButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
           copyButton.disabled = false;
         }, 1500);
       };
@@ -302,7 +275,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     root.render(
       <>
         {sermonVerse && (
-          <div className="mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 border-blue-500 dark:border-blue-600">
+          <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
             <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
               {sermonVerse}
             </p>
@@ -312,11 +285,11 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
           </div>
         )}
         
-        <div className="mb-8 pb-6 border-b-2 border-blue-300 dark:border-blue-700">
-          <h2 className="text-2xl font-bold text-blue-700 dark:text-blue-400 mb-4 pb-2 border-b border-blue-200 dark:border-blue-800">
+        <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
             {t("sections.introduction")}
           </h2>
-          <div className="pl-2 border-l-4 border-blue-400 dark:border-blue-600 prose-introduction">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
             <MarkdownRenderer 
               markdown={combinedPlan.introduction || t("plan.noContent")} 
               section="introduction"
@@ -324,11 +297,11 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
           </div>
         </div>
         
-        <div className="mb-8 pb-6 border-b-2 border-purple-300 dark:border-purple-700">
-          <h2 className="text-2xl font-bold text-purple-700 dark:text-purple-400 mb-4 pb-2 border-b border-purple-200 dark:border-purple-800">
+        <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
             {t("sections.main")}
           </h2>
-          <div className="pl-2 border-l-4 border-purple-400 dark:border-purple-600 prose-main">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
             <MarkdownRenderer 
               markdown={combinedPlan.main || t("plan.noContent")} 
               section="main"
@@ -337,10 +310,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
         </div>
         
         <div className="mb-4">
-          <h2 className="text-2xl font-bold text-green-700 dark:text-green-400 mb-4 pb-2 border-b border-green-200 dark:border-green-800">
+          <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
             {t("sections.conclusion")}
           </h2>
-          <div className="pl-2 border-l-4 border-green-400 dark:border-green-600 prose-conclusion">
+          <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
             <MarkdownRenderer 
               markdown={combinedPlan.conclusion || t("plan.noContent")} 
               section="conclusion"
@@ -357,7 +330,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
 
   return (
     <div className="relative" ref={sectionMenuRef}>
-      <button
+      <button 
         onClick={() => setShowSectionMenu(!showSectionMenu)}
         className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700"
       >
@@ -369,26 +342,26 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
       {showSectionMenu && (
         <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-30 min-w-[180px]">
           <button 
-            className="w-full text-left px-4 py-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-800 dark:text-blue-300 flex items-center"
+            className={`w-full text-left px-4 py-2 ${SERMON_SECTION_COLORS.introduction.hover} dark:${SERMON_SECTION_COLORS.introduction.darkHover} ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} flex items-center`}
             onClick={() => openSectionModal('introduction')}
           >
-            <div className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-700 mr-2"></div>
+            <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: SERMON_SECTION_COLORS.introduction.base }}></div>
             {t("sections.introduction")}
           </button>
           
           <button 
-            className="w-full text-left px-4 py-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-purple-800 dark:text-purple-300 flex items-center"
+            className={`w-full text-left px-4 py-2 ${SERMON_SECTION_COLORS.mainPart.hover} dark:${SERMON_SECTION_COLORS.mainPart.darkHover} ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} flex items-center`}
             onClick={() => openSectionModal('main')}
           >
-            <div className="w-3 h-3 rounded-full bg-purple-500 dark:bg-purple-700 mr-2"></div>
+            <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: SERMON_SECTION_COLORS.mainPart.base }}></div>
             {t("sections.main")}
           </button>
           
           <button 
-            className="w-full text-left px-4 py-2 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center"
+            className={`w-full text-left px-4 py-2 ${SERMON_SECTION_COLORS.conclusion.hover} dark:${SERMON_SECTION_COLORS.conclusion.darkHover} ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} flex items-center`}
             onClick={() => openSectionModal('conclusion')}
           >
-            <div className="w-3 h-3 rounded-full bg-green-500 dark:bg-green-700 mr-2"></div>
+            <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: SERMON_SECTION_COLORS.conclusion.base }}></div>
             {t("sections.conclusion")}
           </button>
           

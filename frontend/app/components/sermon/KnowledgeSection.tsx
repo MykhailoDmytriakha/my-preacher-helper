@@ -14,6 +14,7 @@ import { getSermonById } from "@/services/sermon.service";
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
 import { Sermon, Insights, Plan } from '@/models/models';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
 interface KnowledgeSectionProps {
   sermon: Sermon;
@@ -504,25 +505,25 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               {hasThoughtsPlan ? (
                 <>
                   {thoughtsPlan?.introduction && (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
-                      <h4 className="font-medium text-green-800 dark:text-green-200 mb-1">{t('knowledge.planIntroduction')}</h4>
-                      <div className="text-green-700 dark:text-green-300 text-sm">
+                    <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+                      <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>{t('knowledge.planIntroduction')}</h4>
+                      <div className={`text-sm ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>
                         <MarkdownRenderer markdown={thoughtsPlan.introduction} section="introduction" />
                       </div>
                     </div>
                   )}
                   {thoughtsPlan?.main && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-                      <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">{t('knowledge.planMain')}</h4>
-                      <div className="text-blue-700 dark:text-blue-300 text-sm">
+                    <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+                      <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>{t('knowledge.planMain')}</h4>
+                      <div className={`text-sm ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>
                         <MarkdownRenderer markdown={thoughtsPlan.main} section="main" />
                       </div>
                     </div>
                   )}
                   {thoughtsPlan?.conclusion && (
-                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
-                      <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-1">{t('knowledge.planConclusion')}</h4>
-                      <div className="text-purple-700 dark:text-purple-300 text-sm">
+                    <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+                      <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>{t('knowledge.planConclusion')}</h4>
+                      <div className={`text-sm ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>
                         <MarkdownRenderer markdown={thoughtsPlan.conclusion} section="conclusion" />
                       </div>
                     </div>

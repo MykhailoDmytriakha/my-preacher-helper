@@ -7,7 +7,7 @@ import { getContrastColor } from '@utils/color';
 import { Thought, OutlinePoint, Outline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { isStructureTag, getStructureIcon, getTagStyle } from "@utils/tagUtils";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 interface EditThoughtModalProps {
   thoughtId?: string;
@@ -167,7 +167,7 @@ export default function EditThoughtModal({
 
         <div className="mb-4">
           <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
-          <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto">
+          <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
             {tags.map((tag, idx) => {
               const tagInfo = allowedTags.find(t => t.name === tag);
               // Get display name (translated if available)
@@ -176,12 +176,11 @@ export default function EditThoughtModal({
               
               if (tagInfo?.translationKey) {
                 displayName = t(tagInfo.translationKey);
-              } else if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
-                displayName = t('tags.introduction');
-              } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
-                displayName = t('tags.mainPart');
-              } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
-                displayName = t('tags.conclusion');
+              } else {
+                const canonical = normalizeStructureTag(tag);
+                if (canonical === 'intro') displayName = t('tags.introduction');
+                else if (canonical === 'main') displayName = t('tags.mainPart');
+                else if (canonical === 'conclusion') displayName = t('tags.conclusion');
               }
               
               // Get styling from our utilities
@@ -191,15 +190,15 @@ export default function EditThoughtModal({
               // Get the structure icon if applicable
               const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
               
-              return (
-                <div
-                  key={tag + idx}
-                  onClick={() => handleRemoveTag(idx)}
-                  className={className}
-                  style={style}
-                  role="button"
-                  aria-label={`Remove tag ${displayName}`}
-                >
+                  return (
+                    <div
+                      key={tag + idx}
+                      onClick={() => handleRemoveTag(idx)}
+                      className={className}
+                      style={style}
+                      role="button"
+                      aria-label={`Remove tag ${displayName}`}
+                    >
                   {iconInfo && (
                     <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
                   )}
@@ -210,7 +209,7 @@ export default function EditThoughtModal({
             })}
           </div>
           <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 overflow-x-hidden">
             {availableTags.map(tag => {
               // Get display name (translated if available)
               let displayName = tag.name;
@@ -218,12 +217,11 @@ export default function EditThoughtModal({
               
               if (tag.translationKey) {
                 displayName = t(tag.translationKey);
-              } else if (tag.name.toLowerCase() === "intro" || tag.name.toLowerCase() === "вступление") {
-                displayName = t('tags.introduction');
-              } else if (tag.name.toLowerCase() === "main" || tag.name.toLowerCase() === "основная часть") {
-                displayName = t('tags.mainPart');
-              } else if (tag.name.toLowerCase() === "conclusion" || tag.name.toLowerCase() === "заключение") {
-                displayName = t('tags.conclusion');
+              } else {
+                const canonical = normalizeStructureTag(tag.name);
+                if (canonical === 'intro') displayName = t('tags.introduction');
+                else if (canonical === 'main') displayName = t('tags.mainPart');
+                else if (canonical === 'conclusion') displayName = t('tags.conclusion');
               }
               
               // Get styling from our utilities
@@ -233,15 +231,15 @@ export default function EditThoughtModal({
               // Get the structure icon if applicable
               const iconInfo = structureTagStatus ? getStructureIcon(tag.name) : null;
               
-              return (
-                <div
-                  key={tag.name}
-                  onClick={() => handleAddTag(tag.name)}
-                  className={className}
-                  style={style}
-                  role="button"
-                  aria-label={`Add tag ${displayName}`}
-                >
+                return (
+                  <div
+                    key={tag.name}
+                    onClick={() => handleAddTag(tag.name)}
+                    className={className}
+                    style={style}
+                    role="button"
+                    aria-label={`Add tag ${displayName}`}
+                  >
                   {iconInfo && (
                     <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
                   )}

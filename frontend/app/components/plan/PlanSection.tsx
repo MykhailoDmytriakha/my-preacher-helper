@@ -64,18 +64,7 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
     }
   };
 
-  const getSectionHeaderBg = () => {
-    switch (sectionName) {
-      case "introduction":
-        return "bg-blue-500 dark:bg-blue-700";
-      case "main":
-        return "bg-purple-500 dark:bg-purple-700";
-      case "conclusion":
-        return "bg-green-500 dark:bg-green-700";
-      default:
-        return "bg-gray-500 dark:bg-gray-700";
-    }
-  };
+  // Header background now uses canonical palette hex (no hardcoded tailwind color tokens)
 
   return (
     <div
@@ -83,7 +72,10 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
       data-testid={testId}
       className={`rounded-lg overflow-hidden border ${sectionColors.border.split(' ')[0]} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg} ${className || ""}`}
     >
-      <h2 className={`text-xl font-semibold p-3 ${getSectionHeaderBg()} text-white dark:text-white border-b ${sectionColors.border.split(' ')[0]} dark:${sectionColors.darkBorder}`}>
+      <h2
+        className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${sectionColors.border.split(' ')[0]} dark:${sectionColors.darkBorder}`}
+        style={{ backgroundColor: sectionColors.light }}
+      >
         {getSectionTitle()}
       </h2>
       

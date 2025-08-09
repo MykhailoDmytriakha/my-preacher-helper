@@ -246,7 +246,8 @@
     "fetchTagsError": "Не вдалося завантажити теги",
     "loadDataError": "Не вдалося завантажити дані",
     "removingError": "Помилка видалення",
-    "savingError": "Помилка збереження"
+    "savingError": "Помилка збереження",
+    "reservedTagName": "Це ім'я зарезервовано для структурних тегів"
   },
   "manualThought": {
     "addManual": "Додати запис вручну",
@@ -267,6 +268,7 @@
     "regenerateError": "Помилка під час перегенерації",
     "optionsMenuLabel": "Опції думки"
   },
+  
   "editThought": {
     "editTitle": "Редагувати запис",
     "textLabel": "Текст запису",

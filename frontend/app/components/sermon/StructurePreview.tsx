@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 // Path alias imports
 import type { Sermon, Thought } from "@/models/models";
 import { ChevronIcon } from '@components/Icons';
-import { SERMON_SECTION_COLORS } from '@/utils/themeColors'; // Import the central theme
+import { SERMON_SECTION_COLORS, getTagStyling } from '@/utils/themeColors'; // Import the central theme
 
 interface StructurePreviewProps {
   sermon: Sermon;
@@ -71,49 +71,55 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
       {!isCollapsed && (
         <div className="space-y-4">
           {sermon.structure.introduction && sermon.structure.introduction.length > 0 && (
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 hover:shadow-md transition-all">
+            <div className={`p-3 rounded-lg hover:shadow-md transition-all ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} border ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
               <div className="flex items-center mb-2">
                 <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: introColor }}></div>
-                <strong className="text-blue-700 dark:text-blue-400">{t('tags.introduction')}</strong>
+                <strong className={`${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>{t('tags.introduction')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.introduction.map((item, index) => (
-                  <span key={`intro-${index}`} className="inline-block px-2 py-0.5 bg-blue-100 dark:bg-blue-800/40 rounded m-0.5 whitespace-pre-wrap">
+                {sermon.structure.introduction.map((item, index) => {
+                  const tag = getTagStyling('introduction');
+                  return (
+                  <span key={`intro-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>
                     {getThoughtTextById(item)}
                   </span>
-                ))}
+                );})}
               </div>
             </div>
           )}
           
           {sermon.structure.main && sermon.structure.main.length > 0 && (
-            <div className="p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg border border-violet-100 dark:border-violet-800 hover:shadow-md transition-all">
+            <div className={`p-3 rounded-lg hover:shadow-md transition-all ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} border ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
               <div className="flex items-center mb-2">
                 <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: mainColor }}></div>
-                <strong className="text-violet-700 dark:text-violet-400">{t('tags.mainPart')}</strong>
+                <strong className={`${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>{t('tags.mainPart')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.main.map((item, index) => (
-                  <span key={`main-${index}`} className="inline-block px-2 py-0.5 bg-violet-100 dark:bg-violet-800/40 rounded m-0.5 whitespace-pre-wrap">
+                {sermon.structure.main.map((item, index) => {
+                  const tag = getTagStyling('mainPart');
+                  return (
+                  <span key={`main-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>
                     {getThoughtTextById(item)}
                   </span>
-                ))}
+                );})}
               </div>
             </div>
           )}
           
           {sermon.structure.conclusion && sermon.structure.conclusion.length > 0 && (
-            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800 hover:shadow-md transition-all">
+            <div className={`p-3 rounded-lg hover:shadow-md transition-all ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} border ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
               <div className="flex items-center mb-2">
                 <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: conclusionColor }}></div>
-                <strong className="text-green-700 dark:text-green-400">{t('tags.conclusion')}</strong>
+                <strong className={`${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>{t('tags.conclusion')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.conclusion.map((item, index) => (
-                  <span key={`conclusion-${index}`} className="inline-block px-2 py-0.5 bg-green-100 dark:bg-green-800/40 rounded m-0.5 whitespace-pre-wrap">
+                {sermon.structure.conclusion.map((item, index) => {
+                  const tag = getTagStyling('conclusion');
+                  return (
+                  <span key={`conclusion-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>
                     {getThoughtTextById(item)}
                   </span>
-                ))}
+                );})}
               </div>
             </div>
           )}

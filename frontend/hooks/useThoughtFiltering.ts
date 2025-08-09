@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Thought, Sermon } from '@/models/models';
-import { ALL_STRUCTURE_TAGS, getStructureTagCanonicalIndex, STRUCTURE_TAGS } from '@lib/constants'; // Use new @lib alias
+import { STRUCTURE_TAGS } from '@lib/constants'; // Use new @lib alias
+import { normalizeStructureTag } from '@utils/tagUtils';
 
 export type SortOrder = 'date' | 'structure';
 export type ViewFilter = 'all' | 'missingTags';
@@ -38,9 +39,9 @@ export function useThoughtFiltering({
   // Check if any structure tags are present (use direct prop)
   const hasStructureTags = useMemo(() => {
     return initialThoughts?.some(thought => 
-      thought.tags.some(tag => ALL_STRUCTURE_TAGS.includes(tag))
+      thought.tags.some(tag => normalizeStructureTag(tag) !== null)
     ) ?? false;
-  }, [initialThoughts]); // Depend on prop
+  }, [initialThoughts]);
 
   // Filter thoughts based on selected filters (use direct prop)
   const filteredThoughts = useMemo(() => {
@@ -49,14 +50,14 @@ export function useThoughtFiltering({
     // Apply view filter
     if (viewFilter === 'missingTags') {
       thoughtsToProcess = thoughtsToProcess.filter(thought => 
-        !thought.tags.some(tag => ALL_STRUCTURE_TAGS.includes(tag))
+        !thought.tags.some(tag => normalizeStructureTag(tag) !== null)
       );
     }
 
     // Apply structure filter
     if (structureFilter !== 'all') {
       thoughtsToProcess = thoughtsToProcess.filter(thought =>
-        thought.tags.includes(structureFilter)
+        thought.tags.some(tag => normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(structureFilter))
       );
     }
 
@@ -85,13 +86,14 @@ export function useThoughtFiltering({
           }
   
           // Fallback to tag-based sorting if structure doesn't include these thoughts
-          const aStructureTag = a.tags.find(tag => ALL_STRUCTURE_TAGS.includes(tag));
-          const bStructureTag = b.tags.find(tag => ALL_STRUCTURE_TAGS.includes(tag));
+          const aStructureTag = a.tags.find(tag => normalizeStructureTag(tag) !== null);
+          const bStructureTag = b.tags.find(tag => normalizeStructureTag(tag) !== null);
   
           if (aStructureTag && bStructureTag) {
-              const aCanonicalIndex = getStructureTagCanonicalIndex(aStructureTag);
-              const bCanonicalIndex = getStructureTagCanonicalIndex(bStructureTag);
-              if (aCanonicalIndex !== bCanonicalIndex) return aCanonicalIndex - bCanonicalIndex;
+              const aCanonical = normalizeStructureTag(aStructureTag);
+              const bCanonical = normalizeStructureTag(bStructureTag);
+              const order: Record<string, number> = { intro: 0, main: 1, conclusion: 2 };
+              if (aCanonical !== bCanonical) return (aCanonical ? order[aCanonical] : 99) - (bCanonical ? order[bCanonical] : 99);
           }
           
           // Prioritize thoughts with any structure tag over those without
@@ -123,12 +125,12 @@ export function useThoughtFiltering({
     // Re-apply filters that affect the count
     if (viewFilter === 'missingTags') {
       countThoughts = countThoughts.filter(thought => 
-        !thought.tags.some(tag => ALL_STRUCTURE_TAGS.includes(tag))
+        !thought.tags.some(tag => normalizeStructureTag(tag) !== null)
       );
     }
     if (structureFilter !== 'all') {
       countThoughts = countThoughts.filter(thought =>
-        thought.tags.includes(structureFilter)
+        thought.tags.some(tag => normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(structureFilter))
       );
     }
     if (tagFilters.length > 0) {

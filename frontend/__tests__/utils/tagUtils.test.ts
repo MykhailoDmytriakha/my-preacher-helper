@@ -1,4 +1,4 @@
-import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle } from "../../app/utils/tagUtils";
+import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle, normalizeStructureTag } from "../../app/utils/tagUtils";
 import { getTagStyling } from "../../app/utils/themeColors";
 import { getContrastColor } from "../../app/utils/color";
 
@@ -76,6 +76,31 @@ describe("tagUtils", () => {
     });
   });
 
+  describe("normalizeStructureTag", () => {
+    test("normalizes English long and short forms", () => {
+      expect(normalizeStructureTag("Introduction")).toBe("intro");
+      expect(normalizeStructureTag("Intro")).toBe("intro");
+      expect(normalizeStructureTag("Main Part")).toBe("main");
+      expect(normalizeStructureTag("Main")).toBe("main");
+      expect(normalizeStructureTag("Conclusion")).toBe("conclusion");
+    });
+
+    test("normalizes Russian and Ukrainian forms", () => {
+      expect(normalizeStructureTag("Вступление")).toBe("intro");
+      expect(normalizeStructureTag("Вступ")).toBe("intro");
+      expect(normalizeStructureTag("Основная часть")).toBe("main");
+      expect(normalizeStructureTag("Основна частина")).toBe("main");
+      expect(normalizeStructureTag("Заключение")).toBe("conclusion");
+      expect(normalizeStructureTag("Висновок")).toBe("conclusion");
+    });
+
+    test("returns null for non-structure tags", () => {
+      expect(normalizeStructureTag("Grace")).toBeNull();
+      expect(normalizeStructureTag("random")).toBeNull();
+      expect(normalizeStructureTag("")).toBeNull();
+    });
+  });
+
   describe("getDefaultTagStyling", () => {
     test("returns blue styling for intro tags", () => {
       const styling = getDefaultTagStyling("вступление");
@@ -132,14 +157,11 @@ describe("tagUtils", () => {
   });
 
   describe("getTagStyle", () => {
-    test("returns correct styling for structure tag with color", () => {
+    test("returns canonical class styling and ignores inline color for structure tag", () => {
       const { className, style } = getTagStyle("intro", "#FF0000");
-      
       expect(className).toContain("rounded-full");
       expect(className).toContain("font-medium");
-      expect(style.backgroundColor).toBe("#FF0000");
-      expect(style.boxShadow).toBeDefined();
-      expect(style.border).toBeDefined();
+      expect(style).toEqual({});
     });
 
     test("returns correct styling for non-structure tag with color", () => {
@@ -169,6 +191,26 @@ describe("tagUtils", () => {
       expect(className).toContain("bg-indigo");
       expect(className).toContain("text-indigo");
       expect(style).toEqual({});
+    });
+  });
+
+  describe("class stability and color usage", () => {
+    test("structure tags ignore inline color and keep class tokens stable", () => {
+      const { getTagStyle } = require("../../app/utils/tagUtils");
+      const withColor = getTagStyle("Вступление", "#ff0000");
+      const withoutColor = getTagStyle("Вступление");
+      expect(withColor.className).toBe(withoutColor.className);
+      expect(withColor.style).toEqual({});
+      expect(withoutColor.style).toEqual({});
+    });
+
+    test("custom tags keep class tokens stable; only inline style changes with color", () => {
+      const { getTagStyle } = require("../../app/utils/tagUtils");
+      const noColor = getTagStyle("Custom");
+      const withColor = getTagStyle("Custom", "#112233");
+      expect(withColor.className).toBe(noColor.className);
+      expect(noColor.style).toEqual({});
+      expect(withColor.style).toMatchObject({ backgroundColor: "#112233" });
     });
   });
 }); 

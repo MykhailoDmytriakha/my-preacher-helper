@@ -2,6 +2,7 @@
 
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 interface MarkdownRendererProps {
   markdown: string;
@@ -9,23 +10,26 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
-  const getSectionStyles = () => {
-    switch (section) {
-      case "introduction":
-        return "text-green-700 dark:text-green-300";
-      case "main":
-        return "text-blue-700 dark:text-blue-300";
-      case "conclusion":
-        return "text-purple-700 dark:text-purple-300";
-      default:
-        return "text-gray-700 dark:text-gray-300";
-    }
-  };
+  const sectionTextClass = section === "introduction"
+    ? `${SERMON_SECTION_COLORS.introduction.text}`
+    : section === "main"
+      ? `${SERMON_SECTION_COLORS.mainPart.text}`
+      : section === "conclusion"
+        ? `${SERMON_SECTION_COLORS.conclusion.text}`
+        : "text-gray-700";
+
+  const sectionDarkTextClass = section === "introduction"
+    ? `dark:${SERMON_SECTION_COLORS.introduction.darkText}`
+    : section === "main"
+      ? `dark:${SERMON_SECTION_COLORS.mainPart.darkText}`
+      : section === "conclusion"
+        ? `dark:${SERMON_SECTION_COLORS.conclusion.darkText}`
+        : "dark:text-gray-300";
 
   if (!markdown) return null;
 
   return (
-    <div className={`prose prose-sm max-w-none ${getSectionStyles()}`}>
+    <div className={`prose prose-sm max-w-none ${sectionTextClass} ${sectionDarkTextClass}`}>
       <ReactMarkdown
         components={{
           // Customize how different elements are rendered

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Sermon } from "@/models/models";
+import { normalizeStructureTag } from "@/utils/tagUtils";
 
 /**
  * Hook to validate if a sermon's thoughts are properly structured
@@ -10,12 +11,9 @@ export function useSermonValidator(sermon: Sermon | null) {
   const isPlanAccessible = useMemo(() => {
     if (!sermon) return false;
     
-    // Get all thoughts with structural tags (Вступление, Основная часть, Заключение)
-    const structuralTags = ["Вступление", "Основная часть", "Заключение"];
-    
-    // Filter thoughts that have at least one of the structural tags
+    // Filter thoughts that have at least one structure tag
     const structuralThoughts = sermon.thoughts.filter(thought => 
-      thought.tags.some(tag => structuralTags.includes(tag))
+      thought.tags.some(tag => normalizeStructureTag(tag) !== null)
     );
     
     // If there are no structural thoughts, plan should not be accessible
@@ -26,15 +24,9 @@ export function useSermonValidator(sermon: Sermon | null) {
       // Check if the thought has a non-empty outlinePointId
       if (!thought.outlinePointId) return false;
       
-      // Determine which section this thought belongs to based on its tags
-      const section = thought.tags.find(tag => structuralTags.includes(tag));
-      if (!section) return false;
-      
-      // Map the tag to the corresponding section in the outline
-      const outlineSection = 
-        section === "Вступление" ? "introduction" :
-        section === "Основная часть" ? "main" :
-        section === "Заключение" ? "conclusion" : null;
+      // Determine which section this thought belongs to based on normalized tags
+      const normalized = thought.tags.map(normalizeStructureTag).find(Boolean);
+      const outlineSection = normalized === 'intro' ? 'introduction' : normalized === 'main' ? 'main' : normalized === 'conclusion' ? 'conclusion' : null;
       
       if (!outlineSection || !sermon.outline) return false;
       

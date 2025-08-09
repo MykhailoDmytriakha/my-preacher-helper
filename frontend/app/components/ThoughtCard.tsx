@@ -6,7 +6,7 @@ import "@locales/i18n";
 
 // Utils imports
 import { formatDate } from "@utils/dateFormatter";
-import { isStructureTag, getStructureIcon, getTagStyle } from "@utils/tagUtils";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 // Components
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
@@ -270,50 +270,44 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
   const { t } = useTranslation();
   
   return (
-    <div className="flex flex-wrap gap-1.5" role="list" aria-label="Tags">
+    <div className="flex flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label="Tags">
       {tags.map((tag) => {
         const tagInfo = allowedTags.find(t => t.name === tag);
         let displayName = tag;
         const structureTagStatus = isStructureTag(tag);
         
-        // Determine if this is a structure tag
-        if (tag.toLowerCase() === "intro" || tag.toLowerCase() === "вступление") {
-          displayName = t('tags.introduction');
-        } else if (tag.toLowerCase() === "main" || tag.toLowerCase() === "основная часть") {
-          displayName = t('tags.mainPart');
-        } else if (tag.toLowerCase() === "conclusion" || tag.toLowerCase() === "заключение") {
-          displayName = t('tags.conclusion');
-        }
+        // Determine if this is a structure tag via normalization
+        const canonical = normalizeStructureTag(tag);
+        if (canonical === 'intro') displayName = t('tags.introduction');
+        else if (canonical === 'main') displayName = t('tags.mainPart');
+        else if (canonical === 'conclusion') displayName = t('tags.conclusion');
         
         // Get styling from our utilities
         const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
         
-        // Enhanced tag styling
+        // Enhanced tag styling without hover scale
         const className = `
           ${baseClassName} 
           ${compact ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1'} 
           rounded-full font-medium
-          transition-all duration-200
+          transition-shadow duration-200
           hover:shadow-sm
-          active:scale-95
         `;
         
         const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
         
         return (
-          <motion.span
+          <span
             key={tag}
             style={style}
             className={className}
             role="listitem"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
             {iconInfo && (
               <span className={`${iconInfo.className} mr-1`} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
             )}
             {tagInfo?.translationKey ? t(tagInfo.translationKey) : displayName}
-          </motion.span>
+          </span>
         );
       })}
     </div>

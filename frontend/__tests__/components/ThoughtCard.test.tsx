@@ -31,9 +31,15 @@ jest.mock('@utils/tagUtils', () => ({
   isStructureTag: jest.fn().mockImplementation(tag => 
     ['Вступление', 'Основная часть', 'Заключение', 'Introduction', 'Main Part', 'Conclusion'].includes(tag)
   ),
-  getDefaultTagStyling: jest.fn().mockReturnValue({ backgroundColor: '#333333', color: '#ffffff' }),
+  getDefaultTagStyling: jest.fn().mockReturnValue({ bg: 'bg-blue-50', text: 'text-blue-800' }),
   getStructureIcon: jest.fn().mockReturnValue(null),
-  getTagStyle: jest.fn().mockReturnValue({ backgroundColor: '#333333', color: '#ffffff' }),
+  getTagStyle: jest.fn().mockReturnValue({ className: 'px-2 py-0.5 rounded-full', style: { backgroundColor: '#333333', color: '#ffffff' } }),
+  normalizeStructureTag: jest.fn((tag: string) => {
+    if (['Вступление','Introduction','intro'].includes(tag)) return 'intro';
+    if (['Основная часть','Main Part','main'].includes(tag)) return 'main';
+    if (['Заключение','Conclusion','conclusion'].includes(tag)) return 'conclusion';
+    return null;
+  })
 }));
 
 // Mock the entire i18n module
@@ -332,5 +338,51 @@ describe('ThoughtCard Component', () => {
     };
     render(<ThoughtCard {...defaultProps} thought={thoughtWithMultipleTags} />);
     expect(screen.getByText(/multiple structure tags detected/)).toBeInTheDocument();
+  });
+
+  it('renders tags with no hover scale animation and hidden horizontal overflow', () => {
+    render(<ThoughtCard {...defaultProps} />);
+
+    const tagList = screen.getByRole('list', { name: 'Tags' });
+    // Ensure overflow-x-hidden is applied at container
+    expect(tagList.className).toMatch(/overflow-x-hidden/);
+
+    // Ensure tag chip element is a span without hover/active scale classes
+    const anyTag = screen.getByText('Tag1') || screen.getByText('Tag2');
+    expect(anyTag.tagName.toLowerCase()).toBe('span');
+    expect((anyTag as HTMLElement).className).not.toMatch(/active:scale|hover:scale/);
+  });
+
+  it('keeps structure tag classes stable between first render and after allowedTags load', () => {
+    const thoughtWithStructureOnly: Thought = {
+      id: 't2',
+      text: 'Structure tag flicker check',
+      tags: ['Вступление'],
+      date: '2023-01-02',
+    };
+
+    const { rerender } = render(
+      <ThoughtCard 
+        {...defaultProps}
+        thought={thoughtWithStructureOnly}
+        allowedTags={[]}
+      />
+    );
+
+    const chipBefore = screen.getByRole('listitem');
+    const classBefore = (chipBefore as HTMLElement).className;
+
+    rerender(
+      <ThoughtCard 
+        {...defaultProps}
+        thought={thoughtWithStructureOnly}
+        allowedTags={[{ name: 'Вступление', color: '#123456' }]}
+      />
+    );
+
+    const chipAfter = screen.getByRole('listitem');
+    const classAfter = (chipAfter as HTMLElement).className;
+
+    expect(classAfter).toBe(classBefore);
   });
 }); 

@@ -6,11 +6,17 @@ import TagsSection from '@components/settings/TagsSection';
 import { Tag } from '@/models/models';
 import { User } from 'firebase/auth';
 import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
+import { toast } from 'sonner';
 
 // --- Mocks --- //
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+// Mock toast
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn(), success: jest.fn() }
 }));
 
 // Mock Tag Services
@@ -149,7 +155,21 @@ describe('TagsSection', () => {
     });
   });
 
+  it('shows error when trying to add reserved structure tag name', async () => {
+    (addCustomTag as jest.Mock).mockRejectedValueOnce(new Error('Reserved tag name'));
+    renderSection();
+    await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
+    const addMockTagButton = screen.getByRole('button', { name: /Add Mock Tag/i });
+    await userEvent.click(addMockTagButton);
+    await waitFor(() => {
+      expect(addCustomTag).toHaveBeenCalledTimes(1);
+    });
+    // No refetch on error
+    expect(getTags).toHaveBeenCalledTimes(1);
+  });
+
   it('calls removeCustomTag and refetches tags when editable TagList calls onRemoveTag', async () => {
+    (removeCustomTag as jest.Mock).mockResolvedValue({ message: 'Tag removed', affectedThoughts: 2 });
     renderSection();
     await waitFor(() => { // Wait for initial fetch
       expect(getTags).toHaveBeenCalledTimes(1);
@@ -165,10 +185,11 @@ describe('TagsSection', () => {
       expect(removeCustomTag).toHaveBeenCalledWith(mockUser.uid, 'Prayer');
     });
 
-    // Check that tags were refetched
+    // Check that tags were refetched and toast shown
     await waitFor(() => {
       expect(getTags).toHaveBeenCalledTimes(2); // Initial fetch + refetch after remove
     });
+    expect(toast.success).toHaveBeenCalled();
   });
 
   it('opens ColorPickerModal when editable TagList calls onEditColor', async () => {

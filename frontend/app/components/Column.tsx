@@ -10,6 +10,7 @@ import { Item, OutlinePoint, Outline } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 
@@ -102,24 +103,24 @@ const OutlinePointPlaceholder: React.FC<{
     switch (containerId) {
       case 'introduction':
         return {
-          border: 'border-2 border-blue-200 dark:border-blue-700',
-          bg: 'bg-blue-50 dark:bg-blue-900/20',
-          header: 'bg-blue-100 dark:bg-blue-800/30',
-          headerText: 'text-blue-700 dark:text-blue-200'
+          border: `border-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`,
+          bg: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
+          header: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
+          headerText: `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`
         };
       case 'main':
         return {
-          border: 'border-2 border-purple-200 dark:border-purple-700',
-          bg: 'bg-purple-50 dark:bg-purple-900/20',
-          header: 'bg-purple-100 dark:bg-purple-800/30',
-          headerText: 'text-purple-700 dark:text-purple-200'
+          border: `border-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`,
+          bg: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
+          header: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
+          headerText: `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`
         };
       case 'conclusion':
         return {
-          border: 'border-2 border-green-200 dark:border-green-700',
-          bg: 'bg-green-50 dark:bg-green-900/20',
-          header: 'bg-green-100 dark:bg-green-800/30',
-          headerText: 'text-green-700 dark:text-green-200'
+          border: `border-2 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`,
+          bg: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
+          header: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
+          headerText: `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`
         };
       default:
         return {
@@ -452,24 +453,24 @@ export default function Column({
   // Always use vertical list strategy regardless of focus mode
   const sortingStrategy = verticalListSortingStrategy;
   
-  // Background color for header based on id or custom color
-  const headerBgColor = !headerColor
-    ? {
-        introduction: "bg-blue-600",
-        main: "bg-purple-600",
-        conclusion: "bg-green-600",
-        ambiguous: "bg-gray-600",
-      }[id]
-    : "";
+  // Background color for header based on id or custom color (use canonical palette hex)
+  const headerBgStyle: React.CSSProperties | undefined = (() => {
+    if (headerColor) return { backgroundColor: headerColor };
+    const colors = id === 'main' ? SERMON_SECTION_COLORS.mainPart
+      : id === 'introduction' ? SERMON_SECTION_COLORS.introduction
+      : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion
+      : undefined;
+    return colors ? { backgroundColor: colors.base } : undefined;
+  })();
   
   // Border color based on id or custom color
   const borderColor = !headerColor
-    ? {
-        introduction: "border-blue-200",
-        main: "border-purple-200", 
-        conclusion: "border-green-200",
-        ambiguous: "border-gray-200",
-      }[id]
+    ? (
+      id === 'introduction' ? SERMON_SECTION_COLORS.introduction.border.split(' ')[0]
+      : id === 'main' ? SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]
+      : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]
+      : 'border-gray-200'
+    )
     : "";
 
   // Add a new function to handle generating outline points
@@ -519,8 +520,8 @@ export default function Column({
         {/* Left sidebar - fixed, non-scrollable, with more top spacing when scrolling */}
         <div className="w-72 flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)]">
           <div 
-            className={`h-full rounded-lg shadow-lg flex flex-col ${headerBgColor}`}
-            style={headerColor ? { backgroundColor: headerColor } : {}}
+            className={`h-full rounded-lg shadow-lg flex flex-col`}
+            style={headerBgStyle}
           >
             {/* Column title */}
             <div className="p-5 border-b border-white">
@@ -563,8 +564,8 @@ export default function Column({
                     disabled={isLoading}
                     className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${
                       isLoading ? 'bg-white text-gray-800 border-gray-300' : 
-                      id === 'introduction' ? 'bg-blue-500 text-white hover:bg-blue-400 border-blue-400 shadow-md' : 
-                      id === 'main' ? 'bg-purple-500 text-white hover:bg-purple-400 border-purple-400 shadow-md' : 
+                      id === 'introduction' ? 'bg-amber-500 text-white hover:bg-amber-400 border-amber-400 shadow-md' : 
+                      id === 'main' ? 'bg-blue-500 text-white hover:bg-blue-400 border-blue-400 shadow-md' : 
                       id === 'conclusion' ? 'bg-green-500 text-white hover:bg-green-400 border-green-400 shadow-md' : 
                       'bg-gray-500 text-white hover:bg-gray-400 border-gray-400 shadow-md'
                     }`}
@@ -806,10 +807,10 @@ export default function Column({
   // Normal mode UI (non-focused)
   return (
     <div className={`flex flex-col ${className}`}>
-      <div className="relative overflow-hidden mb-2 rounded-t-md">
+          <div className="relative overflow-hidden mb-2 rounded-t-md">
         <div 
-          className={`p-3 ${headerBgColor} flex justify-between items-center`}
-          style={headerColor ? { backgroundColor: headerColor } : {}}
+          className={`p-3 flex justify-between items-center`}
+          style={headerBgStyle}
         >
           <h2 className="text-lg font-bold text-white flex items-center">
             {title}
@@ -892,8 +893,8 @@ export default function Column({
         
         {/* Outline points display */}
         {localOutlinePoints && localOutlinePoints.length > 0 && (
-          <div className={`${headerBgColor} bg-opacity-80 p-2 text-sm font-normal text-white border-t border-white`}
-               style={headerColor ? { backgroundColor: headerColor, opacity: 0.8 } : {}}>
+          <div className={`bg-opacity-80 p-2 text-sm font-normal text-white border-t border-white`}
+               style={headerBgStyle ? { ...headerBgStyle, opacity: 0.8 } : {}}>
             <ul className="list-disc pl-4 space-y-1">
               {localOutlinePoints.map((point: OutlinePoint) => (
                 <li key={point.id} className="flex items-center">
