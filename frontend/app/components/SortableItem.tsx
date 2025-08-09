@@ -5,6 +5,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getContrastColor } from "@utils/color";
 import { EditIcon, TrashIcon } from '@components/Icons';
+import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { Item } from "@/models/models";
 import CardContent from "./CardContent";
 import { CheckIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
@@ -22,6 +24,7 @@ interface SortableItemProps {
   onKeep?: (itemId: string, containerId: string) => void;
   onRevert?: (itemId: string, containerId: string) => void;
   activeId?: string | null;
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
 }
 
 export default function SortableItem({ 
@@ -35,7 +38,8 @@ export default function SortableItem({
   highlightType = 'moved',
   onKeep,
   onRevert,
-  activeId
+  activeId,
+  onMoveToAmbiguous
 }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -72,6 +76,20 @@ export default function SortableItem({
     opacity: isActiveItem ? 0 : (isDragging || isDeleting ? 0.5 : 1),
     ...getHighlightStyles()
   };
+
+  // Icon color classes based on section color palette (project theme)
+  const sectionIconColorClasses = (() => {
+    if (containerId === 'introduction') {
+      return `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`;
+    }
+    if (containerId === 'main') {
+      return `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`;
+    }
+    if (containerId === 'conclusion') {
+      return `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`;
+    }
+    return 'text-gray-600 dark:text-gray-300';
+  })();
 
   return (
     <div
@@ -110,6 +128,31 @@ export default function SortableItem({
           ? 'opacity-100'
           : 'opacity-0 group-hover:opacity-100'
       } transition-opacity ${isDragging || isDeleting ? 'invisible' : ''}`}>
+        {/* Move to ambiguous (unassigned) button - hide in ambiguous container */}
+        {onMoveToAmbiguous && containerId !== 'ambiguous' && (
+          <button
+            onPointerDown={(e) => { 
+              e.stopPropagation(); 
+              e.preventDefault(); 
+              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            }}
+            onMouseDown={(e) => { 
+              e.stopPropagation(); 
+              e.preventDefault(); 
+              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onMoveToAmbiguous(item.id, containerId);
+            }}
+            className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 shadow-sm hover:shadow-md hover:border-gray-200 dark:hover:border-gray-600 transition-colors"
+            title={t('structure.moveToUnderConsideration', { defaultValue: 'Move to Under Consideration' })}
+            disabled={isDeleting}
+          >
+            <ArrowTopRightOnSquareIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
+          </button>
+        )}
         {onEdit && (
           <button
             onPointerDown={(e) => { 
@@ -127,11 +170,11 @@ export default function SortableItem({
               e.preventDefault();
               onEdit(item);
             }}
-            className="focus:outline-none border-2 border-gray-200 dark:border-gray-600 rounded-full p-1 bg-white dark:bg-gray-700 hover:shadow-md"
+            className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
             title={t('structure.editThought', { defaultValue: 'Edit Thought' })}
             disabled={isDeleting}
           >
-            <EditIcon className="h-6 w-6 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" />
+            <EditIcon className={`h-5 w-5 ${sectionIconColorClasses} hover:opacity-90`} />
           </button>
         )}
 
@@ -152,11 +195,11 @@ export default function SortableItem({
               e.preventDefault();
               onDelete(item.id, containerId); 
             }}
-            className="focus:outline-none border-2 border-gray-200 dark:border-gray-600 rounded-full p-1 bg-white dark:bg-gray-700 hover:shadow-md"
+            className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
             title={t('structure.removeFromStructure', { defaultValue: 'Remove from Structure' })}
             disabled={isDeleting}
           >
-            <TrashIcon className="h-4 w-4 text-red-500 hover:text-red-700" />
+            <TrashIcon className="h-5 w-5 text-red-500 hover:text-red-600" />
           </button>
         )}
         

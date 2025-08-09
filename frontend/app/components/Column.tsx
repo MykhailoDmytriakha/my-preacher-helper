@@ -40,6 +40,7 @@ interface ColumnProps {
   onKeepAll?: (columnId: string) => void;
   onRevertAll?: (columnId: string) => void;
   activeId?: string | null; // Add activeId prop for proper drag state detection
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void; // Move-to-ambiguous action
 }
 
 // Define SectionType based on Column ID mapping
@@ -68,6 +69,7 @@ const OutlinePointPlaceholder: React.FC<{
   headerColor?: string;
   t: (key: string, options?: any) => string;
   activeId?: string | null;
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
 }> = ({ 
   point, 
   items, 
@@ -79,7 +81,8 @@ const OutlinePointPlaceholder: React.FC<{
   onRevertItem, 
   headerColor,
   t,
-  activeId
+  activeId,
+  onMoveToAmbiguous
 }) => {
   const { setNodeRef, isOver } = useDroppable({ 
     id: `outline-point-${point.id}`, 
@@ -180,6 +183,7 @@ const OutlinePointPlaceholder: React.FC<{
                 onKeep={onKeepItem}
                 onRevert={onRevertItem}
                 activeId={activeId}
+                onMoveToAmbiguous={onMoveToAmbiguous}
               />
             ))}
           </div>
@@ -200,6 +204,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
   onRevertItem?: (itemId: string, columnId: string) => void;
   t: (key: string, options?: any) => string;
   activeId?: string | null;
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
 }> = ({ 
   items, 
   containerId, 
@@ -209,7 +214,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
   onKeepItem, 
   onRevertItem, 
   t,
-  activeId 
+  activeId,
+  onMoveToAmbiguous 
 }) => {
   const { setNodeRef, isOver } = useDroppable({ 
     id: `unassigned-${containerId}`, 
@@ -240,6 +246,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
               onKeep={onKeepItem}
               onRevert={onRevertItem}
               activeId={activeId}
+              onMoveToAmbiguous={onMoveToAmbiguous}
             />
           ))}
         </div>
@@ -273,7 +280,8 @@ export default function Column({
   onRevertItem,
   onKeepAll,
   onRevertAll,
-  activeId
+  activeId,
+  onMoveToAmbiguous
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -792,6 +800,7 @@ export default function Column({
                     onKeep={onKeepItem}
                     onRevert={onRevertItem}
                     activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
                   />
                 ))}
               </div>
@@ -935,6 +944,7 @@ export default function Column({
                   headerColor={headerColor}
                   t={t}
                   activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
                 />
               ))}
               
@@ -955,6 +965,7 @@ export default function Column({
                       onRevertItem={onRevertItem}
                       t={t}
                       activeId={activeId}
+                      onMoveToAmbiguous={onMoveToAmbiguous}
                     />
                   </div>
                 </div>
@@ -977,6 +988,7 @@ export default function Column({
                       onRevertItem={onRevertItem}
                       t={t}
                       activeId={activeId}
+                      onMoveToAmbiguous={onMoveToAmbiguous}
                     />
                   </div>
                 </div>
@@ -1001,6 +1013,7 @@ export default function Column({
                   onKeep={onKeepItem}
                   onRevert={onRevertItem}
                   activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
                 />
               ))}
             </div>

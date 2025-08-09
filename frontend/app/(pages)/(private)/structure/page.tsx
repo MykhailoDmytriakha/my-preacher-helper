@@ -617,6 +617,57 @@ function StructurePageContent() {
     }
   };
 
+  // Move a thought from a concrete section to the ambiguous section
+  const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
+    if (!sermon) return;
+    if (!['introduction', 'main', 'conclusion'].includes(fromContainerId)) return;
+
+    // Find the item in the source container
+    const sourceItems = containers[fromContainerId];
+    const itemIndex = sourceItems.findIndex((it) => it.id === itemId);
+    if (itemIndex === -1) return;
+
+    const item = sourceItems[itemIndex];
+
+    // Prepare updated containers
+    const updatedSource = [...sourceItems.slice(0, itemIndex), ...sourceItems.slice(itemIndex + 1)];
+    const movedItem = { ...item, outlinePointId: undefined, requiredTags: [] as string[] };
+    const updatedAmbiguous = [...containers.ambiguous, movedItem];
+
+    const updatedContainers = {
+      ...containers,
+      [fromContainerId]: updatedSource,
+      ambiguous: updatedAmbiguous,
+    };
+
+    // Optimistically update UI
+    setContainers(updatedContainers);
+    containersRef.current = updatedContainers;
+
+    // Persist thought update (clear outlinePointId and section tag)
+    const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
+    if (thought) {
+      const updatedThought: Thought = {
+        ...thought,
+        tags: [
+          ...(movedItem.requiredTags || []),
+          ...(movedItem.customTagNames || []).map((tag) => tag.name),
+        ],
+        outlinePointId: undefined,
+      };
+      debouncedSaveThought(sermon.id, updatedThought);
+    }
+
+    // Persist structure
+    const newStructure = {
+      introduction: updatedContainers.introduction.map((it) => it.id),
+      main: updatedContainers.main.map((it) => it.id),
+      conclusion: updatedContainers.conclusion.map((it) => it.id),
+      ambiguous: updatedContainers.ambiguous.map((it) => it.id),
+    };
+    debouncedSaveStructure(sermon.id, newStructure);
+  };
+
   const handleToggleFocusMode = (columnId: string) => {
     if (focusedColumn === columnId) {
       // If the same column is clicked, exit focus mode
@@ -1266,6 +1317,7 @@ function StructurePageContent() {
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
+                onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
             
@@ -1296,6 +1348,7 @@ function StructurePageContent() {
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
+                onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
             
@@ -1326,6 +1379,7 @@ function StructurePageContent() {
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
+                onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
           </div>

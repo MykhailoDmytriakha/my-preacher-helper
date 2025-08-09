@@ -284,6 +284,7 @@
     "inconsistentTagsWarning": "Some entries have inconsistent tags. Fix them before working on the structure.",
     "linkThoughtsWarning": "Please first create outline points and link all thoughts to them on the Structure page",
     "underConsideration": "Under Consideration",
+    "moveToUnderConsideration": "Move to Under Consideration",
     "loadingSermon": "Loading sermon data...",
     "notFound": "Sermon not found or sermonId not specified",
     "backToSermon": "← Back to sermon",

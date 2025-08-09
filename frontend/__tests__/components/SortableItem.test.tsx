@@ -36,11 +36,11 @@ jest.mock('@/utils/color', () => ({
 // Mock the EditIcon and TrashIcon components
 jest.mock('@components/Icons', () => {
   return {
-    EditIcon: function MockEditIcon() {
-      return <div data-testid="edit-icon" className="mock-edit-icon" />;
+    EditIcon: function MockEditIcon({ className = '' }: { className?: string }) {
+      return <div data-testid="edit-icon" className={`mock-edit-icon ${className}`} />;
     },
-    TrashIcon: function MockTrashIcon() {
-      return <div data-testid="trash-icon" className="mock-trash-icon" />;
+    TrashIcon: function MockTrashIcon({ className = '' }: { className?: string }) {
+      return <div data-testid="trash-icon" className={`mock-trash-icon ${className}`} />;
     }
   };
 });
@@ -59,6 +59,7 @@ describe('SortableItem Component', () => {
   const mockContainerId = 'introduction';
   const mockOnEdit = jest.fn();
   const mockOnDelete = jest.fn();
+  const mockOnMoveToAmbiguous = jest.fn();
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -316,5 +317,61 @@ Second paragraph with indentation.
 
     const deleteButton = screen.getByTestId('trash-icon').closest('button');
     expect(deleteButton).toBeDisabled();
+  });
+
+  test('renders move-to-ambiguous button and triggers handler', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    // Button should be present with i18n key title
+    const moveBtn = screen.getByTitle('structure.moveToUnderConsideration');
+    expect(moveBtn).toBeInTheDocument();
+
+    // Click it
+    fireEvent.click(moveBtn);
+    expect(mockOnMoveToAmbiguous).toHaveBeenCalledTimes(1);
+    expect(mockOnMoveToAmbiguous).toHaveBeenCalledWith(mockItem.id, mockContainerId);
+  });
+
+  test('does not render move button in ambiguous container', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId="ambiguous"
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    expect(screen.queryByTitle('structure.moveToUnderConsideration')).not.toBeInTheDocument();
+  });
+
+  test('applies section color classes to move and edit icons for main section', () => {
+    const { container } = render(
+      <SortableItem
+        item={mockItem}
+        containerId="main"
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    // Move icon lives inside the move button
+    const moveBtn = screen.getByTitle('structure.moveToUnderConsideration');
+    const moveIcon = moveBtn.querySelector('svg');
+    expect(moveIcon?.getAttribute('class') || '').toContain('text-blue-800');
+
+    // Edit icon mock forwards className; ensure it contains section color class
+    const editIcon = screen.getByTestId('edit-icon');
+    expect(editIcon).toHaveClass('text-blue-800');
   });
 }); 
