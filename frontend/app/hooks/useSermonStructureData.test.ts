@@ -250,6 +250,90 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
   });
 
+  it('dedupes duplicate ids from structure while preserving order', async () => {
+    const sermonWithDupes: Sermon = {
+      ...mockSermon,
+      structure: {
+        introduction: ['t7', 't7', 't1', 't1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+    } as any;
+    mockedGetSermonById.mockResolvedValueOnce(sermonWithDupes);
+
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const introIds = result.current.containers.introduction.map((i) => i.id);
+    expect(introIds).toEqual(['t7', 't1']);
+    // Ensure not duplicated elsewhere
+    expect(result.current.containers.ambiguous.some(i => i.id === 't7' || i.id === 't1')).toBe(false);
+  });
+
+  it('seeds positions when missing (ambiguous) and sorts by position when present (structure-driven)', async () => {
+    const sermonNoPositions: Sermon = {
+      ...mockSermon,
+      // clear structure so most go to ambiguous and get seeded
+      structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+      thoughts: [
+        { id: 'p1', text: 'A', tags: ['вступление'], date: '2023-01-01T10:00:00Z' } as any,
+        { id: 'p2', text: 'B', tags: ['вступление'], date: '2023-01-01T10:00:01Z' } as any,
+        { id: 'p3', text: 'C', tags: ['random'], date: '2023-01-01T10:00:02Z' } as any,
+      ],
+    };
+    mockedGetSermonById.mockResolvedValueOnce(sermonNoPositions);
+
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Items without clear section tag go to ambiguous; positions should be seeded for stable ordering
+    const amb = result.current.containers.ambiguous;
+    expect(amb.length).toBe(3);
+    expect(typeof amb[0].position).toBe('number');
+    expect(typeof amb[1].position).toBe('number');
+    expect(typeof amb[2].position).toBe('number');
+    expect((amb[0].position as number) < (amb[1].position as number)).toBe(true);
+
+    // Now test sorting by explicit positions
+    const sermonWithPositions: Sermon = {
+      ...mockSermon,
+      structure: { introduction: ['x1', 'x2', 'x3'], main: [], conclusion: [], ambiguous: [] },
+      thoughts: [
+        { id: 'x1', text: '1', tags: ['вступление'], position: 3000, date: '2023-01-01T10:00:00Z' } as any,
+        { id: 'x2', text: '2', tags: ['вступление'], position: 1000, date: '2023-01-01T10:00:01Z' } as any,
+        { id: 'x3', text: '3', tags: ['вступление'], position: 2000, date: '2023-01-01T10:00:02Z' } as any,
+      ],
+    };
+    mockedGetSermonById.mockResolvedValueOnce(sermonWithPositions);
+
+    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as any));
+    await waitFor(() => expect(result2.current.loading).toBe(false));
+
+    const order = result2.current.containers.introduction.map(i => i.id);
+    expect(order).toEqual(['x2', 'x3', 'x1']);
+  });
+
+  it('uses structure to prevent duplicates even if tags would place items elsewhere', async () => {
+    const sermonConflict: Sermon = {
+      ...mockSermon,
+      structure: { introduction: ['t3'], main: [], conclusion: [], ambiguous: [] },
+      thoughts: [
+        { id: 't3', text: 'C', tags: ['Main Part'], date: '2023-01-01T10:02:00Z' } as any,
+      ],
+    };
+    mockedGetSermonById.mockResolvedValueOnce(sermonConflict);
+
+    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as any));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const introHas = result.current.containers.introduction.some(i => i.id === 't3');
+    const mainHas = result.current.containers.main.some(i => i.id === 't3');
+    const ambHas = result.current.containers.ambiguous.some(i => i.id === 't3');
+    expect(introHas).toBe(true);
+    expect(mainHas).toBe(false);
+    expect(ambHas).toBe(false);
+  });
     it('should correctly process sermon with empty thoughts, structure, or outline', async () => {
         const emptySermon: Sermon = {
             id: 'sermonEmpty',

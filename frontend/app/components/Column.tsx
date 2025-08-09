@@ -171,22 +171,24 @@ const OutlinePointPlaceholder: React.FC<{
             {t('structure.dropThoughtsHere')}
           </div>
         ) : (
-          <div className="space-y-4">
-            {pointItems.map((item) => (
-              <SortableItem 
-                key={item.id} 
-                item={item} 
-                containerId={containerId} 
-                onEdit={onEdit}
-                isHighlighted={isHighlighted(item.id)}
-                highlightType={getHighlightType(item.id)}
-                onKeep={onKeepItem}
-                onRevert={onRevertItem}
-                activeId={activeId}
-                onMoveToAmbiguous={onMoveToAmbiguous}
-              />
-            ))}
-          </div>
+          <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4">
+              {pointItems.map((item) => (
+                <SortableItem 
+                  key={item.id} 
+                  item={item} 
+                  containerId={containerId} 
+                  onEdit={onEdit}
+                  isHighlighted={isHighlighted(item.id)}
+                  highlightType={getHighlightType(item.id)}
+                  onKeep={onKeepItem}
+                  onRevert={onRevertItem}
+                  activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
+                />
+              ))}
+            </div>
+          </SortableContext>
         )}
       </div>
     </div>
@@ -234,22 +236,24 @@ const UnassignedThoughtsDropTarget: React.FC<{
           {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
         </div>
       ) : (
-        <div className="space-y-4">
-          {items.map((item) => (
-            <SortableItem 
-              key={item.id} 
-              item={item} 
-              containerId={containerId} 
-              onEdit={onEdit}
-              isHighlighted={isHighlighted(item.id)}
-              highlightType={getHighlightType(item.id)}
-              onKeep={onKeepItem}
-              onRevert={onRevertItem}
-              activeId={activeId}
-              onMoveToAmbiguous={onMoveToAmbiguous}
-            />
-          ))}
-        </div>
+        <SortableContext items={items} strategy={verticalListSortingStrategy}>
+          <div className="space-y-4">
+            {items.map((item) => (
+              <SortableItem 
+                key={item.id} 
+                item={item} 
+                containerId={containerId} 
+                onEdit={onEdit}
+                isHighlighted={isHighlighted(item.id)}
+                highlightType={getHighlightType(item.id)}
+                onKeep={onKeepItem}
+                onRevert={onRevertItem}
+                activeId={activeId}
+                onMoveToAmbiguous={onMoveToAmbiguous}
+              />
+            ))}
+          </div>
+        </SortableContext>
       )}
     </div>
   );

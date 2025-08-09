@@ -1,6 +1,10 @@
 import { handleDragOver, handleDragEnd } from '../../app/utils/dnd-handlers';
 import '@testing-library/jest-dom';
 
+// Ensure no backend persistence is triggered by preview moves
+jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn() }));
+jest.mock('@/services/thought.service', () => ({ updateThought: jest.fn() }));
+
 describe('Drag and Drop Integration Tests', () => {
   // Test data setup
   const mockItems = {
@@ -154,5 +158,64 @@ describe('Drag and Drop Integration Tests', () => {
     // Check for actual order after drag operations
     expect(containers.introduction[0].id).toBe('item3');
     expect(containers.introduction[1].id).toBe('item1');
+  });
+
+  test('Live preview: repeated cross-container hovers reinsert before last hovered item without duplicates', () => {
+    // Hover over item3 first
+    handleDragOver(
+      { active: { id: 'item2', data: { current: { container: 'ambiguous' } } }, over: { id: 'item3', data: { current: { container: 'introduction' } } } } as any,
+      containers,
+      setContainersMock,
+      mockColumnTitles,
+      containersRef
+    );
+    // Then hover over introduction container itself (should append)
+    handleDragOver(
+      { active: { id: 'item2', data: { current: { container: 'ambiguous' } } }, over: { id: 'introduction', data: { current: { container: 'introduction' } } } } as any,
+      containers,
+      setContainersMock,
+      mockColumnTitles,
+      containersRef
+    );
+    // Finally hover over item3 again — should move before item3, not duplicate
+    handleDragOver(
+      { active: { id: 'item2', data: { current: { container: 'ambiguous' } } }, over: { id: 'item3', data: { current: { container: 'introduction' } } } } as any,
+      containers,
+      setContainersMock,
+      mockColumnTitles,
+      containersRef
+    );
+
+    // No duplicates of item2 across containers
+    const allIds = [
+      ...containers.ambiguous.map(i => i.id),
+      ...containers.introduction.map(i => i.id),
+      ...containers.main.map(i => i.id),
+      ...containers.conclusion.map(i => i.id),
+    ];
+    const id2Count = allIds.filter(id => id === 'item2').length;
+    expect(id2Count).toBe(1);
+
+    // item2 should be in introduction just before item3
+    const introIds = containers.introduction.map(i => i.id);
+    const idxItem2 = introIds.indexOf('item2');
+    const idxItem3 = introIds.indexOf('item3');
+    expect(idxItem2).toBeLessThan(idxItem3);
+  });
+
+  test('Live preview: onDragOver does not call backend services', () => {
+    const { updateStructure } = require('@/services/structure.service');
+    const { updateThought } = require('@/services/thought.service');
+
+    handleDragOver(
+      { active: { id: 'item1', data: { current: { container: 'ambiguous' } } }, over: { id: 'introduction', data: { current: { container: 'introduction' } } } } as any,
+      containers,
+      setContainersMock,
+      mockColumnTitles,
+      containersRef
+    );
+
+    expect(updateStructure).not.toHaveBeenCalled();
+    expect(updateThought).not.toHaveBeenCalled();
   });
 }); 

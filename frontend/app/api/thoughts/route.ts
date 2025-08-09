@@ -39,6 +39,11 @@ export async function POST(request: Request) {
         thoughtWithId.outlinePointId = thought.outlinePointId;
       }
       
+      // Include optional fields if provided
+      if (typeof thought.position === 'number') {
+        (thoughtWithId as any).position = thought.position;
+      }
+
       //verify that thought has everything that is needed
       if (!thoughtWithId.id || !thoughtWithId.text || !thoughtWithId.tags || !thoughtWithId.date) {
         return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
@@ -220,6 +225,9 @@ export async function PUT(request: Request) {
     // Only add outlinePointId if it exists and is not undefined
     if (updatedThoughtNew.outlinePointId) {
       updatedThought.outlinePointId = updatedThoughtNew.outlinePointId;
+    }
+    if (typeof updatedThoughtNew.position === 'number') {
+      (updatedThought as any).position = updatedThoughtNew.position;
     }
     
     // Add keyFragments if it exists

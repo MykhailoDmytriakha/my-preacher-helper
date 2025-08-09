@@ -182,7 +182,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
               // Map relevant tag names back to display names using allTags
               requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
               outlinePoint: outlinePointData,
-              outlinePointId: thought.outlinePointId
+              outlinePointId: thought.outlinePointId,
+              position: (thought as any).position
             };
             allThoughtItems[stableId] = item;
         });
@@ -194,7 +195,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         let ambiguous: Item[] = [];
         const usedIds = new Set<string>();
 
-        // Step 1: Process structure if it exists
+        // Step 1: Process structure if it exists (respect positions where available)
         if (fetchedSermon.structure) {
             let structureObj = typeof fetchedSermon.structure === "string"
                 ? JSON.parse(fetchedSermon.structure)
@@ -205,14 +206,25 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
                     if (Array.isArray(structureObj[section])) {
                         const target = section === "introduction" ? intro : section === "main" ? main : concl;
                         const sectionTagName = columnTitles[section]; // Get translated name for tagging
-                        structureObj[section].forEach((thoughtId: string) => {
-                            const item = allThoughtItems[thoughtId];
-                            if (item) {
-                                item.requiredTags = [sectionTagName]; // Assign the section tag
-                                target.push(item);
-                                usedIds.add(thoughtId);
-                            }
+                        const seen = new Set<string>();
+                        const orderedUniqueIds = structureObj[section].filter((id: string) => {
+                          if (seen.has(id)) return false;
+                          seen.add(id);
+                          return true;
                         });
+                        // If positions exist, use them to sort within the section; otherwise keep order from structure
+                        const itemsForSection = orderedUniqueIds
+                          .map((thoughtId: string) => allThoughtItems[thoughtId])
+                          .filter(Boolean) as Item[];
+                        const withSectionTag = itemsForSection.map((it) => ({ ...it, requiredTags: [sectionTagName] }));
+                        const anyPos = withSectionTag.some(i => typeof i.position === 'number');
+                        const sorted = anyPos
+                          ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
+                          : withSectionTag;
+                        for (const item of sorted) {
+                          target.push(item);
+                          usedIds.add(item.id);
+                        }
                     }
                 });
             }
@@ -266,12 +278,36 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
             toast.error(t('errors.fetchOutlineError'));
         }
 
-        // Step 4: Set final container state
+        // Ensure items have positions for stable ordering
+        const seedPositions = (items: Item[]) => {
+          // If none have position, seed sequentially
+          const anyPos = items.some(i => typeof i.position === 'number');
+          if (!anyPos) {
+            let base = 1000;
+            return items.map((it, idx) => ({ ...it, position: base * (idx + 1) }));
+          }
+          // If some have, fill gaps preserving current order
+          let cursor = 1000;
+          return items.map((it) => {
+            if (typeof it.position === 'number') return it;
+            cursor += 1000;
+            return { ...it, position: cursor };
+          });
+        };
+
+        // Sort by position if present
+        const sortByPosition = (items: Item[]) => {
+          const anyPos = items.some(i => typeof i.position === 'number');
+          if (!anyPos) return items;
+          return [...items].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY));
+        };
+
+        // Step 4: Set final container state (sorted by position when available)
         setContainers({
-          introduction: intro,
-          main: main,
-          conclusion: concl,
-          ambiguous: ambiguous,
+          introduction: sortByPosition(seedPositions(intro)),
+          main: sortByPosition(seedPositions(main)),
+          conclusion: sortByPosition(seedPositions(concl)),
+          ambiguous: sortByPosition(seedPositions(ambiguous)),
         });
         setIsAmbiguousVisible(ambiguous.length > 0); // Update visibility based on final ambiguous content
 

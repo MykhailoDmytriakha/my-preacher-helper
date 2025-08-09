@@ -367,47 +367,113 @@ function StructurePageContent() {
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-    
-    // Early return if no over target
-    if (!over) return;
-    
-    const activeId = active.id;
-    const overId = over.id;
-    
-    // Find which container the active item is in
-    const activeContainer = Object.keys(containers).find(
-      (key) => containers[key].some((item) => item.id === activeId)
-    );
-    
-    // Find which container the target is in
-    let overContainer = over.data?.current?.container;
-    
-    // Handle outline point placeholders
-    if (over.id.toString().startsWith('outline-point-')) {
-      overContainer = over.data?.current?.container;
-    }
-    // Handle unassigned drop targets
-    else if (over.id.toString().startsWith('unassigned-')) {
-      overContainer = over.data?.current?.container;
-    }
-    // If over container is not set, try to infer from over.id
-    else if (!overContainer) {
-      overContainer = over.id.toString();
-      
-      // Handle special cases
-      if (overId === "dummy-drop-zone") {
-        overContainer = "ambiguous";
-      } else if (!["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)) {
-        // Try to find the container of the target item
-        overContainer = Object.keys(containers).find(
-          (key) => containers[key].some((item) => item.id === overId)
-        );
+    if (!over || isDragEnding) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    // Determine current containers based on latest ref
+    const state = containersRef.current;
+    const srcContainerKey = Object.keys(state).find((k) => state[k].some((it) => it.id === activeId));
+    if (!srcContainerKey) return;
+
+    let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
+    let targetOutlinePointId: string | null | undefined = over.data?.current?.outlinePointId as any;
+
+    if (overId.startsWith('outline-point-')) {
+      dstContainerKey = over.data?.current?.container as string | undefined;
+      targetOutlinePointId = (over.data?.current?.outlinePointId as string) || undefined;
+    } else if (overId.startsWith('unassigned-')) {
+      dstContainerKey = over.data?.current?.container as string | undefined;
+      targetOutlinePointId = null;
+    } else if (!dstContainerKey) {
+      // over on item or container id
+      dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
+        ? overId
+        : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
+      if (!dstContainerKey) return;
+
+      // If over is an item, inherit its outline point group for preview
+      if (overId !== dstContainerKey) {
+        const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
+        if (overIdx !== -1) {
+          targetOutlinePointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
+        }
       }
     }
-    
-    // Just validate - don't move items here, leave all movement to handleDragEnd
-    // This prevents the double-movement issue
-    return;
+
+    if (!dstContainerKey) return;
+
+    // Early compute current positions before building draft
+    const srcIdx = state[srcContainerKey].findIndex((it) => it.id === activeId);
+    if (srcIdx === -1) return;
+    const dragged = state[srcContainerKey][srcIdx];
+
+    // Determine insertion index in destination relative to over target
+    let insertIndex = state[dstContainerKey].length;
+    if (overId !== dstContainerKey && !overId.startsWith('outline-point-') && !overId.startsWith('unassigned-')) {
+      const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
+      if (overIdx !== -1) insertIndex = overIdx; // insert before target item
+    } else if (targetOutlinePointId !== undefined) {
+      // Append to end of that group
+      const groupKey = targetOutlinePointId || null;
+      // find last index of items in that group
+      let lastGroupIndex = -1;
+      for (let i = 0; i < state[dstContainerKey].length; i++) {
+        const it = state[dstContainerKey][i];
+        const itGroup = (it.outlinePointId ?? null);
+        if (itGroup === groupKey) lastGroupIndex = i;
+      }
+      insertIndex = lastGroupIndex === -1 ? state[dstContainerKey].length : lastGroupIndex + 1;
+    }
+
+    const intendedOutline: string | undefined =
+      targetOutlinePointId === undefined ? dragged.outlinePointId : (targetOutlinePointId || undefined);
+
+    // If the item is already at the intended place/group, skip updating state
+    if (srcContainerKey === dstContainerKey) {
+      // In the same container, if inserting before the same next element, this might be a no-op
+      const currentIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
+      const sameGroup = (dragged.outlinePointId ?? undefined) === intendedOutline;
+      const noReorder = insertIndex === currentIdx || insertIndex === currentIdx + 1;
+      if (sameGroup && noReorder) {
+        return;
+      }
+    } else {
+      const currentDestIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
+      if (currentDestIdx !== -1) {
+        const alreadyAtIndex = currentDestIdx === insertIndex;
+        const alreadyGroup = (state[dstContainerKey][currentDestIdx].outlinePointId ?? undefined) === intendedOutline;
+        if (alreadyAtIndex && alreadyGroup) {
+          return;
+        }
+      }
+    }
+
+    // Build new state preview without duplicating when source === destination
+    const draft: Record<string, Item[]> = { ...state } as any;
+    const previewItem: Item = { ...dragged, outlinePointId: intendedOutline };
+    if (srcContainerKey === dstContainerKey) {
+      const arr = [...state[srcContainerKey]];
+      // Remove from current index
+      arr.splice(srcIdx, 1);
+      // Adjust insert index if needed
+      const safeIndex = Math.min(Math.max(insertIndex, 0), arr.length);
+      // Insert at new index
+      arr.splice(safeIndex, 0, previewItem);
+      draft[srcContainerKey] = arr;
+    } else {
+      draft[srcContainerKey] = [...state[srcContainerKey]];
+      draft[dstContainerKey] = [...state[dstContainerKey]];
+      // Remove from source
+      draft[srcContainerKey].splice(srcIdx, 1);
+      // Insert into destination
+      draft[dstContainerKey].splice(insertIndex, 0, previewItem);
+    }
+
+    // Apply preview state only if changed
+    setContainers(draft);
+    containersRef.current = draft;
   };
 
   const isStructureChanged = (
@@ -485,12 +551,20 @@ function StructurePageContent() {
     // Find the index of the target item in the destination container
     let targetItemIndex = -1;
     let droppedOnItem = false;
-    
-    if (over.id !== overContainer && 
-        !over.id.toString().startsWith('outline-point-') && 
-        !over.id.toString().startsWith('unassigned-')) {
+    let targetItemOutlinePointId: string | undefined = undefined;
+
+    if (
+      over.id !== overContainer &&
+      !over.id.toString().startsWith('outline-point-') &&
+      !over.id.toString().startsWith('unassigned-')
+    ) {
       droppedOnItem = true;
-      targetItemIndex = containers[overContainer]?.findIndex(item => item.id === over.id) ?? -1;
+      targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;
+      if (targetItemIndex !== -1) {
+        const targetItem = containers[overContainer][targetItemIndex];
+        // If target item is unassigned, explicitly use null to signal clearing assignment
+        targetItemOutlinePointId = (targetItem?.outlinePointId ?? null) as any;
+      }
     }
     
     if (
@@ -546,6 +620,17 @@ function StructurePageContent() {
     }
     
     // Update outline point ID in the moved item immediately (before API calls)
+    // If dropped on a specific item and no explicit outline point target was set,
+    // inherit the target item's outline point assignment
+    if (typeof outlinePointId === 'undefined' && droppedOnItem) {
+      outlinePointId = targetItemOutlinePointId;
+    }
+    // If dropped on container area (not a specific item or special placeholder),
+    // default to unassigned in the current/target section
+    if (typeof outlinePointId === 'undefined' && !droppedOnItem) {
+      outlinePointId = null;
+    }
+
     if (activeContainer !== overContainer || outlinePointId !== undefined) {
       const itemIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
       if (itemIndex !== -1) {
@@ -554,8 +639,44 @@ function StructurePageContent() {
           outlinePointId: outlinePointId
         };
       }
-    }
+      }
     
+    // Dedupe by id within affected containers before applying (safety)
+    const ensureUnique = (items: Item[]) => {
+      const seen = new Set<string>();
+      const result: Item[] = [];
+      for (const it of items) {
+        if (seen.has(it.id)) continue;
+        seen.add(it.id);
+        result.push(it);
+      }
+      return result;
+    };
+
+    if (activeContainer === overContainer) {
+      updatedContainers[overContainer] = ensureUnique(updatedContainers[overContainer]);
+    } else {
+      updatedContainers[activeContainer] = ensureUnique(updatedContainers[activeContainer]);
+      updatedContainers[overContainer] = ensureUnique(updatedContainers[overContainer]);
+    }
+
+    // Ensure the moved item exists only in the destination container across all sections
+    const removeIdFromOtherSections = (all: Record<string, Item[]>, keepIn: string, idToKeep: string) => {
+      const sections = ["introduction", "main", "conclusion", "ambiguous"] as const;
+      const result: Record<string, Item[]> = { ...all } as any;
+      for (const sec of sections) {
+        if (sec === keepIn) continue;
+        const arr = result[sec] || [];
+        const filtered = arr.filter((it) => it.id !== idToKeep);
+        if (filtered.length !== arr.length) {
+          result[sec] = filtered;
+        }
+      }
+      return result;
+    };
+
+    updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
+
     // Apply state updates immediately
     setContainers(updatedContainers);
     containersRef.current = updatedContainers;
@@ -566,16 +687,18 @@ function StructurePageContent() {
     setIsDragEnding(false);
     
     // Build newStructure for API update
+    const dedupe = (ids: string[]) => Array.from(new Set(ids));
     const newStructure = {
-      introduction: updatedContainers.introduction.map((item) => item.id),
-      main: updatedContainers.main.map((item) => item.id),
-      conclusion: updatedContainers.conclusion.map((item) => item.id),
-      ambiguous: updatedContainers.ambiguous.map((item) => item.id),
+      introduction: dedupe(updatedContainers.introduction.map((item) => item.id)),
+      main: dedupe(updatedContainers.main.map((item) => item.id)),
+      conclusion: dedupe(updatedContainers.conclusion.map((item) => item.id)),
+      ambiguous: dedupe(updatedContainers.ambiguous.map((item) => item.id)),
     };
     
     // Make API calls in background with rollback on error
     try {
       // Update outline point assignment and required section tag if needed (use debounced function for smooth UX)
+      let positionPersisted = false;
       if (activeContainer !== overContainer || outlinePointId !== undefined) {
         const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
         const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
@@ -614,11 +737,72 @@ function StructurePageContent() {
             }
           }
 
+          // Compute new positional rank within the destination group (outline point or unassigned)
+          const groupKey = finalOutlinePointId || '__unassigned__';
+          // Collect items of the same group in destination, in current visual order
+          const sameGroupIndexes: number[] = [];
+          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
+            const it = updatedContainers[overContainer][i];
+            const itKey = it.outlinePointId || '__unassigned__';
+            if (itKey === groupKey) sameGroupIndexes.push(i);
+          }
+          // Find previous and next neighbor within the same group relative to movedIndex
+          let prevIdxInSection: number | null = null;
+          let nextIdxInSection: number | null = null;
+          for (let idx of sameGroupIndexes) {
+            if (idx < movedIndex) prevIdxInSection = idx;
+            if (idx > movedIndex) { nextIdxInSection = idx; break; }
+          }
+          const prevItem = prevIdxInSection !== null ? updatedContainers[overContainer][prevIdxInSection] : undefined;
+          const nextItem = nextIdxInSection !== null ? updatedContainers[overContainer][nextIdxInSection] : undefined;
+          const prevPos = typeof prevItem?.position === 'number' ? (prevItem!.position as number) : undefined;
+          const nextPos = typeof nextItem?.position === 'number' ? (nextItem!.position as number) : undefined;
+          let newPos: number;
+          if (prevPos !== undefined && nextPos !== undefined && prevPos < nextPos) {
+            newPos = (prevPos + nextPos) / 2;
+          } else if (prevPos !== undefined) {
+            newPos = prevPos + 1000;
+          } else if (nextPos !== undefined) {
+            newPos = nextPos - 1000;
+          } else {
+            newPos = 1000;
+          }
+
+          // Compute new positional rank within the destination group (outline point or unassigned)
+      const groupKey1 = finalOutlinePointId || '__unassigned__';
+      const sameGroupIndexes1: number[] = [];
+          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
+            const it = updatedContainers[overContainer][i];
+        const itKey = it.outlinePointId || '__unassigned__';
+        if (itKey === groupKey1) sameGroupIndexes1.push(i);
+          }
+      let prevIdxInSection1: number | null = null;
+      let nextIdxInSection1: number | null = null;
+      for (let idx of sameGroupIndexes1) {
+        if (idx < movedIndex) prevIdxInSection1 = idx;
+        if (idx > movedIndex) { nextIdxInSection1 = idx; break; }
+          }
+      const prevItem1 = prevIdxInSection1 !== null ? updatedContainers[overContainer][prevIdxInSection1] : undefined;
+      const nextItem1 = nextIdxInSection1 !== null ? updatedContainers[overContainer][nextIdxInSection1] : undefined;
+      const prevPos1 = typeof prevItem1?.position === 'number' ? (prevItem1!.position as number) : undefined;
+      const nextPos1 = typeof nextItem1?.position === 'number' ? (nextItem1!.position as number) : undefined;
+      let newPos1: number;
+      if (prevPos1 !== undefined && nextPos1 !== undefined && prevPos1 < nextPos1) {
+        newPos1 = (prevPos1 + nextPos1) / 2;
+      } else if (prevPos1 !== undefined) {
+        newPos1 = prevPos1 + 1000;
+      } else if (nextPos1 !== undefined) {
+        newPos1 = nextPos1 - 1000;
+          } else {
+        newPos1 = 1000;
+          }
+
           // Reflect these updates in local containers immediately to keep UI and persistence consistent
           updatedContainers[overContainer][movedIndex] = {
             ...movedItem,
             requiredTags: updatedRequiredTags,
             outlinePointId: finalOutlinePointId,
+            position: newPos1,
           };
           setContainers(updatedContainers);
           containersRef.current = updatedContainers;
@@ -633,6 +817,59 @@ function StructurePageContent() {
                 ...(movedItem.customTagNames || []).map((tag) => tag.name),
               ],
               outlinePointId: finalOutlinePointId,
+              position: newPos1,
+            };
+            debouncedSaveThought(sermon.id, updatedThought);
+            positionPersisted = true;
+          }
+        }
+      }
+
+      // If only reordering within the same group (no container or outline change), still persist position
+      if (!positionPersisted) {
+        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
+        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
+        if (movedItem && sermon) {
+          const groupKey2 = (movedItem.outlinePointId || '__unassigned__');
+          const sameGroupIndexes2: number[] = [];
+          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
+            const it = updatedContainers[overContainer][i];
+            const itKey = it.outlinePointId || '__unassigned__';
+            if (itKey === groupKey2) sameGroupIndexes2.push(i);
+          }
+          let prevIdxInSection2: number | null = null;
+          let nextIdxInSection2: number | null = null;
+          for (let idx of sameGroupIndexes2) {
+            if (idx < movedIndex) prevIdxInSection2 = idx;
+            if (idx > movedIndex) { nextIdxInSection2 = idx; break; }
+          }
+          const prevItem2 = prevIdxInSection2 !== null ? updatedContainers[overContainer][prevIdxInSection2] : undefined;
+          const nextItem2 = nextIdxInSection2 !== null ? updatedContainers[overContainer][nextIdxInSection2] : undefined;
+          const prevPos2 = typeof prevItem2?.position === 'number' ? (prevItem2!.position as number) : undefined;
+          const nextPos2 = typeof nextItem2?.position === 'number' ? (nextItem2!.position as number) : undefined;
+          let newPos2: number;
+          if (prevPos2 !== undefined && nextPos2 !== undefined && prevPos2 < nextPos2) {
+            newPos2 = (prevPos2 + nextPos2) / 2;
+          } else if (prevPos2 !== undefined) {
+            newPos2 = prevPos2 + 1000;
+          } else if (nextPos2 !== undefined) {
+            newPos2 = nextPos2 - 1000;
+          } else {
+            newPos2 = 1000;
+          }
+          // Update UI and persist
+          updatedContainers[overContainer][movedIndex] = {
+            ...movedItem,
+            position: newPos2,
+          };
+          setContainers(updatedContainers);
+          containersRef.current = updatedContainers;
+
+          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
+          if (thought) {
+            const updatedThought: Thought = {
+              ...thought,
+              position: newPos2,
             };
             debouncedSaveThought(sermon.id, updatedThought);
           }
