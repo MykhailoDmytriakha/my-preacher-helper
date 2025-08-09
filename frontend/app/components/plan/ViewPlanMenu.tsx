@@ -6,6 +6,7 @@ import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { getPlanMarkdownStyles } from './markdownStyles';
 
 
 interface ViewPlanMenuProps {
@@ -100,6 +101,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     // Add markdown content
     const markdownContent = document.createElement('div');
     markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
+    // Inject consistent markdown styles
+    const styleEl = document.createElement('style');
+    styleEl.innerHTML = getPlanMarkdownStyles();
+    content.appendChild(styleEl);
     
     // Create content wrapper with vertical border
     const contentWrapper = document.createElement('div');
@@ -267,6 +272,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
     // Add markdown content
     const markdownContent = document.createElement('div');
     markdownContent.className = 'prose dark:prose-invert max-w-none';
+    // Inject consistent markdown styles
+    const styleEl = document.createElement('style');
+    styleEl.innerHTML = getPlanMarkdownStyles();
+    content.appendChild(styleEl);
     
     // Render React component inside the div
     const root = ReactDOM.createRoot(markdownContent);

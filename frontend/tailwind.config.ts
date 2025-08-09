@@ -18,6 +18,10 @@ const config: Config = {
     'dark:text-amber-200',
     'dark:bg-blue-900/60',
     'dark:bg-green-900/60',
+    // Dark hover backgrounds used in menus
+    'dark:hover:bg-amber-900/40',
+    'dark:hover:bg-blue-900/40',
+    'dark:hover:bg-green-900/40',
   ],
   theme: {
     extend: {
