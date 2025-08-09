@@ -575,24 +575,66 @@ function StructurePageContent() {
     
     // Make API calls in background with rollback on error
     try {
-      // Update outline point assignment if needed (use debounced function for smooth UX)
+      // Update outline point assignment and required section tag if needed (use debounced function for smooth UX)
       if (activeContainer !== overContainer || outlinePointId !== undefined) {
-        const movedItem = updatedContainers[overContainer].find((item) => item.id === active.id);
-        
+        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
+        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
+
         if (movedItem && sermon) {
-          const thought = sermon.thoughts.find((thought: Thought) => thought.id === movedItem.id);
+          // Determine the correct required tag for the destination container
+          let updatedRequiredTags: string[] = [];
+          if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
+            updatedRequiredTags = [columnTitles[overContainer as keyof typeof columnTitles]];
+          }
+
+          // Determine final outlinePointId value to persist
+          // - If we explicitly dropped on an unassigned target, clear it
+          // - If we dropped on a different container without specifying a target point and the current id doesn't belong to that container, clear it
+          let finalOutlinePointId: string | undefined = undefined;
+
+          if (typeof outlinePointId === 'string') {
+            finalOutlinePointId = outlinePointId;
+          } else if (outlinePointId === null) {
+            finalOutlinePointId = undefined;
+          } else {
+            // No explicit outline point change requested
+            finalOutlinePointId = movedItem.outlinePointId;
+
+            // If container changed and previous outline point belongs to a different section, clear it
+            if (activeContainer !== overContainer && finalOutlinePointId && sermon.outline) {
+              const sectionPoints =
+                overContainer === 'introduction' ? sermon.outline.introduction
+                : overContainer === 'main' ? sermon.outline.main
+                : overContainer === 'conclusion' ? sermon.outline.conclusion
+                : [];
+              const belongsToNewSection = sectionPoints?.some((p: OutlinePoint) => p.id === finalOutlinePointId);
+              if (!belongsToNewSection) {
+                finalOutlinePointId = undefined;
+              }
+            }
+          }
+
+          // Reflect these updates in local containers immediately to keep UI and persistence consistent
+          updatedContainers[overContainer][movedIndex] = {
+            ...movedItem,
+            requiredTags: updatedRequiredTags,
+            outlinePointId: finalOutlinePointId,
+          };
+          setContainers(updatedContainers);
+          containersRef.current = updatedContainers;
+
+          // Persist the updated thought
+          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
           if (thought) {
-            const updatedItem: Thought = {
+            const updatedThought: Thought = {
               ...thought,
               tags: [
-                ...(movedItem.requiredTags || []),
+                ...updatedRequiredTags,
                 ...(movedItem.customTagNames || []).map((tag) => tag.name),
               ],
-              outlinePointId: outlinePointId
+              outlinePointId: finalOutlinePointId,
             };
-            
-            // Use debounced function instead of direct await to prevent UI blocking
-            debouncedSaveThought(sermon.id, updatedItem);
+            debouncedSaveThought(sermon.id, updatedThought);
           }
         }
       }
