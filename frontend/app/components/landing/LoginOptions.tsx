@@ -25,7 +25,7 @@ export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin,
 
       <div className="w-full space-y-3">
         <button
-          className="w-full px-6 py-3 bg-gradient-to-r from-blue-200 to-green-200 rounded-lg hover:from-blue-700 hover:to-green-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full px-6 py-3 bg-gradient-to-r from-blue-200 to-green-200 dark:from-blue-900/50 dark:to-green-900/50 text-gray-900 dark:text-white rounded-lg hover:from-blue-700 hover:to-green-700 dark:hover:from-blue-900 dark:hover:to-green-900 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={onGoogleLogin}
           disabled={loading}
         >

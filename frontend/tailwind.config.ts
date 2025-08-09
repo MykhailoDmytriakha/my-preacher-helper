@@ -22,6 +22,11 @@ const config: Config = {
     'dark:hover:bg-amber-900/40',
     'dark:hover:bg-blue-900/40',
     'dark:hover:bg-green-900/40',
+    // Landing gradient overrides for dark mode
+    'dark:from-blue-900/50',
+    'dark:to-green-900/50',
+    'dark:hover:from-blue-900',
+    'dark:hover:to-green-900',
   ],
   theme: {
     extend: {
