@@ -6,7 +6,7 @@ export const SERMON_SECTION_COLORS = {
     light: "#f59e0b",      // Amber-500
     dark: "#b45309",       // Amber-700
     bg: "bg-amber-50",
-    darkBg: "bg-amber-900/20",
+    darkBg: "bg-amber-900/40",
     border: "border-amber-200",
     darkBorder: "border-amber-800",
     hover: "hover:bg-amber-100",
@@ -32,7 +32,7 @@ export const SERMON_SECTION_COLORS = {
     light: "#22c55e",      // Green-500
     dark: "#15803d",       // Green-700
     bg: "bg-green-50",
-    darkBg: "bg-green-900/20",
+    darkBg: "bg-green-900/30",
     border: "border-green-200",
     darkBorder: "border-green-800",
     hover: "hover:bg-green-100",
@@ -61,7 +61,8 @@ export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclu
 export function getTagStyling(section: 'introduction' | 'mainPart' | 'conclusion') {
   const colors = SERMON_SECTION_COLORS[section];
   return {
-    bg: `${colors.bg} dark:${colors.darkBg.split('/')[0]}`,
+    // Use a slightly transparent dark background for chips to reduce visual weight
+    bg: `${colors.bg} dark:${colors.darkBg.split('/')[0]}/60`,
     text: `${colors.text} dark:${colors.darkText}`
   };
 } 

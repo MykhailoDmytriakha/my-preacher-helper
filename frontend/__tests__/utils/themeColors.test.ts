@@ -27,9 +27,9 @@ describe('themeColors', () => {
     });
 
     it('should define dark mode background classes for each section', () => {
-      expect(SERMON_SECTION_COLORS.introduction.darkBg).toBe('bg-amber-900/20');
+      expect(SERMON_SECTION_COLORS.introduction.darkBg).toBe('bg-amber-900/40');
       expect(SERMON_SECTION_COLORS.mainPart.darkBg).toBe('bg-blue-900/20');
-      expect(SERMON_SECTION_COLORS.conclusion.darkBg).toBe('bg-green-900/20');
+      expect(SERMON_SECTION_COLORS.conclusion.darkBg).toBe('bg-green-900/30');
     });
   });
 
@@ -37,10 +37,10 @@ describe('themeColors', () => {
     it('should return correct styling for introduction section', () => {
       const styling = getSectionStyling('introduction');
       
-      expect(styling.headerBg).toBe('bg-amber-50 dark:bg-amber-900/20');
+      expect(styling.headerBg).toBe('bg-amber-50 dark:bg-amber-900/40');
       expect(styling.headerHover).toBe('hover:bg-amber-100 dark:hover:bg-amber-800/30');
       expect(styling.border).toBe('border-amber-200 dark:border-amber-800');
-      expect(styling.dragBg).toBe('bg-amber-50 dark:bg-amber-900/20');
+      expect(styling.dragBg).toBe('bg-amber-50 dark:bg-amber-900/40');
       expect(styling.badge).toContain('bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200');
     });
 
@@ -57,10 +57,10 @@ describe('themeColors', () => {
     it('should return correct styling for conclusion section', () => {
       const styling = getSectionStyling('conclusion');
       
-      expect(styling.headerBg).toBe('bg-green-50 dark:bg-green-900/20');
+      expect(styling.headerBg).toBe('bg-green-50 dark:bg-green-900/30');
       expect(styling.headerHover).toBe('hover:bg-green-100 dark:hover:bg-green-800/30');
       expect(styling.border).toBe('border-green-200 dark:border-green-800');
-      expect(styling.dragBg).toBe('bg-green-50 dark:bg-green-900/20');
+      expect(styling.dragBg).toBe('bg-green-50 dark:bg-green-900/30');
       expect(styling.badge).toContain('bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200');
     });
   });
@@ -69,21 +69,21 @@ describe('themeColors', () => {
     it('should return correct tag styling for introduction tags', () => {
       const styling = getTagStyling('introduction');
       
-      expect(styling.bg).toBe('bg-amber-50 dark:bg-amber-900');
+      expect(styling.bg).toBe('bg-amber-50 dark:bg-amber-900/60');
       expect(styling.text).toBe('text-amber-800 dark:text-amber-200');
     });
 
     it('should return correct tag styling for mainPart tags', () => {
       const styling = getTagStyling('mainPart');
       
-      expect(styling.bg).toBe('bg-blue-50 dark:bg-blue-900');
+      expect(styling.bg).toBe('bg-blue-50 dark:bg-blue-900/60');
       expect(styling.text).toBe('text-blue-800 dark:text-blue-200');
     });
 
     it('should return correct tag styling for conclusion tags', () => {
       const styling = getTagStyling('conclusion');
       
-      expect(styling.bg).toBe('bg-green-50 dark:bg-green-900');
+      expect(styling.bg).toBe('bg-green-50 dark:bg-green-900/60');
       expect(styling.text).toBe('text-green-800 dark:text-green-200');
     });
   });

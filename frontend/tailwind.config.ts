@@ -6,6 +6,19 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: [
+    // Ensure dark variants generated for dynamic theme classes
+    'dark:bg-amber-900/40',
+    // Keep commonly used variations to avoid future misses
+    'dark:bg-amber-900/30',
+    'dark:bg-amber-900/20',
+    // Tag chip backgrounds/texts
+    'dark:bg-amber-900',
+    'dark:bg-amber-900/60',
+    'dark:text-amber-200',
+    'dark:bg-blue-900/60',
+    'dark:bg-green-900/60',
+  ],
   theme: {
     extend: {
       colors: {
