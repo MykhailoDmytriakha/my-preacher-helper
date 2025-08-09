@@ -453,7 +453,7 @@ describe('Column Component', () => {
       
       // Check parent button has correct styling
       const buttonElement = sortButton.closest('button')!;
-      expect(buttonElement).toHaveClass('bg-blue-500');  // For introduction section
+      expect(buttonElement).toHaveClass('bg-amber-50');  // For introduction section
       expect(buttonElement).toHaveClass('text-white');
       expect(buttonElement).toHaveClass('border-blue-400');
       expect(buttonElement).toHaveClass('shadow-md');
@@ -555,7 +555,7 @@ describe('Column Component', () => {
       
       const sortButtonText = screen.getByText('Сортировать');
       const sortButton = sortButtonText.closest('button')!;
-      expect(sortButton).toHaveClass('bg-purple-500');
+      expect(sortButton).toHaveClass('bg-blue-50');
     });
     
     it('applies correct color styling for conclusion section sort button', () => {
@@ -571,7 +571,7 @@ describe('Column Component', () => {
       
       const sortButtonText = screen.getByText('Сортировать');
       const sortButton = sortButtonText.closest('button')!;
-      expect(sortButton).toHaveClass('bg-green-500');
+      expect(sortButton).toHaveClass('bg-green-50');
     });
   });
 

@@ -97,8 +97,8 @@ describe('Translation Files Key Order', () => {
     // console.log('RU Keys:', ruKeys);
     // console.log('UK Keys:', ukKeys);
 
-    // Allow extra nested placements as long as key presence matches; strict order can differ slightly
-    expect(new Set(ruKeys)).toEqual(new Set(enKeys));
-    expect(new Set(ukKeys)).toEqual(new Set(enKeys));
+    // Enforce strict order: keys (including nested order markers) must appear in the same order
+    expect(ruKeys).toEqual(enKeys);
+    expect(ukKeys).toEqual(enKeys);
   });
 }); 

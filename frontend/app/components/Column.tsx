@@ -564,9 +564,9 @@ export default function Column({
                     disabled={isLoading}
                     className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${
                       isLoading ? 'bg-white text-gray-800 border-gray-300' : 
-                      id === 'introduction' ? 'bg-amber-500 text-white hover:bg-amber-400 border-amber-400 shadow-md' : 
-                      id === 'main' ? 'bg-blue-500 text-white hover:bg-blue-400 border-blue-400 shadow-md' : 
-                      id === 'conclusion' ? 'bg-green-500 text-white hover:bg-green-400 border-green-400 shadow-md' : 
+                      id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} text-white hover:bg-blue-400 border-blue-400 shadow-md` : 
+                      id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} text-white hover:bg-purple-400 border-purple-400 shadow-md` : 
+                      id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} text-white hover:bg-green-400 border-green-400 shadow-md` : 
                       'bg-gray-500 text-white hover:bg-gray-400 border-gray-400 shadow-md'
                     }`}
                   >
