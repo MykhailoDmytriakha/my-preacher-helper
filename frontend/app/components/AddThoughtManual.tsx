@@ -154,12 +154,12 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="manual-thought-modal-title" className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
+            <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
+              {loading && (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              )}
                 <div className="mb-6 flex-grow overflow-auto">
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel') || 'Text'}</label>
@@ -181,6 +181,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                         value={selectedOutlinePointId || ""}
                         onChange={handleOutlinePointChange}
                         className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+                        disabled={loading}
                       >
                         <option value="">{t('editThought.noOutlinePoint') || 'No outline point selected'}</option>
                         
@@ -286,24 +287,25 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 mt-auto">
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
-                    disabled={isSubmitting}
-                  >
-                    {t('buttons.cancel')}
-                  </button>
+                  {!loading && (
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+                      disabled={isSubmitting}
+                    >
+                      {t('buttons.cancel')}
+                    </button>
+                  )}
                   <button
                     type="submit"
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                    disabled={isSubmitting || !text.trim()}
+                    disabled={isSubmitting || !text.trim() || loading}
                   >
                     {isSubmitting ? t('buttons.saving') : t('buttons.save')}
                   </button>
                 </div>
-              </form>
-            )}
+            </form>
           </div>
         </div>
       )}

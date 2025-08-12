@@ -935,10 +935,10 @@ export default function PlanPage() {
         <h1 className="text-xl font-bold mb-4">{t("plan.thoughtsNotAssigned")}</h1>
         <p className="mb-6">{t("plan.assignThoughtsFirst")}</p>
         <Button
-          onClick={() => router.push(`/sermons/${params.id}/outline`)}
+          onClick={() => router.push(`/sermons/${params.id}`)}
           variant="primary"
         >
-          {t("actions.goToOutline")}
+          {t("structure.workButton")}
         </Button>
       </div>
     );

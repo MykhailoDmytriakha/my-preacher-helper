@@ -16,20 +16,23 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-// PUT /api/sermons/:id – update sermon (title, verse, isPreached)
+// PUT /api/sermons/:id – update sermon (title, verse, isPreached, preparation)
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   const { id } = params;
   try {
-    // Get title, verse, and isPreached from the request body
-    const { title, verse, isPreached } = await request.json(); 
+    // Get fields from the request body
+    const { title, verse, isPreached, preparation } = await request.json(); 
     
     // Prepare the update object
-    const updateData: { title?: string; verse?: string; isPreached?: boolean } = {};
+    const updateData: { title?: string; verse?: string; isPreached?: boolean; preparation?: any } = {};
     if (title) updateData.title = title;
     if (verse) updateData.verse = verse;
     // Only include isPreached if it's explicitly provided (true or false)
     if (typeof isPreached === 'boolean') {
       updateData.isPreached = isPreached;
+    }
+    if (preparation && typeof preparation === 'object') {
+      updateData.preparation = preparation;
     }
 
     // Check if there's anything to update

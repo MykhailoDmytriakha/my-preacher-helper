@@ -1,4 +1,4 @@
-import { Sermon } from '@/models/models';
+import { Sermon, Preparation } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
@@ -77,6 +77,25 @@ export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null
     return data;
   } catch (error) {
     console.error('updateSermon: Error updating sermon', error);
+    return null;
+  }
+};
+
+export const updateSermonPreparation = async (sermonId: string, updates: Preparation): Promise<Preparation | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: sermonId, preparation: updates }),
+    });
+    if (!response.ok) {
+      console.error(`updateSermonPreparation: Response not ok for id ${sermonId}, status: ${response.status}`);
+      return null;
+    }
+    const data = await response.json();
+    return data.preparation ?? updates;
+  } catch (error) {
+    console.error('updateSermonPreparation: Error updating preparation', error);
     return null;
   }
 };

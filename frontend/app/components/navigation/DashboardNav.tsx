@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
@@ -11,6 +11,7 @@ import FeedbackModal from "@/components/navigation/FeedbackModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import "@locales/i18n";
+import ModeToggle from './ModeToggle';
 
 export default function DashboardNav() {
   const { t } = useTranslation();
@@ -23,11 +24,30 @@ export default function DashboardNav() {
   } = useFeedback();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Function to close mobile menu when path changes
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  // Mode toggle visibility and handlers (sermon detail only)
+  const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
+  const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
+  const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
+  const setMode = (mode: 'classic' | 'prep') => {
+    try {
+      const params = new URLSearchParams(searchParams?.toString() || '');
+      if (mode === 'classic') {
+        params.delete('mode');
+      } else {
+        params.set('mode', 'prep');
+      }
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+    } catch {}
+  };
 
   // Handle submitting feedback with user info
   const submitFeedbackWithUser = async (text: string, type: string) => {
@@ -37,16 +57,25 @@ export default function DashboardNav() {
   return (
     <nav className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
-          {/* Logo section */}
-          <Link href="/dashboard" className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            <span suppressHydrationWarning={true}>
-              {t('navigation.dashboard')}
-            </span>
-          </Link>
+        <div className="grid grid-cols-3 items-center h-16">
+          {/* Left: Logo */}
+          <div className="flex items-center">
+            <Link href="/dashboard" className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <span suppressHydrationWarning={true}>
+                {t('navigation.dashboard')}
+              </span>
+            </Link>
+          </div>
 
-          {/* Desktop navigation items */}
-          <div className="hidden md:flex items-center gap-4">
+          {/* Center: Mode toggle (desktop) */}
+          <div className="hidden md:flex items-center justify-center">
+            {showWizardButton && isSermonRoot && (
+              <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
+            )}
+          </div>
+
+          {/* Right: Desktop controls */}
+          <div className="hidden md:flex items-center gap-4 justify-end">
             {/* Feedback button for desktop */}
             <button
               onClick={handleFeedbackClick}
@@ -70,7 +99,7 @@ export default function DashboardNav() {
           </div>
 
           {/* Mobile right-side controls: Feedback button and menu */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-2 justify-end col-span-3 mt-2">
             {/* Feedback button for mobile - always visible */}
             <button
               onClick={handleFeedbackClick}
@@ -118,3 +147,5 @@ export default function DashboardNav() {
     </nav>
   );
 }
+
+// Mode toggle extracted to separate component for testability (see ModeToggle.tsx)

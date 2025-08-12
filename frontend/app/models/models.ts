@@ -73,6 +73,25 @@ export interface Sermon {
   insights?: Insights;
   plan?: Plan;
   isPreached?: boolean;
+  preparation?: Preparation;
+}
+
+export interface Preparation {
+  spiritual?: {
+    readAndPrayedConfirmed?: boolean;
+  };
+  textContext?: {
+    passage?: string;
+    repeatedWords?: string[];
+    contextNotes?: string;
+  };
+  thesis?: {
+    exegetical?: string;
+    homiletical?: string;
+    oneSentence?: string;
+  };
+  timelessTruth?: string;
+  christConnection?: string;
 }
 
 export interface Tag {

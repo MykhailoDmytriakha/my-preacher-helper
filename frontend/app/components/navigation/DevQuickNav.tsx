@@ -58,7 +58,7 @@ export default function DevQuickNav() {
           <Link href="/dashboard" className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition">Dashboard</Link>
           <Link href="/settings" className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-2 00 dark:hover:bg-gray-700 transition">Settings</Link>
           <Link href={sermonId ? `/sermons/${sermonId}` : '#'} className={`px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 transition ${sermonId ? '' : disabledClass}`}>Sermon</Link>
-          <Link href={sermonId ? `/sermons/${sermonId}/outline` : '#'} className={`px-2 py-1 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 transition ${sermonId ? '' : disabledClass}`}>Outline</Link>
+          {/* Outline page deprecated */}
           <Link href={sermonId ? `/sermons/${sermonId}/plan` : '#'} className={`px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition ${sermonId ? '' : disabledClass}`}>Plan</Link>
           <Link href={sermonId ? `/structure?sermonId=${encodeURIComponent(sermonId)}` : '#'} className={`px-2 py-1 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 transition ${sermonId ? '' : disabledClass}`}>Structure</Link>
         </div>

@@ -10,9 +10,11 @@ jest.mock('next/navigation', () => {
   return {
     useRouter: () => ({ 
       push,
+      replace: jest.fn(),
       refresh: jest.fn()
     }),
-    usePathname: () => '/dashboard'
+    usePathname: () => '/dashboard',
+    useSearchParams: () => ({ get: () => null, toString: () => '' })
   };
 });
 

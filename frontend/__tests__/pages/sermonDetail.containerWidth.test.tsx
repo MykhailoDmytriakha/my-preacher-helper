@@ -5,8 +5,9 @@ import '@testing-library/jest-dom';
 // Mock router params
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
   usePathname: jest.fn().mockReturnValue('/'),
+  useSearchParams: () => ({ get: () => null, toString: () => '' })
 }));
 
 // Mock i18n

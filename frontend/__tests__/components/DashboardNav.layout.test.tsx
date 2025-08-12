@@ -5,6 +5,8 @@ import DashboardNav from '@/components/navigation/DashboardNav';
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
+  useRouter: () => ({ replace: jest.fn(), push: jest.fn(), refresh: jest.fn() }),
+  useSearchParams: () => ({ get: () => null, toString: () => '' }),
 }));
 
 jest.mock('react-i18next', () => ({

@@ -5,26 +5,24 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
-import { useTranslation } from 'react-i18next';
 import type { Sermon } from '@/models/models';
-import type { SermonMode } from './SermonActionsMenu';
 import useSermonValidator from '@/hooks/useSermonValidator';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
-import SermonActionsMenu from './SermonActionsMenu'; // Import the new actions menu component
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 
 export interface SermonHeaderProps {
   sermon: Sermon;
   onUpdate?: (updatedSermon: Sermon) => void; // Callback for successful update
+  uiMode?: 'classic' | 'prep';
+  onToggleMode?: () => void;
 }
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
   const formattedDate = formatDate(sermon.date);
-  const { t } = useTranslation();
   
-  // Re-introduce mode state here, as SermonActionsMenu expects it as a prop
-  const [mode, setMode] = useState<SermonMode>('content'); 
+  
+  // Removed legacy mode switch (framework/content)
 
   const generateExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     return getExportContent(sermon, undefined, { 
@@ -84,7 +82,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
         </div>
       </div>
 
-      {/* Right side: Export Buttons and Actions Menu */}
+      {/* Right side: Export Buttons and optional Wizard preview */}
       <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-shrink-0">
         <ExportButtons
             sermonId={sermon.id}
@@ -93,12 +91,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
             title={sermon.title || "Sermon Details"}
             disabledFormats={['pdf']} // Disable PDF export here
         />
-        <SermonActionsMenu 
-            sermon={sermon}
-            mode={mode} 
-            setMode={setMode} 
-            // Remove generateExportContent prop from here
-        />
+        {/* Mode toggle moved to global DashboardNav */}
       </div>
     </div>
   );

@@ -42,6 +42,43 @@ export const SERMON_SECTION_COLORS = {
   }
 };
 
+// Generic UI palette for non-section elements (avoid hardcoded colors)
+export const UI_COLORS = {
+  danger: {
+    bg: "bg-rose-50",
+    darkBg: "bg-rose-900/20",
+    border: "border-rose-300",
+    darkBorder: "border-rose-800",
+    text: "text-rose-800",
+    darkText: "text-rose-200",
+  },
+  muted: {
+    text: "text-gray-500",
+    darkText: "text-gray-400",
+  },
+  accent: {
+    bg: "bg-violet-50",
+    darkBg: "bg-violet-900/20",
+    border: "border-violet-200",
+    darkBorder: "border-violet-800",
+    text: "text-violet-800",
+    darkText: "text-violet-200",
+  },
+  verseNumber: {
+    // Extra subtle for superscript verse markers
+    text: "text-gray-300",
+    darkText: "text-gray-600",
+  },
+  neutral: {
+    bg: "bg-gray-50",
+    darkBg: "bg-gray-800",
+    border: "border-gray-200",
+    darkBorder: "border-gray-700",
+    text: "text-gray-800",
+    darkText: "text-gray-100",
+  }
+};
+
 // Helper function to get standard button/section styling
 export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclusion') {
   const colors = SERMON_SECTION_COLORS[section];

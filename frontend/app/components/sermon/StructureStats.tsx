@@ -114,18 +114,26 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           </div>
         </div>
       </div>
-      <button
-        onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
-        className={`w-full mt-4 sm:mt-6 px-4 py-2 ${
-          hasInconsistentThoughts 
-            ? 'bg-gray-400 cursor-not-allowed' 
-            : 'bg-blue-600 hover:bg-blue-700'
-        } text-white rounded-lg transition-colors text-sm sm:text-base`}
-        disabled={hasInconsistentThoughts}
-        title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning', 'Some thoughts have inconsistent tags. Please fix tag inconsistencies before working on structure.') : ''}
-      >
-        {t('structure.workButton')}
-      </button>
+      <div className="mt-4 sm:mt-6 space-y-3">
+        <button
+          onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
+          className={`w-full px-4 py-2 ${
+            hasInconsistentThoughts 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : 'bg-blue-600 hover:bg-blue-700'
+          } text-white rounded-lg transition-colors text-sm sm:text-base`}
+          disabled={hasInconsistentThoughts}
+          title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning', 'Some thoughts have inconsistent tags. Please fix tag inconsistencies before working on structure.') : ''}
+        >
+          {t('structure.workButton')}
+        </button>
+        <button
+          onClick={() => router.push(`/sermons/${sermon.id}/plan`)}
+          className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm sm:text-base"
+        >
+          {t('plan.pageTitle')}
+        </button>
+      </div>
     </div>
   );
 };
