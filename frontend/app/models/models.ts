@@ -84,7 +84,10 @@ export interface Preparation {
     passage?: string;
     repeatedWords?: string[];
     contextNotes?: string;
+    readWholeBookOnceConfirmed?: boolean;
   };
+  exegeticalPlan?: ExegeticalPlanNode[];
+  authorIntent?: string;
   thesis?: {
     exegetical?: string;
     homiletical?: string;
@@ -92,6 +95,12 @@ export interface Preparation {
   };
   timelessTruth?: string;
   christConnection?: string;
+}
+
+export interface ExegeticalPlanNode {
+  id: string;
+  title: string;
+  children?: ExegeticalPlanNode[];
 }
 
 export interface Tag {

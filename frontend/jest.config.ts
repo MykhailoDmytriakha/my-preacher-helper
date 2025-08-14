@@ -11,7 +11,7 @@ const createJestConfig = nextJest({
 const config: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jest-environment-jsdom',
-  testTimeout: 15000, // Increase global timeout to 15 seconds
+  testTimeout: 5000, // Increase global timeout to 15 seconds
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   modulePaths: ['.'],

@@ -545,16 +545,126 @@
     "switchToClassic": "Classic Mode",
     "previewCTA": { "label": "Open Preparation Mode (coming soon)", "title": "Prototype preview" },
     "steps": {
-      "spiritual": { "title": "Meditation Before Preparation", "desc": "Prayer, attitude, purpose before preparation" },
-      "textContext": { "title": "Text & Context", "desc": "Passage boundaries, book read, repeated words, context notes" },
-      "mainIdea": { "title": "Main Idea", "desc": "Block diagram and author's intent" },
-      "exegesis": { "title": "Exegesis", "desc": "Map to outline; structural understanding of the text" },
-      "thesis": { "title": "Thesis", "desc": "Exegetical and homiletical thesis; one-sentence thesis and transition" },
-      "goals": { "title": "Goals & Christ-connection", "desc": "Timeless biblical truth, aim, connection to Christ" },
-      "structure": { "title": "Structure", "desc": "Assign thoughts to sections" },
-      "outline": { "title": "Outline", "desc": "Define outline points" },
-      "plan": { "title": "Plan", "desc": "Compose sections: introduction, main, conclusion" },
-      "review": { "title": "Consistency & Review", "desc": "21 questions, coherence, Christ-centeredness" }
+      "spiritual": { "title": "Meditation Before Preparation" },
+      "textContext": {
+        "title": "Text & Context",
+        "actions": {
+          "selectPassage": "Select the passage and define its boundaries",
+          "readWholeBookOnce": "Read the whole book once",
+          "findContext": "Find the context",
+          "findRepeatedWords": "Find repeated words and phrases"
+        },
+        "passageInput": {
+          "label": "Scripture passage",
+          "placeholder": "e.g., Romans 8:14; John 3:16-21",
+          "help": "This field is synchronized with the sermon verse. Editing and saving here updates the same data."
+        },
+        "contextInput": {
+          "label": "Describe the passage and chapter context",
+          "placeholder": "Write a brief context of the passage and its chapter...",
+          "help": "Keep it concise: background, author’s flow, key ideas."
+        },
+        "repeatedInput": {
+          "label": "Repeated words and phrases (comma-separated)",
+          "placeholder": "e.g., Spirit, faith, righteousness",
+          "help": "Enter a list separated by commas. We'll store it as an array."
+        },
+        "confirmation": {
+          "readWholeBookOnce": "I have read the whole book once"
+        }
+      },
+      "exegeticalPlan": {
+        "title": "Exegetical Plan",
+        "intro": "An exegetical plan helps see the overall flow of what the text says.",
+        "simpleStudy": {
+          "title": "Simple study of the text structure",
+            "note": "This section explains how to compose the exegetical plan.",
+          "definition": "A passage plan is a structural expression of the development of its main idea. It must arise from the text, not be imposed on it.",
+          "requirementsIntro": "Each point of the plan should meet several requirements:",
+          "req1": "First, it must come from the text.",
+          "req2": "Second, it should reveal the main idea of the passage.",
+          "req3": "Third, it should be parallel with other points.",
+          "req4": "Fourth, it should be short, concise and precise.",
+          "goal": "The goal is not to build a perfect construction, but to reflect the development of the main idea of the passage."
+        },
+        "exampleTitle": "Example from 1 Peter",
+        "exampleHint": "Write your example or expand the plan based on your text.",
+        "example": {
+          "title": "Example 1 Peter",
+          "topic": "On the submission of wives to husbands (3:1–6)",
+          "iCommand": "i. Command to submit (3:1a)",
+          "iiPurpose": "ii. Purpose of this submission",
+          "iiiCharacter": "iii. Character of this submission",
+          "notEvidenceTitle": "1) What does not testify to submission",
+          "notEvidenceA": "a) Outward braiding of hair",
+          "notEvidenceB": "b) Gold adornments",
+          "notEvidenceC": "c) Fine clothing",
+          "evidenceTitle": "2) What testifies to submission",
+          "evidenceA": "a) Gentle spirit",
+          "evidenceB": "b) Quiet spirit",
+          "ivExample": "iv. Example of submission",
+          "holyWomen": "1) Holy women",
+          "sarah": "2) Sarah"
+        },
+        "authorIntent": {
+          "title": "Author's intent",
+          "description": "The original meaning the author put in when writing these verses",
+          "placeholder": "Describe the author's intent for this passage..."
+        },
+        "blockDiagram": {
+          "title": "Block diagram",
+          "description": "From the block diagram, we will compose the exegetical plan"
+        },
+        "instruction": {
+          "show": "Show instruction",
+          "hide": "Hide instruction"
+        },
+        "builder": {
+          "title": "Exegetical Plan Builder",
+          "addMainPoint": "Add main point",
+          "addSubPoint": "Add subpoint",
+          "addSibling": "Add sibling",
+          "delete": "Delete",
+          "edit": "Edit",
+          "save": "Save",
+          "cancel": "Cancel",
+          "placeholder": "Enter point title...",
+          "empty": "No points yet. Start by adding a main point.",
+          "tooltips": {
+            "addSibling": "Add a sibling point",
+            "addChild": "Add a subpoint",
+            "delete": "Delete this point",
+            "addMain": "Add the first main point"
+          }
+        }
+      },
+      "exegesis": { "title": "Exegesis" },
+      "mainIdea": {
+        "title": "Main Idea",
+        "note": {
+          "title": "Note",
+          "text": "The main idea of the text should align with the main idea of the context."
+        },
+        "contextIdea": {
+          "title": "Context main idea",
+          "instruction": "Write what the context is about"
+        },
+        "textIdea": {
+          "title": "Text main idea",
+          "instruction1": "Formulate the whole text into one sentence",
+          "instruction2": "After formulating the main idea, read the passage again through the lens of your main idea to verify you identified it correctly"
+        },
+        "argumentation": {
+          "title": "Argumentation from the text",
+          "instruction": "Identify argumentation that supports the main idea (from the text)"
+        }
+      },
+      "goals": { "title": "Goals & Christ-connection" },
+      "thesis": { "title": "Thesis" },
+      "structure": { "title": "Structure" },
+      "outline": { "title": "Outline" },
+      "plan": { "title": "Plan" },
+      "review": { "title": "Consistency & Review" }
     }
   }
 } 

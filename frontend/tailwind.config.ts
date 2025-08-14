@@ -27,6 +27,20 @@ const config: Config = {
     'dark:to-green-900/50',
     'dark:hover:from-blue-900',
     'dark:hover:to-green-900',
+    // Accent (violet) palette used via dynamic UI_COLORS; keep both light/dark variants
+    'bg-violet-50',
+    'dark:bg-violet-900/20',
+    'border-violet-300',
+    'dark:border-violet-800',
+    'text-violet-800',
+    'dark:text-violet-200',
+    // Neutral palette used via dynamic UI_COLORS in prep steps
+    'bg-gray-50',
+    'dark:bg-gray-800',
+    'border-gray-200',
+    'dark:border-gray-700',
+    'text-gray-800',
+    'dark:text-gray-100',
   ],
   theme: {
     extend: {

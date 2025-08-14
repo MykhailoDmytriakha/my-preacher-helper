@@ -1,0 +1,74 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
+
+jest.mock('@locales/i18n', () => ({}));
+jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+
+import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
+
+describe('ExegeticalPlanStepContent', () => {
+  it('renders builder and allows editing title', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: '1', title: 'A', children: [] }]} />);
+    const input = screen.getByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder');
+    expect(input).toHaveValue('A');
+
+    fireEvent.change(input, { target: { value: 'New Title' } });
+    expect(input).toHaveValue('New Title');
+  });
+
+  it('adds a child and sibling, then deletes a node', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: 'root', title: 'Root', children: [] }]} />);
+    // Add child to root
+    const addChildBtn = screen.getByTitle('wizard.steps.exegeticalPlan.builder.tooltips.addChild');
+    fireEvent.click(addChildBtn);
+    // Add sibling to root (multiple buttons may exist after adding a child)
+    const addSiblingBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.addSibling');
+    fireEvent.click(addSiblingBtns[0]);
+
+    // There should be multiple inputs now
+    const inputs = screen.getAllByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder');
+    expect(inputs.length).toBeGreaterThanOrEqual(2);
+
+    // Delete one node using delete button (multiple delete buttons exist)
+    const deleteBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.delete');
+    fireEvent.click(deleteBtns[0]);
+
+    // Still at least one input remains
+    expect(screen.getAllByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder').length).toBeGreaterThan(0);
+  });
+
+  it('saves the tree and author intent', async () => {
+    const onSave = jest.fn();
+    const onSaveAuthorIntent = jest.fn();
+    render(
+      <ExegeticalPlanStepContent
+        value={[{ id: '1', title: 'A', children: [] }]}
+        onSave={onSave}
+        authorIntent=""
+        onSaveAuthorIntent={onSaveAuthorIntent}
+      />
+    );
+
+    // Save tree
+    const saveTreeBtn = screen.getByRole('button', { name: /buttons.save|actions.save/i });
+    fireEvent.click(saveTreeBtn);
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    // Edit author intent
+    const textarea = screen.getByPlaceholderText('wizard.steps.exegeticalPlan.authorIntent.placeholder');
+    fireEvent.change(textarea, { target: { value: 'Intent' } });
+    const saveIntentBtn = await screen.findByTitle(/actions.save/i);
+    fireEvent.click(saveIntentBtn);
+    await waitFor(() => expect(onSaveAuthorIntent).toHaveBeenCalledWith('Intent'));
+  });
+
+  it('toggles instruction visibility', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: '1', title: '', children: [] }]} />);
+    const toggleBtn = screen.getByRole('button', { name: /wizard.steps.exegeticalPlan.instruction.show/i });
+    fireEvent.click(toggleBtn);
+    expect(screen.getByText('wizard.steps.exegeticalPlan.simpleStudy.title')).toBeInTheDocument();
+  });
+});
+
+

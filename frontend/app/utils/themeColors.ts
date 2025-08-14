@@ -59,10 +59,27 @@ export const UI_COLORS = {
   accent: {
     bg: "bg-violet-50",
     darkBg: "bg-violet-900/20",
-    border: "border-violet-200",
+    border: "border-violet-300",
     darkBorder: "border-violet-800",
     text: "text-violet-800",
     darkText: "text-violet-200",
+  },
+  success: {
+    bg: "bg-green-50",
+    darkBg: "bg-green-900/30",
+    border: "border-green-300",
+    darkBorder: "border-green-800",
+    text: "text-green-800",
+    darkText: "text-green-200",
+  },
+  button: {
+    primary: {
+      bg: "bg-violet-600",
+      hover: "hover:bg-violet-700",
+      darkBg: "bg-violet-500",
+      darkHover: "hover:bg-violet-400",
+      text: "text-white",
+    },
   },
   verseNumber: {
     // Extra subtle for superscript verse markers
