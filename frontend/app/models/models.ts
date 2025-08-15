@@ -88,6 +88,11 @@ export interface Preparation {
   };
   exegeticalPlan?: ExegeticalPlanNode[];
   authorIntent?: string;
+  mainIdea?: {
+    contextIdea?: string;
+    textIdea?: string;
+    argumentation?: string;
+  };
   thesis?: {
     exegetical?: string;
     homiletical?: string;

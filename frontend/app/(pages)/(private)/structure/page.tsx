@@ -749,7 +749,7 @@ function StructurePageContent() {
           // Find previous and next neighbor within the same group relative to movedIndex
           let prevIdxInSection: number | null = null;
           let nextIdxInSection: number | null = null;
-          for (let idx of sameGroupIndexes) {
+          for (const idx of sameGroupIndexes) {
             if (idx < movedIndex) prevIdxInSection = idx;
             if (idx > movedIndex) { nextIdxInSection = idx; break; }
           }
@@ -778,7 +778,7 @@ function StructurePageContent() {
           }
       let prevIdxInSection1: number | null = null;
       let nextIdxInSection1: number | null = null;
-      for (let idx of sameGroupIndexes1) {
+      for (const idx of sameGroupIndexes1) {
         if (idx < movedIndex) prevIdxInSection1 = idx;
         if (idx > movedIndex) { nextIdxInSection1 = idx; break; }
           }
@@ -839,7 +839,7 @@ function StructurePageContent() {
           }
           let prevIdxInSection2: number | null = null;
           let nextIdxInSection2: number | null = null;
-          for (let idx of sameGroupIndexes2) {
+          for (const idx of sameGroupIndexes2) {
             if (idx < movedIndex) prevIdxInSection2 = idx;
             if (idx > movedIndex) { nextIdxInSection2 = idx; break; }
           }

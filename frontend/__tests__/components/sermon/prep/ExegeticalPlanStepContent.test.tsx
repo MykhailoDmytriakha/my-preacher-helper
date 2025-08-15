@@ -50,7 +50,11 @@ describe('ExegeticalPlanStepContent', () => {
       />
     );
 
-    // Save tree
+    // First make a change to the tree to enable the save button
+    const input = screen.getByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder');
+    fireEvent.change(input, { target: { value: 'Modified Title' } });
+
+    // Now save tree (button should be enabled)
     const saveTreeBtn = screen.getByRole('button', { name: /buttons.save|actions.save/i });
     fireEvent.click(saveTreeBtn);
     await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -68,6 +72,28 @@ describe('ExegeticalPlanStepContent', () => {
     const toggleBtn = screen.getByRole('button', { name: /wizard.steps.exegeticalPlan.instruction.show/i });
     fireEvent.click(toggleBtn);
     expect(screen.getByText('wizard.steps.exegeticalPlan.simpleStudy.title')).toBeInTheDocument();
+  });
+
+  it('disables save button when there are no unsaved changes', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: '1', title: 'A', children: [] }]} />);
+    
+    // Save button should be disabled initially (no changes)
+    const saveButton = screen.getByRole('button', { name: /buttons.save/i });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveClass('bg-gray-400', 'cursor-not-allowed');
+  });
+
+  it('enables save button when there are unsaved changes', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: '1', title: 'A', children: [] }]} />);
+    
+    // Make a change to enable the save button
+    const input = screen.getByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder');
+    fireEvent.change(input, { target: { value: 'Modified Title' } });
+    
+    // Save button should now be enabled
+    const saveButton = screen.getByRole('button', { name: /buttons.save/i });
+    expect(saveButton).not.toBeDisabled();
+    expect(saveButton).toHaveClass('bg-green-600', 'hover:bg-green-700');
   });
 });
 

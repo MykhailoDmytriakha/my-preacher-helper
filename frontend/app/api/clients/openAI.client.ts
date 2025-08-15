@@ -182,7 +182,7 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
     if (jsonMatch) {
       try {
         // Clean up the JSON string
-        let jsonString = jsonMatch[0];
+        const jsonString = jsonMatch[0];
         const cleanedJson = cleanPotentiallyInvalidJsonString(jsonString) // Clean here
           .replace(/,\s*}/g, '}')
           .replace(/,\s*\]/g, ']');

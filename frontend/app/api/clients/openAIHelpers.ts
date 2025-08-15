@@ -184,7 +184,7 @@ export function extractSermonContent(sermon: Sermon): string {
     // For thoughts that are in the structure but not in any specific section
     if (sermon.structure.ambiguous && sermon.structure.ambiguous.length > 0) {
       sermonContent += "\n\nAdditional Thoughts:";
-      let ambiguousContent: string[] = [];
+      const ambiguousContent: string[] = [];
       
       for (const item of sermon.structure.ambiguous) {
         // Check if item is a UUID

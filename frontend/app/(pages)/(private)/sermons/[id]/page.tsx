@@ -198,6 +198,24 @@ export default function SermonPage() {
     (prepDraft?.textContext?.repeatedWords && prepDraft.textContext.repeatedWords.length > 0)
   );
   const isSpiritualDone = Boolean(prepDraft?.spiritual?.readAndPrayedConfirmed);
+  const isExegeticalPlanDone = Boolean(
+    prepDraft?.exegeticalPlan && 
+    prepDraft.exegeticalPlan.length > 0 &&
+    prepDraft.exegeticalPlan.some(node => 
+      (node.title || '').trim().length > 0 || 
+      (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+    ) &&
+    prepDraft?.authorIntent && 
+    prepDraft.authorIntent.trim().length > 0
+  );
+  const isMainIdeaDone = Boolean(
+    prepDraft?.mainIdea?.contextIdea && 
+    prepDraft.mainIdea.contextIdea.trim().length > 0 &&
+    prepDraft?.mainIdea?.textIdea && 
+    prepDraft.mainIdea.textIdea.trim().length > 0 &&
+    prepDraft?.mainIdea?.argumentation && 
+    prepDraft.mainIdea.argumentation.trim().length > 0
+  );
 
 
   // Проверяем, есть ли мысли с несогласованностью между тегами и назначенными пунктами плана
@@ -446,25 +464,22 @@ export default function SermonPage() {
         
         <motion.div
           className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 ${uiMode === 'prep' ? 'prep-mode' : ''}`}
-          transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
         >
           <motion.div
             className="lg:col-span-2 space-y-4 sm:space-y-6"
-            transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
           >
             <MotionConfig reducedMotion="user">
-              <AnimatePresence initial={false} mode="wait">
+              <AnimatePresence initial={false}>
                 {uiMode === 'classic' && (
                   <motion.div
-                    key="classicTop"
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
+                    key="classicColumn"
+                    initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.24, ease: 'easeInOut' }}
-                    className="space-y-4"
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="space-y-4 sm:space-y-6"
                   >
-                    <motion.section layout>
+                    <section>
                       <AudioRecorder 
                         onRecordingComplete={handleNewRecording} 
                         isProcessing={isProcessing}
@@ -473,23 +488,122 @@ export default function SermonPage() {
                         maxRetries={3}
                         transcriptionError={transcriptionError}
                       />
-                    </motion.section>
-                    <motion.section layout>
+                    </section>
+                    <section>
                       <BrainstormModule sermonId={sermon.id} />
-                    </motion.section>
+                    </section>
+                    <section>
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
+                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            {activeCount} / {totalThoughts}
+                          </span>
+                          <div className="relative ml-0 sm:ml-3">
+                            <button
+                              ref={filterButtonRef}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsFilterOpen(!isFilterOpen);
+                              }}
+                              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                              data-testid="thought-filter-button"
+                            >
+                              {t('filters.filter')}
+                              {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
+                                <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
+                              )}
+                              <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                            <ThoughtFilterControls 
+                              isOpen={isFilterOpen}
+                              setIsOpen={setIsFilterOpen}
+                              viewFilter={viewFilter}
+                              setViewFilter={setViewFilter}
+                              structureFilter={structureFilter}
+                              setStructureFilter={setStructureFilter}
+                              tagFilters={tagFilters}
+                              toggleTagFilter={toggleTagFilter}
+                              resetFilters={resetFilters}
+                              sortOrder={sortOrder}
+                              setSortOrder={setSortOrder}
+                              allowedTags={allowedTags}
+                              hasStructureTags={hasStructureTags}
+                              buttonRef={filterButtonRef}
+                            />
+                          </div>
+                        </div>
+                        <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
+                      </div>
+                      <div className="space-y-5">
+                        {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
+                          <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+                            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                              {t('filters.activeFilters')}:
+                            </span>
+                            {viewFilter === 'missingTags' && (
+                              <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
+                                {t('filters.missingTags')}
+                              </span>
+                            )}
+                            {structureFilter !== 'all' && (
+                              <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+                                {t(`tags.${structureFilter.toLowerCase().replace(/\s+/g, '_')}`)}
+                              </span>
+                            )}
+                            {sortOrder === 'structure' && (
+                              <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+                                {t('filters.sortByStructure') || 'Sorted by Structure'}
+                              </span>
+                            )}
+                            {tagFilters.map((tag: string) => {
+                              const tagInfo = allowedTags.find(t => t.name === tag);
+                              return (
+                                <span 
+                                  key={tag}
+                                  className="px-2 py-1 text-xs rounded-full"
+                                  style={{ 
+                                    backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
+                                    color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
+                                  }}
+                                >
+                                  {tag}
+                                </span>
+                              );
+                            })}
+                            <button 
+                              onClick={resetFilters}
+                              className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
+                            >
+                              {t('filters.clear')}
+                            </button>
+                          </div>
+                        )}
+                        <ThoughtList
+                          filteredThoughts={filteredThoughts}
+                          totalThoughtsCount={totalThoughts}
+                          allowedTags={allowedTags}
+                          sermonOutline={sermon?.outline}
+                          onDelete={handleDeleteThought}
+                          onEditStart={handleEditThoughtStart}
+                          resetFilters={resetFilters}
+                        />
+                      </div>
+                    </section>
                   </motion.div>
                 )}
               </AnimatePresence>
             </MotionConfig>
-            <AnimatePresence initial={false} mode="wait">
+            <AnimatePresence initial={false}>
               {uiMode === 'prep' ? (
                 <motion.div
                   key="prepColumn"
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.24, ease: 'easeInOut' }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
                   className="space-y-4 sm:space-y-6"
                 >
                   <PrepStepCard
@@ -570,6 +684,7 @@ export default function SermonPage() {
                     isExpanded={isStepExpanded('exegeticalPlan')}
                     onToggle={() => toggleStep('exegeticalPlan')}
                     stepRef={(el) => { stepRefs.current['exegeticalPlan'] = el; }}
+                    done={isExegeticalPlanDone}
                   >
                     <ExegeticalPlanStepContent
                       value={prepDraft?.exegeticalPlan || []}
@@ -600,119 +715,40 @@ export default function SermonPage() {
                     isExpanded={isStepExpanded('mainIdea')}
                     onToggle={() => toggleStep('mainIdea')}
                     stepRef={(el) => { stepRefs.current['mainIdea'] = el; }}
+                    done={isMainIdeaDone}
                   >
-                    <MainIdeaStepContent />
+                    <MainIdeaStepContent
+                      initialContextIdea={prepDraft?.mainIdea?.contextIdea || ''}
+                      onSaveContextIdea={async (text: string) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          mainIdea: { ...(prepDraft.mainIdea ?? {}), contextIdea: text },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialTextIdea={prepDraft?.mainIdea?.textIdea || ''}
+                      onSaveTextIdea={async (text: string) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          mainIdea: { ...(prepDraft.mainIdea ?? {}), textIdea: text },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialArgumentation={prepDraft?.mainIdea?.argumentation || ''}
+                      onSaveArgumentation={async (text: string) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          mainIdea: { ...(prepDraft.mainIdea ?? {}), argumentation: text },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                    />
                   </PrepStepCard>
                 </motion.div>
-              ) : (
-                <motion.div
-                  key="classicPanel"
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.25, ease: 'easeInOut' }}
-                >
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
-                      <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                        {activeCount} / {totalThoughts}
-                      </span>
-                      <div className="relative ml-0 sm:ml-3">
-                        <button
-                          ref={filterButtonRef}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsFilterOpen(!isFilterOpen);
-                          }}
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
-                          data-testid="thought-filter-button"
-                        >
-                          {t('filters.filter')}
-                          {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
-                            <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
-                          )}
-                          <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        <ThoughtFilterControls 
-                          isOpen={isFilterOpen}
-                          setIsOpen={setIsFilterOpen}
-                          viewFilter={viewFilter}
-                          setViewFilter={setViewFilter}
-                          structureFilter={structureFilter}
-                          setStructureFilter={setStructureFilter}
-                          tagFilters={tagFilters}
-                          toggleTagFilter={toggleTagFilter}
-                          resetFilters={resetFilters}
-                          sortOrder={sortOrder}
-                          setSortOrder={setSortOrder}
-                          allowedTags={allowedTags}
-                          hasStructureTags={hasStructureTags}
-                          buttonRef={filterButtonRef}
-                        />
-                      </div>
-                    </div>
-                    <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
-                  </div>
-                  <div className="space-y-5">
-                    {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
-                      <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
-                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                          {t('filters.activeFilters')}:
-                        </span>
-                        {viewFilter === 'missingTags' && (
-                          <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
-                            {t('filters.missingTags')}
-                          </span>
-                        )}
-                        {structureFilter !== 'all' && (
-                          <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-                            {t(`tags.${structureFilter.toLowerCase().replace(/\s+/g, '_')}`)}
-                          </span>
-                        )}
-                        {sortOrder === 'structure' && (
-                          <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-                            {t('filters.sortByStructure') || 'Sorted by Structure'}
-                          </span>
-                        )}
-                        {tagFilters.map((tag: string) => {
-                          const tagInfo = allowedTags.find(t => t.name === tag);
-                          return (
-                            <span 
-                              key={tag}
-                              className="px-2 py-1 text-xs rounded-full"
-                              style={{ 
-                                backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
-                                color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
-                              }}
-                            >
-                              {tag}
-                            </span>
-                          );
-                        })}
-                        <button 
-                          onClick={resetFilters}
-                          className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
-                        >
-                          {t('filters.clear')}
-                        </button>
-                      </div>
-                    )}
-                    <ThoughtList
-                      filteredThoughts={filteredThoughts}
-                      totalThoughtsCount={totalThoughts}
-                      allowedTags={allowedTags}
-                      sermonOutline={sermon?.outline}
-                      onDelete={handleDeleteThought}
-                      onEditStart={handleEditThoughtStart}
-                      resetFilters={resetFilters}
-                    />
-                  </div>
-                </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
           </motion.div>
 

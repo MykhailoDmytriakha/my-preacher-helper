@@ -301,7 +301,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     const sourceSection = source.droppableId as SectionType;
     const destSection = destination.droppableId as SectionType;
 
-    let updatedPoints = { ...sectionPoints };
+    const updatedPoints = { ...sectionPoints };
 
     if (sourceSection === destSection) {
       // Reordering within the same section

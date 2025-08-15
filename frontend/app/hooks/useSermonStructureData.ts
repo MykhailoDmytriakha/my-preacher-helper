@@ -189,15 +189,15 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         });
 
 
-        let intro: Item[] = [];
-        let main: Item[] = [];
-        let concl: Item[] = [];
-        let ambiguous: Item[] = [];
+        const intro: Item[] = [];
+        const main: Item[] = [];
+        const concl: Item[] = [];
+        const ambiguous: Item[] = [];
         const usedIds = new Set<string>();
 
         // Step 1: Process structure if it exists (respect positions where available)
         if (fetchedSermon.structure) {
-            let structureObj = typeof fetchedSermon.structure === "string"
+            const structureObj = typeof fetchedSermon.structure === "string"
                 ? JSON.parse(fetchedSermon.structure)
                 : fetchedSermon.structure;
 
@@ -283,7 +283,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           // If none have position, seed sequentially
           const anyPos = items.some(i => typeof i.position === 'number');
           if (!anyPos) {
-            let base = 1000;
+            const base = 1000;
             return items.map((it, idx) => ({ ...it, position: base * (idx + 1) }));
           }
           // If some have, fill gaps preserving current order

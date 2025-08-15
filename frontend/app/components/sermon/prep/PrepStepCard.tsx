@@ -3,7 +3,6 @@
 import React from 'react';
 import { UI_COLORS } from '@/utils/themeColors';
 import { ChevronDown } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
 
 export interface PrepStepCardProps {
   stepId: string;
@@ -31,10 +30,8 @@ const PrepStepCard: React.FC<PrepStepCardProps> = ({
   done = false,
 }) => {
   return (
-    <motion.div
+    <div
       ref={stepRef}
-      layout
-      transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
       className={`p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 ${
         isActive ? `border-2 border-l-4 ${UI_COLORS.accent.border} dark:${UI_COLORS.accent.darkBorder}` : ''
       }`}
@@ -75,24 +72,16 @@ const PrepStepCard: React.FC<PrepStepCardProps> = ({
         </div>
       </button>
 
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            key={`panel-${stepId}`}
-            id={`step-${stepId}-panel`}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.24, ease: 'easeInOut' }}
-            style={{ overflow: 'hidden' }}
-            className="mt-2"
-            layout
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+      {/* Content without animation */}
+      {isExpanded && (
+        <div
+          id={`step-${stepId}-panel`}
+          className="mt-2"
+        >
+          {children}
+        </div>
+      )}
+    </div>
   );
 };
 
