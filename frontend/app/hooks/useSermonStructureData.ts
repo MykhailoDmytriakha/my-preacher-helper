@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Item, Sermon, OutlinePoint, Outline, Tag, Thought } from '@/models/models';
+import { Item, Sermon, OutlinePoint, Outline, Tag, Thought, Structure } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
@@ -136,6 +136,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         const allThoughtItems: Record<string, Item> = {};
         (fetchedSermon.thoughts || []).forEach((thought: Thought) => { // Added default array
             const stableId = thought.id;
+            
             // Ensure tags is an array before mapping
             const normalizedTags = Array.isArray(thought.tags)
               ? thought.tags.map((tag: string) => tag.trim().toLowerCase())
@@ -185,6 +186,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
               outlinePointId: thought.outlinePointId,
               position: (thought as any).position
             };
+            
             allThoughtItems[stableId] = item;
         });
 
@@ -212,11 +214,20 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
                           seen.add(id);
                           return true;
                         });
+                        
                         // If positions exist, use them to sort within the section; otherwise keep order from structure
                         const itemsForSection = orderedUniqueIds
                           .map((thoughtId: string) => allThoughtItems[thoughtId])
                           .filter(Boolean) as Item[];
-                        const withSectionTag = itemsForSection.map((it) => ({ ...it, requiredTags: [sectionTagName] }));
+                        
+                        const withSectionTag = itemsForSection.map((it) => ({ 
+                          ...it, 
+                          // Keep the original requiredTags but add the section tag if it's not already there
+                          requiredTags: it.requiredTags?.includes(sectionTagName) 
+                            ? it.requiredTags 
+                            : [...(it.requiredTags || []), sectionTagName]
+                        }));
+                        
                         const anyPos = withSectionTag.some(i => typeof i.position === 'number');
                         const sorted = anyPos
                           ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
@@ -227,6 +238,164 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
                         }
                     }
                 });
+            }
+        }
+
+        // Step 1.5: Auto-correct data inconsistencies
+        // Check if thoughts are in the wrong sections based on their tags AND outlinePointId
+        if (fetchedSermon.structure) {
+            const correctedStructure = { ...fetchedSermon.structure };
+            let structureChanged = false;
+            
+            // Helper function to get the correct section for a tag
+            const getCorrectSectionForTag = (tag: string): string | null => {
+                const normalizedTag = tag.toLowerCase().trim();
+                if (["вступление", "introduction"].includes(normalizedTag)) return "introduction";
+                if (["основная часть", "main part"].includes(normalizedTag)) return "main";
+                if (["заключение", "conclusion"].includes(normalizedTag)) return "conclusion";
+                return null;
+            };
+            
+            // Helper function to get the correct section for an outline point
+            const getCorrectSectionForOutlinePoint = (outlinePointId: string): string | null => {
+                if (!fetchedSermon.outline) return null;
+                
+                if (fetchedSermon.outline.introduction?.some(point => point.id === outlinePointId)) {
+                    return "introduction";
+                }
+                if (fetchedSermon.outline.main?.some(point => point.id === outlinePointId)) {
+                    return "main";
+                }
+                if (fetchedSermon.outline.conclusion?.some(point => point.id === outlinePointId)) {
+                    return "conclusion";
+                }
+                return null;
+            };
+            
+            // Check each section for misplaced thoughts
+            (["introduction", "main", "conclusion"] as const).forEach((section) => {
+                if (Array.isArray(correctedStructure[section])) {
+                    const misplacedThoughts: string[] = [];
+                    
+                    correctedStructure[section].forEach((thoughtId: string) => {
+                        const thought = allThoughtItems[thoughtId];
+                        if (thought) {
+                            let correctSection: string | null = null;
+                            
+                            // First priority: check outlinePointId
+                            if (thought.outlinePointId) {
+                                correctSection = getCorrectSectionForOutlinePoint(thought.outlinePointId);
+                                if (correctSection && correctSection !== section) {
+                                    misplacedThoughts.push(thoughtId);
+                                    return; // Use return instead of continue in forEach
+                                }
+                            }
+                            
+                            // Second priority: check tags if no outlinePointId or outlinePointId doesn't indicate a different section
+                            if (!correctSection && thought.requiredTags && thought.requiredTags.length > 0) {
+                                for (const tag of thought.requiredTags) {
+                                    const tagSection = getCorrectSectionForTag(tag);
+                                    if (tagSection && tagSection !== section) {
+                                        misplacedThoughts.push(thoughtId);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Move misplaced thoughts to correct sections
+                    misplacedThoughts.forEach((thoughtId: string) => {
+                        const thought = allThoughtItems[thoughtId];
+                        if (thought) {
+                            let correctSection: string | null = null;
+                            
+                            // Determine correct section
+                            if (thought.outlinePointId) {
+                                correctSection = getCorrectSectionForOutlinePoint(thought.outlinePointId);
+                            }
+                            
+                            if (!correctSection && thought.requiredTags && thought.requiredTags.length > 0) {
+                                for (const tag of thought.requiredTags) {
+                                    correctSection = getCorrectSectionForTag(tag);
+                                    if (correctSection) break;
+                                }
+                            }
+                            
+                            if (correctSection && correctSection !== section && 
+                                (correctSection === "introduction" || correctSection === "main" || correctSection === "conclusion")) {
+                                // Remove from current section
+                                correctedStructure[section] = correctedStructure[section].filter(id => id !== thoughtId);
+                                
+                                // Add to correct section
+                                if (correctSection === "introduction") {
+                                    correctedStructure.introduction.push(thoughtId);
+                                } else if (correctSection === "main") {
+                                    correctedStructure.main.push(thoughtId);
+                                } else if (correctSection === "conclusion") {
+                                    correctedStructure.conclusion.push(thoughtId);
+                                }
+                                
+                                structureChanged = true;
+                            }
+                        }
+                    });
+                }
+            });
+            
+            // If structure was corrected, update the backend
+            if (structureChanged) {
+                try {
+                    await updateStructure(sermonId, correctedStructure);
+                    
+                    // Update the local structure to use the corrected version
+                    fetchedSermon.structure = correctedStructure;
+                    
+                    // Re-process the structure with corrected data
+                    intro.length = 0;
+                    main.length = 0;
+                    concl.length = 0;
+                    usedIds.clear();
+                    
+                    // Re-process the corrected structure
+                    if (correctedStructure && typeof correctedStructure === 'object') {
+                        ["introduction", "main", "conclusion"].forEach((section) => {
+                            if (Array.isArray(correctedStructure[section])) {
+                                const target = section === "introduction" ? intro : section === "main" ? main : concl;
+                                const sectionTagName = columnTitles[section];
+                                const seen = new Set<string>();
+                                const orderedUniqueIds = correctedStructure[section].filter((id: string) => {
+                                  if (seen.has(id)) return false;
+                                  seen.add(id);
+                                  return true;
+                                });
+                                
+                                const itemsForSection = orderedUniqueIds
+                                  .map((thoughtId: string) => allThoughtItems[thoughtId])
+                                  .filter(Boolean) as Item[];
+                                
+                                const withSectionTag = itemsForSection.map((it) => ({ 
+                                  ...it, 
+                                  requiredTags: it.requiredTags?.includes(sectionTagName) 
+                                    ? it.requiredTags 
+                                    : [...(it.requiredTags || []), sectionTagName]
+                                }));
+                                
+                                const anyPos = withSectionTag.some(i => typeof i.position === 'number');
+                                const sorted = anyPos
+                                  ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
+                                  : withSectionTag;
+                                for (const item of sorted) {
+                                  target.push(item);
+                                  usedIds.add(item.id);
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error("Failed to update structure in backend:", error);
+                    toast.error(t('errors.failedToSaveStructure'));
+                }
             }
         }
 
@@ -303,12 +472,14 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         };
 
         // Step 4: Set final container state (sorted by position when available)
-        setContainers({
+        const finalContainers = {
           introduction: sortByPosition(seedPositions(intro)),
           main: sortByPosition(seedPositions(main)),
           conclusion: sortByPosition(seedPositions(concl)),
           ambiguous: sortByPosition(seedPositions(ambiguous)),
-        });
+        };
+        
+        setContainers(finalContainers);
         setIsAmbiguousVisible(ambiguous.length > 0); // Update visibility based on final ambiguous content
 
 

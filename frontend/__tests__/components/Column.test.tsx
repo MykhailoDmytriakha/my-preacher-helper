@@ -24,6 +24,16 @@ jest.mock('react-i18next', () => ({
           'structure.sortButton': 'Сортировать',
           'structure.sorting': 'Сортировка...',
           'structure.sortInfo': 'Sorting only processes unassigned thoughts, up to 25 at a time.',
+          'structure.unassignedThoughts': 'Unassigned Thoughts',
+          'structure.aiSuggestions': 'AI Suggestions',
+          'structure.acceptAll': 'Accept All',
+          'structure.acceptAllChanges': 'Accept all remaining',
+          'structure.rejectAll': 'Reject All',
+          'structure.rejectAllChanges': 'Reject all suggestions',
+          'structure.outlinePointsExist': 'Outline points already exist',
+          'structure.generateOutlinePoints': 'Generate outline points',
+          'structure.generate': 'Generate',
+          'common.generating': 'Generating...',
           'errors.saveOutlineError': 'Failed to save outline',
           'common.save': 'Save',
           'common.cancel': 'Cancel',
@@ -454,8 +464,9 @@ describe('Column Component', () => {
       // Check parent button has correct styling
       const buttonElement = sortButton.closest('button')!;
       expect(buttonElement).toHaveClass('bg-amber-50');  // For introduction section
-      expect(buttonElement).toHaveClass('text-white');
-      expect(buttonElement).toHaveClass('border-blue-400');
+      expect(buttonElement).toHaveClass('text-amber-800');
+      expect(buttonElement).toHaveClass('dark:text-amber-200');
+      expect(buttonElement).toHaveClass('border-amber-200');
       expect(buttonElement).toHaveClass('shadow-md');
     });
     
@@ -667,6 +678,440 @@ describe('Column Component', () => {
       const emojiElement = screen.getByText('✨');
       expect(emojiElement).toBeInTheDocument();
       expect(emojiElement).toHaveClass('animate-pulse');
+    });
+  });
+
+  // Tests for outline points functionality in focus mode
+  describe('Outline Points Functionality in Focus Mode', () => {
+    const mockOutlinePoints = [
+      { id: 'point1', text: 'Introduction Point 1' },
+      { id: 'point2', text: 'Introduction Point 2' }
+    ];
+
+    const mockItems = [
+      { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+      { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point2' },
+      { id: '3', content: 'Unassigned Item', customTagNames: [] }
+    ];
+
+    it('displays outline points with grouped thoughts in focus mode', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Check outline points are displayed in left sidebar
+      const outlinePoints = screen.getAllByText('Introduction Point 1');
+      expect(outlinePoints).toHaveLength(2); // One in sidebar, one in content
+      expect(screen.getAllByText('Introduction Point 2')).toHaveLength(2);
+      
+      // Check thoughts are grouped under outline points in right content area
+      expect(screen.getByText('Item 1')).toBeInTheDocument();
+      expect(screen.getByText('Item 2')).toBeInTheDocument();
+      
+      // Check unassigned thoughts section
+      expect(screen.getByText(/Unassigned Thoughts \(1\)/)).toBeInTheDocument();
+      expect(screen.getByText('Unassigned Item')).toBeInTheDocument();
+    });
+
+    it('shows thought count badges for outline points in focus mode', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Check that thought count badges are displayed in left sidebar
+      const badges = screen.getAllByText('1');
+      expect(badges).toHaveLength(2);
+    });
+
+    it('displays unassigned thoughts section even when empty in focus mode', () => {
+      const itemsWithAllAssigned = [
+        { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+        { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point2' }
+      ];
+
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={itemsWithAllAssigned}
+          isFocusMode={true}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Should still show unassigned thoughts section with count 0
+      expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
+    });
+
+    it('falls back to simple list when no outline points exist in focus mode', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          outlinePoints={[]}
+        />
+      );
+      
+      // Should show items in simple list format
+      expect(screen.getByText('Item 1')).toBeInTheDocument();
+      expect(screen.getByText('Item 2')).toBeInTheDocument();
+      expect(screen.getByText('Unassigned Item')).toBeInTheDocument();
+      
+      // Should not show outline points structure
+      expect(screen.queryByText(/Unassigned Thoughts/)).not.toBeInTheDocument();
+    });
+  });
+
+  // Tests for outline points display in normal mode
+  describe('Outline Points Display in Normal Mode', () => {
+    const mockOutlinePoints = [
+      { id: 'point1', text: 'Introduction Point 1' },
+      { id: 'point2', text: 'Introduction Point 2' }
+    ];
+
+    const mockItems = [
+      { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+      { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point2' },
+      { id: '3', content: 'Unassigned Item', customTagNames: [] }
+    ];
+
+    it('displays outline points with grouped thoughts in normal mode', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Check outline points are displayed
+      const outlinePoints = screen.getAllByText('Introduction Point 1');
+      expect(outlinePoints).toHaveLength(2); // One in sidebar, one in content
+      expect(screen.getAllByText('Introduction Point 2')).toHaveLength(2);
+      
+      // Check thoughts are grouped under outline points
+      expect(screen.getByText('Item 1')).toBeInTheDocument();
+      expect(screen.getByText('Item 2')).toBeInTheDocument();
+      
+      // Check unassigned thoughts section
+      expect(screen.getByText(/Unassigned Thoughts \(1\)/)).toBeInTheDocument();
+      expect(screen.getByText('Unassigned Item')).toBeInTheDocument();
+    });
+
+    it('shows thought count badges for outline points', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Check that thought count badges are displayed
+      const badges = screen.getAllByText('1');
+      expect(badges).toHaveLength(3); // 2 outline point badges + 1 unassigned count
+    });
+
+    it('displays unassigned thoughts section even when empty', () => {
+      const itemsWithAllAssigned = [
+        { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+        { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point2' }
+      ];
+
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={itemsWithAllAssigned}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+        />
+      );
+      
+      // Should still show unassigned thoughts section with count 0
+      expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
+    });
+
+    it('falls back to simple list when no outline points exist', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          outlinePoints={[]}
+        />
+      );
+      
+      // Should show items in simple list format
+      expect(screen.getByText('Item 1')).toBeInTheDocument();
+      expect(screen.getByText('Item 2')).toBeInTheDocument();
+      expect(screen.getByText('Unassigned Item')).toBeInTheDocument();
+      
+      // Should not show outline points structure
+      expect(screen.queryByText(/Unassigned Thoughts/)).not.toBeInTheDocument();
+    });
+  });
+
+  // Tests for dark mode support
+  describe('Dark Mode Support', () => {
+    const mockItems = [
+      { id: '1', content: 'Item 1', customTagNames: [] },
+      { id: '2', content: 'Item 2', customTagNames: [] }
+    ];
+
+    it('applies dark mode classes to left sidebar in focus mode', () => {
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          showFocusButton={true}
+          onToggleFocusMode={jest.fn()}
+        />
+      );
+      
+      // Check left sidebar has dark mode classes
+      const leftSidebar = container.querySelector('.w-72');
+      expect(leftSidebar).toBeInTheDocument();
+      
+      const sidebarContainer = leftSidebar?.querySelector('.bg-gray-50.dark\\:bg-gray-800');
+      expect(sidebarContainer).toBeInTheDocument();
+    });
+
+    it('applies dark mode classes to right content area in focus mode', () => {
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          showFocusButton={true}
+          onToggleFocusMode={jest.fn()}
+        />
+      );
+      
+      // Check right content area has dark mode classes
+      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]');
+      expect(rightContent).toBeInTheDocument();
+      
+      // The right content area uses UI_COLORS.neutral which resolves to bg-gray-50 dark:bg-gray-800
+      expect(rightContent).toHaveClass('bg-gray-50');
+      expect(rightContent).toHaveClass('dark:bg-gray-800');
+    });
+
+    it('applies dark mode classes to normal mode container', () => {
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+        />
+      );
+      
+      // Check normal mode container has dark mode classes
+      const normalContainer = container.querySelector('.min-h-\\[300px\\]');
+      expect(normalContainer).toBeInTheDocument();
+      
+      // The normal mode container uses UI_COLORS.neutral which resolves to bg-gray-50 dark:bg-gray-800
+      expect(normalContainer).toHaveClass('bg-gray-50');
+      expect(normalContainer).toHaveClass('dark:bg-gray-800');
+    });
+
+    it('applies dark mode classes to AI suggestions section', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isDiffModeActive={true}
+          highlightedItems={{ '1': { type: 'assigned' as const } }}
+          onKeepAll={jest.fn()}
+          onRevertAll={jest.fn()}
+        />
+      );
+      
+      // Check AI suggestions section has dark mode classes
+      const aiSection = screen.getByText(/AI Suggestions/).closest('div');
+      expect(aiSection).toHaveClass('dark:bg-gray-800');
+      expect(aiSection).toHaveClass('dark:border-gray-700');
+    });
+
+    it('applies dark mode classes to unassigned thoughts section', () => {
+      const mockOutlinePoints = [
+        { id: 'point1', text: 'Introduction Point 1' }
+      ];
+
+      const mockItems = [
+        { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+        { id: '2', content: 'Unassigned Item', customTagNames: [] }
+      ];
+
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          outlinePoints={mockOutlinePoints}
+          thoughtsPerOutlinePoint={{ point1: 1 }}
+        />
+      );
+      
+      // Check unassigned thoughts section has dark mode classes
+      const unassignedSection = container.querySelector('.border-t.dark\\:border-gray-700');
+      expect(unassignedSection).toBeInTheDocument();
+      
+      const unassignedTitle = container.querySelector('.text-gray-500.dark\\:text-gray-400');
+      expect(unassignedTitle).toBeInTheDocument();
+    });
+  });
+
+  // Tests for theme colors usage
+  describe('Theme Colors Usage', () => {
+    const mockItems = [
+      { id: '1', content: 'Item 1', customTagNames: [] },
+      { id: '2', content: 'Item 2', customTagNames: [] }
+    ];
+
+    it('uses SERMON_SECTION_COLORS for introduction section', () => {
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          onAiSort={jest.fn()}
+        />
+      );
+      
+      // Check that introduction colors are applied
+      const sortButton = screen.getByText('Сортировать').closest('button');
+      expect(sortButton).toHaveClass('bg-amber-50');
+      expect(sortButton).toHaveClass('dark:bg-amber-900/40');
+      expect(sortButton).toHaveClass('text-amber-800');
+      expect(sortButton).toHaveClass('dark:text-amber-200');
+    });
+
+    it('uses SERMON_SECTION_COLORS for main section', () => {
+      const { container } = render(
+        <Column 
+          id="main" 
+          title="Main" 
+          items={mockItems}
+          isFocusMode={true}
+          onAiSort={jest.fn()}
+        />
+      );
+      
+      // Check that main colors are applied
+      const sortButton = screen.getByText('Сортировать').closest('button');
+      expect(sortButton).toHaveClass('bg-blue-50');
+      expect(sortButton).toHaveClass('dark:bg-blue-900/20');
+      expect(sortButton).toHaveClass('text-blue-800');
+      expect(sortButton).toHaveClass('dark:text-blue-200');
+    });
+
+    it('uses SERMON_SECTION_COLORS for conclusion section', () => {
+      const { container } = render(
+        <Column 
+          id="conclusion" 
+          title="Conclusion" 
+          items={mockItems}
+          isFocusMode={true}
+          onAiSort={jest.fn()}
+        />
+      );
+      
+      // Check that conclusion colors are applied
+      const sortButton = screen.getByText('Сортировать').closest('button');
+      expect(sortButton).toHaveClass('bg-green-50');
+      expect(sortButton).toHaveClass('dark:bg-green-900/30');
+      expect(sortButton).toHaveClass('text-green-800');
+      expect(sortButton).toHaveClass('dark:text-green-200');
+    });
+
+    it('uses UI_COLORS for neutral elements', () => {
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isFocusMode={true}
+          showFocusButton={true}
+          onToggleFocusMode={jest.fn()}
+        />
+      );
+      
+      // Check that UI_COLORS.neutral are applied to left sidebar
+      const leftSidebar = container.querySelector('.w-72');
+      const sidebarContainer = leftSidebar?.querySelector('.bg-gray-50.dark\\:bg-gray-800');
+      expect(sidebarContainer).toBeInTheDocument();
+      
+      // Check that UI_COLORS.neutral are applied to right content area
+      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]');
+      expect(rightContent).toHaveClass('bg-gray-50');
+      expect(rightContent).toHaveClass('dark:bg-gray-800');
+    });
+
+    it('uses UI_COLORS for muted text elements', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isDiffModeActive={true}
+          highlightedItems={{ '1': { type: 'assigned' as const } }}
+          onKeepAll={jest.fn()}
+          onRevertAll={jest.fn()}
+        />
+      );
+      
+      // Check that UI_COLORS.muted are applied to AI suggestions text
+      const aiText = screen.getByText(/AI Suggestions/);
+      expect(aiText).toHaveClass('text-gray-500');
+      expect(aiText).toHaveClass('dark:text-gray-400');
+    });
+
+    it('uses UI_COLORS for success button elements', () => {
+      render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={mockItems}
+          isDiffModeActive={true}
+          highlightedItems={{ '1': { type: 'assigned' as const } }}
+          onKeepAll={jest.fn()}
+          onRevertAll={jest.fn()}
+        />
+      );
+      
+      // Check that UI_COLORS.success are applied to Accept All button
+      const acceptButton = screen.getByText(/Accept All/);
+      expect(acceptButton).toHaveClass('bg-green-50');
+      expect(acceptButton).toHaveClass('dark:bg-green-900/30');
+      expect(acceptButton).toHaveClass('text-green-800');
+      expect(acceptButton).toHaveClass('dark:text-green-200');
     });
   });
 }); 

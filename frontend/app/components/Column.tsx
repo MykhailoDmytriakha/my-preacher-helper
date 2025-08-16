@@ -10,7 +10,7 @@ import { Item, OutlinePoint, Outline } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 
@@ -532,37 +532,37 @@ export default function Column({
         {/* Left sidebar - fixed, non-scrollable, with more top spacing when scrolling */}
         <div className="w-72 flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)]">
           <div 
-            className={`h-full rounded-lg shadow-lg flex flex-col`}
+            className={`h-full rounded-lg shadow-lg flex flex-col ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
             style={headerBgStyle}
           >
             {/* Column title */}
-            <div className="p-5 border-b border-white">
+            <div className="p-5 border-b border-white dark:border-gray-600">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-white">
+                <h2 className="text-2xl font-bold text-white dark:text-gray-100">
                   {title}
                 </h2>
                 {onAddThought && (
                   <button
                     onClick={() => onAddThought(id)}
-                    className="ml-2 p-1.5 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
+                    className="ml-2 p-1.5 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded-full hover:bg-opacity-30 dark:hover:bg-opacity-30 transition-colors"
                     title={t('structure.addThoughtToSection', { section: title })}
                   >
-                    <PlusIcon className="h-5 w-5 text-white" />
+                    <PlusIcon className="h-5 w-5 text-white dark:text-gray-800" />
                   </button>
                 )}
               </div>
             </div>
             
             {/* Action buttons */}
-            <div className="p-5 border-b border-white">
+            <div className="p-5 border-b border-white dark:border-gray-600">
               <div className="space-y-3">
                 {showFocusButton && (
                   <button
                     onClick={() => onToggleFocusMode?.(id)}
-                    className="relative w-full px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors shadow-sm flex items-center justify-center overflow-hidden isolation-auto"
+                    className="relative w-full px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm flex items-center justify-center overflow-hidden isolation-auto"
                   >
-                    <div className="absolute inset-0 bg-white"></div>
-                    <div className="relative flex items-center justify-center text-gray-800 z-10">
+                    <div className={`absolute inset-0 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg}`}></div>
+                    <div className={`relative flex items-center justify-center ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} z-10`}>
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
@@ -575,16 +575,16 @@ export default function Column({
                     onClick={onAiSort}
                     disabled={isLoading}
                     className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${
-                      isLoading ? 'bg-white text-gray-800 border-gray-300' : 
-                      id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} text-white hover:bg-blue-400 border-blue-400 shadow-md` : 
-                      id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} text-white hover:bg-purple-400 border-purple-400 shadow-md` : 
-                      id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} text-white hover:bg-green-400 border-green-400 shadow-md` : 
-                      'bg-gray-500 text-white hover:bg-gray-400 border-gray-400 shadow-md'
+                      isLoading ? `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}` : 
+                      id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} ${SERMON_SECTION_COLORS.introduction.hover} dark:${SERMON_SECTION_COLORS.introduction.darkHover} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} shadow-md` : 
+                      id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} ${SERMON_SECTION_COLORS.mainPart.hover} dark:${SERMON_SECTION_COLORS.mainPart.darkHover} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} shadow-md` : 
+                      id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} ${SERMON_SECTION_COLORS.conclusion.hover} dark:${SERMON_SECTION_COLORS.conclusion.darkHover} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} shadow-md` : 
+                      `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} hover:bg-gray-400 dark:hover:bg-gray-500 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} shadow-md`
                     }`}
                   >
                     {isLoading ? (
                       <>
-                        <svg className="animate-spin h-4 w-4 mr-2 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-4 w-4 mr-2 text-gray-800 dark:text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
@@ -594,11 +594,11 @@ export default function Column({
                       <>
                         <span className="flex items-center justify-center">
                           <span className="text-base font-medium">{t('structure.sortButton')}</span>
-                          <span className="text-yellow-300 ml-1.5 animate-pulse text-lg">✨</span>
+                          <span className="text-yellow-300 dark:text-yellow-200 ml-1.5 animate-pulse text-lg">✨</span>
                         </span>
                         <div className="relative flex items-center group">
-                          <QuestionMarkCircleIcon className="w-4 h-4 ml-2 text-white opacity-80 hover:opacity-100" />
-                          <div className="absolute bottom-full left-1/3 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
+                          <QuestionMarkCircleIcon className="w-4 h-4 ml-2 text-white dark:text-gray-100 opacity-80 hover:opacity-100" />
+                          <div className="absolute bottom-full left-1/3 -translate-x-2 mb-2 p-2 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-100 text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
                             {t('structure.sortInfo', {
                               defaultValue: 'Sorting only processes unassigned thoughts, up to 25 at a time.'
                             })}
@@ -611,15 +611,15 @@ export default function Column({
                 
                 {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
                 {isDiffModeActive && hasHighlightedItems && (
-                  <div className="space-y-2 mt-3 pt-3 border-t border-white border-opacity-30">
-                    <h3 className="text-sm font-medium text-white mb-2">
+                  <div className="space-y-2 mt-3 pt-3 border-t border-white dark:border-gray-600 border-opacity-30 dark:border-opacity-30">
+                    <h3 className="text-sm font-medium text-white dark:text-gray-100 mb-2">
                       {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
                     </h3>
                     
                     {/* Accept all button */}
                     <button
                       onClick={() => onKeepAll?.(id)}
-                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-500 transition-colors shadow-sm flex items-center justify-center"
+                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 dark:bg-green-700 text-white hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center justify-center"
                     >
                       <CheckIcon className="h-4 w-4 mr-2" />
                       {t('structure.acceptAllChanges', { defaultValue: 'Accept all remaining' })}
@@ -628,7 +628,7 @@ export default function Column({
                     {/* Reject all button */}
                     <button
                       onClick={() => onRevertAll?.(id)}
-                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 text-white hover:bg-orange-500 transition-colors shadow-sm flex items-center justify-center"
+                      className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center justify-center"
                     >
                       <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
                       {t('structure.rejectAllChanges', { defaultValue: 'Reject all suggestions' })}
@@ -653,14 +653,14 @@ export default function Column({
             {isFocusMode && (
               <div className="p-5 flex-grow overflow-y-auto flex flex-col">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-semibold text-white">{t('structure.outlinePoints')}</h3>
+                  <h3 className="text-lg font-semibold text-white dark:text-gray-100">{t('structure.outlinePoints')}</h3>
                   
                   {/* Generate outline points button */}
                   {sermonId && (
                     <button
                       onClick={handleGenerateOutlinePoints}
                       disabled={isGeneratingOutlinePoints || localOutlinePoints.length > 0}
-                      className={`flex items-center text-xs font-medium px-2 py-1 bg-white bg-opacity-20 rounded transition-colors ${localOutlinePoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30'} text-white`}
+                      className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localOutlinePoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
                       title={localOutlinePoints.length > 0 
                         ? t('structure.outlinePointsExist', { defaultValue: 'Outline points already exist' }) 
                         : t('structure.generateOutlinePoints', { defaultValue: 'Generate outline points' })}
@@ -691,11 +691,11 @@ export default function Column({
                               <li
                                 ref={providedDraggable.innerRef}
                                 {...providedDraggable.draggableProps}
-                                className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 shadow-md' : 'hover:bg-white/15'}`}
+                                className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
                                 style={providedDraggable.draggableProps.style}
                               >
                                 {/* Drag handle */}
-                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white">
+                                <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
                                   <Bars3Icon className="h-5 w-5" />
                                 </div>
                                 
@@ -707,7 +707,7 @@ export default function Column({
                                       value={editingText}
                                       onChange={(e) => setEditingText(e.target.value)}
                                       onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                                      className="flex-grow p-1 text-sm bg-white/90 text-gray-800 rounded border border-white/30 focus:outline-none focus:border-white"
+                                      className="flex-grow p-1 text-sm bg-white/90 dark:bg-gray-100/90 text-gray-800 dark:text-gray-800 rounded border border-white/30 dark:border-gray-300 focus:outline-none focus:border-white dark:focus:border-gray-400"
                                       placeholder={t('structure.editPointPlaceholder')}
                                       autoFocus
                                     />
@@ -720,19 +720,19 @@ export default function Column({
                                   </div>
                                 ) : (
                                   <>
-                                    <span className="text-sm text-white flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
+                                    <span className="text-sm text-white dark:text-gray-100 flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
                                       {point.text}
                                       {thoughtsPerOutlinePoint[point.id] > 0 && (
-                                        <span className="ml-2 px-1.5 py-0.5 text-xs bg-white text-gray-700 rounded-full">
+                                        <span className="ml-2 px-1.5 py-0.5 text-xs bg-white dark:bg-gray-200 text-gray-700 dark:text-gray-700 rounded-full">
                                           {thoughtsPerOutlinePoint[point.id]}
                                         </span>
                                       )}
                                     </span>
                                     <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 hover:text-white">
+                                      <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                                         <PencilIcon className="h-4 w-4" />
                                       </button>
-                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 text-white/70 hover:text-white">
+                                      <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                                         <TrashIcon className="h-4 w-4" />
                                       </button>
                                     </div>
@@ -752,7 +752,7 @@ export default function Column({
                               onChange={(e) => setNewPointText(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') handleAddPoint(); if (e.key === 'Escape') setAddingNewPoint(false); }}
                               placeholder={t('structure.addPointPlaceholder')}
-                              className="flex-grow p-2 text-sm bg-white/90 text-gray-800 rounded border border-white/30 focus:outline-none focus:border-white"
+                              className="flex-grow p-2 text-sm bg-white/90 dark:bg-gray-100/90 text-gray-800 dark:text-gray-800 rounded border border-white/30 dark:border-gray-300 focus:outline-none focus:border-white dark:focus:border-gray-400"
                               autoFocus
                             />
                             <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 text-green-400 hover:text-green-300">
@@ -765,7 +765,7 @@ export default function Column({
                         ) : (
                           <button
                             onClick={() => { setAddingNewPoint(true); setEditingPointId(null); }}
-                            className="mt-2 flex items-center justify-center w-full p-2 bg-white/10 rounded text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                            className="mt-2 flex items-center justify-center w-full p-2 bg-white/10 dark:bg-gray-200/10 rounded text-white/80 dark:text-gray-600 hover:bg-white/20 dark:hover:bg-gray-200/20 hover:text-white dark:hover:text-gray-800 transition-colors"
                           >
                             <PlusIcon className="h-4 w-4 mr-1" />
                             <span>{t('structure.addPointButton')}</span>
@@ -784,7 +784,7 @@ export default function Column({
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`flex-grow w-full md:min-w-[700px] lg:min-w-[900px] xl:min-w-[1100px] min-h-[600px] overflow-y-auto p-6 bg-white dark:bg-gray-800 rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
+            className={`flex-grow w-full md:min-w-[700px] lg:min-w-[900px] xl:min-w-[1100px] min-h-[600px] overflow-y-auto p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
             {items.length === 0 ? (
@@ -792,25 +792,98 @@ export default function Column({
                 {t('structure.noEntries')}
               </div>
             ) : (
-              <div className="space-y-4">
-                {items.map((item) => (
-                  <SortableItem 
-                    key={item.id} 
-                    item={item} 
-                    containerId={id} 
-                    onEdit={onEdit}
-                    isHighlighted={item.id in highlightedItems}
-                    highlightType={highlightedItems[item.id]?.type}
-                    onKeep={onKeepItem}
-                    onRevert={onRevertItem}
-                    activeId={activeId}
-                    onMoveToAmbiguous={onMoveToAmbiguous}
-                  />
-                ))}
+              <div className="space-y-6">
+                {/* Show outline points with grouped thoughts in focus mode */}
+                {localOutlinePoints && localOutlinePoints.length > 0 ? (
+                  <>
+                    {/* Render placeholders for each outline point with their thoughts */}
+                    {localOutlinePoints.map((point) => (
+                      <OutlinePointPlaceholder
+                        key={point.id}
+                        point={point}
+                        items={items}
+                        containerId={id}
+                        onEdit={onEdit}
+                        isHighlighted={isItemHighlighted}
+                        getHighlightType={getItemHighlightType}
+                        onKeepItem={onKeepItem}
+                        onRevertItem={onRevertItem}
+                        headerColor={headerColor}
+                        t={t}
+                        activeId={activeId}
+                        onMoveToAmbiguous={onMoveToAmbiguous}
+                      />
+                    ))}
+                    
+                    {/* Show unassigned thoughts section if there are any */}
+                    {unassignedItemsForDisplay.length > 0 && (
+                      <div className="mt-8">
+                        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                            {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                          </h4>
+                          <UnassignedThoughtsDropTarget
+                            items={unassignedItemsForDisplay}
+                            containerId={id}
+                            onEdit={onEdit}
+                            isHighlighted={isItemHighlighted}
+                            getHighlightType={getItemHighlightType}
+                            onKeepItem={onKeepItem}
+                            onRevertItem={onRevertItem}
+                            t={t}
+                            activeId={activeId}
+                            onMoveToAmbiguous={onMoveToAmbiguous}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Always show drop target for unassigned thoughts, even if empty */}
+                    {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
+                      <div className="mt-8">
+                        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                            {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                          </h4>
+                          <UnassignedThoughtsDropTarget
+                            items={[]}
+                            containerId={id}
+                            onEdit={onEdit}
+                            isHighlighted={isItemHighlighted}
+                            getHighlightType={getItemHighlightType}
+                            onKeepItem={onKeepItem}
+                            onRevertItem={onRevertItem}
+                            t={t}
+                            activeId={activeId}
+                            onMoveToAmbiguous={onMoveToAmbiguous}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Fallback: show all items in simple list if no outline points exist */
+                  <div className="space-y-4">
+                    {items.map((item) => (
+                      <SortableItem 
+                        key={item.id} 
+                        item={item} 
+                        containerId={id} 
+                        onEdit={onEdit}
+                        isHighlighted={item.id in highlightedItems}
+                        highlightType={highlightedItems[item.id]?.type}
+                        onKeep={onKeepItem}
+                        onRevert={onRevertItem}
+                        activeId={activeId}
+                        onMoveToAmbiguous={onMoveToAmbiguous}
+                      />
+                    ))}
+                  </div>
+                )}
+                {/* Extra dummy element to always provide a drop target */}
+                <div id="dummy-drop-zone" className="h-16" />
               </div>
             )}
-            {/* Extra dummy element to always provide a drop target */}
-            <div id="dummy-drop-zone" className="h-16" />
           </div>
         </SortableContext>
       </div>
@@ -843,7 +916,7 @@ export default function Column({
                 {unassignedItems}
               </span>
               {showTooltip && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-100 text-xs rounded shadow-lg w-48 z-10 whitespace-normal">
                   {t('structure.assignedUnassignedTooltip', {
                     assigned: assignedItems,
                     unassigned: unassignedItems
@@ -878,15 +951,15 @@ export default function Column({
 
         {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
         {isDiffModeActive && hasHighlightedItems && (
-          <div className="px-3 py-2 bg-gray-100 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+          <div className={`px-3 py-2 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} flex justify-between items-center`}>
+            <span className={`text-xs font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText}`}>
               {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
             </span>
             <div className="flex space-x-2">
               {/* Accept all button */}
               <button
                 onClick={() => onKeepAll?.(id)}
-                className="px-2 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-500 transition-colors shadow-sm flex items-center"
+                className={`px-2 py-1 text-xs font-medium rounded ${UI_COLORS.success.bg} dark:${UI_COLORS.success.darkBg} ${UI_COLORS.success.text} dark:${UI_COLORS.success.darkText} hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center`}
               >
                 <CheckIcon className="h-3 w-3 mr-1" />
                 {t('structure.acceptAll', { defaultValue: 'Accept all' })}
@@ -895,7 +968,7 @@ export default function Column({
               {/* Reject all button */}
               <button
                 onClick={() => onRevertAll?.(id)}
-                className="px-2 py-1 text-xs font-medium rounded bg-orange-600 text-white hover:bg-orange-500 transition-colors shadow-sm flex items-center"
+                className="px-2 py-1 text-xs font-medium rounded bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center"
               >
                 <ArrowUturnLeftIcon className="h-3 w-3 mr-1" />
                 {t('structure.rejectAll', { defaultValue: 'Reject all' })}
@@ -927,7 +1000,7 @@ export default function Column({
       <SortableContext items={items} strategy={sortingStrategy}>
         <div
           ref={setNodeRef}
-          className={`min-h-[300px] p-4 bg-white dark:bg-gray-800 rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:border-gray-700 ${isOver ? "ring-2 ring-blue-400" : ""}`}
+          className={`min-h-[300px] p-4 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
           style={headerColor ? { borderColor: headerColor } : {}}
         >
           {/* Show outline points with grouped thoughts */}
@@ -955,8 +1028,8 @@ export default function Column({
               {/* Show unassigned thoughts section if there are any */}
               {unassignedItemsForDisplay.length > 0 && (
                 <div className="mt-8">
-                                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                  <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
+                  <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
                     {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
                   </h4>
                     <UnassignedThoughtsDropTarget
@@ -978,8 +1051,8 @@ export default function Column({
               {/* Always show drop target for unassigned thoughts, even if empty */}
               {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
                 <div className="mt-8">
-                                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                  <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
+                  <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
                     {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
                   </h4>
                     <UnassignedThoughtsDropTarget
@@ -1001,7 +1074,7 @@ export default function Column({
           ) : (
             /* Fallback: show all items in simple list if no outline points exist */
             items.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 border-dashed border-2 border-blue-300">
+            <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
               {t('structure.noEntries')}
             </div>
           ) : (

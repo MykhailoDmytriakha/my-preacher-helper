@@ -205,6 +205,7 @@
     "processing": "Processing...",
     "initializing": "Initializing...",
     "retryTranscription": "Retry Transcription",
+    "closeError": "Close",
     "thoughtGenerationFailed": "Failed to generate a valid thought from the audio. Meaning might have been altered.",
     "audioLevel": "Audio Level",
     "keyboardShortcuts": "Keyboard Shortcuts",

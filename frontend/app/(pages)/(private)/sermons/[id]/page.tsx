@@ -435,6 +435,12 @@ export default function SermonPage() {
     }
   };
 
+  const handleClearError = () => {
+    setTranscriptionError(null);
+    setStoredAudioBlob(null);
+    setRetryCount(0);
+  };
+
   const handleDeleteThought = async (thoughtId: string) => {
     const thoughtToDelete = sermon.thoughts.find(t => t.id === thoughtId);
     if (!thoughtToDelete) {
@@ -532,6 +538,7 @@ export default function SermonPage() {
                         retryCount={retryCount}
                         maxRetries={3}
                         transcriptionError={transcriptionError}
+                        onClearError={handleClearError}
                       />
                     </section>
                     <section>
