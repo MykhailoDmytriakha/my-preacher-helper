@@ -1,4 +1,4 @@
-import { SERMON_SECTION_COLORS, getSectionStyling, getTagStyling } from '../../app/utils/themeColors';
+import { SERMON_SECTION_COLORS, getSectionStyling, getTagStyling, getFocusModeButtonColors } from '../../app/utils/themeColors';
 
 describe('themeColors', () => {
   describe('SERMON_SECTION_COLORS', () => {
@@ -85,6 +85,32 @@ describe('themeColors', () => {
       
       expect(styling.bg).toBe('bg-green-50 dark:bg-green-900/60');
       expect(styling.text).toBe('text-green-800 dark:text-green-200');
+    });
+  });
+
+  describe('getFocusModeButtonColors', () => {
+    it('should return correct button colors for introduction section', () => {
+      const colors = getFocusModeButtonColors('introduction');
+      
+      expect(colors.bg).toBe('bg-amber-500');
+      expect(colors.hover).toBe('hover:bg-amber-600');
+      expect(colors.text).toBe('text-white');
+    });
+
+    it('should return correct button colors for mainPart section', () => {
+      const colors = getFocusModeButtonColors('mainPart');
+      
+      expect(colors.bg).toBe('bg-blue-500');
+      expect(colors.hover).toBe('hover:bg-blue-600');
+      expect(colors.text).toBe('text-white');
+    });
+
+    it('should return correct button colors for conclusion section', () => {
+      const colors = getFocusModeButtonColors('conclusion');
+      
+      expect(colors.bg).toBe('bg-green-500');
+      expect(colors.hover).toBe('hover:bg-green-600');
+      expect(colors.text).toBe('text-white');
     });
   });
 }); 

@@ -6,6 +6,9 @@ import type { Sermon } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { getFocusModeUrl } from "@/utils/urlUtils";
+import Link from "next/link";
+import { getFocusModeButtonColors } from "@/utils/themeColors";
 
 interface StructureStatsProps {
   sermon: Sermon;
@@ -83,6 +86,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
               &ldquo;{t('tags.introduction')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
+            <div className="mt-2">
+              <Link
+                href={getFocusModeUrl('introduction', sermon.id)}
+                className={`px-2 py-1 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors block`}
+              >
+                {t('structure.focusMode')}
+              </Link>
+            </div>
           </div>
           <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: mainColor }}>
@@ -92,6 +103,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
               <br />
               {t('structure.recommended', { percent: 60 })}
             </span>
+            <div className="mt-2">
+              <Link
+                href={getFocusModeUrl('main', sermon.id)}
+                className={`px-2 py-1 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors block`}
+              >
+                {t('structure.focusMode')}
+              </Link>
+            </div>
           </div>
           <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
           <div className="text-center" style={{ color: conclusionColor }}>
@@ -100,6 +119,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
               &ldquo;{t('tags.conclusion')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
+            <div className="mt-2">
+              <Link
+                href={getFocusModeUrl('conclusion', sermon.id)}
+                className={`px-2 py-1 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors block`}
+              >
+                {t('structure.focusMode')}
+              </Link>
+            </div>
           </div>
         </div>
       </div>

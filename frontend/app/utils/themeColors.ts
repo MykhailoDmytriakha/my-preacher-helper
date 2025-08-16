@@ -119,4 +119,21 @@ export function getTagStyling(section: 'introduction' | 'mainPart' | 'conclusion
     bg: `${colors.bg} dark:${colors.darkBg.split('/')[0]}/60`,
     text: `${colors.text} dark:${colors.darkText}`
   };
+}
+
+// Helper function to get Focus mode button colors
+export function getFocusModeButtonColors(section: 'introduction' | 'mainPart' | 'conclusion') {
+  const colors = SERMON_SECTION_COLORS[section];
+  // Map section to Tailwind color names
+  const colorMap = {
+    introduction: 'amber',
+    mainPart: 'blue',
+    conclusion: 'green'
+  };
+  const colorName = colorMap[section];
+  return {
+    bg: `bg-${colorName}-500`,
+    hover: `hover:bg-${colorName}-600`,
+    text: 'text-white'
+  };
 } 

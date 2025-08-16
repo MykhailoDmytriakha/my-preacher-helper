@@ -20,7 +20,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Column from "@/components/Column";
 import SortableItem from "@/components/SortableItem";
@@ -37,6 +37,7 @@ import { getExportContent } from "@/utils/exportContent";
 import { getSectionLabel } from "@lib/sections";
 import debounce from 'lodash/debounce';
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
+import { getFocusModeUrl as getFocusModeUrlUtil } from "@/utils/urlUtils";
 
 interface UseSermonStructureDataReturn {
   sermon: Sermon | null;
@@ -83,7 +84,11 @@ export default function StructurePage() {
 
 function StructurePageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const sermonId = searchParams?.get("sermonId");
+  const focusMode = searchParams?.get("mode");
+  const focusSection = searchParams?.get("section");
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
 
@@ -126,6 +131,30 @@ function StructurePageContent() {
   const [isSorting, setIsSorting] = useState(false);
   const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  // Initialize Focus mode from URL parameters
+  useEffect(() => {
+    if (focusMode === 'focus' && focusSection && ['introduction', 'main', 'conclusion'].includes(focusSection)) {
+      setFocusedColumn(focusSection);
+    } else if (focusMode !== 'focus') {
+      setFocusedColumn(null);
+    }
+  }, [focusMode, focusSection]);
+
+  // Update URL when sermonId changes to preserve Focus mode
+  useEffect(() => {
+    if (sermonId && focusedColumn && focusMode === 'focus') {
+      const newSearchParams = new URLSearchParams();
+      newSearchParams.set('mode', 'focus');
+      newSearchParams.set('section', focusedColumn);
+      newSearchParams.set('sermonId', sermonId);
+      
+      const currentUrl = `${pathname}?${newSearchParams.toString()}`;
+      if (window.location.href !== currentUrl) {
+        router.replace(currentUrl);
+      }
+    }
+  }, [sermonId, focusedColumn, focusMode, pathname, router]);
 
   // Track activeId changes
   useEffect(() => {
@@ -999,9 +1028,33 @@ function StructurePageContent() {
     if (focusedColumn === columnId) {
       // If the same column is clicked, exit focus mode
       setFocusedColumn(null);
+      
+      // Update URL to remove focus mode
+      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
+      newSearchParams.delete('mode');
+      newSearchParams.delete('section');
+      
+      // Preserve sermonId if it exists
+      if (sermonId) {
+        newSearchParams.set('sermonId', sermonId);
+      }
+      
+      router.push(`${pathname}?${newSearchParams.toString()}`);
     } else {
       // Otherwise, enter focus mode for the clicked column
       setFocusedColumn(columnId);
+      
+      // Update URL to include focus mode and section
+      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
+      newSearchParams.set('mode', 'focus');
+      newSearchParams.set('section', columnId);
+      
+      // Preserve sermonId if it exists
+      if (sermonId) {
+        newSearchParams.set('sermonId', sermonId);
+      }
+      
+      router.push(`${pathname}?${newSearchParams.toString()}`);
     }
   };
 
@@ -1016,6 +1069,8 @@ function StructurePageContent() {
       includeTags: options?.includeTags
     });
   };
+
+
 
   const handleAiSort = async (columnId: string) => {
     if (!sermon || !sermonId) return;
@@ -1541,6 +1596,46 @@ function StructurePageContent() {
               <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
                 {t('structure.backToSermon')}
               </Link>
+              <div className="mt-2 flex justify-center space-x-4">
+                <span className="text-gray-600 dark:text-gray-400">{t('structure.focusMode')}:</span>
+                <Link 
+                  href={sermonId ? getFocusModeUrlUtil('introduction', sermonId) : '#'}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                >
+                  {t('structure.introduction')}
+                </Link>
+                <Link 
+                  href={sermonId ? getFocusModeUrlUtil('main', sermonId) : '#'}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                >
+                  {t('structure.mainPart')}
+                </Link>
+                <Link 
+                  href={sermonId ? getFocusModeUrlUtil('conclusion', sermonId) : '#'}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                >
+                  {t('structure.conclusion')}
+                </Link>
+              </div>
+            </div>
+          )}
+          {focusedColumn && (
+            <div className="text-center">
+              <div className="flex justify-center items-center space-x-4">
+                <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                  {t('structure.backToSermon')}
+                </Link>
+                <span className="text-gray-400">•</span>
+                <button
+                  onClick={() => handleToggleFocusMode(focusedColumn)}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                >
+                  {t('structure.normalMode')}
+                </button>
+              </div>
+              <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                {t('structure.focusMode')}: {t(`structure.${focusedColumn === 'main' ? 'mainPart' : focusedColumn}`)}
+              </div>
             </div>
           )}
         </div>

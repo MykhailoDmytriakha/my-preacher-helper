@@ -1,22 +1,21 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Sermon, Thought } from '@/models/models';
+import StructureStats from '../../app/components/sermon/StructureStats';
+import { Sermon } from '../../app/models/models';
 
-// Create a mock StructureStats component for testing
+// Mock next/navigation
 const mockUseRouter = jest.fn();
 const mockPush = jest.fn();
-const mockUseTranslation = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
   }),
-  useParams: () => ({
-    id: 'test-id',
-  }),
 }));
 
+// Mock react-i18next
+const mockUseTranslation = jest.fn();
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: any) => {
@@ -25,10 +24,12 @@ jest.mock('react-i18next', () => ({
         'structure.entries': 'entries',
         'structure.recommended': `Recommended: ${options?.percent || 0}%`,
         'structure.workButton': 'Work on Structure',
+        'structure.focusMode': 'Focus Mode',
         'structure.inconsistentTagsWarning': 'Some thoughts have tag inconsistencies. Please fix them before working on structure.',
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
         'tags.conclusion': 'Conclusion',
+        'plan.pageTitle': 'Plan',
       };
       return translations[key] || key;
     },
@@ -39,93 +40,48 @@ jest.mock('react-i18next', () => ({
 jest.mock('@/utils/themeColors', () => ({
   SERMON_SECTION_COLORS: {
     introduction: {
-      base: "#2563eb"
+      base: "#d97706"
     },
     mainPart: {
-      base: "#7e22ce"
+      base: "#2563eb"
     },
     conclusion: {
       base: "#16a34a"
     }
+  },
+  getFocusModeButtonColors: (section: string) => {
+    const colors = {
+      introduction: { bg: 'bg-amber-500', hover: 'hover:bg-amber-600', text: 'text-white' },
+      mainPart: { bg: 'bg-blue-500', hover: 'hover:bg-blue-600', text: 'text-white' },
+      conclusion: { bg: 'bg-green-500', hover: 'hover:bg-green-600', text: 'text-white' }
+    };
+    return colors[section as keyof typeof colors] || colors.introduction;
   }
 }));
 
-// Mock component that simulates the actual StructureStats component
-const MockStructureStats: React.FC<{
-  sermon: Sermon;
-  tagCounts: {
-    [key: string]: number;
-  };
-  totalThoughts: number;
-  hasInconsistentThoughts?: boolean;
-}> = ({ sermon, tagCounts, totalThoughts, hasInconsistentThoughts = false }) => {
-  // Calculate the same values as the real component
-  const intro = tagCounts["Вступление"] || 0;
-  const main = tagCounts["Основная часть"] || 0;
-  const conclusion = tagCounts["Заключение"] || 0;
+// Mock urlUtils
+jest.mock('@/utils/urlUtils', () => ({
+  getFocusModeUrl: (section: string, sermonId: string) => `/structure?mode=focus&section=${section}&sermonId=${sermonId}`
+}));
 
-  const introPercentage = totalThoughts
-    ? Math.round((intro / totalThoughts) * 100)
-    : 0;
-  const mainPercentage = totalThoughts
-    ? Math.round((main / totalThoughts) * 100)
-    : 0;
-  const conclusionPercentage = totalThoughts
-    ? Math.round((conclusion / totalThoughts) * 100)
-    : 0;
-    
-  return (
-    <div data-testid="structure-stats">
-      <div>
-        <h2>Sermon Structure</h2>
-        <div>
-          <div className="intro-percentage">{introPercentage}%</div>
-          <div>Recommended: 20%</div>
-          <div className="main-percentage">{mainPercentage}%</div>
-          <div>Recommended: 60%</div>
-          <div className="conclusion-percentage">{conclusionPercentage}%</div>
-          <div>Recommended: 20%</div>
-        </div>
-        <button 
-          onClick={() => !hasInconsistentThoughts && mockPush(`/structure?sermonId=${sermon.id}`)}
-          disabled={hasInconsistentThoughts}
-          className={hasInconsistentThoughts ? 'disabled-button' : 'enabled-button'}
-          title={hasInconsistentThoughts ? 'Some thoughts have tag inconsistencies. Please fix them before working on structure.' : ''}
-          data-testid="work-structure-button"
-        >
-          Work on Structure
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// Use mock component in tests
 describe('StructureStats Component', () => {
   beforeEach(() => {
     mockPush.mockClear();
   });
   
   // Sample data for testing
-  const mockThoughts: Thought[] = [
-    { id: 'thought1', text: 'Introduction thought', tags: ['Вступление'], date: '2023-01-01' },
-    { id: 'thought2', text: 'Main part thought', tags: ['Основная часть'], date: '2023-01-01' },
-    { id: 'thought3', text: 'Conclusion thought', tags: ['Заключение'], date: '2023-01-01' },
-    { id: 'thought4', text: 'Ambiguous thought', tags: [], date: '2023-01-01' },
-  ];
-
   const mockSermon: Sermon = {
     id: 'sermon1',
     title: 'Test Sermon',
     verse: 'John 3:16',
     date: '2023-01-01',
-    thoughts: mockThoughts,
+    thoughts: [],
     userId: 'user1',
     structure: {
-      introduction: ['thought1'],
-      main: ['thought2'],
-      conclusion: ['thought3'],
-      ambiguous: ['thought4'],
+      introduction: [],
+      main: [],
+      conclusion: [],
+      ambiguous: [],
     },
   };
 
@@ -139,7 +95,7 @@ describe('StructureStats Component', () => {
 
   it('renders structure statistics correctly', () => {
     render(
-      <MockStructureStats 
+      <StructureStats 
         sermon={mockSermon} 
         tagCounts={mockTagCounts} 
         totalThoughts={totalThoughts} 
@@ -149,26 +105,46 @@ describe('StructureStats Component', () => {
     // Check if the title is rendered
     expect(screen.getByText('Sermon Structure')).toBeInTheDocument();
 
-    // Check if the percentages are displayed correctly - using more specific selectors
+    // Check if the percentages are displayed correctly - there are 3 elements with 33%
     const percentElements = screen.getAllByText('33%');
-    expect(percentElements.length).toBe(3); // Intro, Main, Conclusion all show 33%
+    expect(percentElements).toHaveLength(3); // One for each section
     
-    // Using class selectors to check specific percentage elements
-    expect(screen.getByText('33%', {selector: '.intro-percentage'})).toBeInTheDocument();
-    expect(screen.getByText('33%', {selector: '.main-percentage'})).toBeInTheDocument();
-    expect(screen.getByText('33%', {selector: '.conclusion-percentage'})).toBeInTheDocument();
-
     // Check if the recommended percentages are displayed
-    const recommendedIntro = screen.getAllByText('Recommended: 20%');
-    expect(recommendedIntro.length).toBe(2); // One for intro, one for conclusion
+    const recommended20Elements = screen.getAllByText((content, element) => {
+      return element?.textContent?.includes('Recommended: 20%') || false;
+    });
+    expect(recommended20Elements.length).toBeGreaterThan(0); // At least one element with 20%
     
-    const recommendedMain = screen.getAllByText('Recommended: 60%');
-    expect(recommendedMain.length).toBe(1);
+    const recommended60Elements = screen.getAllByText((content, element) => {
+      return element?.textContent?.includes('Recommended: 60%') || false;
+    });
+    expect(recommended60Elements.length).toBeGreaterThan(0); // At least one element with 60%
   });
 
-  it('navigates to structure page when button is clicked', () => {
+  it('displays Focus mode buttons for each section', () => {
     render(
-      <MockStructureStats 
+      <StructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts} 
+      />
+    );
+
+    // Check if Focus mode buttons are rendered for each section
+    const focusModeButtons = screen.getAllByText('Focus Mode');
+    expect(focusModeButtons).toHaveLength(3); // One for each section
+    
+    // Check if buttons have correct links
+    focusModeButtons.forEach((button, index) => {
+      const sections = ['introduction', 'main', 'conclusion'];
+      const expectedHref = `/structure?mode=focus&section=${sections[index]}&sermonId=${mockSermon.id}`;
+      expect(button.closest('a')).toHaveAttribute('href', expectedHref);
+    });
+  });
+
+  it('navigates to structure page when work button is clicked', () => {
+    render(
+      <StructureStats 
         sermon={mockSermon} 
         tagCounts={mockTagCounts} 
         totalThoughts={totalThoughts} 
@@ -176,16 +152,33 @@ describe('StructureStats Component', () => {
     );
 
     // Find and click the structure button
-    const structureButton = screen.getByTestId('work-structure-button');
+    const structureButton = screen.getByText('Work on Structure');
     fireEvent.click(structureButton);
 
     // Check if navigation was triggered
     expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
   });
 
-  it('disables button when thoughts have inconsistencies', () => {
+  it('navigates to plan page when plan button is clicked', () => {
     render(
-      <MockStructureStats 
+      <StructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts} 
+      />
+    );
+
+    // Find and click the plan button
+    const planButton = screen.getByText('Plan');
+    fireEvent.click(planButton);
+
+    // Check if navigation was triggered
+    expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/plan`);
+  });
+
+  it('disables work button when thoughts have inconsistencies', () => {
+    render(
+      <StructureStats 
         sermon={mockSermon} 
         tagCounts={mockTagCounts} 
         totalThoughts={totalThoughts}
@@ -194,9 +187,8 @@ describe('StructureStats Component', () => {
     );
 
     // Find the button and check if it's disabled
-    const structureButton = screen.getByTestId('work-structure-button');
+    const structureButton = screen.getByText('Work on Structure');
     expect(structureButton).toBeDisabled();
-    expect(structureButton).toHaveClass('disabled-button');
     
     // Check if tooltip/title contains warning message
     expect(structureButton).toHaveAttribute('title', 'Some thoughts have tag inconsistencies. Please fix them before working on structure.');
@@ -206,9 +198,9 @@ describe('StructureStats Component', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
   
-  it('enables button when thoughts have no inconsistencies', () => {
+  it('enables work button when thoughts have no inconsistencies', () => {
     render(
-      <MockStructureStats 
+      <StructureStats 
         sermon={mockSermon} 
         tagCounts={mockTagCounts} 
         totalThoughts={totalThoughts}
@@ -217,9 +209,8 @@ describe('StructureStats Component', () => {
     );
 
     // Find the button and check if it's enabled
-    const structureButton = screen.getByTestId('work-structure-button');
+    const structureButton = screen.getByText('Work on Structure');
     expect(structureButton).not.toBeDisabled();
-    expect(structureButton).toHaveClass('enabled-button');
     
     // Check that tooltip/title is empty
     expect(structureButton).toHaveAttribute('title', '');
@@ -230,18 +221,54 @@ describe('StructureStats Component', () => {
   });
 
   it('handles empty thoughts correctly', () => {
-    const emptySermon = { ...mockSermon, thoughts: [] };
     const emptyTagCounts = { 'Вступление': 0, 'Основная часть': 0, 'Заключение': 0 };
     
     render(
-      <MockStructureStats 
-        sermon={emptySermon} 
+      <StructureStats 
+        sermon={mockSermon} 
         tagCounts={emptyTagCounts} 
         totalThoughts={0} 
       />
     );
 
     // Check if the percentages are all 0%
-    expect(screen.getAllByText('0%').length).toBe(3);
+    expect(screen.getAllByText('0%')).toHaveLength(3);
+  });
+
+  it('displays correct progress bar with section colors', () => {
+    render(
+      <StructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts} 
+      />
+    );
+
+    // Check if progress bar sections exist with data-tooltip attributes
+    const tooltipElements = document.querySelectorAll('[data-tooltip]');
+    expect(tooltipElements).toHaveLength(3); // Three sections: intro, main, conclusion
+    
+    // Check if tooltips contain expected content
+    const tooltipTexts = Array.from(tooltipElements).map(el => el.getAttribute('data-tooltip'));
+    expect(tooltipTexts).toContain('Introduction: 1 entries');
+    expect(tooltipTexts).toContain('Main Part: 1 entries');
+    expect(tooltipTexts).toContain('Conclusion: 1 entries');
+  });
+
+  it('renders Focus mode buttons with correct styling classes', () => {
+    render(
+      <StructureStats 
+        sermon={mockSermon} 
+        tagCounts={mockTagCounts} 
+        totalThoughts={totalThoughts} 
+      />
+    );
+
+    const focusModeButtons = screen.getAllByText('Focus Mode');
+    
+    focusModeButtons.forEach((button) => {
+      const link = button.closest('a');
+      expect(link).toHaveClass('px-2', 'py-1', 'rounded', 'text-xs', 'transition-colors', 'block');
+    });
   });
 }); 
