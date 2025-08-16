@@ -67,7 +67,7 @@ const OutlinePointPlaceholder: React.FC<{
   onKeepItem?: (itemId: string, columnId: string) => void;
   onRevertItem?: (itemId: string, columnId: string) => void;
   headerColor?: string;
-  t: (key: string, options?: any) => string;
+  t: (key: string, options?: Record<string, unknown>) => string;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
 }> = ({ 
@@ -204,7 +204,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
   getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
   onKeepItem?: (itemId: string, columnId: string) => void;
   onRevertItem?: (itemId: string, columnId: string) => void;
-  t: (key: string, options?: any) => string;
+  t: (key: string, options?: Record<string, unknown>) => string;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
 }> = ({ 
@@ -289,7 +289,6 @@ export default function Column({
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
-  const [outlinePoints, setOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
   
   // Basic state for outline points UI
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
@@ -312,7 +311,6 @@ export default function Column({
   
   // --- State for Outline Point Editing (only relevant in focus mode) ---
   const [localOutlinePoints, setLocalOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
-  const [savingOutline, setSavingOutline] = useState<boolean>(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update local state if the prop changes (e.g., after initial load or external update)
@@ -341,7 +339,7 @@ export default function Column({
       clearTimeout(saveTimeoutRef.current);
     }
 
-    setSavingOutline(true); // Indicate saving starts
+
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
@@ -373,7 +371,6 @@ export default function Column({
         console.error("Error saving sermon outline:", error);
         toast.error(t('errors.saveOutlineError', { defaultValue: 'Failed to save outline' }));
       } finally {
-        setSavingOutline(false); // Indicate saving finished
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = null;

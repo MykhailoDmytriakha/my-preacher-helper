@@ -7,10 +7,9 @@ import { toast } from "sonner";
 interface UsePlanOptions {
   sermon: Sermon | null;
   sermonId: string;
-  onSermonUpdate?: (sermon: Sermon) => void;
 }
 
-export const usePlan = ({ sermon, sermonId, onSermonUpdate }: UsePlanOptions) => {
+export const usePlan = ({ sermon }: UsePlanOptions) => {
   // State for generated content
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
@@ -172,7 +171,7 @@ export const usePlan = ({ sermon, sermonId, onSermonUpdate }: UsePlanOptions) =>
       console.error("Failed to save outline point:", error);
       toast.error("Failed to save outline point");
     }
-  }, [sermon, sermonId]);
+  }, [sermon]);
 
   // Save entire plan (placeholder for full plan save functionality)
   const savePlan = useCallback(async () => {
@@ -197,7 +196,7 @@ export const usePlan = ({ sermon, sermonId, onSermonUpdate }: UsePlanOptions) =>
     } finally {
       setIsSaving(false);
     }
-  }, [generatedContent, modifiedContent, saveOutlinePoint]);
+  }, [generatedContent, modifiedContent, saveOutlinePoint, findSectionForOutlinePoint]);
 
   // Toggle edit mode for a point
   const toggleEditMode = useCallback((outlinePointId: string) => {
@@ -225,7 +224,7 @@ export const usePlan = ({ sermon, sermonId, onSermonUpdate }: UsePlanOptions) =>
         [outlinePointId]: isModified
       }));
     }
-  }, [sermon?.plan]);
+  }, [sermon?.plan, findSectionForOutlinePoint]);
 
   // Helper functions
   const findOutlinePointById = useCallback((outlinePointId: string): OutlinePoint | undefined => {

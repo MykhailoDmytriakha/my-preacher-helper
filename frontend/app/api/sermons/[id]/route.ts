@@ -8,9 +8,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
   try {
     const sermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(sermon);
-  } catch (error: any) {
-    if (error.message === "Sermon not found") {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+  } catch (error: unknown) {
+    if ((error as Error).message === "Sermon not found") {
+      return NextResponse.json({ error: (error as Error).message }, { status: 404 });
     }
     return NextResponse.json({ error: 'Failed to fetch sermon' }, { status: 500 });
   }
@@ -24,7 +24,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const { title, verse, isPreached, preparation } = await request.json(); 
     
     // Prepare the update object
-    const updateData: { title?: string; verse?: string; isPreached?: boolean; preparation?: any } = {};
+    const updateData: { title?: string; verse?: string; isPreached?: boolean; preparation?: Record<string, unknown> } = {};
     if (title) updateData.title = title;
     if (verse) updateData.verse = verse;
     // Only include isPreached if it's explicitly provided (true or false)
@@ -50,10 +50,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     // Fetch the updated sermon to return it
     const updatedSermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(updatedSermon);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating sermon:", error);
     return NextResponse.json(
-      { error: 'Failed to update sermon', details: error.message },
+      { error: 'Failed to update sermon', details: (error as Error).message },
       { status: 500 }
     );
   }
@@ -69,10 +69,10 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     }
     await sermonsRepository.deleteSermonById(id);
     return NextResponse.json({ message: 'Проповедь успешно удалена' }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Ошибка при удалении проповеди ${id}:`, error);
     return NextResponse.json(
-      { message: 'Не удалось удалить проповедь', error: error.message },
+      { message: 'Не удалось удалить проповедь', error: (error as Error).message },
       { status: 500 }
     );
   }

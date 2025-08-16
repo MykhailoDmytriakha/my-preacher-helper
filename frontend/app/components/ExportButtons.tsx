@@ -520,7 +520,6 @@ const TooltipStyles = () => (
 );
 
 export default function ExportButtons({
-  sermonId,
   getExportContent,
   getPdfContent,
   orientation = "horizontal",
@@ -530,7 +529,6 @@ export default function ExportButtons({
   title = "Export",
   disabledFormats = [],
 }: ExportButtonsContainerProps) {
-  const { t } = useTranslation();
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
 

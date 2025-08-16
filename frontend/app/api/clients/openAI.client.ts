@@ -1,11 +1,10 @@
 import 'openai/shims/node';
 import OpenAI from "openai";
-import { Insights, Item, OutlinePoint, Sermon, Thought, VerseWithRelevance, DirectionSuggestion, Plan, BrainstormSuggestion } from "@/models/models";
-import { v4 as uuidv4 } from 'uuid';
+import { Insights, Item, OutlinePoint, Sermon, VerseWithRelevance, DirectionSuggestion, Plan, BrainstormSuggestion } from "@/models/models";
 import { 
   thoughtSystemPrompt, createThoughtUserMessage,
   insightsSystemPrompt, createInsightsUserMessage,
-  sortingSystemPrompt, createSortingUserMessage,
+  createSortingUserMessage,
   topicsSystemPrompt, createTopicsUserMessage,
   versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
@@ -22,9 +21,9 @@ import {
   planFunctionSchema,
   brainstormFunctionSchema
 } from "@/config/schemas";
-import { extractSermonContent, parseAIResponse, logOperationTiming, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 
-const isTestEnvironment = process.env.NODE_ENV === 'test';
+// const isTestEnvironment = process.env.NODE_ENV === 'test';
 
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
 const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
@@ -48,20 +47,20 @@ const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptMode
 const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
 
 // Create XML function definition for Claude models
-function createXmlFunctionDefinition(functionSchema: any): string {
-  const schema = functionSchema.function;
-  const parameters = schema.parameters.properties;
+function createXmlFunctionDefinition(functionSchema: Record<string, unknown>): string {
+  const schema = functionSchema.function as Record<string, unknown>;
+  const parameters = schema.parameters as Record<string, Record<string, unknown>>;
   
   let xmlDefinition = `
-<function name="${schema.name}">
+<function name="${schema.name as string}">
   <parameters>`;
   
   // Add each parameter
   for (const [paramName, paramSchema] of Object.entries(parameters)) {
-    const param = paramSchema as any;
+    const param = paramSchema as Record<string, unknown>;
     xmlDefinition += `
-    <parameter name="${paramName}" type="${param.type}">
-      ${param.description || ''}
+    <parameter name="${paramName}" type="${param.type as string}">
+      ${param.description as string || ''}
     </parameter>`;
   }
   
@@ -71,14 +70,14 @@ function createXmlFunctionDefinition(functionSchema: any): string {
 
 Your response should be structured as follows:
 
-<function_call name="${schema.name}">
+<function_call name="${schema.name as string}">
 <arguments>
 {
 `;
 
   // Add a template for each parameter
   for (const [paramName, paramSchema] of Object.entries(parameters)) {
-    const param = paramSchema as any;
+    const param = paramSchema as Record<string, unknown>;
     if (param.type === "array") {
       xmlDefinition += `  "${paramName}": [],\n`;
     } else if (param.type === "object") {
@@ -237,10 +236,10 @@ function createMessagesArray(systemPrompt: string, userContent: string): Array<O
  * @returns The API call result
  */
 async function withOpenAILogging<T>(
-  apiCallFn: () => Promise<any>, 
+  apiCallFn: () => Promise<T>, 
   operationName: string, 
-  requestData: any,
-  inputInfo: any,
+  requestData: Record<string, unknown>,
+  inputInfo: Record<string, unknown>,
   options: {
     logFullResponse?: boolean,
     logMaxLength?: number
@@ -281,20 +280,21 @@ async function withOpenAILogging<T>(
       logger.info(operationName, "Raw response", response);
     }
     
-    let prettyResponse: any;
+    let prettyResponse: unknown;
     
     // Handle different response formats based on the operation
-    if (response.choices && response.choices[0]?.message) {
-      if (response.choices[0].message.content) {
+    if ((response as Record<string, unknown>).choices && Array.isArray((response as Record<string, unknown>).choices) && (response as Record<string, unknown>).choices[0]?.message) {
+      const message = (response as Record<string, unknown>).choices[0]?.message as Record<string, unknown>;
+      if (message.content) {
         // For content-based responses (Claude-style)
-        prettyResponse = response.choices[0].message.content;
-      } else if (response.choices[0].message.function_call) {
+        prettyResponse = message.content;
+      } else if (message.function_call) {
         // For function call responses
-        prettyResponse = JSON.parse(response.choices[0].message.function_call.arguments);
+        prettyResponse = JSON.parse((message.function_call as Record<string, unknown>).arguments as string);
       }
-    } else if (response.text) {
+    } else if ((response as Record<string, unknown>).text) {
       // For transcription responses
-      prettyResponse = response.text;
+      prettyResponse = (response as Record<string, unknown>).text;
     } else {
       // Default case
       prettyResponse = response;
@@ -737,7 +737,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     }
     
     const extractedKeys: string[] = [];
-    sortedData.sortedItems.forEach((item: any, pos: number) => {
+    sortedData.sortedItems.forEach((item: Record<string, unknown>, pos: number) => {
       if (item && typeof item.key === 'string') {
         extractedKeys.push(item.key);
         if (isDebugMode) {
@@ -751,7 +751,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
     
     // Extract AI's suggestions
     const aiSortedKeys = sortedData.sortedItems
-      .map((aiItem: any) => {
+      .map((aiItem: Record<string, unknown>) => {
         if (aiItem && typeof aiItem.key === 'string') {
           const itemKey = aiItem.key.trim();
           
@@ -918,7 +918,7 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       detectedLanguage,
       hasOutlineStructure: sermon.outline && 
                           sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] && 
-                          (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as any).length > 0
+                          (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
     };
     
     // Make API call
@@ -977,27 +977,29 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
  * @param directions The raw direction suggestions from AI
  * @returns Normalized direction suggestions
  */
-function normalizeDirectionSuggestions(directions: any[]): DirectionSuggestion[] {
-  return directions.map(direction => {
+function normalizeDirectionSuggestions(directions: unknown[]): DirectionSuggestion[] {
+  return directions.map((direction: unknown) => {
+    const dir = direction as Record<string, unknown>;
+    
     // If it already has area and suggestion, just return as is
-    if (direction.area && direction.suggestion) {
-      return direction;
+    if (dir.area && dir.suggestion) {
+      return dir as DirectionSuggestion;
     }
     
     // If it has title/description format, convert to area/suggestion
-    if (direction.title && direction.description) {
+    if (dir.title && dir.description) {
       return {
-        area: direction.title,
-        suggestion: direction.description,
+        area: dir.title as string,
+        suggestion: dir.description as string,
         // Keep examples if present
-        ...(direction.examples ? { examples: direction.examples } : {})
+        ...(dir.examples ? { examples: dir.examples as string[] } : {})
       };
     }
     
     // For any other format, try to extract something usable
     return {
-      area: direction.area || direction.title || 'Research Direction',
-      suggestion: direction.suggestion || direction.description || JSON.stringify(direction)
+      area: (dir.area || dir.title || 'Research Direction') as string,
+      suggestion: (dir.suggestion || dir.description || JSON.stringify(direction)) as string
     };
   });
 }

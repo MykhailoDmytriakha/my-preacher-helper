@@ -11,7 +11,7 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 export default function LanguageSwitcher() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();

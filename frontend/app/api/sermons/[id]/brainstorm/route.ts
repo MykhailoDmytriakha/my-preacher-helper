@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     console.log("Brainstorm route: Successfully generated brainstorm suggestion");
     
     return NextResponse.json({ suggestion });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Brainstorm route: Error generating brainstorm suggestion:", error);
     return NextResponse.json(
       { error: `Failed to generate brainstorm suggestion: ${error.message}` }, 

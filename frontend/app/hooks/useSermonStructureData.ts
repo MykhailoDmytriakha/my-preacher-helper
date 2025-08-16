@@ -1,39 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Item, Sermon, OutlinePoint, Outline, Tag, Thought, Structure } from '@/models/models';
+import { Item, Sermon, OutlinePoint, Tag, Thought } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
 import { updateStructure } from '@/services/structure.service';
-import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { getSectionBaseColor } from '@lib/sections';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
 import { toast } from 'sonner';
 
-// Helper function to check if structure changed (consider moving to utils)
-const isStructureChanged = (
-  structurePrev: string | Record<string, any>,
-  structureNew: string | Record<string, any>
-): boolean => {
-  const parse = (v: string | object) =>
-    typeof v === 'string' ? JSON.parse(v) : v;
-  const prev = parse(structurePrev);
-  const current = parse(structureNew);
 
-  // Compare keys and array lengths first for quick check
-  const prevKeys = Object.keys(prev);
-  const currentKeys = Object.keys(current);
-  if (prevKeys.length !== currentKeys.length) return true;
-  if (!prevKeys.every(key => currentKeys.includes(key))) return true;
-
-  // Compare array contents (order matters)
-  for (const key of prevKeys) {
-    if (!Array.isArray(prev[key]) || !Array.isArray(current[key])) return true; // Should be arrays
-    if (prev[key].length !== current[key].length) return true;
-    if (prev[key].some((id, index) => id !== current[key][index])) return true;
-  }
-
-  return false;
-};
 
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {

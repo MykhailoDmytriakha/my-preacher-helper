@@ -1,7 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ViewFilter, StructureFilter, SortOrder } from '@hooks/useThoughtFiltering';
-import { getContrastColor } from '@utils/color';
 import { STRUCTURE_TAGS } from '@lib/constants';
 
 interface ThoughtFilterControlsProps {

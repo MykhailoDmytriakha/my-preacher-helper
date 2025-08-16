@@ -43,7 +43,7 @@ export const createAudioThought = async (
         const errorResponse = await response.json();
         errorText = errorResponse.error || errorText;
         originalText = errorResponse.originalText || null;
-      } catch (e) {
+      } catch {
         // If we can't parse JSON, use the status text
         errorText = response.statusText || errorText;
       }
@@ -70,8 +70,8 @@ export const createAudioThought = async (
     }
 
     // Success - clear stored audio if available
-    if (typeof window !== 'undefined' && (window as any).clearAudioRecorderStorage) {
-      (window as any).clearAudioRecorderStorage();
+    if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).clearAudioRecorderStorage) {
+      (window as unknown as Record<string, unknown>).clearAudioRecorderStorage();
     }
 
     // Возвращаем полный объект с текстом, тегами и т.д.

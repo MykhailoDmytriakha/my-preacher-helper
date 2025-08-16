@@ -63,9 +63,9 @@ const SpiritualStepContent: React.FC<SpiritualStepContentProps> = ({
             </div>
             <ul className="list-disc pl-5 mt-1 space-y-1 text-sm">
               <li>
-                Неем 8:8: "
+                Неем 8:8: &ldquo;
                 <sup className="text-gray-300 dark:text-gray-800">8</sup>
-                {' '}И читали из книги, из закона Божия, внятно, и присоединяли толкование, и народ понимал прочитанное."
+                {' '}И читали из книги, из закона Божия, внятно, и присоединяли толкование, и народ понимал прочитанное.&rdquo;
               </li>
               <li>Проповедь в Силе Духа, сильная проповедь исходит не от проповедника, а от Духа Святого</li>
               <li>

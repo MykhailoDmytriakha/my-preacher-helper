@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
+import React, { useCallback, useMemo, memo } from "react";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
@@ -12,15 +12,10 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Constants
-import { SPACING } from "@/constants/ui";
-
 // Type imports
 import type { Thought, Outline } from "@/models/models";
 
 // Icons imports
-import { EditIcon, TrashIcon, CopyIcon, CheckIcon } from "@components/Icons";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 
 // Types
 type TagInfo = { 

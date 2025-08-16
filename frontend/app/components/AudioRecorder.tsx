@@ -210,7 +210,7 @@ export const AudioRecorder = ({
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
     }
-  }, [isRecording, cleanup]);
+  }, [isRecording]);
 
   // Retry transcription function
   const retryTranscription = useCallback(() => {

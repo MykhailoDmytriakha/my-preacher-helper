@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
-import { Item, Sermon, OutlinePoint } from '@/models/models';
+import { Item, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@clients/openAI.client';
 
 const MAX_THOUGHTS_FOR_SORTING = 25;

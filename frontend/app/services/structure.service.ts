@@ -1,6 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-export const updateStructure = async (sermonId: string, structure: any): Promise<any> => {
+export const updateStructure = async (sermonId: string, structure: unknown): Promise<unknown> => {
   try {
     const response = await fetch(`${API_BASE}/api/structure?sermonId=${sermonId}`, {
       method: "PUT",

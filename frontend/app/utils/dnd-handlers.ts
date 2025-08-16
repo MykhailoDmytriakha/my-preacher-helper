@@ -1,15 +1,21 @@
 import { DragOverEvent, DragEndEvent } from '@dnd-kit/core';
 import React from 'react';
 
+interface DraggableItem {
+  id: string;
+  requiredTags?: string[];
+  [key: string]: unknown;
+}
+
 /**
  * Handles the drag over event in a drag-and-drop operation
  */
 export function handleDragOver(
   event: DragOverEvent,
-  containers: Record<string, any[]>,
-  setContainers: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void,
+  containers: Record<string, DraggableItem[]>,
+  setContainers: (updater: (prev: Record<string, DraggableItem[]>) => Record<string, DraggableItem[]>) => void,
   columnTitles: Record<string, string>,
-  containersRef: React.MutableRefObject<Record<string, any[]>>
+  containersRef: React.MutableRefObject<Record<string, DraggableItem[]>>
 ) {
   const { active, over } = event;
   if (!over || active.id === over.id) return;
@@ -83,9 +89,9 @@ export function handleDragOver(
 export function handleDragEnd(
   event: DragEndEvent,
   originalContainer: string | null,
-  containers: Record<string, any[]>,
-  setContainers: (containers: Record<string, any[]>) => void,
-  containersRef: React.MutableRefObject<Record<string, any[]>>
+  containers: Record<string, DraggableItem[]>,
+  setContainers: (containers: Record<string, DraggableItem[]>) => void,
+  containersRef: React.MutableRefObject<Record<string, DraggableItem[]>>
 ) {
   const { active, over } = event;
   

@@ -1,16 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
-import { getContrastColor } from '@utils/color';
-import { Thought, OutlinePoint, Outline } from '@/models/models';
+import { OutlinePoint, Outline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 interface EditThoughtModalProps {
-  thoughtId?: string;
   initialText: string;
   initialTags: string[];
   initialOutlinePointId?: string;
@@ -22,7 +20,6 @@ interface EditThoughtModalProps {
 }
 
 export default function EditThoughtModal({ 
-  thoughtId, 
   initialText, 
   initialTags, 
   initialOutlinePointId,

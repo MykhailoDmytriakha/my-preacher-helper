@@ -21,7 +21,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       try {
         setIsSubmitting(true);
         await onSubmit(feedbackText, feedbackType);
-      } catch (error) {
+      } catch {
         // Error is handled in the parent component
       } finally {
         setIsSubmitting(false);

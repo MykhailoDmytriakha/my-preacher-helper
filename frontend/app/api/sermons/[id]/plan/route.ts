@@ -89,7 +89,7 @@ export async function GET(
     // Store the updated plan in the database
     try {
       // Get existing plan or create a new one
-      const existingPlan: any = ('plan' in sermon ? sermon.plan : null) || {
+      const existingPlan: Record<string, unknown> = ('plan' in sermon ? sermon.plan : null) || {
         introduction: { outline: '' },
         main: { outline: '' },
         conclusion: { outline: '' }
@@ -114,13 +114,13 @@ export async function GET(
       // Save to database
       await sermonsRepository.updateSermonPlan(id, updatedPlan);
       console.log(`Saved ${section} plan to database for sermon ${id}`);
-    } catch (saveError: any) {
+    } catch (saveError: unknown) {
       console.error(`Error saving plan to database: ${saveError.message}`);
       // Continue and return the plan even if saving fails
     }
     
     return NextResponse.json(normalizedPlan);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error generating plan for section ${section}:`, error);
     return NextResponse.json(
       { error: 'Failed to generate plan', details: error.message },
@@ -154,9 +154,9 @@ async function generateFullPlan(sermonId: string) {
     let hasFailures = false;
     
     // Declare result variables to check for incomplete structure
-    let introResult: any = null;
-    let mainResult: any = null;
-    let conclusionResult: any = null;
+    let introResult: Record<string, unknown> | null = null;
+    let mainResult: Record<string, unknown> | null = null;
+    let conclusionResult: Record<string, unknown> | null = null;
     
     // Process each section sequentially with proper error handling
     try {
@@ -179,7 +179,7 @@ async function generateFullPlan(sermonId: string) {
       console.log(introResult.success ? 
         "Successfully generated introduction plan" : 
         "Failed to generate introduction plan");
-    } catch (introError: any) {
+    } catch (introError: unknown) {
       console.error("Failed to generate introduction plan:", introError);
       fullPlan.introduction = { outline: `Error generating introduction: ${introError.message}` };
       fullPlan.sectionStatuses.introduction = false;
@@ -206,7 +206,7 @@ async function generateFullPlan(sermonId: string) {
       console.log(mainResult.success ? 
         "Successfully generated main plan" : 
         "Failed to generate main plan");
-    } catch (mainError: any) {
+    } catch (mainError: unknown) {
       console.error("Failed to generate main plan:", mainError);
       fullPlan.main = { outline: `Error generating main part: ${mainError.message}` };
       fullPlan.sectionStatuses.main = false;
@@ -233,7 +233,7 @@ async function generateFullPlan(sermonId: string) {
       console.log(conclusionResult.success ? 
         "Successfully generated conclusion plan" : 
         "Failed to generate conclusion plan");
-    } catch (conclusionError: any) {
+    } catch (conclusionError: unknown) {
       console.error("Failed to generate conclusion plan:", conclusionError);
       fullPlan.conclusion = { outline: `Error generating conclusion: ${conclusionError.message}` };
       fullPlan.sectionStatuses.conclusion = false;
@@ -244,15 +244,15 @@ async function generateFullPlan(sermonId: string) {
     const planToStore: SermonPlan = {
       introduction: {
         outline: fullPlan.introduction?.outline || '',
-        ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as any).outlinePoints })
+        ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as Record<string, unknown>).outlinePoints })
       },
       main: {
         outline: fullPlan.main?.outline || '',
-        ...(fullPlan.main && 'outlinePoints' in fullPlan.main && { outlinePoints: (fullPlan.main as any).outlinePoints })
+        ...(fullPlan.main && 'outlinePoints' in fullPlan.main && { outlinePoints: (fullPlan.main as Record<string, unknown>).outlinePoints })
       },
       conclusion: {
         outline: fullPlan.conclusion?.outline || '',
-        ...(fullPlan.conclusion && 'outlinePoints' in fullPlan.conclusion && { outlinePoints: (fullPlan.conclusion as any).outlinePoints })
+        ...(fullPlan.conclusion && 'outlinePoints' in fullPlan.conclusion && { outlinePoints: (fullPlan.conclusion as Record<string, unknown>).outlinePoints })
       }
     };
     
@@ -266,16 +266,6 @@ async function generateFullPlan(sermonId: string) {
       planToStore.main.outline = planToStore.main.outline || '';
       planToStore.conclusion.outline = planToStore.conclusion.outline || '';
     }
-    
-    // Final validation: ensure no undefined values exist in the plan
-    const validatePlanStructure = (plan: any): boolean => {
-      if (!plan || typeof plan !== 'object') return false;
-      if (!plan.introduction || !plan.main || !plan.conclusion) return false;
-      if (typeof plan.introduction.outline !== 'string' || 
-          typeof plan.main.outline !== 'string' || 
-          typeof plan.conclusion.outline !== 'string') return false;
-      return true;
-    };
     
     // Check if the AI response is completely malformed (missing sections entirely)
     const hasMissingSections = !introResult?.plan?.introduction || 
@@ -313,7 +303,7 @@ async function generateFullPlan(sermonId: string) {
     try {
       await sermonsRepository.updateSermonPlan(sermonId, planToStore);
       console.log(`Saved full plan to database for sermon ${sermonId}`);
-    } catch (saveError: any) {
+    } catch (saveError: unknown) {
       console.error(`Error saving full plan to database: ${saveError.message}`);
       // Continue and return the plan even if saving fails
     }
@@ -335,7 +325,7 @@ async function generateFullPlan(sermonId: string) {
       fullPlan,
       { status: hasFailures ? 206 : 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error generating full sermon plan:`, error);
     return NextResponse.json(
       { error: 'Failed to generate full plan', details: error.message },
@@ -428,10 +418,10 @@ async function generateOutlinePointContent(sermonId: string, outlinePointId: str
     }
     
     return NextResponse.json({ content });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);
     return NextResponse.json(
-      { error: 'Failed to generate content', details: error.message },
+      { error: 'Failed to generate content', details: (error as Error).message },
       { status: 500 }
     );
   }
@@ -496,10 +486,10 @@ export async function PUT(
     await sermonsRepository.updateSermonPlan(id, plan);
     
     return NextResponse.json({ success: true, plan });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error saving plan for sermon ${id}:`, error);
     return NextResponse.json(
-      { error: 'Failed to save plan', details: error.message },
+      { error: 'Failed to save plan', details: (error as Error).message },
       { status: 500 }
     );
   }

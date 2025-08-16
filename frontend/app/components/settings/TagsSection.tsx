@@ -48,7 +48,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       await addCustomTag(newTagObj);
       const tagsData = await getTags(user.uid);
       setTags(tagsData);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const message = error?.message === 'Reserved tag name' ? t('errors.reservedTagName') : (t('errors.savingError') || 'Error saving');
       toast.error(message);
     }

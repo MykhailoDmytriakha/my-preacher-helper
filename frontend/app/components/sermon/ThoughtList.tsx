@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Thought, Outline, Sermon } from '@/models/models';
+import type { Thought, Outline } from '@/models/models';
 import ThoughtCard from '@components/ThoughtCard';
 
 interface ThoughtListProps {

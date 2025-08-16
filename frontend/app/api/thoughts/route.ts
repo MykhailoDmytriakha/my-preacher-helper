@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       
       // Include optional fields if provided
       if (typeof thought.position === 'number') {
-        (thoughtWithId as any).position = thought.position;
+        (thoughtWithId as unknown as Record<string, unknown>).position = thought.position;
       }
 
       //verify that thought has everything that is needed
@@ -227,7 +227,7 @@ export async function PUT(request: Request) {
       updatedThought.outlinePointId = updatedThoughtNew.outlinePointId;
     }
     if (typeof updatedThoughtNew.position === 'number') {
-      (updatedThought as any).position = updatedThoughtNew.position;
+      (updatedThought as unknown as Record<string, unknown>).position = updatedThoughtNew.position;
     }
     
     // Add keyFragments if it exists

@@ -1,17 +1,16 @@
 "use client";
 
 import React from 'react';
-import { GoogleIcon, UserIcon } from '@components/Icons';
+import { GoogleIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
 
 interface LoginOptionsProps {
   onGoogleLogin: () => void;
-  onGuestLogin: () => void;
   onTestLogin: () => void;
   loading?: boolean;
 }
 
-export default function LoginOptions({ onGoogleLogin, onGuestLogin, onTestLogin, loading = false }: LoginOptionsProps) {
+export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = false }: LoginOptionsProps) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">

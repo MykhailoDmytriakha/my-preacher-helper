@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { OutlinePoint, Thought, Plan } from "@/models/models";
+import { OutlinePoint, Thought } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import OutlinePointCard from "./OutlinePointCard";
@@ -10,7 +10,6 @@ interface PlanSectionProps {
   sectionName: "introduction" | "main" | "conclusion";
   outlinePoints: OutlinePoint[];
   thoughts: Thought[];
-  sermonId: string;
   generatedContent: Record<string, string>;
   modifiedContent: Record<string, boolean>;
   savedContent: Record<string, boolean>;
@@ -29,7 +28,6 @@ interface PlanSectionProps {
 export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
   sectionName,
   outlinePoints,
-  sermonId,
   generatedContent,
   modifiedContent,
   savedContent,
@@ -89,7 +87,6 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
             onGenerate={onGenerate}
             generatedContent={generatedContent[outlinePoint.id] || null}
             isGenerating={generatingId === outlinePoint.id}
-            sermonId={sermonId}
             onOpenFragmentsModal={onOpenFragmentsModal}
             editMode={editModePoints[outlinePoint.id] || false}
             onToggleEditMode={onToggleEditMode}

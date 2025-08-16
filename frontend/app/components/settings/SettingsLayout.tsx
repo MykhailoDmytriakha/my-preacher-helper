@@ -1,7 +1,6 @@
 'use client';
 
 import React, { ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import BackLink from './BackLink';
 
 interface SettingsLayoutProps {
@@ -15,7 +14,7 @@ const SettingsLayout: React.FC<SettingsLayoutProps> = ({
   title,
   showBackLink = true
 }) => {
-  const { t } = useTranslation();
+
   
   return (
     <div className="py-4 md:py-6">

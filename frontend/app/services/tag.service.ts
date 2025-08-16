@@ -1,5 +1,4 @@
 import { Tag } from '@/models/models';
-import { log } from 'console';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function getTags(userId: string) {

@@ -4,7 +4,7 @@ import { i18n } from '@locales/i18n';
 
 // Debug flag
 const DEBUG_EXPORT = false;
-const debugLog = (message: string, data?: any) => { if (DEBUG_EXPORT) console.log(`[Export] ${message}`, data ? data : ''); };
+const debugLog = (message: string, data?: unknown) => { if (DEBUG_EXPORT) console.log(`[Export] ${message}`, data ? data : ''); };
 
 // --- Data Structures for Organized Content ---
 
@@ -179,7 +179,7 @@ function formatPlainText(
   }
 
   // Add sections
-  data.processedSections.forEach((section, index) => {
+  data.processedSections.forEach((section) => {
     // Add section title
     content += `${section.sectionTitle}:\n\n`;
 
@@ -236,7 +236,7 @@ function formatMarkdown(
   }
 
   // Add sections
-  data.processedSections.forEach((section, index) => {
+  data.processedSections.forEach((section) => {
      // Add section title (H2)
     content += `## ${section.sectionTitle}\n`;
     // Underline removed for cleaner Markdown
@@ -515,15 +515,7 @@ function processSection(
   return organizedBlocks.filter(block => block.thoughts.length > 0);
 }
 
-/** Get the priority index of the first matching tag */
-function getTagPriority(tags: string[] | undefined, priorityTags: string[]): number {
-    if (!tags) return priorityTags.length;
-    for (const tag of tags) {
-        const priority = priorityTags.indexOf(tag);
-        if (priority !== -1) return priority;
-    }
-    return priorityTags.length; // Lowest priority if no match
-}
+
 
 /** Sort thoughts chronologically */
 function sortThoughtsByDate(thoughts: Thought[]): Thought[] {

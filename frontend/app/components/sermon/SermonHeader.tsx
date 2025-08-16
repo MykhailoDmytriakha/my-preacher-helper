@@ -1,12 +1,10 @@
 // This is the SermonHeader component created to refactor the header UI from the sermon page
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
+import React from 'react';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
 import type { Sermon } from '@/models/models';
-import useSermonValidator from '@/hooks/useSermonValidator';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons

@@ -1,6 +1,5 @@
 import { Item, OutlinePoint } from "@/models/models";
 import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 

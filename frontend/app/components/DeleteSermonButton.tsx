@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { deleteSermon } from "@services/sermon.service";
 
 interface DeleteSermonButtonProps {
@@ -11,7 +10,6 @@ interface DeleteSermonButtonProps {
 }
 
 export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: DeleteSermonButtonProps) {
-  const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {

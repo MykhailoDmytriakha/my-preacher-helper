@@ -3,7 +3,6 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getContrastColor } from "@utils/color";
 import { EditIcon, TrashIcon } from '@components/Icons';
 import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';

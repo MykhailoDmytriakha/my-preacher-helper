@@ -10,7 +10,6 @@ import {
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
 import { generateSermonPlan } from "@/services/plan.service";
-import { getSermonById } from "@/services/sermon.service";
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
 import { Sermon, Insights, Plan } from '@/models/models';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
@@ -26,7 +25,7 @@ type InsightSectionType = 'topics' | 'verses' | 'directions';
 type RegenerationFunction = (sermonId: string) => Promise<Insights | null>;
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   
   // UI state
   const [expanded, setExpanded] = useState(false);
@@ -67,11 +66,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const getPossibleDirections = () => {
     if (!localInsights?.possibleDirections?.length) return [];
     return localInsights.possibleDirections;
-  };
-
-  // Get plan sections
-  const getPlan = () => {
-    return localPlan;
   };
 
   // Get thoughts plan from insights or sermon plan
@@ -318,10 +312,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const hasThoughtsPlan = thoughtsPlan && (thoughtsPlan.introduction || thoughtsPlan.main || thoughtsPlan.conclusion);
   
   // Data for rendering
-  const hasInsights = (localInsights && 
-                     Array.isArray(localInsights.topics) && 
-                     localInsights.topics.length > 0) || hasThoughtsPlan;
-  
   // Check if we have any data to show
   const hasAnyData = topics.length > 0 || relatedVerses.length > 0 || possibleDirections.length > 0 || hasThoughtsPlan;
 

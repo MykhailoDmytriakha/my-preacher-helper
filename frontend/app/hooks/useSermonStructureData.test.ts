@@ -1,11 +1,10 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useSermonStructureData } from './useSermonStructureData';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
 import { toast } from 'sonner';
-import { TFunction } from 'i18next';
-import { Item, Sermon, OutlinePoint, Tag, Thought, Structure, Outline } from '@/models/models';
+import { Sermon, Thought, Structure, Outline } from '@/models/models';
 
 // Mocks
 jest.mock('@/services/sermon.service');
@@ -27,6 +26,11 @@ const mockT = (key: string | string[]) => {
     const lookupKey = Array.isArray(key) ? key[0] : key;
     return mockTranslations[lookupKey] || lookupKey;
 };
+
+// Type for the mock translation function
+type MockTFunction = (key: string | string[], fallback?: string) => string;
+
+
 
 // Sample Data
 const mockThoughts: Thought[] = [
@@ -103,7 +107,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should initialize with loading state true and default values', () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
     expect(result.current.loading).toBe(true);
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBeNull();

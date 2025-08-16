@@ -3,18 +3,18 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
-import { Outline, OutlinePoint, Plan, Sermon, Thought, Structure } from "@/models/models";
+import { OutlinePoint, Sermon, Thought, Plan, Structure } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, Sparkles, FileText, Pencil, Key, Maximize2, BookOpen, X, ChevronDown, Copy, Minimize2, ScrollText } from "lucide-react";
+import { Save, Sparkles, FileText, Pencil, Key } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
-import ReactDOM from "react-dom/client";
+
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 
@@ -47,6 +47,7 @@ const Card = React.forwardRef<HTMLDivElement, { className?: string, children: Re
     </div>
   )
 );
+Card.displayName = 'Card';
 
 const Button = ({ 
   onClick, 
@@ -144,7 +145,6 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
   onGenerate,
   generatedContent,
   isGenerating,
-  sermonId,
   onOpenFragmentsModal,
 }, ref) => {
   const { t } = useTranslation();
@@ -214,7 +214,7 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
                              className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
                              style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
                     >
-                      "{fragment}"
+                      &quot;{fragment}&quot;
                     </span>
                   ))}
                 </div>
@@ -229,9 +229,10 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
     </Card>
   );
 });
+OutlinePointCard.displayName = 'OutlinePointCard';
 
 // Add a debounce utility to prevent too frequent calls
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
   
   return function(...args: Parameters<T>) {
@@ -274,7 +275,7 @@ export default function PlanPage() {
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
   
   // Add syncInProgress flag to prevent recursive sync calls
-  const syncInProgressRef = useRef(false);
+  // const syncInProgressRef = useRef(false);
   
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
@@ -509,10 +510,10 @@ export default function PlanPage() {
   };
 
   // Find thoughts for an outline point
-  const findThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
-    // Используем существующую функцию с учетом порядка из структуры
-    return getThoughtsForOutlinePoint(outlinePointId);
-  };
+  // const findThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
+  //   // Используем существующую функцию с учетом порядка из структуры
+  //   return getThoughtsForOutlinePoint(outlinePointId);
+  // };
 
   // Generate content for an outline point
   const generateOutlinePointContent = async (outlinePointId: string) => {
@@ -629,34 +630,34 @@ export default function PlanPage() {
   };
   
   // Save the plan to the server
-  const savePlan = async () => {
-    if (!sermon) return;
-    
-    try {
-      const planToSave: Plan = {
-        introduction: { outline: combinedPlan.introduction },
-        main: { outline: combinedPlan.main },
-        conclusion: { outline: combinedPlan.conclusion },
-      };
-      
-      const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(planToSave),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to save plan: ${response.status}`);
-      }
-      
-      toast.success(t("plan.planSaved"));
-    } catch (err) {
-      console.error(err);
-      toast.error(t("errors.failedToSavePlan"));
-    }
-  };
+  // const savePlan = async () => {
+  //   if (!sermon) return;
+  //   
+  //   try {
+  //     const planToSave: Plan = {
+  //       introduction: { outline: combinedPlan.introduction },
+  //       main: { outline: combinedPlan.main },
+  //       conclusion: { outline: combinedPlan.conclusion },
+  //     };
+  //     
+  //     const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
+  //       method: "PUT",
+  //       headers: {
+  //       "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify(planToSave),
+  //     });
+  //     
+  //     if (!response.ok) {
+  //       throw new Error(`Failed to save plan: ${response.status}`);
+  //     }
+  //     
+  //       toast.success(t("plan.planSaved"));
+  //   } catch (err) {
+  //     console.error(err);
+  //     toast.error(t("errors.failedToSavePlan"));
+  //   }
+  // };
   
   // Save individual outline point
   const saveOutlinePoint = async (outlinePointId: string, content: string, section: keyof Plan) => {
@@ -818,7 +819,7 @@ export default function PlanPage() {
   };
   
   // Generate content for export as text
-  const getExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }): Promise<string> => {
+  const getExportContent = async (format: 'plain' | 'markdown'): Promise<string> => {
     if (!sermon) return '';
     
     const titleSection = `# ${sermon.title}\n\n`;

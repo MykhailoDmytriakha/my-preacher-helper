@@ -387,3 +387,20 @@ jest.mock('remark-gfm', () => ({
   __esModule: true,
   default: {}
 })); 
+
+// Mock Next.js Image component to avoid hostname configuration issues in tests
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: ({ src, alt, width, height, className, ...props }) => {
+    // eslint-disable-next-line @next/next/no-img-element
+    return React.createElement('img', {
+      src,
+      alt,
+      width,
+      height,
+      className,
+      ...props,
+      'data-testid': 'next-image'
+    });
+  }
+})); 

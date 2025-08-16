@@ -25,8 +25,8 @@ export async function POST(request: Request) {
     tag.required = false;
     await saveTag(tag);
     return NextResponse.json({ message: 'Tag created' }, { status: 201 });
-  } catch (error: any) {
-    if (error?.message === 'RESERVED_NAME') {
+  } catch (error: unknown) {
+    if ((error as Error)?.message === 'RESERVED_NAME') {
       return NextResponse.json({ message: 'Reserved tag name' }, { status: 400 });
     }
     console.error('POST: Error creating tag', error);
@@ -44,9 +44,9 @@ export async function PUT(request: Request) {
     }
     const updatedTag = await updateTagInDb(tag);
     return NextResponse.json({ message: 'Tag updated', tag: updatedTag }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('PUT: Error updating tag', error);
-    return NextResponse.json({ message: 'Error updating tag', error: error.message }, { status: 500 });
+    return NextResponse.json({ message: 'Error updating tag', error: (error as Error).message }, { status: 500 });
   }
 }
 

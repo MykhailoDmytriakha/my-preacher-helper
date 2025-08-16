@@ -25,7 +25,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   
   // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+    const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [saveQueue, setSaveQueue] = useState<number>(0);
   const [sectionPoints, setSectionPoints] = useState<Record<SectionType, OutlinePoint[]>>({
@@ -200,7 +200,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
           conclusion: pointsToSave.conclusion,
         };
         
-        const result = await updateSermonOutline(sermon.id, outlineToSave);
+        await updateSermonOutline(sermon.id, outlineToSave);
         onOutlineUpdate?.(outlineToSave);
       } catch (err) {
         console.error("Error saving sermon outline:", err);
@@ -212,10 +212,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     }, 100); // Shorter timeout since we're using direct data
   };
   
-  // Original save function now just passes current state
-  const saveOutlineChanges = () => {
-    directlySaveOutlineChanges(sectionPoints);
-  };
+
   
   const toggleSection = (section: SectionType) => {
     setExpandedSections({

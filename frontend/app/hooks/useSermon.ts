@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getSermonById } from "@services/sermon.service";
 import type { Sermon, Thought } from "@/models/models";
 
@@ -7,23 +7,23 @@ function useSermon(sermonId: string) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const refreshSermon = async () => {
+  const refreshSermon = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getSermonById(sermonId);
       setSermon(data || null);
-    } catch (e: any) {
-      setError(e);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       setLoading(false);
     }
-  };
+  }, [sermonId]);
 
   useEffect(() => {
     if (sermonId) {
       refreshSermon();
     }
-  }, [sermonId]);
+  }, [sermonId, refreshSermon]);
 
   const getSortedThoughts = (): Thought[] => {
     if (!sermon) return [];

@@ -1,6 +1,5 @@
-// @ts-nocheck
 import { getExportContent } from '@/utils/exportContent';
-import type { Sermon, Thought, Structure, OutlinePoint } from '@/app/models/models';
+import type { Sermon, Thought, Structure } from '@/app/models/models';
 
 // Mock the i18n instance
 jest.mock('@locales/i18n', () => ({
@@ -25,7 +24,7 @@ jest.mock('@locales/i18n', () => ({
 }));
 
 beforeAll(() => {
-  jest.spyOn(console, 'log').mockImplementation((...args) => {
+  jest.spyOn(console, 'log').mockImplementation(() => {
     // Disable noisy logs during test runs
   });
 });
@@ -35,12 +34,7 @@ afterAll(() => {
 });
 
 describe('getExportContent', () => {
-  // Helper function to create a timestamp for a specified number of days ago
-  const daysAgo = (days: number): string => {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    return date.toISOString();
-  };
+
 
   // Helper function to create a thought
   const createThought = (

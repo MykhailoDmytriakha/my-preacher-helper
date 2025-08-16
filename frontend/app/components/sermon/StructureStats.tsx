@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
-import type { Sermon, Thought } from "@/models/models";
+import React from "react";
+import { useRouter } from "next/navigation";
+import type { Sermon } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
@@ -23,18 +23,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   hasInconsistentThoughts = false,
 }) => {
   const router = useRouter();
-  const { id } = useParams() as { id: string };
   const { t } = useTranslation();
-  const [animateStats, setAnimateStats] = useState(false);
-  
-  // Set animation state after component mounts
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAnimateStats(true);
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   const intro = tagCounts["Вступление"] || 0;
   const main = tagCounts["Основная часть"] || 0;
@@ -91,7 +80,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           <div className="text-center" style={{ color: introColor }}>
             <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              "{t('tags.introduction')}" <br />
+              &ldquo;{t('tags.introduction')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
           </div>
@@ -99,7 +88,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           <div className="text-center" style={{ color: mainColor }}>
             <div className="text-base sm:text-lg font-bold">{mainPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              "{t('tags.mainPart')}"
+              &ldquo;{t('tags.mainPart')}&rdquo;
               <br />
               {t('structure.recommended', { percent: 60 })}
             </span>
@@ -108,7 +97,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           <div className="text-center" style={{ color: conclusionColor }}>
             <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              "{t('tags.conclusion')}" <br />
+              &ldquo;{t('tags.conclusion')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
           </div>

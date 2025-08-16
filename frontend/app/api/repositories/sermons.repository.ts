@@ -82,7 +82,7 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonPlan(sermonId: string, plan: any): Promise<any> {
+  async updateSermonPlan(sermonId: string, plan: Record<string, unknown>): Promise<Record<string, unknown>> {
     console.log(`Updating sermon plan for sermon ${sermonId}`);
     console.log(`Plan data to update:`, JSON.stringify(plan, null, 2));
     

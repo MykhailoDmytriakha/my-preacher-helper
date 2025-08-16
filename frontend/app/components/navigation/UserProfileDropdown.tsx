@@ -6,6 +6,7 @@ import { User } from "firebase/auth";
 import { useTranslation } from "react-i18next";
 import { ChevronIcon } from "@components/Icons";
 import "@locales/i18n";
+import Image from "next/image";
 
 interface UserProfileDropdownProps {
   user: User | null;
@@ -52,9 +53,11 @@ export default function UserProfileDropdown({ user, onLogout }: UserProfileDropd
       >
         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white">
           {user?.photoURL && !imgError ? (
-            <img 
+            <Image 
               src={user.photoURL} 
               alt="Avatar" 
+              width={40}
+              height={40}
               className="w-full h-full rounded-full"
               onError={() => setImgError(true)}
             />

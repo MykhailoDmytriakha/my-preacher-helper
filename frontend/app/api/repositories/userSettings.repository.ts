@@ -45,7 +45,7 @@ export class UserSettingsRepository {
       const doc = await docRef.get();
       
       // Initialize updates object with only the fields that are provided
-      const allowedUpdates: any = {};
+      const allowedUpdates: Record<string, unknown> = {};
       
       // Only add fields that are explicitly provided
       if (language !== undefined) allowedUpdates.language = language;

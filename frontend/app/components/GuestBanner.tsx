@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { auth, checkGuestExpiration } from "@services/firebaseAuth.service";
 
 export function GuestBanner() {
-  const [isGuest, setIsGuest] = useState(false);
+  const [isGuest] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
 import { Sermon } from '@/models/models';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +19,6 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
   const [title, setTitle] = useState(sermon.title);
   const [verse, setVerse] = useState(sermon.verse);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const hasChanges = title !== sermon.title || verse !== sermon.verse;
 
@@ -33,8 +31,6 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
-    const updatedData = { title, verse };
 
     try {
       const data = await updateSermon({

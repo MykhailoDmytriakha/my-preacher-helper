@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     return NextResponse.json({ outlinePoints });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error generating outline points:", error);
     return NextResponse.json(
       { error: `Failed to generate outline points: ${error.message}` }, 

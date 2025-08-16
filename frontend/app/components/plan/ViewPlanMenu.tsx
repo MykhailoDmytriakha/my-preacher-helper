@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ChevronDown, Maximize2, ScrollText, FileText } from "lucide-react";
+import { BookOpen, ChevronDown, ScrollText } from "lucide-react";
 import ReactDOM from "react-dom/client";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { toast } from "sonner";
@@ -245,15 +245,14 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
               console.error('Copy error:', err);
             });
         }
-      } catch (err) {
+      } catch {
         navigator.clipboard.writeText(tempDiv.innerText)
           .then(() => {
             showCopiedState();
             toast.success(t("plan.copySuccess") || "Plan copied to clipboard!");
           })
-          .catch(err => {
+          .catch(() => {
             toast.error(t("plan.copyError") || "Failed to copy");
-            console.error('Copy error:', err);
           });
       }
       

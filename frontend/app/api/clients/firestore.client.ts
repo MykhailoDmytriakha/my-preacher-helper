@@ -134,12 +134,12 @@ export async function deleteTag(userId: string, tagName: string) {
     sermonsSnap.forEach((doc) => {
       const data = doc.data();
       const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
-      const updated = thoughts.map((th: any) => ({
+      const updated = thoughts.map((th: Record<string, unknown>) => ({
         ...th,
         tags: Array.isArray(th.tags) ? th.tags.filter((t: string) => t !== tagName) : []
       }));
       // Count diffs
-      thoughts.forEach((th: any, idx: number) => {
+      thoughts.forEach((th: Record<string, unknown>, idx: number) => {
         const before = Array.isArray(th.tags) ? th.tags.length : 0;
         const after = Array.isArray(updated[idx].tags) ? updated[idx].tags.length : 0;
         if (after < before) affectedThoughts += (before - after);

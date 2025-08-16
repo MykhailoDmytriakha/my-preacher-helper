@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react"; // Import useCallback
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import type { Sermon, Thought, Outline, Preparation } from "@/models/models";
 import Link from "next/link";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
-import ThoughtCard from "@components/ThoughtCard";
+
 import AddThoughtManual from "@components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
 import SermonHeader from "@/components/sermon/SermonHeader"; // Import the SermonHeader
@@ -110,7 +110,7 @@ export default function SermonPage() {
     }
   }, [id, modeParam]);
   
-  const { sermon, setSermon, loading, refreshSermon } = useSermon(id);
+  const { sermon, setSermon, loading } = useSermon(id);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
 
@@ -207,8 +207,8 @@ export default function SermonPage() {
         try {
           const tagData = await getTags(sermon.userId);
           const combinedTags = [
-            ...tagData.requiredTags.map((t: any) => ({ name: t.name, color: t.color })),
-            ...tagData.customTags.map((t: any) => ({ name: t.name, color: t.color })),
+            ...tagData.requiredTags.map((t: { name: string; color: string }) => ({ name: t.name, color: t.color })),
+            ...tagData.customTags.map((t: { name: string; color: string }) => ({ name: t.name, color: t.color })),
           ];
           setAllowedTags(combinedTags);
         } catch (error) {

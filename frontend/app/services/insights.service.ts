@@ -1,4 +1,4 @@
-import { Insights, Sermon } from '@/models/models';
+import { Insights } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 /**

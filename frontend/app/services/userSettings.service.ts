@@ -100,7 +100,7 @@ export async function updateUserProfile(
     if (!userId) return;
     
     // Only update provided fields
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email;
     if (displayName !== undefined) updates.displayName = displayName;
     
@@ -141,7 +141,7 @@ export async function initializeUserSettings(
     if (!userId) return;
     
     // Build request payload with only provided fields
-    const payload: any = { userId };
+    const payload: Record<string, unknown> = { userId };
     if (language !== undefined) payload.language = language;
     if (email !== undefined) payload.email = email; 
     if (displayName !== undefined) payload.displayName = displayName;

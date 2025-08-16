@@ -36,7 +36,7 @@ export async function PUT(request: NextRequest) {
     }
     
     // Only pass fields that are explicitly provided in the request
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if ('language' in body) updates.language = language;
     if ('email' in body) updates.email = email;
     if ('displayName' in body) updates.displayName = displayName;

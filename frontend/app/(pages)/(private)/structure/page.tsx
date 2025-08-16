@@ -16,7 +16,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   verticalListSortingStrategy,
   rectSortingStrategy,
   sortableKeyboardCoordinates,
@@ -25,22 +24,16 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Column from "@/components/Column";
 import SortableItem from "@/components/SortableItem";
-import { Item, Sermon, OutlinePoint, Thought, Outline, Tag } from "@/models/models";
+import { Item, Sermon, OutlinePoint, Thought, Outline, Structure } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
-import ExportButtons from "@/components/ExportButtons";
-import { getTags } from "@/services/tag.service";
-import { getSermonById } from "@/services/sermon.service";
 import { updateThought, deleteThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { getSermonOutline } from "@/services/outline.service";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
-import { getContrastColor } from '@/utils/color';
 import CardContent from "@/components/CardContent";
 import { getExportContent } from "@/utils/exportContent";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getSectionLabel } from "@lib/sections";
 import debounce from 'lodash/debounce';
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
@@ -110,7 +103,6 @@ function StructurePageContent() {
     allowedTags,
     loading,
     error,
-    setLoading,
     isAmbiguousVisible,
     setIsAmbiguousVisible
   }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t);
@@ -207,11 +199,6 @@ function StructurePageContent() {
         let outlinePoint: { text: string; section: string } | undefined;
         if (outlinePointId && sermon.outline) {
           const sections = ['introduction', 'main', 'conclusion'] as const;
-          const sectionTranslations: Record<string, string> = {
-            'introduction': t('outline.introduction') || 'Introduction',
-            'main': t('outline.mainPoints') || 'Main Points',
-            'conclusion': t('outline.conclusion') || 'Conclusion'
-          };
           
           for (const section of sections) {
             const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
@@ -298,11 +285,6 @@ function StructurePageContent() {
         let outlinePoint: { text: string; section: string } | undefined;
         if (outlinePointId && sermon.outline) {
           const sections = ['introduction', 'main', 'conclusion'] as const;
-          const sectionTranslations: Record<string, string> = {
-            'introduction': t('outline.introduction') || 'Introduction',
-            'main': t('outline.mainPoints') || 'Main Points',
-            'conclusion': t('outline.conclusion') || 'Conclusion'
-          };
           
           for (const section of sections) {
             const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
@@ -378,7 +360,7 @@ function StructurePageContent() {
     if (!srcContainerKey) return;
 
     let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
-    let targetOutlinePointId: string | null | undefined = over.data?.current?.outlinePointId as any;
+    let targetOutlinePointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
 
     if (overId.startsWith('outline-point-')) {
       dstContainerKey = over.data?.current?.container as string | undefined;
@@ -451,7 +433,7 @@ function StructurePageContent() {
     }
 
     // Build new state preview without duplicating when source === destination
-    const draft: Record<string, Item[]> = { ...state } as any;
+    const draft: Record<string, Item[]> = { ...state };
     const previewItem: Item = { ...dragged, outlinePointId: intendedOutline };
     if (srcContainerKey === dstContainerKey) {
       const arr = [...state[srcContainerKey]];
@@ -477,8 +459,8 @@ function StructurePageContent() {
   };
 
   const isStructureChanged = (
-    structurePrev: string | Record<string, any>,
-    structureNew: string | Record<string, any>
+    structurePrev: string | Structure | Record<string, unknown>,
+    structureNew: string | Structure | Record<string, unknown>
   ): boolean => {
     const parse = (v: string | object) =>
       typeof v === "string" ? JSON.parse(v) : v;
@@ -551,7 +533,7 @@ function StructurePageContent() {
     // Find the index of the target item in the destination container
     let targetItemIndex = -1;
     let droppedOnItem = false;
-    let targetItemOutlinePointId: string | undefined = undefined;
+    let targetItemOutlinePointId: string | null = null;
 
     if (
       over.id !== overContainer &&
@@ -563,7 +545,7 @@ function StructurePageContent() {
       if (targetItemIndex !== -1) {
         const targetItem = containers[overContainer][targetItemIndex];
         // If target item is unassigned, explicitly use null to signal clearing assignment
-        targetItemOutlinePointId = (targetItem?.outlinePointId ?? null) as any;
+        targetItemOutlinePointId = targetItem?.outlinePointId ?? null;
       }
     }
     
@@ -663,7 +645,7 @@ function StructurePageContent() {
     // Ensure the moved item exists only in the destination container across all sections
     const removeIdFromOtherSections = (all: Record<string, Item[]>, keepIn: string, idToKeep: string) => {
       const sections = ["introduction", "main", "conclusion", "ambiguous"] as const;
-      const result: Record<string, Item[]> = { ...all } as any;
+      const result: Record<string, Item[]> = { ...all };
       for (const sec of sections) {
         if (sec === keepIn) continue;
         const arr = result[sec] || [];
@@ -747,26 +729,6 @@ function StructurePageContent() {
             if (itKey === groupKey) sameGroupIndexes.push(i);
           }
           // Find previous and next neighbor within the same group relative to movedIndex
-          let prevIdxInSection: number | null = null;
-          let nextIdxInSection: number | null = null;
-          for (const idx of sameGroupIndexes) {
-            if (idx < movedIndex) prevIdxInSection = idx;
-            if (idx > movedIndex) { nextIdxInSection = idx; break; }
-          }
-          const prevItem = prevIdxInSection !== null ? updatedContainers[overContainer][prevIdxInSection] : undefined;
-          const nextItem = nextIdxInSection !== null ? updatedContainers[overContainer][nextIdxInSection] : undefined;
-          const prevPos = typeof prevItem?.position === 'number' ? (prevItem!.position as number) : undefined;
-          const nextPos = typeof nextItem?.position === 'number' ? (nextItem!.position as number) : undefined;
-          let newPos: number;
-          if (prevPos !== undefined && nextPos !== undefined && prevPos < nextPos) {
-            newPos = (prevPos + nextPos) / 2;
-          } else if (prevPos !== undefined) {
-            newPos = prevPos + 1000;
-          } else if (nextPos !== undefined) {
-            newPos = nextPos - 1000;
-          } else {
-            newPos = 1000;
-          }
 
           // Compute new positional rank within the destination group (outline point or unassigned)
       const groupKey1 = finalOutlinePointId || '__unassigned__';
@@ -1211,7 +1173,7 @@ function StructurePageContent() {
   };
 
   // Handler for accepting all remaining changes
-  const handleKeepAll = (columnId: string) => {
+  const handleKeepAll = () => {
     if (!highlightedItems || Object.keys(highlightedItems).length === 0) return;
     
     // Create a list of all thoughts that need to be updated
@@ -1223,7 +1185,7 @@ function StructurePageContent() {
       if (highlightedItems[itemId].type !== 'assigned') continue;
       
       // Find the item in the containers
-      for (const [containerId, items] of Object.entries(containers)) {
+      for (const items of Object.values(containers)) {
         const item = items.find(i => i.id === itemId);
         if (item && item.outlinePointId && sermon) {
           const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
@@ -1387,7 +1349,7 @@ function StructurePageContent() {
 
   // Debounced save functions for structure and thoughts
   const debouncedSaveStructure = useCallback(
-    debounce(async (sermonId: string, structure: any) => {
+    debounce(async (sermonId: string, structure: Structure) => {
       try {
         await updateStructure(sermonId, structure);
       } catch (error) {
@@ -1690,7 +1652,6 @@ function StructurePageContent() {
         </DndContext>
         {editingItem && (
           <EditThoughtModal
-            thoughtId={editingItem.id.startsWith('temp-') ? undefined : editingItem.id}
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
             initialOutlinePointId={editingItem.outlinePointId}

@@ -17,7 +17,6 @@ interface OutlinePointCardProps {
   onGenerate: (outlinePointId: string) => Promise<void>;
   generatedContent: string | null;
   isGenerating: boolean;
-  sermonId: string;
   onOpenFragmentsModal: (outlinePointId: string) => void;
   editMode: boolean;
   onToggleEditMode: (outlinePointId: string) => void;
@@ -34,7 +33,6 @@ export const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCar
   onGenerate,
   generatedContent,
   isGenerating,
-  sermonId,
   onOpenFragmentsModal,
   editMode,
   onToggleEditMode,

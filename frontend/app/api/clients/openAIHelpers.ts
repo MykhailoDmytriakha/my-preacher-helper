@@ -332,7 +332,7 @@ export const logger = {
    * @param message The message to log
    * @param data Optional data to include with the log
    */
-  info: (module: string, message: string, data?: any) => {
+  info: (module: string, message: string, data?: unknown) => {
     if (data) {
       console.log(`ℹ️ [${module}] ${message}`, data);
     } else {
@@ -346,7 +346,7 @@ export const logger = {
    * @param message The warning message
    * @param data Optional data to include with the warning
    */
-  warn: (module: string, message: string, data?: any) => {
+  warn: (module: string, message: string, data?: unknown) => {
     if (data) {
       console.warn(`⚠️ [${module}] ${message}`, data);
     } else {
@@ -360,7 +360,7 @@ export const logger = {
    * @param message The error message
    * @param error Optional error object or data to include
    */
-  error: (module: string, message: string, error?: any) => {
+  error: (module: string, message: string, error?: unknown) => {
     if (error) {
       console.error(`❌ [${module}] ${message}`, error);
     } else {
@@ -374,7 +374,7 @@ export const logger = {
    * @param message The debug message
    * @param data Optional data to include with the debug message
    */
-  debug: (module: string, message: string, data?: any) => {
+  debug: (module: string, message: string, data?: unknown) => {
     if (isDebugMode) {
       if (data) {
         console.log(`🔍 [${module}] ${message}`, data);
@@ -390,7 +390,7 @@ export const logger = {
    * @param message The success message
    * @param data Optional data to include with the success message
    */
-  success: (module: string, message: string, data?: any) => {
+  success: (module: string, message: string, data?: unknown) => {
     if (data) {
       console.log(`✅ [${module}] ${message}`, data);
     } else {
