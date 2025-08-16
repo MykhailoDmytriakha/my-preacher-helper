@@ -191,7 +191,7 @@ describe('Drag and Drop Integration Tests', () => {
       ...containers.ambiguous.map(i => i.id),
       ...containers.introduction.map(i => i.id),
       ...containers.main.map(i => i.id),
-      ...containers.conclusion.map(i => i.id),
+      ...containers.conclusion.map((i: any) => i.id), // Type assertion for test purposes
     ];
     const id2Count = allIds.filter(id => id === 'item2').length;
     expect(id2Count).toBe(1);

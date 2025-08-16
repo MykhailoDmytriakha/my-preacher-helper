@@ -173,7 +173,28 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
     }
   }, [sermon]);
 
-  // Save entire plan (placeholder for full plan save functionality)
+  // Helper functions
+  const findSectionForOutlinePoint = useCallback((outlinePointId: string): string | null => {
+    if (!sermon?.outline) return null;
+    
+    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) return 'introduction';
+    if (sermon.outline.main.some(op => op.id === outlinePointId)) return 'main';
+    if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) return 'conclusion';
+    
+    return null;
+  }, [sermon?.outline]);
+
+  const findOutlinePointById = useCallback((outlinePointId: string): OutlinePoint | undefined => {
+    if (!sermon?.outline) return undefined;
+    
+    const sections = [sermon.outline.introduction, sermon.outline.main, sermon.outline.conclusion];
+    for (const section of sections) {
+      const point = section.find(op => op.id === outlinePointId);
+      if (point) return point;
+    }
+    return undefined;
+  }, [sermon?.outline]);
+
   const savePlan = useCallback(async () => {
     setIsSaving(true);
     try {
@@ -225,28 +246,6 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       }));
     }
   }, [sermon?.plan, findSectionForOutlinePoint]);
-
-  // Helper functions
-  const findOutlinePointById = useCallback((outlinePointId: string): OutlinePoint | undefined => {
-    if (!sermon?.outline) return undefined;
-    
-    const sections = [sermon.outline.introduction, sermon.outline.main, sermon.outline.conclusion];
-    for (const section of sections) {
-      const point = section.find(op => op.id === outlinePointId);
-      if (point) return point;
-    }
-    return undefined;
-  }, [sermon?.outline]);
-
-  const findSectionForOutlinePoint = useCallback((outlinePointId: string): string | null => {
-    if (!sermon?.outline) return null;
-    
-    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) return 'introduction';
-    if (sermon.outline.main.some(op => op.id === outlinePointId)) return 'main';
-    if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) return 'conclusion';
-    
-    return null;
-  }, [sermon?.outline]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = Object.values(modifiedContent).some(isModified => isModified);

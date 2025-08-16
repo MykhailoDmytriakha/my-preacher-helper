@@ -34,8 +34,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ outlinePoints });
   } catch (error: unknown) {
     console.error("Error generating outline points:", error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { error: `Failed to generate outline points: ${error.message}` }, 
+      { error: `Failed to generate outline points: ${errorMessage}` }, 
       { status: 500 }
     );
   }

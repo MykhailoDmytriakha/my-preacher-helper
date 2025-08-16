@@ -108,7 +108,7 @@ describe('SermonsRepository', () => {
       const invalidPlan = {
         main: { outline: 'Main outline' },
         conclusion: { outline: 'Conclusion outline' }
-      };
+      } as any; // Type assertion to bypass TypeScript for testing invalid cases
 
       await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
         .rejects.toThrow('Invalid plan structure');
@@ -120,7 +120,7 @@ describe('SermonsRepository', () => {
       const invalidPlan = {
         introduction: { outline: 'Introduction outline' },
         conclusion: { outline: 'Conclusion outline' }
-      };
+      } as any; // Type assertion to bypass TypeScript for testing invalid cases
 
       await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
         .rejects.toThrow('Invalid plan structure');
@@ -132,7 +132,7 @@ describe('SermonsRepository', () => {
       const invalidPlan = {
         introduction: { outline: 'Introduction outline' },
         main: { outline: 'Main outline' }
-      };
+      } as any; // Type assertion to bypass TypeScript for testing invalid cases
 
       await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
         .rejects.toThrow('Invalid plan structure');
@@ -142,7 +142,7 @@ describe('SermonsRepository', () => {
 
     it('should throw error when introduction.outline is not a string', async () => {
       const invalidPlan = {
-        introduction: { outline: 123 },
+        introduction: { outline: 123 as any }, // Type assertion to bypass TypeScript for testing invalid cases
         main: { outline: 'Main outline' },
         conclusion: { outline: 'Conclusion outline' }
       };
@@ -156,7 +156,7 @@ describe('SermonsRepository', () => {
     it('should throw error when main.outline is not a string', async () => {
       const invalidPlan = {
         introduction: { outline: 'Introduction outline' },
-        main: { outline: true },
+        main: { outline: true as any }, // Type assertion to bypass TypeScript for testing invalid cases
         conclusion: { outline: 'Conclusion outline' }
       };
 
@@ -170,7 +170,7 @@ describe('SermonsRepository', () => {
       const invalidPlan = {
         introduction: { outline: 'Introduction outline' },
         main: { outline: 'Main outline' },
-        conclusion: { outline: {} }
+        conclusion: { outline: {} as any } // Type assertion to bypass TypeScript for testing invalid cases
       };
 
       await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
@@ -181,7 +181,7 @@ describe('SermonsRepository', () => {
 
     it('should throw error when introduction.outline is undefined', async () => {
       const invalidPlan = {
-        introduction: { outline: undefined },
+        introduction: { outline: undefined as any }, // Type assertion to bypass TypeScript for testing invalid cases
         main: { outline: 'Main outline' },
         conclusion: { outline: 'Conclusion outline' }
       };
@@ -195,7 +195,7 @@ describe('SermonsRepository', () => {
     it('should throw error when main.outline is null', async () => {
       const invalidPlan = {
         introduction: { outline: 'Introduction outline' },
-        main: { outline: null },
+        main: { outline: null as any }, // Type assertion to bypass TypeScript for testing invalid cases
         conclusion: { outline: 'Conclusion outline' }
       };
 

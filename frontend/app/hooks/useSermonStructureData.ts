@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Item, Sermon, OutlinePoint, Tag, Thought } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
@@ -38,12 +38,12 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true); // Added state from component
 
-  const columnTitles: Record<string, string> = {
+  const columnTitles = useMemo(() => ({
     introduction: t('structure.introduction'),
     main: t('structure.mainPart'),
     conclusion: t('structure.conclusion'),
     ambiguous: t('structure.underConsideration'),
-  };
+  } as Record<string, string>), [t]);
 
 
   useEffect(() => {
@@ -159,7 +159,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
               requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
               outlinePoint: outlinePointData,
               outlinePointId: thought.outlinePointId,
-              position: (thought as any).position
+              position: (thought as { position?: number }).position
             };
             
             allThoughtItems[stableId] = item;
@@ -335,11 +335,11 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
                     // Re-process the corrected structure
                     if (correctedStructure && typeof correctedStructure === 'object') {
                         ["introduction", "main", "conclusion"].forEach((section) => {
-                            if (Array.isArray(correctedStructure[section])) {
+                            if (Array.isArray((correctedStructure as Record<string, string[]>)[section])) {
                                 const target = section === "introduction" ? intro : section === "main" ? main : concl;
                                 const sectionTagName = columnTitles[section];
                                 const seen = new Set<string>();
-                                const orderedUniqueIds = correctedStructure[section].filter((id: string) => {
+                                const orderedUniqueIds = (correctedStructure as Record<string, string[]>)[section].filter((id: string) => {
                                   if (seen.has(id)) return false;
                                   seen.add(id);
                                   return true;
@@ -493,7 +493,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
     initializeSermon();
     // Ensure dependencies are correct. 't' is included as columnTitles depends on it.
-  }, [sermonId, t]);
+  }, [sermonId, t, columnTitles]);
 
   return {
     sermon,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
+import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -1028,7 +1028,7 @@ function StructurePageContent() {
         // Clean up
         setPreSortState(null);
       }
-    } catch (error) {
+    } catch {
       toast.error(t('errors.failedToSortItems'));
       // Reset state on error
       setPreSortState(null);
@@ -1332,14 +1332,14 @@ function StructurePageContent() {
       if (structureDidChange) {
           try {
               await updateStructure(sermonId, newStructure);
-          } catch (structureError) {
+          } catch {
               toast.error(t('errors.savingError') || "Error saving structure changes after deleting item.");
           }
       }
 
       toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
 
-    } catch (deleteError) {
+    } catch {
       toast.error(t('errors.deletingError') || "Failed to delete thought.");
     } finally {
       // <<< Clear deleting state AFTER operation (success or error) >>>
@@ -1347,20 +1347,20 @@ function StructurePageContent() {
     }
   };
 
-  // Debounced save functions for structure and thoughts
-  const debouncedSaveStructure = useCallback(
-    debounce(async (sermonId: string, structure: Structure) => {
+  // Save functions for structure and thoughts
+  const saveStructure = useCallback(
+    async (sermonId: string, structure: Structure) => {
       try {
         await updateStructure(sermonId, structure);
-      } catch (error) {
+      } catch {
         toast.error(t('errors.failedToSaveStructure'));
       }
-    }, 500),
-    []
+    },
+    [t]
   );
 
-  const debouncedSaveThought = useCallback(
-    debounce(async (sermonId: string, thought: Thought) => {
+  const saveThought = useCallback(
+    async (sermonId: string, thought: Thought) => {
       try {
         const updatedThought = await updateThought(sermonId, thought);
         setSermon((prev: Sermon | null) => {
@@ -1370,12 +1370,16 @@ function StructurePageContent() {
             thoughts: prev.thoughts.map((t: Thought) => (t.id === updatedThought.id ? updatedThought : t)),
           };
         });
-      } catch (error) {
+      } catch {
         toast.error(t('errors.failedToSaveThought'));
       }
-    }, 500),
-    [setSermon]
+    },
+    [setSermon, t]
   );
+
+  // Create debounced versions
+  const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
+  const debouncedSaveThought = useMemo(() => debounce(saveThought, 500), [saveThought]);
 
   // Calculate counts of thoughts per outline point
   const getThoughtsPerOutlinePoint = () => {
@@ -1554,7 +1558,7 @@ function StructurePageContent() {
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll("introduction")}
+                onKeepAll={() => handleKeepAll()}
                 onRevertAll={() => handleRevertAll("introduction")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
@@ -1585,7 +1589,7 @@ function StructurePageContent() {
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll("main")}
+                onKeepAll={() => handleKeepAll()}
                 onRevertAll={() => handleRevertAll("main")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}
@@ -1616,7 +1620,7 @@ function StructurePageContent() {
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll("conclusion")}
+                onKeepAll={() => handleKeepAll()}
                 onRevertAll={() => handleRevertAll("conclusion")}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 onOutlineUpdate={handleOutlineUpdate}

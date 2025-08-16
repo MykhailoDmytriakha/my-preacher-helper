@@ -825,7 +825,6 @@ export default function SermonPage() {
         </motion.div>
       {editingModalData && (
         <EditThoughtModal
-          thoughtId={editingModalData.thought.id}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
           initialOutlinePointId={editingModalData.thought.outlinePointId}

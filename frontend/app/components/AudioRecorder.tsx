@@ -175,7 +175,7 @@ export const AudioRecorder = ({
     } catch (error) {
       handleError(error as Error, 'errors.microphoneUnavailable');
     }
-  }, [disabled, isProcessing, isInitializing, onRecordingComplete, handleError, monitorAudioLevel]);
+  }, [disabled, isProcessing, isInitializing, onRecordingComplete, handleError, monitorAudioLevel, cleanup]);
 
   // Stop recording function
   const stopRecording = useCallback(() => {
@@ -210,7 +210,7 @@ export const AudioRecorder = ({
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
     }
-  }, [isRecording]);
+  }, [isRecording, cleanup]);
 
   // Retry transcription function
   const retryTranscription = useCallback(() => {

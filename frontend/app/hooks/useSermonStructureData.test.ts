@@ -5,6 +5,7 @@ import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
 import { toast } from 'sonner';
 import { Sermon, Thought, Structure, Outline } from '@/models/models';
+import { TFunction } from 'i18next';
 
 // Mocks
 jest.mock('@/services/sermon.service');
@@ -28,7 +29,7 @@ const mockT = (key: string | string[]) => {
 };
 
 // Type for the mock translation function
-type MockTFunction = (key: string | string[], fallback?: string) => string;
+type MockTFunction = TFunction;
 
 
 
@@ -117,7 +118,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should fetch data and update state on successful load', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
 
     // Wait for the loading to finish
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -172,7 +173,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle null sermonId by setting loading false and clearing data', async () => {
-    const { result } = renderHook(() => useSermonStructureData(null, mockT as any));
+    const { result } = renderHook(() => useSermonStructureData(null, mockT as MockTFunction));
 
     // Should not be loading and data should be cleared/default
     expect(result.current.loading).toBe(false);
@@ -190,7 +191,7 @@ describe('useSermonStructureData Hook', () => {
     const sermonError = new Error('Sermon fetch failed');
     mockedGetSermonById.mockRejectedValue(sermonError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -209,7 +210,7 @@ describe('useSermonStructureData Hook', () => {
     const tagsError = new Error('Tags fetch failed');
     mockedGetTags.mockRejectedValue(tagsError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -237,7 +238,7 @@ describe('useSermonStructureData Hook', () => {
     const outlineError = new Error('Failed to fetch outline');
     mockedGetSermonOutline.mockRejectedValue(outlineError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -263,10 +264,10 @@ describe('useSermonStructureData Hook', () => {
         conclusion: [],
         ambiguous: [],
       },
-    } as any;
+    };
     mockedGetSermonById.mockResolvedValueOnce(sermonWithDupes);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introIds = result.current.containers.introduction.map((i) => i.id);
@@ -281,14 +282,14 @@ describe('useSermonStructureData Hook', () => {
       // clear structure so most go to ambiguous and get seeded
       structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
       thoughts: [
-        { id: 'p1', text: 'A', tags: ['вступление'], date: '2023-01-01T10:00:00Z' } as any,
-        { id: 'p2', text: 'B', tags: ['вступление'], date: '2023-01-01T10:00:01Z' } as any,
-        { id: 'p3', text: 'C', tags: ['random'], date: '2023-01-01T10:00:02Z' } as any,
+        { id: 'p1', text: 'A', tags: ['вступление'], date: '2023-01-01T10:00:00Z' },
+        { id: 'p2', text: 'B', tags: ['вступление'], date: '2023-01-01T10:00:01Z' },
+        { id: 'p3', text: 'C', tags: ['random'], date: '2023-01-01T10:00:02Z' },
       ],
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonNoPositions);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Items without clear section tag go to ambiguous; positions should be seeded for stable ordering
@@ -304,14 +305,14 @@ describe('useSermonStructureData Hook', () => {
       ...mockSermon,
       structure: { introduction: ['x1', 'x2', 'x3'], main: [], conclusion: [], ambiguous: [] },
       thoughts: [
-        { id: 'x1', text: '1', tags: ['вступление'], position: 3000, date: '2023-01-01T10:00:00Z' } as any,
-        { id: 'x2', text: '2', tags: ['вступление'], position: 1000, date: '2023-01-01T10:00:01Z' } as any,
-        { id: 'x3', text: '3', tags: ['вступление'], position: 2000, date: '2023-01-01T10:00:02Z' } as any,
+        { id: 'x1', text: '1', tags: ['вступление'], position: 3000, date: '2023-01-01T10:00:00Z' },
+        { id: 'x2', text: '2', tags: ['вступление'], position: 1000, date: '2023-01-01T10:00:02Z' },
+        { id: 'x3', text: '3', tags: ['вступление'], position: 2000, date: '2023-01-01T10:00:02Z' },
       ],
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonWithPositions);
 
-    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as any));
+    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as MockTFunction));
     await waitFor(() => expect(result2.current.loading).toBe(false));
 
     const order = result2.current.containers.introduction.map(i => i.id);
@@ -323,12 +324,12 @@ describe('useSermonStructureData Hook', () => {
       ...mockSermon,
       structure: { introduction: ['t3'], main: [], conclusion: [], ambiguous: [] },
       thoughts: [
-        { id: 't3', text: 'C', tags: ['Main Part'], date: '2023-01-01T10:02:00Z' } as any,
+        { id: 't3', text: 'C', tags: ['Main Part'], date: '2023-01-01T10:02:00Z' },
       ],
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonConflict);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as any));
+    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as MockTFunction));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introHas = result.current.containers.introduction.some(i => i.id === 't3');
@@ -353,7 +354,7 @@ describe('useSermonStructureData Hook', () => {
         mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
         mockedGetSermonOutline.mockResolvedValue(null); // No outline
 
-        const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as any));
+        const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction));
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.loading).toBe(false);

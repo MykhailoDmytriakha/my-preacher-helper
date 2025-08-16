@@ -1,5 +1,5 @@
 import { getExportContent } from '@/utils/exportContent';
-import type { Sermon, Thought, Structure } from '@/app/models/models';
+import type { Sermon, Thought, Structure, OutlinePoint } from '../../models/models';
 
 // Mock the i18n instance
 jest.mock('@locales/i18n', () => ({
@@ -457,7 +457,7 @@ John 1:1`); // Use backticks for multiline check
         createThought('1', 'Intro', ['Вступление'], 1),
         createThought('3', 'Conclusion', ['Заключение'], 0),
       ];
-       const sermon: Sermon = { id: 'mdEmpty', title: 'MD Empty', verse: '', thoughts, userId: '' };
+       const sermon: Sermon = { id: 'mdEmpty', title: 'MD Empty', verse: '', date: '', thoughts, userId: '' };
        const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
 
        expect(result).toContain('## Introduction\n\n');
@@ -654,7 +654,7 @@ Other Thoughts:
       };
 
       it('should handle sermons with no verse', async () => {
-        const sermon: Sermon = { ...baseSermon, verse: undefined };
+        const sermon: Sermon = { ...baseSermon, verse: '' };
         const result = await getExportContent(sermon, undefined, { format: 'markdown', includeTags: true });
         expect(result).toContain('# Sermon: Markdown Verse Test');
         expect(result).not.toContain('**Scripture Text:**');

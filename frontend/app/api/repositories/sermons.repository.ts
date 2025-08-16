@@ -1,5 +1,5 @@
 import { adminDb } from 'app/config/firebaseAdminConfig';
-import { Sermon, Outline } from '@/models/models';
+import { Sermon, Outline, Plan } from '@/models/models';
 
 /**
  * Repository for user settings database operations
@@ -82,7 +82,7 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonPlan(sermonId: string, plan: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async updateSermonPlan(sermonId: string, plan: Plan): Promise<Plan> {
     console.log(`Updating sermon plan for sermon ${sermonId}`);
     console.log(`Plan data to update:`, JSON.stringify(plan, null, 2));
     

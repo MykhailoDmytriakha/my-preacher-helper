@@ -8,7 +8,7 @@ import LandingFooter from '@/components/landing/LandingFooter';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 import PublicRoute from '@/components/PublicRoute';
-import { signInWithGoogle, signInAsGuest } from '@/services/firebaseAuth.service';
+import { signInWithGoogle } from '@/services/firebaseAuth.service';
 import { auth } from '@/services/firebaseAuth.service';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -29,17 +29,7 @@ export default function Home() {
     }
   };
 
-  const handleGuestLogin = async () => {
-    try {
-      setLoading(true);
-      await signInAsGuest();
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Guest login error', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const handleTestLogin = async () => {
     try {
@@ -82,7 +72,6 @@ export default function Home() {
           
           <LoginOptions 
             onGoogleLogin={handleLogin} 
-            onGuestLogin={handleGuestLogin} 
             onTestLogin={handleTestLogin}
             loading={loading}
           />

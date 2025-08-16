@@ -23,7 +23,8 @@ describe('DevQuickNav', () => {
       writable: true,
     });
     process.env.NEXT_PUBLIC_ENABLE_DEV_NAV = '0';
-    process.env.NODE_ENV = 'test';
+    // Mock environment
+    (process.env as any).NODE_ENV = 'test';
 
     const DevQuickNav = (await import('@/components/navigation/DevQuickNav')).default;
     render(<DevQuickNav />);
@@ -37,7 +38,7 @@ describe('DevQuickNav', () => {
       writable: true,
     });
     process.env.NEXT_PUBLIC_ENABLE_DEV_NAV = '1';
-    process.env.NODE_ENV = 'test';
+    (process.env as any).NODE_ENV = 'test';
 
     const DevQuickNav = (await import('@/components/navigation/DevQuickNav')).default;
     render(<DevQuickNav />);

@@ -283,18 +283,25 @@ async function withOpenAILogging<T>(
     let prettyResponse: unknown;
     
     // Handle different response formats based on the operation
-    if ((response as Record<string, unknown>).choices && Array.isArray((response as Record<string, unknown>).choices) && (response as Record<string, unknown>).choices[0]?.message) {
-      const message = (response as Record<string, unknown>).choices[0]?.message as Record<string, unknown>;
-      if (message.content) {
-        // For content-based responses (Claude-style)
-        prettyResponse = message.content;
-      } else if (message.function_call) {
-        // For function call responses
-        prettyResponse = JSON.parse((message.function_call as Record<string, unknown>).arguments as string);
+    const responseObj = response as Record<string, unknown>;
+    if (responseObj.choices && Array.isArray(responseObj.choices) && responseObj.choices[0] && typeof responseObj.choices[0] === 'object' && responseObj.choices[0] !== null) {
+      const firstChoice = responseObj.choices[0] as Record<string, unknown>;
+      if (firstChoice.message && typeof firstChoice.message === 'object' && firstChoice.message !== null) {
+        const message = firstChoice.message as Record<string, unknown>;
+        if (message.content) {
+          // For content-based responses (Claude-style)
+          prettyResponse = message.content;
+        } else if (message.function_call && typeof message.function_call === 'object' && message.function_call !== null) {
+          // For function call responses
+          const functionCall = message.function_call as Record<string, unknown>;
+          if (typeof functionCall.arguments === 'string') {
+            prettyResponse = JSON.parse(functionCall.arguments);
+          }
+        }
       }
-    } else if ((response as Record<string, unknown>).text) {
+    } else if (responseObj.text) {
       // For transcription responses
-      prettyResponse = (response as Record<string, unknown>).text;
+      prettyResponse = responseObj.text;
     } else {
       // Default case
       prettyResponse = response;
@@ -756,7 +763,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
           const itemKey = aiItem.key.trim();
           
           // Store the outline point assignment if available
-          if (itemsMapByKey[itemKey] && aiItem.outlinePoint) {
+          if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
             outlinePointAssignments[itemKey] = aiItem.outlinePoint;
             if (isDebugMode) {
               console.log(`DEBUG: Assigned outline point "${aiItem.outlinePoint}" to item ${itemKey}`);

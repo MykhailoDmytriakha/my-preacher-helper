@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { generatePlanForSection, generatePlanPointContent } from '@clients/openAI.client';
+import { Plan } from '@/models/models';
 
-// Define the plan types locally to avoid import issues
-interface PlanSection {
-  outline: string;
-  outlinePoints?: Record<string, string>;
-}
-
-interface SermonPlan {
-  introduction: PlanSection;
-  main: PlanSection;
-  conclusion: PlanSection;
-}
+// Use the Plan interface from models.ts
 
 // GET /api/sermons/:id/plan - generates full plan by default
 // GET /api/sermons/:id/plan?section=introduction|main|conclusion - generates plan for specific section
@@ -89,17 +80,17 @@ export async function GET(
     // Store the updated plan in the database
     try {
       // Get existing plan or create a new one
-      const existingPlan: Record<string, unknown> = ('plan' in sermon ? sermon.plan : null) || {
+      const existingPlan = ('plan' in sermon ? sermon.plan : null) || {
         introduction: { outline: '' },
         main: { outline: '' },
         conclusion: { outline: '' }
       };
 
       // Update the section that was just generated
-      const updatedPlan: SermonPlan = { 
-        introduction: existingPlan.introduction || { outline: '' },
-        main: existingPlan.main || { outline: '' },
-        conclusion: existingPlan.conclusion || { outline: '' }
+      const updatedPlan: Plan = { 
+        introduction: (existingPlan as Plan)?.introduction || { outline: '' },
+        main: (existingPlan as Plan)?.main || { outline: '' },
+        conclusion: (existingPlan as Plan)?.conclusion || { outline: '' }
       };
       
       // Type-safe way to update the plan section
@@ -115,15 +106,17 @@ export async function GET(
       await sermonsRepository.updateSermonPlan(id, updatedPlan);
       console.log(`Saved ${section} plan to database for sermon ${id}`);
     } catch (saveError: unknown) {
-      console.error(`Error saving plan to database: ${saveError.message}`);
+      const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error occurred';
+      console.error(`Error saving plan to database: ${errorMessage}`);
       // Continue and return the plan even if saving fails
     }
     
     return NextResponse.json(normalizedPlan);
   } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error(`Error generating plan for section ${section}:`, error);
     return NextResponse.json(
-      { error: 'Failed to generate plan', details: error.message },
+      { error: 'Failed to generate plan', details: errorMessage },
       { status: 500 }
     );
   }
@@ -139,7 +132,16 @@ async function generateFullPlan(sermonId: string) {
     }
     
     // Create a full plan object with empty sections initially
-    const fullPlan = {
+    const fullPlan: {
+      introduction: { outline: string; outlinePoints?: Record<string, string> };
+      main: { outline: string; outlinePoints?: Record<string, string> };
+      conclusion: { outline: string; outlinePoints?: Record<string, string> };
+      sectionStatuses: {
+        introduction: boolean;
+        main: boolean;
+        conclusion: boolean;
+      };
+    } = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' },
@@ -154,9 +156,9 @@ async function generateFullPlan(sermonId: string) {
     let hasFailures = false;
     
     // Declare result variables to check for incomplete structure
-    let introResult: Record<string, unknown> | null = null;
-    let mainResult: Record<string, unknown> | null = null;
-    let conclusionResult: Record<string, unknown> | null = null;
+    let introResult: { plan: Plan, success: boolean } | null = null;
+    let mainResult: { plan: Plan, success: boolean } | null = null;
+    let conclusionResult: { plan: Plan, success: boolean } | null = null;
     
     // Process each section sequentially with proper error handling
     try {
@@ -180,8 +182,9 @@ async function generateFullPlan(sermonId: string) {
         "Successfully generated introduction plan" : 
         "Failed to generate introduction plan");
     } catch (introError: unknown) {
+      const errorMessage = introError instanceof Error ? introError.message : 'Unknown error occurred';
       console.error("Failed to generate introduction plan:", introError);
-      fullPlan.introduction = { outline: `Error generating introduction: ${introError.message}` };
+      fullPlan.introduction = { outline: `Error generating introduction: ${errorMessage}` };
       fullPlan.sectionStatuses.introduction = false;
       hasFailures = true;
     }
@@ -207,8 +210,9 @@ async function generateFullPlan(sermonId: string) {
         "Successfully generated main plan" : 
         "Failed to generate main plan");
     } catch (mainError: unknown) {
+      const errorMessage = mainError instanceof Error ? mainError.message : 'Unknown error occurred';
       console.error("Failed to generate main plan:", mainError);
-      fullPlan.main = { outline: `Error generating main part: ${mainError.message}` };
+      fullPlan.main = { outline: `Error generating main part: ${errorMessage}` };
       fullPlan.sectionStatuses.main = false;
       hasFailures = true;
     }
@@ -234,25 +238,26 @@ async function generateFullPlan(sermonId: string) {
         "Successfully generated conclusion plan" : 
         "Failed to generate conclusion plan");
     } catch (conclusionError: unknown) {
+      const errorMessage = conclusionError instanceof Error ? conclusionError.message : 'Unknown error occurred';
       console.error("Failed to generate conclusion plan:", conclusionError);
-      fullPlan.conclusion = { outline: `Error generating conclusion: ${conclusionError.message}` };
+      fullPlan.conclusion = { outline: `Error generating conclusion: ${errorMessage}` };
       fullPlan.sectionStatuses.conclusion = false;
       hasFailures = true;
     }
     
     // Store the full plan in the database, excluding sectionStatuses
-    const planToStore: SermonPlan = {
+    const planToStore: Plan = {
       introduction: {
         outline: fullPlan.introduction?.outline || '',
-        ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as Record<string, unknown>).outlinePoints })
+        ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as Record<string, unknown>).outlinePoints as Record<string, string> })
       },
       main: {
         outline: fullPlan.main?.outline || '',
-        ...(fullPlan.main && 'outlinePoints' in fullPlan.main && { outlinePoints: (fullPlan.main as Record<string, unknown>).outlinePoints })
+        ...(fullPlan.main && 'outlinePoints' in fullPlan.main && { outlinePoints: (fullPlan.main as Record<string, unknown>).outlinePoints as Record<string, string> })
       },
       conclusion: {
         outline: fullPlan.conclusion?.outline || '',
-        ...(fullPlan.conclusion && 'outlinePoints' in fullPlan.conclusion && { outlinePoints: (fullPlan.conclusion as Record<string, unknown>).outlinePoints })
+        ...(fullPlan.conclusion && 'outlinePoints' in fullPlan.conclusion && { outlinePoints: (fullPlan.conclusion as Record<string, unknown>).outlinePoints as Record<string, string> })
       }
     };
     
@@ -304,7 +309,8 @@ async function generateFullPlan(sermonId: string) {
       await sermonsRepository.updateSermonPlan(sermonId, planToStore);
       console.log(`Saved full plan to database for sermon ${sermonId}`);
     } catch (saveError: unknown) {
-      console.error(`Error saving full plan to database: ${saveError.message}`);
+      const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error occurred';
+      console.error(`Error saving full plan to database: ${errorMessage}`);
       // Continue and return the plan even if saving fails
     }
     
@@ -328,7 +334,7 @@ async function generateFullPlan(sermonId: string) {
   } catch (error: unknown) {
     console.error(`Error generating full sermon plan:`, error);
     return NextResponse.json(
-      { error: 'Failed to generate full plan', details: error.message },
+      { error: 'Failed to generate full plan', details: (error as Error).message },
       { status: 500 }
     );
   }
@@ -451,7 +457,7 @@ export async function PUT(
     }
     
     // Ensure the plan has all required sections
-    const plan: SermonPlan = {
+    const plan: Plan = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' }

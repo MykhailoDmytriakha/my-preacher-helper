@@ -31,7 +31,7 @@ jest.mock('@components/AudioRecorder', () => {
       // Call the callback with a mock blob
       if (props.onRecordingComplete) {
         const mockBlob = new Blob([], { type: 'audio/webm' });
-        setStoredAudioBlob(mockBlob);
+        setStoredAudioBlob(mockBlob as any); // Type assertion for test purposes
         props.onRecordingComplete(mockBlob);
       }
     };

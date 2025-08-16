@@ -70,8 +70,8 @@ export const createAudioThought = async (
     }
 
     // Success - clear stored audio if available
-    if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).clearAudioRecorderStorage) {
-      (window as unknown as Record<string, unknown>).clearAudioRecorderStorage();
+    if (typeof window !== 'undefined' && (window as any).clearAudioRecorderStorage) {
+      (window as any).clearAudioRecorderStorage();
     }
 
     // Возвращаем полный объект с текстом, тегами и т.д.

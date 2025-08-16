@@ -49,7 +49,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       const tagsData = await getTags(user.uid);
       setTags(tagsData);
     } catch (error: unknown) {
-      const message = error?.message === 'Reserved tag name' ? t('errors.reservedTagName') : (t('errors.savingError') || 'Error saving');
+      const message = (error as any)?.message === 'Reserved tag name' ? t('errors.reservedTagName') : (t('errors.savingError') || 'Error saving');
       toast.error(message);
     }
   };

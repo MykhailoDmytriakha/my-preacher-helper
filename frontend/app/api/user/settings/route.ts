@@ -43,9 +43,9 @@ export async function PUT(request: NextRequest) {
     
     await userSettingsRepository.createOrUpdate(
       userId, 
-      updates.language, 
-      updates.email, 
-      updates.displayName
+      updates.language as string | undefined, 
+      updates.email as string | undefined, 
+      updates.displayName as string | undefined
     );
     
     return NextResponse.json({ success: true });

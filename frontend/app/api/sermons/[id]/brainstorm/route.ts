@@ -34,8 +34,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ suggestion });
   } catch (error: unknown) {
     console.error("Brainstorm route: Error generating brainstorm suggestion:", error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { error: `Failed to generate brainstorm suggestion: ${error.message}` }, 
+      { error: `Failed to generate brainstorm suggestion: ${errorMessage}` }, 
       { status: 500 }
     );
   }

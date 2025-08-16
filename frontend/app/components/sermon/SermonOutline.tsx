@@ -27,7 +27,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveQueue, setSaveQueue] = useState<number>(0);
   const [sectionPoints, setSectionPoints] = useState<Record<SectionType, OutlinePoint[]>>({
     introduction: [],
     mainPart: [],
@@ -171,14 +170,10 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
       saveTimeoutRef.current = null;
     }
     
-    // Increment save queue to track pending saves
-    setSaveQueue(prev => prev + 1);
-    
     // Ensure we have the latest state by delaying the save
     saveTimeoutRef.current = setTimeout(async () => {
       if (!sermon || !sermon.id) {
         console.error('Cannot save outline: sermon or sermon.id is undefined');
-        setSaveQueue(prev => Math.max(0, prev - 1));
         return;
       }
       
@@ -207,7 +202,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
         setError(t('errors.saveOutlineError'));
       } finally {
         setSaving(false);
-        setSaveQueue(prev => Math.max(0, prev - 1));
       }
     }, 100); // Shorter timeout since we're using direct data
   };

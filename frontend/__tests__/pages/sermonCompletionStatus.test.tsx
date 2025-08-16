@@ -204,9 +204,9 @@ describe('Sermon Completion Status Logic', () => {
       
       const exegeticalPlan = prep?.exegeticalPlan;
       const hasExegeticalPlan = Boolean(exegeticalPlan && exegeticalPlan.length > 0);
-      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some(node =>
+      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some((node: any) =>
         (node.title || '').trim().length > 0 ||
-        (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+        (node.children && node.children.some((child: any) => (child.title || '').trim().length > 0))
       );
       const hasAuthorIntent = Boolean(prep?.authorIntent && prep.authorIntent.trim().length > 0);
       const isExegeticalPlanDone = hasExegeticalPlanWithTitles && hasAuthorIntent;
@@ -231,9 +231,9 @@ describe('Sermon Completion Status Logic', () => {
       
       const exegeticalPlan = prep?.exegeticalPlan;
       const hasExegeticalPlan = Boolean(exegeticalPlan && exegeticalPlan.length > 0);
-      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some(node =>
+      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some((node: any) =>
         (node.title || '').trim().length > 0 ||
-        (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+        (node.children && node.children.some((child: any) => (child.title || '').trim().length > 0))
       );
       const hasAuthorIntent = Boolean(prep?.authorIntent && prep.authorIntent.trim().length > 0);
       const isExegeticalPlanDone = hasExegeticalPlanWithTitles && hasAuthorIntent;
@@ -257,9 +257,9 @@ describe('Sermon Completion Status Logic', () => {
       
       const exegeticalPlan = prep?.exegeticalPlan;
       const hasExegeticalPlan = Boolean(exegeticalPlan && exegeticalPlan.length > 0);
-      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some(node =>
+      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some((node: any) =>
         (node.title || '').trim().length > 0 ||
-        (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+        (node.children && node.children.some((child: any) => (child.title || '').trim().length > 0))
       );
       const hasAuthorIntent = Boolean(prep?.authorIntent && prep.authorIntent.trim().length > 0);
       const isExegeticalPlanDone = hasExegeticalPlanWithTitles && hasAuthorIntent;
@@ -289,9 +289,9 @@ describe('Sermon Completion Status Logic', () => {
       
       const exegeticalPlan = prep?.exegeticalPlan;
       const hasExegeticalPlan = Boolean(exegeticalPlan && exegeticalPlan.length > 0);
-      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some(node =>
+      const hasExegeticalPlanWithTitles = hasExegeticalPlan && exegeticalPlan!.some((node: any) =>
         (node.title || '').trim().length > 0 ||
-        (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+        (node.children && node.children.some((child: any) => (child.title || '').trim().length > 0))
       );
       const hasAuthorIntent = Boolean(prep?.authorIntent && prep.authorIntent.trim().length > 0);
       const isExegeticalPlanDone = hasExegeticalPlanWithTitles && hasAuthorIntent;
