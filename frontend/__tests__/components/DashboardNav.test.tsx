@@ -167,7 +167,9 @@ describe('DashboardNav Component', () => {
 
     render(<DashboardNav />);
 
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    // Now we have Dashboard text in both desktop and mobile layouts
+    const dashboardElements = screen.getAllByText('Dashboard');
+    expect(dashboardElements.length).toBeGreaterThan(0);
     // Use getAllByTestId instead of getByTestId to handle multiple matches
     const languageSwitchers = screen.getAllByTestId('language-switcher');
     expect(languageSwitchers.length).toBeGreaterThan(0);
