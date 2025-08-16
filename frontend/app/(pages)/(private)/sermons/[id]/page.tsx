@@ -54,17 +54,62 @@ export default function SermonPage() {
     result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
     return result;
   }, []);
+  
+  const { id } = useParams<{ id: string }>();
+  
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
   const initialMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
   const [uiMode, setUiMode] = useState<'classic' | 'prep'>(initialMode);
+  
   // Guard against effect loops: depend on the actual query value and only update when changed
   const modeParam = searchParams?.get('mode');
   useEffect(() => {
     const mode = (modeParam === 'prep') ? 'prep' : 'classic';
+    
+    // Check if URL conflicts with saved mode
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
+      
+      // If there's a direct URL navigation, priority goes to URL
+      if (modeParam && savedMode && savedMode !== mode) {
+        console.log('Direct URL navigation detected:', { urlMode: mode, savedMode });
+        // Use mode from URL, but save it
+        setUiMode(mode);
+        localStorage.setItem(`sermon-${id}-mode`, mode);
+        return;
+      }
+      
+      // If no direct navigation, use saved mode
+      if (savedMode && !modeParam) {
+        console.log('Using saved mode from localStorage:', savedMode);
+        setUiMode(savedMode as 'classic' | 'prep');
+        return;
+      }
+    }
+    
     setUiMode(prev => (prev === mode ? prev : mode));
-  }, [modeParam]);
-  const { id } = useParams<{ id: string }>();
+  }, [modeParam, id]);
+
+  // Save mode to localStorage and restore on page refresh
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`sermon-${id}-mode`, uiMode);
+      console.log('Saved mode to localStorage:', uiMode);
+    }
+  }, [uiMode, id]);
+
+  // Restore mode from localStorage on component mount (only if no direct URL)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !modeParam) {
+      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
+      if (savedMode && (savedMode === 'prep' || savedMode === 'classic')) {
+        console.log('Restored mode from localStorage:', savedMode);
+        setUiMode(savedMode);
+      }
+    }
+  }, [id, modeParam]);
+  
   const { sermon, setSermon, loading, refreshSermon } = useSermon(id);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
@@ -218,32 +263,32 @@ export default function SermonPage() {
   );
 
 
-  // Проверяем, есть ли мысли с несогласованностью между тегами и назначенными пунктами плана
+  // Check for inconsistencies between tags and assigned plan points
   const checkForInconsistentThoughts = (): boolean => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return false;
     
-    // Соответствие между секциями и тегами
+    // Section-tag mapping
     const sectionTagMapping: Record<string, string> = {
       'introduction': STRUCTURE_TAGS.INTRODUCTION,
       'main': STRUCTURE_TAGS.MAIN_BODY,
       'conclusion': STRUCTURE_TAGS.CONCLUSION
     };
     
-    // Список обязательных тегов для проверки
+    // List of required tags to check
     const requiredTags = Object.values(sectionTagMapping);
     
-    // Проверяем каждую мысль
+    // Check each thought
     return sermon.thoughts.some(thought => {
-      // 1. Проверка на несколько обязательных тегов у одной мысли
+      // 1. Check for multiple required tags on one thought
       const usedRequiredTags = thought.tags.filter(tag => requiredTags.includes(tag));
       if (usedRequiredTags.length > 1) {
-        return true; // Несогласованность: несколько обязательных тегов
+        return true; // Inconsistency: multiple required tags
       }
       
-      // 2. Проверка на несогласованность между тегом и назначенным пунктом плана
-      if (!thought.outlinePointId) return false; // Если нет назначенного пункта плана, нет и проблемы
+      // 2. Check for inconsistency between tag and assigned plan point
+      if (!thought.outlinePointId) return false; // If no assigned plan point, no issue
       
-      // Определяем секцию пункта плана
+      // Determine the section of the plan point
       let outlinePointSection: string | undefined;
       
       if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
@@ -254,26 +299,26 @@ export default function SermonPage() {
         outlinePointSection = 'conclusion';
       }
       
-      if (!outlinePointSection) return false; // Если не нашли секцию, считаем что проблемы нет
+      if (!outlinePointSection) return false; // If section not found, consider it consistent
       
-      // Получаем ожидаемый тег для текущей секции
+      // Get the expected tag for the current section
       const expectedTag = sectionTagMapping[outlinePointSection];
-      if (!expectedTag) return false; // Если неизвестная секция, считаем что все в порядке
+      if (!expectedTag) return false; // If unknown section, consider it consistent
       
-      // Проверяем, имеет ли мысль тег соответствующей секции
+      // Check if the thought has the expected tag for the current section
       const hasExpectedTag = thought.tags.includes(expectedTag);
       
-      // Проверяем, имеет ли мысль теги других секций
+      // Check if the thought has tags from other sections
       const hasOtherSectionTags = Object.values(sectionTagMapping)
         .filter(tag => tag !== expectedTag)
         .some(tag => thought.tags.includes(tag));
       
-      // Несогласованность, если нет ожидаемого тега или есть теги других секций
+      // Inconsistency if no expected tag or other section tags present
       return !(!hasOtherSectionTags || hasExpectedTag);
     });
   };
   
-  // Проверяем наличие несогласованностей
+  // Check for inconsistencies
   const hasInconsistentThoughts = checkForInconsistentThoughts();
 
   // Function to update only the outline part of the sermon state

@@ -58,7 +58,6 @@ jest.mock('@/components/SortableItem', () => () => <div data-testid="item" />);
 // Import pages directly
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
-import SermonOutlinePage from '@/(pages)/(private)/sermons/[id]/outline/page';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 import StructurePage from '@/(pages)/(private)/structure/page';
 import SettingsPage from '@/(pages)/(private)/settings/page';
@@ -76,7 +75,6 @@ describe('Private pages adhere to single-shell policy', () => {
   const cases: Array<[string, React.ComponentType<any>]> = [
     ['dashboard', DashboardPage],
     ['sermons/[id]', SermonDetailPage],
-    ['sermons/[id]/outline', SermonOutlinePage],
     ['sermons/[id]/plan', SermonPlanPage],
     ['structure', StructurePage],
     ['settings', SettingsPage],

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { User, onAuthStateChanged, IdTokenResult } from 'firebase/auth';
 import { auth } from '@/services/firebaseAuth.service';
 
 interface AuthContextType {
@@ -9,6 +9,35 @@ interface AuthContextType {
   loading: boolean;
   isAuthenticated: boolean;
 }
+
+interface StoredAuthData {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  isAnonymous: boolean;
+  metadata: {
+    creationTime?: string;
+    lastSignInTime?: string;
+  };
+  timestamp: number;
+}
+
+// Type for restored user (minimal set of properties)
+type RestoredUser = Pick<User, 'uid' | 'email' | 'displayName' | 'isAnonymous' | 'metadata'> & {
+  // Add missing properties with default values
+  emailVerified: false;
+  providerData: [];
+  refreshToken: '';
+  tenantId: null;
+  delete: () => Promise<void>;
+  getIdToken: (forceRefresh?: boolean) => Promise<string>;
+  getIdTokenResult: (forceRefresh?: boolean) => Promise<IdTokenResult>;
+  reload: () => Promise<void>;
+  toJSON: () => object;
+  phoneNumber: null;
+  photoURL: null;
+  providerId: 'firebase';
+};
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -29,40 +58,156 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (isMounted) {
-        setUser(currentUser);
-        setLoading(false);
-        
-        // Update authentication status
-        const hasGuestUser = typeof window !== 'undefined' ? localStorage.getItem('guestUser') : null;
-        setIsAuthenticated(Boolean(currentUser || hasGuestUser));
-      }
-    });
+  // Function to create restored user object
+  const createRestoredUser = useCallback((authData: StoredAuthData): RestoredUser => {
+    return {
+      uid: authData.uid,
+      email: authData.email,
+      displayName: authData.displayName,
+      isAnonymous: authData.isAnonymous,
+      metadata: authData.metadata,
+      emailVerified: false,
+      providerData: [],
+      refreshToken: '',
+      tenantId: null,
+      delete: async () => { throw new Error('Cannot delete restored user'); },
+      getIdToken: async () => { throw new Error('Cannot get ID token for restored user'); },
+      getIdTokenResult: async () => { throw new Error('Cannot get ID token result for restored user'); },
+      reload: async () => { throw new Error('Cannot reload restored user'); },
+      toJSON: () => ({ uid: authData.uid }),
+      phoneNumber: null,
+      photoURL: null,
+      providerId: 'firebase',
+    };
+  }, []);
 
-    // Check for guest user in localStorage (only on client side)
-    if (typeof window !== 'undefined' && !user && !loading) {
-      const guestData = localStorage.getItem('guestUser');
-      if (guestData) {
-        try {
-          const guestUser = JSON.parse(guestData);
-          setUser(guestUser);
+  // Function to sync authentication state
+  const syncAuthState = useCallback((currentUser: User | null) => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      if (currentUser) {
+        const authData: StoredAuthData = {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          isAnonymous: currentUser.isAnonymous,
+          metadata: {
+            creationTime: currentUser.metadata.creationTime,
+            lastSignInTime: currentUser.metadata.lastSignInTime,
+          },
+          timestamp: Date.now(),
+        };
+        
+        localStorage.setItem('firebase:authUser', JSON.stringify(authData));
+      } else {
+        localStorage.removeItem('firebase:authUser');
+      }
+    } catch (error) {
+      console.error('Error syncing auth state:', error);
+    }
+  }, []);
+
+  // Function to handle localStorage changes from other tabs
+  const handleStorageChange = useCallback((e: StorageEvent) => {
+    if (e.key !== 'firebase:authUser') return;
+
+    try {
+      if (e.newValue) {
+        const authData: StoredAuthData = JSON.parse(e.newValue);
+        const isDataFresh = Date.now() - authData.timestamp < 5000; // 5 seconds
+
+        if (isDataFresh && !user) {
+          console.log('Syncing auth state from other tab:', authData.uid);
+          // Create object with minimal properties for restoration
+          const restoredUser = createRestoredUser(authData);
+          setUser(restoredUser as User);
           setIsAuthenticated(true);
-        } catch (error) {
-          console.error('Error parsing guest user data:', error);
-          localStorage.removeItem('guestUser');
+        }
+      } else {
+        console.log('Auth state cleared in other tab');
+        // Check current Firebase state
+        if (user && !auth.currentUser) {
+          setUser(null);
+          setIsAuthenticated(false);
         }
       }
+    } catch (error) {
+      console.error('Error parsing auth data from storage:', error);
     }
+  }, [user, createRestoredUser]);
+
+  // Function to restore authentication state from localStorage
+  const restoreAuthState = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+
+    try {
+      // Check for guest user
+      const guestData = localStorage.getItem('guestUser');
+      if (guestData) {
+        const guestUser = JSON.parse(guestData);
+        console.log('Restored guest user:', guestUser.uid);
+        setUser(guestUser);
+        setIsAuthenticated(true);
+        return true;
+      }
+
+      // Check saved Firebase state
+      const firebaseAuthData = localStorage.getItem('firebase:authUser');
+      if (firebaseAuthData) {
+        const authData: StoredAuthData = JSON.parse(firebaseAuthData);
+        const isDataValid = Date.now() - authData.timestamp < 60000; // 1 minute
+
+        if (isDataValid) {
+          console.log('Restored Firebase auth state:', authData.uid);
+          const restoredUser = createRestoredUser(authData);
+          setUser(restoredUser as User);
+          setIsAuthenticated(true);
+          return true;
+        } else {
+          console.log('Firebase auth data expired, removing');
+          localStorage.removeItem('firebase:authUser');
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error restoring auth state:', error);
+      return false;
+    }
+  }, [createRestoredUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    // Subscribe to Firebase authentication state changes
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!isMounted) return;
+
+      console.log('Firebase auth state changed:', currentUser ? `User: ${currentUser.uid}` : 'No user');
+      
+      setUser(currentUser);
+      setIsAuthenticated(Boolean(currentUser));
+      setLoading(false);
+      
+      // Sync state
+      syncAuthState(currentUser);
+    });
+
+    // Restore authentication state on initialization
+    if (!user && !loading) {
+      restoreAuthState();
+    }
+
+    // Listen for localStorage changes from other tabs
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       isMounted = false;
       unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, [user, loading]);
+  }, [syncAuthState, handleStorageChange, restoreAuthState, createRestoredUser, user, loading]);
 
   // Update authentication status when user changes
   useEffect(() => {
@@ -75,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{ 
         user, 
         loading, 
-        isAuthenticated 
+        isAuthenticated
       }}
     >
       {children}

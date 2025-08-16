@@ -15,7 +15,7 @@ const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-// Add persistence setup
+// Use browserLocalPersistence for standard multi-tab behavior
 setPersistence(auth, browserLocalPersistence);
 
 export const checkGuestExpiration = (user: User): boolean => {
@@ -26,9 +26,51 @@ export const checkGuestExpiration = (user: User): boolean => {
   return Date.now() < expirationTime;
 };
 
+export const signInWithGoogle = async (): Promise<User | null> => {
+  try {
+    console.log('Starting Google sign-in...');
+    
+    // Check Firebase configuration
+    if (!process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN) {
+      throw new Error('Firebase auth domain not configured');
+    }
+    
+    const result = await signInWithPopup(auth, provider);
+    console.log("User signed in:", result.user.uid);
+
+    // Store user email and displayName without affecting language settings
+    await updateUserProfile(
+      result.user.uid,
+      result.user.email || undefined,
+      result.user.displayName || undefined
+    );
+
+    return result.user;
+  } catch (error) {
+    console.error("Error signing in with Google:", error);
+    
+    // Check for specific errors
+    if (error instanceof Error) {
+      if (error.message.includes('popup-closed')) {
+        throw new Error('Sign-in popup was closed');
+      } else if (error.message.includes('popup-blocked')) {
+        throw new Error('Sign-in popup was blocked by browser');
+      } else if (error.message.includes('network')) {
+        throw new Error('Network error during sign-in');
+      }
+    }
+    
+    throw error;
+  }
+};
+
 export const signInAsGuest = async (): Promise<User | null> => {
   try {
+    console.log('Starting guest sign-in...');
+    
     const result = await signInAnonymously(auth);
+    console.log("Guest user signed in:", result.user.uid);
+    
     localStorage.setItem(
       "guestUser",
       JSON.stringify({
@@ -47,26 +89,8 @@ export const signInAsGuest = async (): Promise<User | null> => {
 
     return result.user;
   } catch (error) {
-    toast.error("Ошибка входа в гостевой режим");
-    throw error;
-  }
-};
-
-export const signInWithGoogle = async (): Promise<User | null> => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    console.log("User:", result.user);
-
-    // Store user email and displayName without affecting language settings
-    await updateUserProfile(
-      result.user.uid,
-      result.user.email || undefined,
-      result.user.displayName || undefined
-    );
-
-    return result.user;
-  } catch (error) {
-    console.error("Error signing in:", error);
+    console.error("Error signing in as guest:", error);
+    toast.error("Guest sign-in error");
     throw error;
   }
 };

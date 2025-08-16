@@ -1508,6 +1508,7 @@ function StructurePageContent() {
         )} */}
         
         <DndContext
+          data-testid="dnd-context"
           sensors={sensors}
           collisionDetection={pointerWithin}
           onDragStart={handleDragStart}

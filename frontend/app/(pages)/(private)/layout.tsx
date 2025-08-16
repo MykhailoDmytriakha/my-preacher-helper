@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardNav from '@/components/navigation/DashboardNav';
-import { GuestBanner } from '@components/GuestBanner';
+import { GuestBanner } from '@/components/GuestBanner';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/providers/AuthProvider';
@@ -24,6 +24,9 @@ Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
 });
 
+// Mock timers
+jest.useFakeTimers();
+
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 
@@ -41,6 +44,7 @@ describe('ProtectedRoute', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.clearAllTimers();
   });
 
   it('should show loading spinner while authentication is loading', () => {
@@ -78,6 +82,11 @@ describe('ProtectedRoute', () => {
       </ProtectedRoute>
     );
 
+    // Wait for the initial auth check timer (1 second)
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
     await waitFor(() => {
       expect(screen.getByText('Protected Content')).toBeInTheDocument();
     });
@@ -100,6 +109,11 @@ describe('ProtectedRoute', () => {
       </ProtectedRoute>
     );
 
+    // Wait for the initial auth check timer (1 second)
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
     await waitFor(() => {
       expect(screen.getByText('Protected Content')).toBeInTheDocument();
     });
@@ -119,6 +133,11 @@ describe('ProtectedRoute', () => {
         <div>Protected Content</div>
       </ProtectedRoute>
     );
+
+    // Wait for the initial auth check timer (1 second)
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/');
@@ -142,12 +161,17 @@ describe('ProtectedRoute', () => {
       </ProtectedRoute>
     );
 
+    // Wait for the initial auth check timer (1 second)
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/login');
     });
   });
 
-  it('should show loading spinner when user is not authenticated', () => {
+  it('should show loading spinner when user is not authenticated', async () => {
     mockUseAuth.mockReturnValue({
       user: null,
       loading: false,
@@ -162,7 +186,51 @@ describe('ProtectedRoute', () => {
       </ProtectedRoute>
     );
 
+    // Should show loading spinner initially
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
+
+    // Wait for the initial auth check timer (1 second)
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    // After timer, should still show loading spinner (no auth data)
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
+  });
+
+  it('should handle auth check timer correctly', async () => {
+    mockUseAuth.mockReturnValue({
+      user: null,
+      loading: false,
+      isAuthenticated: false,
+    });
+
+    mockLocalStorage.getItem.mockReturnValue(null);
+
+    render(
+      <ProtectedRoute>
+        <div>Protected Content</div>
+      </ProtectedRoute>
+    );
+
+    // Initially should show loading spinner
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    // Before timer completes, should still show loading
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    // After timer completes, should redirect
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/');
+    });
   });
 }); 

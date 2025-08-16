@@ -36,8 +36,17 @@ export default function DashboardNav() {
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
   const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
   const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
+  
   const setMode = (mode: 'classic' | 'prep') => {
     try {
+      // Check if we're trying to switch to the same mode
+      if (mode === currentMode) {
+        console.log('Already in', mode, 'mode');
+        return;
+      }
+
+      console.log('Switching from', currentMode, 'to', mode, 'mode');
+
       const params = new URLSearchParams(searchParams?.toString() || '');
       if (mode === 'classic') {
         params.delete('mode');
@@ -45,8 +54,17 @@ export default function DashboardNav() {
         params.set('mode', 'prep');
       }
       const query = params.toString();
-      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
-    } catch {}
+      
+      // Use push for better navigation
+      const newUrl = `${pathname}${query ? `?${query}` : ''}`;
+      console.log('Navigating to:', newUrl);
+      
+      router.push(newUrl, { scroll: false });
+      
+      console.log('Successfully switched to', mode, 'mode');
+    } catch (error) {
+      console.error('Error switching mode:', error);
+    }
   };
 
   // Handle submitting feedback with user info
