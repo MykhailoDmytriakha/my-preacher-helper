@@ -1,4 +1,4 @@
-import { SERMON_SECTION_COLORS, getSectionStyling, getTagStyling, getFocusModeButtonColors } from '../../app/utils/themeColors';
+import { SERMON_SECTION_COLORS, UI_COLORS, getSectionStyling, getTagStyling, getFocusModeButtonColors } from '../../app/utils/themeColors';
 
 describe('themeColors', () => {
   describe('SERMON_SECTION_COLORS', () => {
@@ -111,6 +111,42 @@ describe('themeColors', () => {
       expect(colors.bg).toBe('bg-green-500');
       expect(colors.hover).toBe('hover:bg-green-600');
       expect(colors.text).toBe('text-white');
+    });
+  });
+
+  describe('UI_COLORS', () => {
+    describe('button structure', () => {
+      it('should define correct structure button colors', () => {
+        expect(UI_COLORS.button.structure.bg).toBe('bg-amber-600');
+        expect(UI_COLORS.button.structure.hover).toBe('hover:bg-amber-700');
+        expect(UI_COLORS.button.structure.darkBg).toBe('bg-amber-500');
+        expect(UI_COLORS.button.structure.darkHover).toBe('hover:bg-amber-400');
+        expect(UI_COLORS.button.structure.text).toBe('text-white');
+      });
+    });
+
+    describe('button plan', () => {
+      it('should define correct plan button colors', () => {
+        expect(UI_COLORS.button.plan.bg).toBe('bg-blue-600');
+        expect(UI_COLORS.button.plan.hover).toBe('hover:bg-blue-700');
+        expect(UI_COLORS.button.plan.darkBg).toBe('bg-blue-500');
+        expect(UI_COLORS.button.plan.darkHover).toBe('hover:bg-blue-400');
+        expect(UI_COLORS.button.plan.text).toBe('text-white');
+      });
+    });
+
+    describe('button switcher', () => {
+      it('should define correct switcher button colors', () => {
+        expect(UI_COLORS.button.switcher.gradient).toBe('from-amber-500 to-blue-500');
+        expect(UI_COLORS.button.switcher.darkGradient).toBe('from-amber-400 to-blue-400');
+        expect(UI_COLORS.button.switcher.border).toBe('border-gray-200');
+        expect(UI_COLORS.button.switcher.darkBorder).toBe('border-gray-700');
+        expect(UI_COLORS.button.switcher.bg).toBe('bg-white');
+        expect(UI_COLORS.button.switcher.darkBg).toBe('bg-gray-800');
+        expect(UI_COLORS.button.switcher.activeText).toBe('text-white');
+        expect(UI_COLORS.button.switcher.inactiveText).toBe('text-gray-700');
+        expect(UI_COLORS.button.switcher.darkInactiveText).toBe('text-gray-200');
+      });
     });
   });
 }); 

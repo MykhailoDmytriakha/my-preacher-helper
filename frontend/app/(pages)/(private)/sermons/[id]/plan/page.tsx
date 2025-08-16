@@ -59,7 +59,7 @@ const Button = ({
   title
 }: { 
   onClick?: () => void, 
-  variant?: "default" | "primary" | "secondary" | "section", 
+  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure", 
   sectionColor?: { base: string, light: string, dark: string },
   className?: string, 
   disabled?: boolean, 
@@ -76,9 +76,11 @@ const Button = ({
     variantClass = "text-white section-button";
   } else {
     const variantClasses: Record<string, string> = {
-      default: "bg-gray-200 text-gray-800 hover:bg-gray-300",
-      primary: "bg-blue-600 text-white hover:bg-blue-700",
-      secondary: "bg-gray-600 text-white hover:bg-gray-700"
+      default: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600",
+      primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
+      secondary: "bg-gray-600 text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400",
+      plan: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
+      structure: "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
     };
     variantClass = variantClasses[variant] || variantClasses.default;
   }
@@ -922,7 +924,11 @@ export default function PlanPage() {
     return (
       <div className="p-6 text-center">
         <h1 className="text-2xl font-bold text-red-600 mb-4">{error}</h1>
-        <Button onClick={() => router.push(`/sermons/${params.id}`)}>
+        <Button 
+          onClick={() => router.push(`/sermons/${params.id}`)}
+          variant="default"
+          className="px-6 py-3 text-base"
+        >
           {t("actions.backToSermon")}
         </Button>
       </div>
@@ -932,15 +938,32 @@ export default function PlanPage() {
   // Check if all thoughts are assigned to outline points
   if (!areAllThoughtsAssigned(sermon)) {
     return (
-      <div className="p-6 text-center">
-        <h1 className="text-xl font-bold mb-4">{t("plan.thoughtsNotAssigned")}</h1>
-        <p className="mb-6">{t("plan.assignThoughtsFirst")}</p>
-        <Button
-          onClick={() => router.push(`/sermons/${params.id}`)}
-          variant="primary"
-        >
-          {t("structure.workButton")}
-        </Button>
+      <div className="p-8 text-center max-w-2xl mx-auto">
+        <div className="mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t("plan.thoughtsNotAssigned")}</h1>
+          <p className="text-gray-600 dark:text-gray-300 text-lg">{t("plan.assignThoughtsFirst")}</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Button
+            onClick={() => router.push(`/sermons/${params.id}`)}
+            variant="plan"
+            className="px-6 py-3 text-base"
+          >
+            {t("plan.workOnSermon")}
+          </Button>
+          <Button
+            onClick={() => router.push(`/structure?sermonId=${params.id}`)}
+            variant="structure"
+            className="px-6 py-3 text-base"
+          >
+            {t("plan.workOnStructure")}
+          </Button>
+        </div>
       </div>
     );
   }

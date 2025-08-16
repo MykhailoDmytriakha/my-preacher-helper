@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Sermon } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import { getFocusModeUrl } from "@/utils/urlUtils";
 import Link from "next/link";
 import { getFocusModeButtonColors } from "@/utils/themeColors";
@@ -130,26 +130,62 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           </div>
         </div>
       </div>
-      <div className="mt-4 sm:mt-6 space-y-3">
-        <button
-          onClick={() => router.push(`/structure?sermonId=${sermon.id}`)}
-          className={`w-full px-4 py-2 ${
-            hasInconsistentThoughts 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-blue-600 hover:bg-blue-700'
-          } text-white rounded-lg transition-colors text-sm sm:text-base`}
-          disabled={hasInconsistentThoughts}
-          title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning', 'Some thoughts have inconsistent tags. Please fix tag inconsistencies before working on structure.') : ''}
-        >
-          {t('structure.workButton')}
-        </button>
-        <button
-          onClick={() => router.push(`/sermons/${sermon.id}/plan`)}
-          className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm sm:text-base"
-        >
-          {t('plan.pageTitle')}
-        </button>
+      <div className="mt-4 sm:mt-6">
+        <StructurePlanToggle 
+          sermonId={sermon.id}
+          hasInconsistentThoughts={hasInconsistentThoughts}
+          t={t}
+        />
       </div>
+    </div>
+  );
+};
+
+// New component for structure/plan toggle
+const StructurePlanToggle: React.FC<{
+  sermonId: string;
+  hasInconsistentThoughts: boolean;
+  t: (key: string, options?: any) => string;
+}> = ({ sermonId, hasInconsistentThoughts, t }) => {
+  const router = useRouter();
+  
+  return (
+    <div className="relative inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden w-full shadow-sm hover:shadow-md transition-shadow duration-200">
+      {/* Gradient background that spans both buttons */}
+      <span
+        className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500 transition-all duration-300 ease-in-out"
+        style={{
+          width: '100%',
+          opacity: hasInconsistentThoughts ? 0.3 : 1,
+        }}
+      />
+      
+      {/* Structure button */}
+      <button
+        type="button"
+        onClick={() => !hasInconsistentThoughts && router.push(`/structure?sermonId=${sermonId}`)}
+        disabled={hasInconsistentThoughts}
+        className={`relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-l-full flex-1 ${
+          hasInconsistentThoughts 
+            ? 'text-gray-400 cursor-not-allowed' 
+            : 'text-white hover:scale-105 hover:shadow-lg active:scale-95'
+        }`}
+        title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning') : ''}
+      >
+        {t('structure.workButton')}
+      </button>
+      
+      {/* White separator line */}
+      <div className="relative z-20 w-0.5 h-6 bg-white/90 dark:bg-white/70 mx-1 rounded-full shadow-sm" />
+      
+      {/* Plan button */}
+      <button
+        type="button"
+        onClick={() => router.push(`/sermons/${sermonId}/plan`)}
+        className="relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-r-full text-white hover:scale-105 hover:shadow-lg active:scale-95 flex-1"
+      >
+        {t('plan.pageTitle')}
+      </button>
     </div>
   );
 };

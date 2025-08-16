@@ -59,57 +59,30 @@ export default function SermonPage() {
   
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
-  const initialMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
-  const [uiMode, setUiMode] = useState<'classic' | 'prep'>(initialMode);
-  
-  // Guard against effect loops: depend on the actual query value and only update when changed
   const modeParam = searchParams?.get('mode');
+  const [uiMode, setUiMode] = useState<'classic' | 'prep'>(() => {
+    // Initialize from URL param first, then localStorage as fallback
+    if (modeParam === 'prep') return 'prep';
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
+      if (savedMode === 'prep' || savedMode === 'classic') {
+        return savedMode as 'classic' | 'prep';
+      }
+    }
+    return 'classic';
+  });
+  
+  // Sync UI mode with URL params
   useEffect(() => {
     const mode = (modeParam === 'prep') ? 'prep' : 'classic';
+    setUiMode(mode);
     
-    // Check if URL conflicts with saved mode
+    // Save to localStorage for persistence
     if (typeof window !== 'undefined') {
-      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
-      
-      // If there's a direct URL navigation, priority goes to URL
-      if (modeParam && savedMode && savedMode !== mode) {
-        console.log('Direct URL navigation detected:', { urlMode: mode, savedMode });
-        // Use mode from URL, but save it
-        setUiMode(mode);
-        localStorage.setItem(`sermon-${id}-mode`, mode);
-        return;
-      }
-      
-      // If no direct navigation, use saved mode
-      if (savedMode && !modeParam) {
-        console.log('Using saved mode from localStorage:', savedMode);
-        setUiMode(savedMode as 'classic' | 'prep');
-        return;
-      }
+      localStorage.setItem(`sermon-${id}-mode`, mode);
     }
-    
-    setUiMode(prev => (prev === mode ? prev : mode));
   }, [modeParam, id]);
 
-  // Save mode to localStorage and restore on page refresh
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`sermon-${id}-mode`, uiMode);
-      console.log('Saved mode to localStorage:', uiMode);
-    }
-  }, [uiMode, id]);
-
-  // Restore mode from localStorage on component mount (only if no direct URL)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !modeParam) {
-      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
-      if (savedMode && (savedMode === 'prep' || savedMode === 'classic')) {
-        console.log('Restored mode from localStorage:', savedMode);
-        setUiMode(savedMode);
-      }
-    }
-  }, [id, modeParam]);
-  
   const { sermon, setSermon, loading } = useSermon(id);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});

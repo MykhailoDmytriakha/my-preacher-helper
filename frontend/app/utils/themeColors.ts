@@ -80,6 +80,31 @@ export const UI_COLORS = {
       darkHover: "hover:bg-violet-400",
       text: "text-white",
     },
+    structure: {
+      bg: "bg-amber-600",
+      hover: "hover:bg-amber-700",
+      darkBg: "bg-amber-500",
+      darkHover: "hover:bg-amber-400",
+      text: "text-white",
+    },
+    plan: {
+      bg: "bg-blue-600",
+      hover: "hover:bg-blue-700",
+      darkBg: "bg-blue-500",
+      darkHover: "hover:bg-blue-400",
+      text: "text-white",
+    },
+    switcher: {
+      gradient: "from-amber-500 to-blue-500",
+      darkGradient: "from-amber-400 to-blue-400",
+      border: "border-gray-200",
+      darkBorder: "border-gray-700",
+      bg: "bg-white",
+      darkBg: "bg-gray-800",
+      activeText: "text-white",
+      inactiveText: "text-gray-700",
+      darkInactiveText: "text-gray-200",
+    },
   },
   verseNumber: {
     // Extra subtle for superscript verse markers

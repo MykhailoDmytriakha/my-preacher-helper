@@ -10,12 +10,13 @@ jest.mock('@locales/i18n', () => ({}));
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children }: any) => <a>{children}</a> }));
 
 const replaceMock = jest.fn();
+const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
 
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
-  useRouter: () => ({ replace: replaceMock }),
+  useRouter: () => ({ replace: replaceMock, push: pushMock }),
   useSearchParams: () => ({
     get: (k: string) => paramsMap[k],
     toString: () => {
@@ -70,6 +71,7 @@ describe('DashboardNav mode toggle', () => {
     jest.clearAllMocks();
     process.env = { ...OLD_ENV, NEXT_PUBLIC_WIZARD_DEV_MODE: 'true' };
     replaceMock.mockReset();
+    pushMock.mockReset();
     pathnameMock = '/sermons/abc';
     paramsMap = {};
   });
@@ -102,6 +104,179 @@ describe('DashboardNav mode toggle', () => {
     render(<ModeToggle currentMode="prep" onSetMode={onSetMode} tSwitchToClassic="Classic Mode" tSwitchToPrep="Preparation Mode (Beta)" tPrepLabel="Preparation Mode" />);
     fireEvent.click(screen.getByTestId('toggle-classic'));
     expect(onSetMode).toHaveBeenCalledWith('classic');
+  });
+
+  test('handles current mode detection from URL params', () => {
+    paramsMap = { mode: 'prep' };
+    render(<DashboardNav />);
+    
+    // Should detect prep mode from URL
+    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('handles current mode detection when no mode param', () => {
+    paramsMap = {};
+    render(<DashboardNav />);
+    
+    // Should default to classic mode
+    expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('handles mode switching with URL navigation', () => {
+    paramsMap = {};
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Get the onSetMode function from the ModeToggle component
+    const modeToggle = screen.getByTestId('toggle-prep').closest('div');
+    if (modeToggle) {
+      // Simulate mode switching by calling the onSetMode function
+      const prepButton = within(modeToggle).getByTestId('toggle-prep');
+      fireEvent.click(prepButton);
+      
+      // Should navigate to new URL with mode=prep
+      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
+    }
+  });
+
+  test('handles mode switching from prep to classic', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Get the onSetMode function from the ModeToggle component
+    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
+    if (modeToggle) {
+      // Simulate mode switching by calling the onSetMode function
+      const classicButton = within(modeToggle).getByTestId('toggle-classic');
+      fireEvent.click(classicButton);
+      
+      // Should navigate to new URL without mode param
+      expect(pushMock).toHaveBeenCalledWith('/sermons/abc', { scroll: false });
+    }
+  });
+
+  test('handles mode switching with existing query parameters', () => {
+    paramsMap = { mode: 'prep', otherParam: 'value' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Get the onSetMode function from the ModeToggle component
+    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
+    if (modeToggle) {
+      // Simulate mode switching by calling the onSetMode function
+      const classicButton = within(modeToggle).getByTestId('toggle-classic');
+      fireEvent.click(classicButton);
+      
+      // Should navigate to new URL without mode param but keeping other params
+      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?otherParam=value', { scroll: false });
+    }
+  });
+
+  test('handles mode switching with complex query parameters', () => {
+    paramsMap = { mode: 'prep', param1: 'value1', param2: 'value2' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Get the onSetMode function from the ModeToggle component
+    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
+    if (modeToggle) {
+      // Simulate mode switching by calling the onSetMode function
+      const classicButton = within(modeToggle).getByTestId('toggle-classic');
+      fireEvent.click(classicButton);
+      
+      // Should navigate to new URL without mode param but keeping other params
+      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?param1=value1&param2=value2', { scroll: false });
+    }
+  });
+
+  test('handles mode switching when already in target mode', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Get the onSetMode function from the ModeToggle component
+    const modeToggle = screen.getByTestId('toggle-prep').closest('div');
+    if (modeToggle) {
+      // Simulate mode switching by calling the onSetMode function
+      const prepButton = within(modeToggle).getByTestId('toggle-prep');
+      fireEvent.click(prepButton);
+      
+      // Should not navigate since already in prep mode
+      expect(pushMock).not.toHaveBeenCalled();
+    }
+  });
+
+  test('handles mode switching with empty pathname', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = '';
+    
+    render(<DashboardNav />);
+    
+    // Should handle empty pathname gracefully - mode toggle should not be visible
+    expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
+  });
+
+  test('handles mode switching with undefined pathname', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = undefined as any;
+    
+    render(<DashboardNav />);
+    
+    // Should handle undefined pathname gracefully - mode toggle should not be visible
+    expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
+  });
+
+  test('handles mode switching with complex pathname', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Should handle complex pathname correctly - mode toggle should be visible
+    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('handles error during mode switching gracefully', () => {
+    paramsMap = { mode: 'prep' };
+    pathnameMock = '/sermons/abc';
+    
+    // Mock console.error to prevent test output pollution
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    
+    render(<DashboardNav />);
+    
+    // Should not crash on error
+    expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
+    
+    consoleSpy.mockRestore();
+  });
+
+  test('handles URLSearchParams toString edge cases', () => {
+    paramsMap = { mode: 'prep', emptyParam: '' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Should handle empty parameter values correctly
+    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('handles URLSearchParams with special characters', () => {
+    paramsMap = { mode: 'prep', specialParam: 'value with spaces & symbols' };
+    pathnameMock = '/sermons/abc';
+    
+    render(<DashboardNav />);
+    
+    // Should handle special characters in parameters correctly
+    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

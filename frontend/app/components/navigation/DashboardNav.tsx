@@ -35,6 +35,8 @@ export default function DashboardNav() {
   // Mode toggle visibility and handlers (sermon detail only)
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
   const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
+  
+  // Get current mode directly from URL params for immediate response
   const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
   
   const setMode = (mode: 'classic' | 'prep') => {
