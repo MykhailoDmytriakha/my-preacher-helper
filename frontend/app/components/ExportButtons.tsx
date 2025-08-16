@@ -640,7 +640,7 @@ export default function ExportButtons({
   };
 
   return (
-    <div className={className}>
+    <div className={className} data-testid="export-buttons-container">
       <TooltipStyles />
       <ExportButtonsLayout
         onTxtClick={handleTxtClick}

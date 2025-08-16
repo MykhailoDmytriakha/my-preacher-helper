@@ -12,6 +12,12 @@ jest.mock('react-i18next', () => ({
 // next/navigation
 jest.mock('next/navigation', () => ({
   useSearchParams: () => ({ get: () => 'sermon-1' }),
+  useRouter: () => ({
+    push: jest.fn(),
+    prefetch: jest.fn(),
+    replace: jest.fn(),
+  }),
+  usePathname: jest.fn().mockReturnValue('/structure'),
 }));
 
 // Heavy deps mocks
