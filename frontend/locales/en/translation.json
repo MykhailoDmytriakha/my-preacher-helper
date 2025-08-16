@@ -211,7 +211,11 @@
     "keyboardShortcuts": "Keyboard Shortcuts",
     "recording": "Recording",
     "toCancel": "to cancel",
-    "toRecord": "to record"
+    "toRecord": "to record",
+    "mini": {
+      "title": "Audio Recorder",
+      "description": "Record audio for this section"
+    }
   },
   "errors": {
     "audioProcessing": "Error processing audio",

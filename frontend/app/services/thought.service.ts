@@ -8,6 +8,17 @@ export const createAudioThought = async (
   retryCount: number = 0,
   maxRetries: number = 3
 ): Promise<Thought> => {
+  return createAudioThoughtWithForceTag(audioBlob, sermonId, null, retryCount, maxRetries);
+};
+
+// New function for creating audio thought with force tag
+export const createAudioThoughtWithForceTag = async (
+  audioBlob: Blob,
+  sermonId: string,
+  forceTag: string | null = null,
+  retryCount: number = 0,
+  maxRetries: number = 3
+): Promise<Thought> => {
   // If we've exceeded max retries, throw immediately
   if (retryCount >= maxRetries) {
     throw new Error(`Transcription failed after all retries: Maximum retry attempts exceeded`);
@@ -15,10 +26,16 @@ export const createAudioThought = async (
 
   try {
     console.log(`transcribeAudio: Starting transcription process. Attempt ${retryCount + 1}/${maxRetries + 1}`);
+    if (forceTag) {
+      console.log(`transcribeAudio: Force tag "${forceTag}" will be applied`);
+    }
 
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
     formData.append("sermonId", sermonId);
+    if (forceTag) {
+      formData.append("forceTag", forceTag);
+    }
 
     console.log(
       `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
@@ -102,9 +119,10 @@ export const retryAudioTranscription = async (
   audioBlob: Blob,
   sermonId: string,
   retryCount: number,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  forceTag: string | null = null
 ): Promise<Thought> => {
-  return createAudioThought(audioBlob, sermonId, retryCount, maxRetries);
+  return createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag, retryCount, maxRetries);
 };
 
 export const deleteThought = async (

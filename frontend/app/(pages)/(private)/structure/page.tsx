@@ -169,6 +169,92 @@ function StructurePageContent() {
     setAddingThoughtToSection(sectionId);
   };
 
+  // New function for adding audio thoughts that are already created
+  const handleAddAudioThought = async (sectionId: string) => {
+    if (!sermon) return;
+    
+    try {
+      // Refresh sermon data to get the latest thoughts
+      const response = await fetch(`/api/sermons/${sermon.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch sermon data');
+      }
+      
+      const data = await response.json();
+      const refreshedSermon = data.sermon || data;
+      
+      if (!refreshedSermon) {
+        console.log('No sermon data received');
+        return;
+      }
+      
+      // Find the newest thought for this section
+      const sectionTag = columnTitles[sectionId as keyof typeof columnTitles];
+      const newestThought = refreshedSermon.thoughts
+        .filter((thought: Thought) => thought.tags.includes(sectionTag))
+        .sort((a: Thought, b: Thought) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      
+      if (!newestThought) {
+        console.log('No new thought found for section:', sectionId);
+        return;
+      }
+      
+      // Check if this thought is already in containers
+      const existingInContainer = containers[sectionId]?.some(item => item.id === newestThought.id);
+      if (existingInContainer) {
+        console.log('Thought already exists in container:', newestThought.id);
+        return;
+      }
+      
+      // Create item for UI
+      const newItem: Item = {
+        id: newestThought.id,
+        content: newestThought.text,
+        customTagNames: newestThought.tags
+          .filter((tag: string) => !Object.values(columnTitles).includes(tag))
+          .map((tagName: string) => ({
+            name: tagName,
+            color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+          })),
+        requiredTags: [sectionTag],
+        outlinePointId: newestThought.outlinePointId,
+        outlinePoint: newestThought.outlinePointId ? {
+          text: '', // Will be filled if outline point exists
+          section: ''
+        } : undefined
+      };
+      
+      // Update sermon state
+      setSermon(refreshedSermon);
+      
+      // Update containers
+      setContainers(prev => ({
+        ...prev,
+        [sectionId]: [...(prev[sectionId] || []), newItem]
+      }));
+      
+      // Update structure in database if needed
+      const currentStructure = sermon.structure || {};
+      const newStructure = typeof currentStructure === 'string' 
+        ? JSON.parse(currentStructure) 
+        : { ...currentStructure };
+      
+      if (!newStructure[sectionId]) {
+        newStructure[sectionId] = [];
+      }
+      
+      if (!newStructure[sectionId].includes(newestThought.id)) {
+        newStructure[sectionId] = [...newStructure[sectionId], newestThought.id];
+        await updateStructure(sermon.id, newStructure);
+      }
+      
+      console.log('Audio thought added to UI:', newItem);
+    } catch (error) {
+      console.error('Error adding audio thought to UI:', error);
+      toast.error('Ошибка при добавлении записи в UI');
+    }
+  };
+
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
     
@@ -453,8 +539,8 @@ function StructurePageContent() {
       draft[dstContainerKey].splice(insertIndex, 0, previewItem);
     }
 
-    // Apply preview state only if changed
-    setContainers(draft);
+    // Store preview state in ref only - don't trigger re-render during drag
+    // This prevents infinite loops while maintaining preview functionality
     containersRef.current = draft;
   };
 
@@ -1539,29 +1625,29 @@ function StructurePageContent() {
             {/* Introduction column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "introduction") && (
               <Column
+                key="introduction"
                 id="introduction"
-                title={columnTitles["introduction"]}
-                items={containers.introduction}
+                title={getSectionLabel(t, 'introduction')}
+                items={containers.introduction || []}
                 headerColor={requiredTagColors.introduction}
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.introduction}
-                showFocusButton={containers.ambiguous.length === 0}
+                showFocusButton={true}
                 isFocusMode={focusedColumn === "introduction"}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSort={() => handleAiSort("introduction")}
                 isLoading={isSorting && focusedColumn === "introduction"}
-                className={focusedColumn === "introduction" ? "w-full" : ""}
-                sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
-                onAddThought={handleAddThoughtToSection}
-                isDiffModeActive={isDiffModeActive && focusedColumn === "introduction"}
+                sermonId={sermonId || undefined}
+                onAddThought={handleAddAudioThought}
+                onOutlineUpdate={handleOutlineUpdate}
+                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll()}
+                onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("introduction")}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
-                onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />
@@ -1570,9 +1656,10 @@ function StructurePageContent() {
             {/* Main column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "main") && (
               <Column
+                key="main"
                 id="main"
-                title={columnTitles["main"]}
-                items={containers.main}
+                title={getSectionLabel(t, 'main')}
+                items={containers.main || []}
                 headerColor={requiredTagColors.main}
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.main}
@@ -1581,18 +1668,17 @@ function StructurePageContent() {
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSort={() => handleAiSort("main")}
                 isLoading={isSorting && focusedColumn === "main"}
-                className={focusedColumn === "main" ? "w-full" : ""}
-                sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
-                onAddThought={handleAddThoughtToSection}
-                isDiffModeActive={isDiffModeActive && focusedColumn === "main"}
+                sermonId={sermonId || undefined}
+                onAddThought={handleAddAudioThought}
+                onOutlineUpdate={handleOutlineUpdate}
+                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll()}
+                onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("main")}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
-                onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />
@@ -1601,9 +1687,10 @@ function StructurePageContent() {
             {/* Conclusion column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "conclusion") && (
               <Column
+                key="conclusion"
                 id="conclusion"
-                title={columnTitles["conclusion"]}
-                items={containers.conclusion}
+                title={getSectionLabel(t, 'conclusion')}
+                items={containers.conclusion || []}
                 headerColor={requiredTagColors.conclusion}
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.conclusion}
@@ -1612,18 +1699,17 @@ function StructurePageContent() {
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSort={() => handleAiSort("conclusion")}
                 isLoading={isSorting && focusedColumn === "conclusion"}
-                className={focusedColumn === "conclusion" ? "w-full" : ""}
-                sermonId={sermon.id}
                 getExportContent={getExportContentForFocusedColumn}
-                onAddThought={handleAddThoughtToSection}
-                isDiffModeActive={isDiffModeActive && focusedColumn === "conclusion"}
+                sermonId={sermonId || undefined}
+                onAddThought={handleAddAudioThought}
+                onOutlineUpdate={handleOutlineUpdate}
+                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
-                onKeepAll={() => handleKeepAll()}
+                onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("conclusion")}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
-                onOutlineUpdate={handleOutlineUpdate}
                 activeId={activeId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />

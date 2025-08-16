@@ -370,7 +370,8 @@ interface GenerateThoughtResult {
 export async function generateThought(
   content: string,
   sermon: Sermon,
-  availableTags: string[] = []
+  availableTags: string[] = [],
+  forceTag?: string | null
 ): Promise<GenerateThoughtResult> {
   const MAX_RETRIES = 3;
   let attempts = 0;
@@ -381,6 +382,9 @@ export async function generateThought(
   if (isDebugMode) {
     logger.debug('GenerateThought', "Starting generation for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
     logger.debug('GenerateThought', "Available tags", availableTags);
+    if (forceTag) {
+      logger.debug('GenerateThought', "Force tag applied", forceTag);
+    }
   }
 
   while (attempts < MAX_RETRIES) {
@@ -434,10 +438,18 @@ export async function generateThought(
           logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`); // Log original
           logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`); // Log formatted
           logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
+          
+          // Apply force tag if provided
+          let finalTags = result.tags;
+          if (forceTag) {
+            logger.info('GenerateThought', `Force tag "${forceTag}" applied. Overwriting tags: ${result.tags.join(", ")} -> [${forceTag}]`);
+            finalTags = [forceTag];
+          }
+          
           return {
             originalText: result.originalText,
             formattedText: result.formattedText, // Renamed from 'text'
-            tags: result.tags,
+            tags: finalTags,
             meaningSuccessfullyPreserved: true,
           };
         } else {

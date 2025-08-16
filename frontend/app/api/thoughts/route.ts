@@ -71,6 +71,8 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
+    const forceTag = formData.get('forceTag') as string | null; // Extract forceTag from form data
+    
     if (!sermonId) {
       console.error("Thoughts route: sermonId is null.");
       return NextResponse.json({ error: 'sermonId is required' }, { status: 400 });
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
     }
     
     // Call generateThought and get the new result structure
-    const generationResult = await generateThought(transcriptionText, sermon, availableTags);
+    const generationResult = await generateThought(transcriptionText, sermon, availableTags, forceTag);
     
     // Check if the generation was successful and meaning was preserved
     if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {
@@ -141,10 +143,14 @@ export async function POST(request: Request) {
     
     // Proceed with the successfully generated thought
     console.log("Thoughts route: Thought generation successful. Original Text:", generationResult.originalText);
+    if (forceTag) {
+      console.log(`Thoughts route: Force tag "${forceTag}" applied. Tags overridden from [${generationResult.tags.join(", ")}] to [${forceTag}]`);
+    }
+    
     const thought: Thought = {
       id: uuidv4(),
       text: generationResult.formattedText, // Use formattedText
-      tags: generationResult.tags, // Use tags
+      tags: generationResult.tags, // Use tags (already processed with forceTag if applicable)
       date: new Date().toISOString()
       // originalText: generationResult.originalText // Optionally add originalText to the Thought model if needed
     };

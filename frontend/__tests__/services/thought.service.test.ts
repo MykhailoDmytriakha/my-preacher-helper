@@ -1,4 +1,4 @@
-import { createAudioThought, retryAudioTranscription, deleteThought, updateThought, createManualThought } from '@/services/thought.service';
+import { createAudioThought, createAudioThoughtWithForceTag, retryAudioTranscription, deleteThought, updateThought, createManualThought } from '@/services/thought.service';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -282,6 +282,118 @@ describe('Thought Service', () => {
       await expect(createManualThought(mockSermonId, mockThought)).rejects.toThrow(
         'Failed to create manual thought with status 400'
       );
+    });
+  });
+
+  describe('createAudioThoughtWithForceTag', () => {
+    it('should create audio thought with force tag', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+      const forceTag = 'Вступление';
+
+      // Mock the API call
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'thought-123',
+          text: 'Transcribed text',
+          tags: [forceTag, 'custom-tag'],
+          date: new Date().toISOString(),
+        }),
+      });
+
+      const result = await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag);
+
+      expect(result).toHaveProperty('id', 'thought-123');
+      expect(result).toHaveProperty('text', 'Transcribed text');
+      expect(result).toHaveProperty('tags');
+      expect(result.tags).toContain(forceTag);
+      expect(result.tags).toContain('custom-tag');
+    });
+
+    it('should work without force tag (backward compatibility)', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+
+      // Mock the API call
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'thought-123',
+          text: 'Transcribed text',
+          tags: ['auto-generated-tag'],
+          date: new Date().toISOString(),
+        }),
+      });
+
+      const result = await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, null);
+
+      expect(result).toHaveProperty('id', 'thought-123');
+      expect(result).toHaveProperty('text', 'Transcribed text');
+      expect(result).toHaveProperty('tags');
+      expect(result.tags).toContain('auto-generated-tag');
+    });
+
+    it('should handle different force tag values', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+      const forceTags = ['Вступление', 'Основная часть', 'Заключение'];
+
+      for (const forceTag of forceTags) {
+        // Mock the API call
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve({
+            id: `thought-${forceTag}`,
+            text: 'Transcribed text',
+            tags: [forceTag],
+            date: new Date().toISOString(),
+          }),
+        });
+
+        const result = await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag);
+
+        expect(result.tags).toContain(forceTag);
+      }
+    });
+
+    it('should handle API errors gracefully', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+      const forceTag = 'Вступление';
+
+      // Mock API error
+      global.fetch = jest.fn().mockRejectedValue(new Error('API Error'));
+
+      await expect(
+        createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag)
+      ).rejects.toThrow('API Error');
+    });
+  });
+
+  describe('retryAudioTranscription with force tag', () => {
+    it('should retry transcription with force tag', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+      const retryCount = 1;
+      const forceTag = 'Основная часть';
+
+      // Mock the API call
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'thought-123',
+          text: 'Retried transcription',
+          tags: [forceTag],
+          date: new Date().toISOString(),
+        }),
+      });
+
+      const result = await retryAudioTranscription(mockAudioBlob, sermonId, retryCount, 3, forceTag);
+
+      expect(result).toHaveProperty('id', 'thought-123');
+      expect(result).toHaveProperty('text', 'Retried transcription');
+      expect(result.tags).toContain(forceTag);
     });
   });
 }); 

@@ -13,6 +13,7 @@ import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, Tra
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
+import { AudioRecorder } from "./AudioRecorder";
 
 interface ColumnProps {
   id: string;
@@ -312,6 +313,10 @@ export default function Column({
   // --- State for Outline Point Editing (only relevant in focus mode) ---
   const [localOutlinePoints, setLocalOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // --- State for Audio Recording ---
+  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   // Update local state if the prop changes (e.g., after initial load or external update)
   useEffect(() => {
@@ -567,6 +572,63 @@ export default function Column({
                     </div>
                   </button>
                 )}
+                
+                {/* Audio Recorder for Focus Mode */}
+                {isFocusMode && sermonId && (
+                  <div className="mt-3">
+                    <AudioRecorder
+                      variant="mini"
+                      hideKeyboardShortcuts={true}
+                      onRecordingComplete={async (audioBlob) => {
+                        try {
+                          setIsRecordingAudio(true);
+                          setAudioError(null);
+                          
+                          // Determine the force tag based on column ID
+                          let forceTag: string;
+                          switch (id) {
+                            case 'introduction':
+                              forceTag = 'Вступление';
+                              break;
+                            case 'main':
+                              forceTag = 'Основная часть';
+                              break;
+                            case 'conclusion':
+                              forceTag = 'Заключение';
+                              break;
+                            default:
+                              forceTag = 'Основная часть';
+                          }
+                          
+                          // Import the service function dynamically to avoid circular dependencies
+                          const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
+                          const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag);
+                          
+                          // Call the onAddThought callback to add the new thought to the UI
+                          if (onAddThought) {
+                            onAddThought(id);
+                          }
+                          
+                          toast.success(`Запись добавлена в раздел "${forceTag}"`);
+                        } catch (error) {
+                          console.error('Error recording audio thought:', error);
+                          const errorMessage = error instanceof Error ? error.message : 'Ошибка при записи аудио';
+                          setAudioError(errorMessage);
+                          toast.error(errorMessage);
+                        } finally {
+                          setIsRecordingAudio(false);
+                        }
+                      }}
+                      isProcessing={isRecordingAudio}
+                      maxDuration={90}
+                      onError={(error) => {
+                        setAudioError(error);
+                        setIsRecordingAudio(false);
+                      }}
+                    />
+                  </div>
+                )}
+                
                 {onAiSort && (
                   <button
                     onClick={onAiSort}

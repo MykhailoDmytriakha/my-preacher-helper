@@ -6,6 +6,7 @@ export interface Thought {
   outlinePointId?: string;
   position?: number;
   keyFragments?: string[]; // Store important text fragments for AI generation
+  forceTag?: string; // Force tag for transcription (introduction, main, conclusion)
 }
 
 export interface OutlinePoint {

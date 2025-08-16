@@ -206,12 +206,16 @@
     "initializing": "Инициализация...",
     "retryTranscription": "Повторить транскрипцию",
     "closeError": "Закрыть",
-    "thoughtGenerationFailed": "Не удалось создать мысль из аудио. Смысл мог быть изменен.",
+    "thoughtGenerationFailed": "Не удалось сгенерировать валидную мысль из аудио. Смысл мог быть изменен.",
     "audioLevel": "Уровень звука",
     "keyboardShortcuts": "Горячие клавиши",
     "recording": "Запись",
     "toCancel": "для отмены",
-    "toRecord": "для записи"
+    "toRecord": "для записи",
+    "mini": {
+      "title": "Аудио запись",
+      "description": "Записать аудио для этого раздела"
+    }
   },
   "errors": {
     "audioProcessing": "Ошибка обработки аудио",

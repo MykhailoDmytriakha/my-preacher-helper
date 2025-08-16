@@ -206,12 +206,16 @@
     "initializing": "Ініціалізація...",
     "retryTranscription": "Повторити транскрипцію",
     "closeError": "Закрити",
-    "thoughtGenerationFailed": "Не вдалося створити думку з аудіо. Сенс міг бути змінений.",
+    "thoughtGenerationFailed": "Не вдалося згенерувати валідну думку з аудіо. Сенс міг бути змінений.",
     "audioLevel": "Рівень звуку",
     "keyboardShortcuts": "Гарячі клавіші",
     "recording": "Запис",
     "toCancel": "для скасування",
-    "toRecord": "для запису"
+    "toRecord": "для запису",
+    "mini": {
+      "title": "Аудіо запис",
+      "description": "Записати аудіо для цього розділу"
+    }
   },
   "errors": {
     "audioProcessing": "Error processing audio",
