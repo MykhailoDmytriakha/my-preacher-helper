@@ -198,91 +198,7 @@ function StructurePageContent() {
     setAddingThoughtToSection(sectionId);
   };
 
-  // New function for adding audio thoughts that are already created
-  const handleAddAudioThought = async (sectionId: string) => {
-    if (!sermon) return;
-    
-    try {
-      // Refresh sermon data to get the latest thoughts
-      const response = await fetch(`/api/sermons/${sermon.id}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch sermon data');
-      }
-      
-      const data = await response.json();
-      const refreshedSermon = data.sermon || data;
-      
-      if (!refreshedSermon) {
-        console.log('No sermon data received');
-        return;
-      }
-      
-      // Find the newest thought for this section
-      const sectionTag = columnTitles[sectionId as keyof typeof columnTitles];
-      const newestThought = refreshedSermon.thoughts
-        .filter((thought: Thought) => thought.tags.includes(sectionTag))
-        .sort((a: Thought, b: Thought) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-      
-      if (!newestThought) {
-        console.log('No new thought found for section:', sectionId);
-        return;
-      }
-      
-      // Check if this thought is already in containers
-      const existingInContainer = containers[sectionId]?.some(item => item.id === newestThought.id);
-      if (existingInContainer) {
-        console.log('Thought already exists in container:', newestThought.id);
-        return;
-      }
-      
-      // Create item for UI
-      const newItem: Item = {
-        id: newestThought.id,
-        content: newestThought.text,
-        customTagNames: newestThought.tags
-          .filter((tag: string) => !Object.values(columnTitles).includes(tag))
-          .map((tagName: string) => ({
-            name: tagName,
-            color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-          })),
-        requiredTags: [sectionTag],
-        outlinePointId: newestThought.outlinePointId,
-        outlinePoint: newestThought.outlinePointId ? {
-          text: '', // Will be filled if outline point exists
-          section: ''
-        } : undefined
-      };
-      
-      // Update sermon state
-      setSermon(refreshedSermon);
-      
-      // Update containers
-      setContainers(prev => ({
-        ...prev,
-        [sectionId]: [...(prev[sectionId] || []), newItem]
-      }));
-      
-      // Update structure in database if needed
-      const currentStructure = sermon.structure || {};
-      const newStructure = typeof currentStructure === 'string' 
-        ? JSON.parse(currentStructure) 
-        : { ...currentStructure };
-      
-      if (!newStructure[sectionId]) {
-        newStructure[sectionId] = [];
-      }
-      
-      if (!newStructure[sectionId].includes(newestThought.id)) {
-        newStructure[sectionId] = [...newStructure[sectionId], newestThought.id];
-        await updateStructure(sermon.id, newStructure);
-      }
-      
-      console.log('Audio thought added to UI:', newItem);
-    } catch (error) {
-      console.error('Error adding audio thought to UI:', error);
-      toast.error('Ошибка при добавлении записи в UI');
-    }
-  };
+
 
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
@@ -1734,7 +1650,7 @@ function StructurePageContent() {
                 isLoading={isSorting && focusedColumn === "introduction"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
-                onAddThought={handleAddAudioThought}
+                onAddThought={handleAddThoughtToSection}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}
@@ -1765,7 +1681,7 @@ function StructurePageContent() {
                 isLoading={isSorting && focusedColumn === "main"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
-                onAddThought={handleAddAudioThought}
+                onAddThought={handleAddThoughtToSection}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}
@@ -1796,7 +1712,7 @@ function StructurePageContent() {
                 isLoading={isSorting && focusedColumn === "conclusion"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
-                onAddThought={handleAddAudioThought}
+                onAddThought={handleAddThoughtToSection}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}
