@@ -343,7 +343,14 @@
     "removeFromStructure": "Удалить из структуры",
     "revertChanges": "Отменить изменения",
     "sermonNotFound": "Проповедь не найдена",
-    "thoughtDeletedSuccess": "Мысль успешно удалена"
+    "thoughtDeletedSuccess": "Мысль успешно удалена",
+    "navigation": {
+      "previousSection": "← Предыдущий раздел",
+      "nextSection": "Следующий раздел →",
+      "goToIntroduction": "Перейти к вступлению",
+      "goToMainPart": "Перейти к основной части",
+      "goToConclusion": "Перейти к заключению"
+    }
   },
   "knowledge": {
     "title": "Размышления над проповедью",

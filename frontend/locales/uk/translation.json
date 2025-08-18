@@ -343,7 +343,14 @@
     "removeFromStructure": "Видалити зі структури",
     "revertChanges": "Скасувати зміни",
     "sermonNotFound": "Проповідь не знайдена",
-    "thoughtDeletedSuccess": "Думку успішно видалено"
+    "thoughtDeletedSuccess": "Думку успішно видалено",
+    "navigation": {
+      "previousSection": "← Попередній розділ",
+      "nextSection": "Наступний розділ →",
+      "goToIntroduction": "Перейти до вступу",
+      "goToMainPart": "Перейти до основної частини",
+      "goToConclusion": "Перейти до висновку"
+    }
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

@@ -38,6 +38,7 @@ import { getSectionLabel } from "@lib/sections";
 import debounce from 'lodash/debounce';
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { getFocusModeUrl as getFocusModeUrlUtil } from "@/utils/urlUtils";
+import { getFocusModeButtonColors } from "@/utils/themeColors";
 
 interface UseSermonStructureDataReturn {
   sermon: Sermon | null;
@@ -974,6 +975,34 @@ function StructurePageContent() {
     }
   };
 
+  // Function to get navigation sections for focus mode
+  const getNavigationSections = (currentSection: string) => {
+    const sections = ['introduction', 'main', 'conclusion'];
+    const currentIndex = sections.indexOf(currentSection);
+    
+    if (currentIndex === -1) return { previous: null, next: null };
+    
+    return {
+      previous: currentIndex > 0 ? sections[currentIndex - 1] : null,
+      next: currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null
+    };
+  };
+
+  // Function to navigate to a specific section in focus mode
+  const navigateToSection = (sectionId: string) => {
+    if (!sermonId) return;
+    
+    setFocusedColumn(sectionId);
+    
+    // Update URL to include focus mode and section
+    const newSearchParams = new URLSearchParams();
+    newSearchParams.set('mode', 'focus');
+    newSearchParams.set('section', sectionId);
+    newSearchParams.set('sermonId', sermonId);
+    
+    router.push(`${pathname}?${newSearchParams.toString()}`);
+  };
+
   const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !sermon) {
       return '';
@@ -1552,23 +1581,35 @@ function StructurePageContent() {
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 {t('structure.focusMode')}: {t(`structure.${focusedColumn === 'main' ? 'mainPart' : focusedColumn}`)}
               </div>
+              
+              {/* Navigation buttons for focus mode */}
+              <div className="mt-4 flex flex-col items-center space-y-3">
+                {/* Quick section navigation */}
+                <div className="flex justify-center items-center space-x-2">
+                  {(['introduction', 'mainPart', 'conclusion'] as const).map((section) => {
+                    const sectionKey = section === 'mainPart' ? 'main' : section;
+                    const buttonColors = getFocusModeButtonColors(section);
+                    const isActive = focusedColumn === sectionKey;
+                    
+                    return (
+                      <button
+                        key={section}
+                        onClick={() => navigateToSection(sectionKey)}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200 ${
+                          isActive
+                            ? `${buttonColors.bg} ${buttonColors.text}`
+                            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {t(`structure.${section}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </div>
-        
-        {/* Export Button in Focus Mode */}
-        {/* {focusedColumn && (
-          <div className="flex justify-end items-center mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-700">{t('export.exportTo')}:</span>
-              <ExportButtons 
-                sermonId={sermon.id}
-                getExportContent={getExportContentForFocusedColumn}
-                orientation="horizontal"
-              />
-            </div>
-          </div>
-        )} */}
         
         <DndContext
           data-testid="dnd-context"

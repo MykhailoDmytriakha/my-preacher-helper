@@ -51,7 +51,15 @@ jest.mock('@/utils/themeColors', () => ({
     introduction: { base: "#2563eb" },
     mainPart: { base: "#7e22ce" },
     conclusion: { base: "#16a34a" }
-  }
+  },
+  getFocusModeButtonColors: jest.fn((section: string) => {
+    const colorMap = {
+      introduction: { bg: 'bg-amber-500', text: 'text-white' },
+      mainPart: { bg: 'bg-blue-500', text: 'text-white' },
+      conclusion: { bg: 'bg-green-500', text: 'text-white' }
+    };
+    return colorMap[section as keyof typeof colorMap] || { bg: 'bg-gray-500', text: 'text-white' };
+  })
 }));
 
 // Mock ExportButtons component
@@ -84,6 +92,11 @@ jest.mock('react-i18next', () => ({
         'structure.aiSortChangesAccepted': 'All AI suggestions accepted.',
         'structure.aiSortChangesReverted': 'All AI suggestions reverted.',
         'structure.thoughtDeletedSuccess': 'Thought deleted successfully.',
+        'structure.navigation.previousSection': '← Previous Section',
+        'structure.navigation.nextSection': 'Next Section →',
+        'structure.navigation.goToIntroduction': 'Go to Introduction',
+        'structure.navigation.goToMainPart': 'Go to Main Part',
+        'structure.navigation.goToConclusion': 'Go to Conclusion',
         'outline.introduction': 'Introduction',
         'outline.mainPoints': 'Main Points',
         'outline.conclusion': 'Conclusion',
@@ -435,6 +448,214 @@ describe('StructurePage Core Functionality Tests', () => {
       // Test that focus mode without ambiguous items is handled
       expect(screen.getByTestId('column-introduction')).toBeInTheDocument();
     });
+
+    it('should display navigation buttons in focus mode', async () => {
+      // Mock URL search params for focus mode
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=introduction&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Check that all three section navigation buttons are displayed
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      expect(navigationButtons).toHaveLength(3);
+      
+      // Introduction button should be active (amber colors)
+      const introductionButton = navigationButtons.find(button => button.textContent === 'Introduction');
+      expect(introductionButton).toBeInTheDocument();
+      expect(introductionButton).toHaveClass('bg-amber-500');
+      expect(introductionButton).toHaveClass('text-white');
+    });
+
+    it('should display correct navigation buttons for main section in focus mode', async () => {
+      // Mock URL search params for focus mode on main section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=main&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Check that all three section navigation buttons are displayed
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      expect(navigationButtons).toHaveLength(3);
+      
+      // Main part button should be active (blue colors)
+      const mainPartButton = navigationButtons.find(button => button.textContent === 'Main Part');
+      expect(mainPartButton).toBeInTheDocument();
+      expect(mainPartButton).toHaveClass('bg-blue-500');
+      expect(mainPartButton).toHaveClass('text-white');
+    });
+
+    it('should display correct navigation buttons for conclusion section in focus mode', async () => {
+      // Mock URL search params for focus mode on conclusion section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=conclusion&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Check that all three section navigation buttons are displayed
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      expect(navigationButtons).toHaveLength(3);
+      
+      // Conclusion button should be active (green colors)
+      const conclusionButton = navigationButtons.find(button => button.textContent === 'Conclusion');
+      expect(conclusionButton).toBeInTheDocument();
+      expect(conclusionButton).toHaveClass('bg-green-500');
+      expect(conclusionButton).toHaveClass('text-white');
+    });
+
+    it('should apply correct theme colors to active navigation button in focus mode', async () => {
+      // Mock URL search params for focus mode on introduction section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=introduction&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Find navigation buttons specifically (not column headers)
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      // Introduction button should be active (amber colors)
+      const introductionButton = navigationButtons.find(button => button.textContent === 'Introduction');
+      expect(introductionButton).toBeInTheDocument();
+      expect(introductionButton).toHaveClass('bg-amber-500');
+      expect(introductionButton).toHaveClass('text-white');
+      
+      // Other buttons should be inactive (gray colors)
+      const mainPartButton = navigationButtons.find(button => button.textContent === 'Main Part');
+      const conclusionButton = navigationButtons.find(button => button.textContent === 'Conclusion');
+      
+      expect(mainPartButton).toHaveClass('bg-gray-100');
+      expect(mainPartButton).toHaveClass('text-gray-700');
+      expect(conclusionButton).toHaveClass('bg-gray-100');
+      expect(conclusionButton).toHaveClass('text-gray-700');
+    });
+
+    it('should apply correct theme colors to main section navigation button when active', async () => {
+      // Mock URL search params for focus mode on main section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=main&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Find navigation buttons specifically (not column headers)
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      // Main part button should be active (blue colors)
+      const mainPartButton = navigationButtons.find(button => button.textContent === 'Main Part');
+      expect(mainPartButton).toBeInTheDocument();
+      expect(mainPartButton).toHaveClass('bg-blue-500');
+      expect(mainPartButton).toHaveClass('text-white');
+      
+      // Other buttons should be inactive (gray colors)
+      const introductionButton = navigationButtons.find(button => button.textContent === 'Introduction');
+      const conclusionButton = navigationButtons.find(button => button.textContent === 'Conclusion');
+      
+      expect(introductionButton).toHaveClass('bg-gray-100');
+      expect(introductionButton).toHaveClass('text-gray-700');
+      expect(conclusionButton).toHaveClass('bg-gray-100');
+      expect(conclusionButton).toHaveClass('text-gray-700');
+    });
+
+    it('should apply correct theme colors to conclusion section navigation button when active', async () => {
+      // Mock URL search params for focus mode on conclusion section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=conclusion&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Find navigation buttons specifically (not column headers)
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      // Conclusion button should be active (green colors)
+      const conclusionButton = navigationButtons.find(button => button.textContent === 'Conclusion');
+      expect(conclusionButton).toBeInTheDocument();
+      expect(conclusionButton).toHaveClass('bg-green-500');
+      expect(conclusionButton).toHaveClass('text-white');
+      
+      // Other buttons should be inactive (gray colors)
+      const introductionButton = navigationButtons.find(button => button.textContent === 'Introduction');
+      const mainPartButton = navigationButtons.find(button => button.textContent === 'Main Part');
+      
+      expect(introductionButton).toHaveClass('bg-gray-100');
+      expect(introductionButton).toHaveClass('text-gray-700');
+      expect(mainPartButton).toHaveClass('bg-gray-100');
+      expect(mainPartButton).toHaveClass('text-gray-700');
+    });
+
+    it('should handle navigation button clicks correctly in focus mode', async () => {
+      // Mock URL search params for focus mode on introduction section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=introduction&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // Find navigation buttons specifically (not column headers)
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      // Find and click the main part navigation button
+      const mainPartButton = navigationButtons.find(button => button.textContent === 'Main Part');
+      expect(mainPartButton).toBeInTheDocument();
+      
+      fireEvent.click(mainPartButton!);
+      
+      // The main part button should now be active (blue colors)
+      expect(mainPartButton).toHaveClass('bg-blue-500');
+      expect(mainPartButton).toHaveClass('text-white');
+      
+      // The introduction button should now be inactive (gray colors)
+      const introductionButton = navigationButtons.find(button => button.textContent === 'Introduction');
+      expect(introductionButton).toHaveClass('bg-gray-100');
+      expect(introductionButton).toHaveClass('text-gray-700');
+    });
+
+    it('should maintain proper button styling during theme color transitions', async () => {
+      // Mock URL search params for focus mode on introduction section
+      const mockSearchParams = new URLSearchParams('?mode=focus&section=introduction&sermonId=test123');
+      jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue(mockSearchParams);
+      
+      render(<StructurePage />);
+      await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+      
+      // All navigation buttons should have the base styling classes
+      const navigationButtons = screen.getAllByRole('button').filter(button => 
+        ['Introduction', 'Main Part', 'Conclusion'].includes(button.textContent || '')
+      );
+      
+      expect(navigationButtons).toHaveLength(3);
+      
+      navigationButtons.forEach(button => {
+        expect(button).toHaveClass('px-3');
+        expect(button).toHaveClass('py-1.5');
+        expect(button).toHaveClass('rounded-md');
+        expect(button).toHaveClass('text-sm');
+        expect(button).toHaveClass('font-medium');
+        expect(button).toHaveClass('transition-colors');
+        expect(button).toHaveClass('duration-200');
+      });
+    });
   });
 
   describe('Thought Management', () => {
@@ -471,9 +692,8 @@ describe('StructurePage Core Functionality Tests', () => {
       await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
 
       // Test that the component renders without errors when adding thoughts
+      // In focus mode, only one column should be visible
       expect(screen.getByTestId('column-introduction')).toBeInTheDocument();
-      expect(screen.getByTestId('column-main')).toBeInTheDocument();
-      expect(screen.getByTestId('column-conclusion')).toBeInTheDocument();
     });
 
     it('should handle thought editing with outline points', async () => {
@@ -606,9 +826,8 @@ describe('StructurePage Core Functionality Tests', () => {
       await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
       
       // Test that translated text is displayed
+      // In focus mode, only one column should be visible
       expect(screen.getByTestId('column-introduction')).toBeInTheDocument();
-      expect(screen.getByTestId('column-main')).toBeInTheDocument();
-      expect(screen.getByTestId('column-conclusion')).toBeInTheDocument();
     });
 
     it('should handle missing translations gracefully', async () => {
@@ -626,9 +845,8 @@ describe('StructurePage Core Functionality Tests', () => {
       await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
 
       // Test that the entire system works together
+      // In focus mode, only one column should be visible
       expect(screen.getByTestId('column-introduction')).toBeInTheDocument();
-      expect(screen.getByTestId('column-main')).toBeInTheDocument();
-      expect(screen.getByTestId('column-conclusion')).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: /Under Consideration/i })).toBeInTheDocument();
     });
 

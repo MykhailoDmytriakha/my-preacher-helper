@@ -342,7 +342,14 @@
     "removeFromStructure": "Remove From Structure",
     "revertChanges": "Revert Changes",
     "sermonNotFound": "Sermon Not Found",
-    "thoughtDeletedSuccess": "Thought Deleted Successfully"
+    "thoughtDeletedSuccess": "Thought Deleted Successfully",
+    "navigation": {
+      "previousSection": "← Previous Section",
+      "nextSection": "Next Section →",
+      "goToIntroduction": "Go to Introduction",
+      "goToMainPart": "Go to Main Part",
+      "goToConclusion": "Go to Conclusion"
+    }
   },
   "knowledge": {
     "title": "Sermon Insights",
