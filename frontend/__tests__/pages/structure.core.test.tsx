@@ -426,7 +426,7 @@ describe('StructurePage Core Component Tests', () => {
 
       // Test that the ambiguous section is rendered with the correct styling
       const ambiguousElement = screen.getByText('Under Consideration');
-      const ambiguousSection = ambiguousElement.closest('div')?.parentElement;
+      const ambiguousSection = ambiguousElement.closest('div');
       expect(ambiguousSection).toHaveClass('bg-white', 'dark:bg-gray-800', 'rounded-md', 'shadow', 'border', 'border-red-500');
     });
   });

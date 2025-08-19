@@ -772,7 +772,7 @@ describe('StructurePage Core Functionality Tests', () => {
       // Test that the ambiguous section header is clickable
       const ambiguousHeader = screen.getByText('Under Consideration');
       expect(ambiguousHeader).toBeInTheDocument();
-      expect(ambiguousHeader.closest('div')).toHaveClass('cursor-pointer');
+      expect(ambiguousHeader.closest('button')).toHaveClass('cursor-pointer');
     });
   });
 

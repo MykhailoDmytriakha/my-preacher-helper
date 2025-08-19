@@ -334,6 +334,7 @@
     "aiSortNoChanges": "AI Sort No Changes",
     "aiSortSuggestionsReady": "AI Sort Suggestions Ready",
     "aiSuggestions": "AI Suggestions",
+    "tooManyThoughts": "Too many thoughts to sort. Please reduce to 25 or fewer.",
     "editThought": "Edit Thought",
     "keepChanges": "Keep Changes",
     "noItemsToSort": "No Items to Sort",

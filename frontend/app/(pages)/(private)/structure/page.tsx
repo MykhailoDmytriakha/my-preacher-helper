@@ -1,44 +1,28 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
-import {
-  DndContext,
-  DragOverlay,
-  pointerWithin,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverEvent,
-  useDroppable,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import Link from "next/link";
+import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
+import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
+import { useSearchParams } from "next/navigation";
 import Column from "@/components/Column";
-import SortableItem from "@/components/SortableItem";
 import { Item, Sermon, OutlinePoint, Thought, Outline, Structure } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { updateThought, deleteThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
 import CardContent from "@/components/CardContent";
 import { getExportContent } from "@/utils/exportContent";
 import { getSectionLabel } from "@lib/sections";
-import debounce from 'lodash/debounce';
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
-import { getFocusModeUrl as getFocusModeUrlUtil } from "@/utils/urlUtils";
-import { getFocusModeButtonColors } from "@/utils/themeColors";
+import { isStructureChanged } from "./utils/structure";
+import { useStructureDnd } from "./hooks/useStructureDnd";
+import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
+import { useFocusMode } from "./hooks/useFocusMode";
+import { useOutlineStats } from "./hooks/useOutlineStats";
+import { usePersistence } from "./hooks/usePersistence";
+import { FocusNav } from "./components/FocusNav";
+import { AmbiguousSection } from "./components/AmbiguousSection";
 
 interface UseSermonStructureDataReturn {
   sermon: Sermon | null;
@@ -55,26 +39,6 @@ interface UseSermonStructureDataReturn {
   setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-function DummyDropZone({ container }: { container: string }) {
-  const { t } = useTranslation();
-  const { setNodeRef, isOver } = useDroppable({
-    id: "dummy-drop-zone",
-    data: { container },
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      data-container={container}
-      style={{ minHeight: "80px" }}
-      className={`p-4 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 col-span-full ${
-        isOver ? "border-blue-500 border-4" : ""
-      }`}
-    >
-      {t('structure.noEntries')}
-    </div>
-  );
-}
-
 export default function StructurePage() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -85,11 +49,7 @@ export default function StructurePage() {
 
 function StructurePageContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
   const sermonId = searchParams?.get("sermonId");
-  const focusMode = searchParams?.get("mode");
-  const focusSection = searchParams?.get("section");
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
 
@@ -98,7 +58,7 @@ function StructurePageContent() {
     setIsClient(true);
   }, []);
 
-  // Use the new hook to manage data fetching and related state
+  // Use the hook to manage data fetching and related state
   const {
     sermon,
     setSermon,
@@ -119,60 +79,70 @@ function StructurePageContent() {
     containersRef.current = containers;
   }, [containers]);
 
-  // New state for AI Sort with Interactive Confirmation
-  const [preSortState, setPreSortState] = useState<Record<string, Item[]> | null>(null);
-  const [highlightedItems, setHighlightedItems] = useState<Record<string, { type: 'assigned' | 'moved' }>>({});
-  const [isDiffModeActive, setIsDiffModeActive] = useState<boolean>(false);
-
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [originalContainer, setOriginalContainer] = useState<string | null>(null);
-  const [isDragEnding, setIsDragEnding] = useState<boolean>(false);
+  // Local UI state
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
-  const [isSorting, setIsSorting] = useState(false);
   const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
-  // Initialize Focus mode from URL parameters
-  useEffect(() => {
-    if (focusMode === 'focus' && focusSection && ['introduction', 'main', 'conclusion'].includes(focusSection)) {
-      setFocusedColumn(focusSection);
-    } else if (focusMode !== 'focus') {
-      setFocusedColumn(null);
-    }
-  }, [focusMode, focusSection]);
+  // Persistence hook
+  const { debouncedSaveThought, debouncedSaveStructure } = usePersistence({ setSermon });
 
-  // Update URL when sermonId changes to preserve Focus mode
-  useEffect(() => {
-    if (sermonId && focusedColumn && focusMode === 'focus') {
-      const newSearchParams = new URLSearchParams();
-      newSearchParams.set('mode', 'focus');
-      newSearchParams.set('section', focusedColumn);
-      newSearchParams.set('sermonId', sermonId);
-      
-      const currentUrl = `${pathname}?${newSearchParams.toString()}`;
-      if (window.location.href !== currentUrl) {
-        router.replace(currentUrl);
-      }
-    }
-  }, [sermonId, focusedColumn, focusMode, pathname, router]);
+  // Focus mode hook
+  const {
+    focusedColumn,
+    handleToggleFocusMode,
+    navigateToSection,
+  } = useFocusMode({ searchParams, sermonId });
 
-  // Track activeId changes
-  useEffect(() => {
-    // Removed debugging logs for production
-  }, [activeId, isDragEnding]);
+  // Outline stats hook
+  const { thoughtsPerOutlinePoint } = useOutlineStats({ sermon, containers });
 
-  // Configure sensors with proper activation constraints
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // Require 5px movement before drag starts
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // AI sorting diff hook
+  const {
+    preSortState,
+    highlightedItems,
+    isDiffModeActive,
+    isSorting,
+    handleAiSort,
+    handleKeepItem,
+    handleRevertItem,
+    handleKeepAll,
+    handleRevertAll,
+    setHighlightedItems,
+    setIsDiffModeActive,
+    setPreSortState,
+  } = useAiSortingDiff({
+    containers,
+    setContainers,
+    outlinePoints,
+    sermon,
+    sermonId,
+    debouncedSaveThought,
+    debouncedSaveStructure,
+  });
+
+  // DnD hook
+  const {
+    sensors: dndSensors,
+    activeId: dndActiveId,
+    handleDragStart: onDragStartHook,
+    handleDragOver: onDragOverHook,
+    handleDragEnd,
+  } = useStructureDnd({
+    containers,
+    setContainers,
+    containersRef,
+    sermon,
+    setSermon,
+    outlinePoints,
+    columnTitles: {
+      introduction: getSectionLabel(t, 'introduction'),
+      main: getSectionLabel(t, 'main'),
+      conclusion: getSectionLabel(t, 'conclusion'),
+      ambiguous: getSectionLabel(t, 'ambiguous'),
+    },
+    debouncedSaveThought,
+  });
 
   const columnTitles: Record<string, string> = {
     introduction: getSectionLabel(t, 'introduction'),
@@ -198,8 +168,6 @@ function StructurePageContent() {
     setEditingItem(emptyThought);
     setAddingThoughtToSection(sectionId);
   };
-
-
 
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
@@ -366,530 +334,6 @@ function StructurePageContent() {
     setEditingItem(null);
   };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const id = String(event.active.id);
-    
-    setIsDragEnding(false);
-    setActiveId(id);
-    
-    // Capture the original container at the start of the drag
-    const original = Object.keys(containers).find((key) =>
-      containers[key].some((item) => item.id === id)
-    );
-    setOriginalContainer(original || null);
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over || isDragEnding) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    // Determine current containers based on latest ref
-    const state = containersRef.current;
-    const srcContainerKey = Object.keys(state).find((k) => state[k].some((it) => it.id === activeId));
-    if (!srcContainerKey) return;
-
-    let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
-    let targetOutlinePointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
-
-    if (overId.startsWith('outline-point-')) {
-      dstContainerKey = over.data?.current?.container as string | undefined;
-      targetOutlinePointId = (over.data?.current?.outlinePointId as string) || undefined;
-    } else if (overId.startsWith('unassigned-')) {
-      dstContainerKey = over.data?.current?.container as string | undefined;
-      targetOutlinePointId = null;
-    } else if (!dstContainerKey) {
-      // over on item or container id
-      dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
-        ? overId
-        : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
-      if (!dstContainerKey) return;
-
-      // If over is an item, inherit its outline point group for preview
-      if (overId !== dstContainerKey) {
-        const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
-        if (overIdx !== -1) {
-          targetOutlinePointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
-        }
-      }
-    }
-
-    if (!dstContainerKey) return;
-
-    // Early compute current positions before building draft
-    const srcIdx = state[srcContainerKey].findIndex((it) => it.id === activeId);
-    if (srcIdx === -1) return;
-    const dragged = state[srcContainerKey][srcIdx];
-
-    // Determine insertion index in destination relative to over target
-    let insertIndex = state[dstContainerKey].length;
-    if (overId !== dstContainerKey && !overId.startsWith('outline-point-') && !overId.startsWith('unassigned-')) {
-      const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
-      if (overIdx !== -1) insertIndex = overIdx; // insert before target item
-    } else if (targetOutlinePointId !== undefined) {
-      // Append to end of that group
-      const groupKey = targetOutlinePointId || null;
-      // find last index of items in that group
-      let lastGroupIndex = -1;
-      for (let i = 0; i < state[dstContainerKey].length; i++) {
-        const it = state[dstContainerKey][i];
-        const itGroup = (it.outlinePointId ?? null);
-        if (itGroup === groupKey) lastGroupIndex = i;
-      }
-      insertIndex = lastGroupIndex === -1 ? state[dstContainerKey].length : lastGroupIndex + 1;
-    }
-
-    const intendedOutline: string | undefined =
-      targetOutlinePointId === undefined ? dragged.outlinePointId : (targetOutlinePointId || undefined);
-
-    // If the item is already at the intended place/group, skip updating state
-    if (srcContainerKey === dstContainerKey) {
-      // In the same container, if inserting before the same next element, this might be a no-op
-      const currentIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
-      const sameGroup = (dragged.outlinePointId ?? undefined) === intendedOutline;
-      const noReorder = insertIndex === currentIdx || insertIndex === currentIdx + 1;
-      if (sameGroup && noReorder) {
-        return;
-      }
-    } else {
-      const currentDestIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
-      if (currentDestIdx !== -1) {
-        const alreadyAtIndex = currentDestIdx === insertIndex;
-        const alreadyGroup = (state[dstContainerKey][currentDestIdx].outlinePointId ?? undefined) === intendedOutline;
-        if (alreadyAtIndex && alreadyGroup) {
-          return;
-        }
-      }
-    }
-
-    // Build new state preview without duplicating when source === destination
-    const draft: Record<string, Item[]> = { ...state };
-    const previewItem: Item = { ...dragged, outlinePointId: intendedOutline };
-    if (srcContainerKey === dstContainerKey) {
-      const arr = [...state[srcContainerKey]];
-      // Remove from current index
-      arr.splice(srcIdx, 1);
-      // Adjust insert index if needed
-      const safeIndex = Math.min(Math.max(insertIndex, 0), arr.length);
-      // Insert at new index
-      arr.splice(safeIndex, 0, previewItem);
-      draft[srcContainerKey] = arr;
-    } else {
-      draft[srcContainerKey] = [...state[srcContainerKey]];
-      draft[dstContainerKey] = [...state[dstContainerKey]];
-      // Remove from source
-      draft[srcContainerKey].splice(srcIdx, 1);
-      // Insert into destination
-      draft[dstContainerKey].splice(insertIndex, 0, previewItem);
-    }
-
-    // Store preview state in ref only - don't trigger re-render during drag
-    // This prevents infinite loops while maintaining preview functionality
-    containersRef.current = draft;
-  };
-
-  const isStructureChanged = (
-    structurePrev: string | Structure | Record<string, unknown>,
-    structureNew: string | Structure | Record<string, unknown>
-  ): boolean => {
-    const parse = (v: string | object) =>
-      typeof v === "string" ? JSON.parse(v) : v;
-    const prev = parse(structurePrev);
-    const curr = parse(structureNew);
-    const sections = ["introduction", "main", "conclusion", "ambiguous"];
-
-    return sections.some(
-      (section) => {
-        const prevSection = prev[section] || [];
-        const currSection = curr[section] || [];
-        return prevSection.length !== currSection.length ||
-          prevSection.some(
-            (item: string, index: number) => item !== currSection[index]
-          );
-      }
-    );
-  };
-
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    // Set drag ending flag immediately to prevent interference
-    setIsDragEnding(true);
-    
-    // Early return if no valid drop target
-    if (!over || !sermon) {
-      setActiveId(null);
-      setOriginalContainer(null);
-      setIsDragEnding(false);
-      return;
-    }
-    
-    // If the dragged item was a highlighted item, confirm the change
-    if (active.id in highlightedItems) {
-      setHighlightedItems(prev => {
-        const newHighlighted = { ...prev };
-        delete newHighlighted[active.id as string];
-        
-        if (Object.keys(newHighlighted).length === 0) {
-          setIsDiffModeActive(false);
-          setPreSortState(null);
-        }
-        
-        return newHighlighted;
-      });
-    }
-
-    const activeContainer = originalContainer;
-    let overContainer = over.data.current?.container;
-    let outlinePointId = over.data.current?.outlinePointId;
-    
-    // Check if we're dropping on an outline point placeholder
-    if (over.id.toString().startsWith('outline-point-')) {
-      const dropTargetId = over.id.toString();
-      outlinePointId = dropTargetId.replace('outline-point-', '');
-      overContainer = over.data.current?.container;
-    } 
-    else if (over.id.toString().startsWith('unassigned-')) {
-      outlinePointId = null;
-      overContainer = over.data.current?.container;
-    } 
-    else if (over.id === "dummy-drop-zone") {
-      overContainer = "ambiguous";
-    } else if (!overContainer) {
-      overContainer = String(over.id);
-    }
-    
-    // Find the index of the target item in the destination container
-    let targetItemIndex = -1;
-    let droppedOnItem = false;
-    let targetItemOutlinePointId: string | null = null;
-
-    if (
-      over.id !== overContainer &&
-      !over.id.toString().startsWith('outline-point-') &&
-      !over.id.toString().startsWith('unassigned-')
-    ) {
-      droppedOnItem = true;
-      targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;
-      if (targetItemIndex !== -1) {
-        const targetItem = containers[overContainer][targetItemIndex];
-        // If target item is unassigned, explicitly use null to signal clearing assignment
-        targetItemOutlinePointId = targetItem?.outlinePointId ?? null;
-      }
-    }
-    
-    if (
-      !activeContainer ||
-      !overContainer ||
-      !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
-    ) {
-      setActiveId(null);
-      setOriginalContainer(null);
-      setIsDragEnding(false);
-      return;
-    }
-    
-    // Store the previous state for potential rollback
-    const previousContainers = { ...containers };
-    const previousSermon = { ...sermon };
-    
-    // Perform the UI update immediately for smooth UX
-    let updatedContainers = { ...containers };
-    
-    if (activeContainer === overContainer) {
-      const items = [...updatedContainers[activeContainer]];
-      const oldIndex = items.findIndex((item) => item.id === active.id);
-      
-      if (oldIndex !== -1) {
-        if (droppedOnItem && targetItemIndex !== -1) {
-          const [draggedItem] = items.splice(oldIndex, 1);
-          items.splice(targetItemIndex, 0, draggedItem);
-        } else if (!droppedOnItem) {
-          const [draggedItem] = items.splice(oldIndex, 1);
-          items.push(draggedItem);
-        }
-        
-        updatedContainers[activeContainer] = items;
-      }
-    } else {
-      const activeItems = [...updatedContainers[activeContainer]];
-      const overItems = [...updatedContainers[overContainer]];
-      
-      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
-      if (activeIndex !== -1) {
-        const [draggedItem] = activeItems.splice(activeIndex, 1);
-        
-        if (droppedOnItem && targetItemIndex !== -1) {
-          overItems.splice(targetItemIndex, 0, draggedItem);
-        } else {
-          overItems.push(draggedItem);
-        }
-        
-        updatedContainers[activeContainer] = activeItems;
-        updatedContainers[overContainer] = overItems;
-      }
-    }
-    
-    // Update outline point ID in the moved item immediately (before API calls)
-    // If dropped on a specific item and no explicit outline point target was set,
-    // inherit the target item's outline point assignment
-    if (typeof outlinePointId === 'undefined' && droppedOnItem) {
-      outlinePointId = targetItemOutlinePointId;
-    }
-    // If dropped on container area (not a specific item or special placeholder),
-    // default to unassigned in the current/target section
-    if (typeof outlinePointId === 'undefined' && !droppedOnItem) {
-      outlinePointId = null;
-    }
-
-    if (activeContainer !== overContainer || outlinePointId !== undefined) {
-      const itemIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
-      if (itemIndex !== -1) {
-        updatedContainers[overContainer][itemIndex] = {
-          ...updatedContainers[overContainer][itemIndex],
-          outlinePointId: outlinePointId
-        };
-      }
-      }
-    
-    // Dedupe by id within affected containers before applying (safety)
-    const ensureUnique = (items: Item[]) => {
-      const seen = new Set<string>();
-      const result: Item[] = [];
-      for (const it of items) {
-        if (seen.has(it.id)) continue;
-        seen.add(it.id);
-        result.push(it);
-      }
-      return result;
-    };
-
-    if (activeContainer === overContainer) {
-      updatedContainers[overContainer] = ensureUnique(updatedContainers[overContainer]);
-    } else {
-      updatedContainers[activeContainer] = ensureUnique(updatedContainers[activeContainer]);
-      updatedContainers[overContainer] = ensureUnique(updatedContainers[overContainer]);
-    }
-
-    // Ensure the moved item exists only in the destination container across all sections
-    const removeIdFromOtherSections = (all: Record<string, Item[]>, keepIn: string, idToKeep: string) => {
-      const sections = ["introduction", "main", "conclusion", "ambiguous"] as const;
-      const result: Record<string, Item[]> = { ...all };
-      for (const sec of sections) {
-        if (sec === keepIn) continue;
-        const arr = result[sec] || [];
-        const filtered = arr.filter((it) => it.id !== idToKeep);
-        if (filtered.length !== arr.length) {
-          result[sec] = filtered;
-        }
-      }
-      return result;
-    };
-
-    updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
-
-    // Apply state updates immediately
-    setContainers(updatedContainers);
-    containersRef.current = updatedContainers;
-    
-    // Clear drag state immediately
-    setActiveId(null);
-    setOriginalContainer(null);
-    setIsDragEnding(false);
-    
-    // Build newStructure for API update
-    const dedupe = (ids: string[]) => Array.from(new Set(ids));
-    const newStructure = {
-      introduction: dedupe(updatedContainers.introduction.map((item) => item.id)),
-      main: dedupe(updatedContainers.main.map((item) => item.id)),
-      conclusion: dedupe(updatedContainers.conclusion.map((item) => item.id)),
-      ambiguous: dedupe(updatedContainers.ambiguous.map((item) => item.id)),
-    };
-    
-    // Make API calls in background with rollback on error
-    try {
-      // Update outline point assignment and required section tag if needed (use debounced function for smooth UX)
-      let positionPersisted = false;
-      if (activeContainer !== overContainer || outlinePointId !== undefined) {
-        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
-        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
-
-        if (movedItem && sermon) {
-          // Determine the correct required tag for the destination container
-          let updatedRequiredTags: string[] = [];
-          if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
-            updatedRequiredTags = [columnTitles[overContainer as keyof typeof columnTitles]];
-          }
-
-          // Determine final outlinePointId value to persist
-          // - If we explicitly dropped on an unassigned target, clear it
-          // - If we dropped on a different container without specifying a target point and the current id doesn't belong to that container, clear it
-          let finalOutlinePointId: string | undefined = undefined;
-
-          if (typeof outlinePointId === 'string') {
-            finalOutlinePointId = outlinePointId;
-          } else if (outlinePointId === null) {
-            finalOutlinePointId = undefined;
-          } else {
-            // No explicit outline point change requested
-            finalOutlinePointId = movedItem.outlinePointId;
-
-            // If container changed and previous outline point belongs to a different section, clear it
-            if (activeContainer !== overContainer && finalOutlinePointId && sermon.outline) {
-              const sectionPoints =
-                overContainer === 'introduction' ? sermon.outline.introduction
-                : overContainer === 'main' ? sermon.outline.main
-                : overContainer === 'conclusion' ? sermon.outline.conclusion
-                : [];
-              const belongsToNewSection = sectionPoints?.some((p: OutlinePoint) => p.id === finalOutlinePointId);
-              if (!belongsToNewSection) {
-                finalOutlinePointId = undefined;
-              }
-            }
-          }
-
-          // Compute new positional rank within the destination group (outline point or unassigned)
-          const groupKey = finalOutlinePointId || '__unassigned__';
-          // Collect items of the same group in destination, in current visual order
-          const sameGroupIndexes: number[] = [];
-          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
-            const it = updatedContainers[overContainer][i];
-            const itKey = it.outlinePointId || '__unassigned__';
-            if (itKey === groupKey) sameGroupIndexes.push(i);
-          }
-          // Find previous and next neighbor within the same group relative to movedIndex
-
-          // Compute new positional rank within the destination group (outline point or unassigned)
-      const groupKey1 = finalOutlinePointId || '__unassigned__';
-      const sameGroupIndexes1: number[] = [];
-          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
-            const it = updatedContainers[overContainer][i];
-        const itKey = it.outlinePointId || '__unassigned__';
-        if (itKey === groupKey1) sameGroupIndexes1.push(i);
-          }
-      let prevIdxInSection1: number | null = null;
-      let nextIdxInSection1: number | null = null;
-      for (const idx of sameGroupIndexes1) {
-        if (idx < movedIndex) prevIdxInSection1 = idx;
-        if (idx > movedIndex) { nextIdxInSection1 = idx; break; }
-          }
-      const prevItem1 = prevIdxInSection1 !== null ? updatedContainers[overContainer][prevIdxInSection1] : undefined;
-      const nextItem1 = nextIdxInSection1 !== null ? updatedContainers[overContainer][nextIdxInSection1] : undefined;
-      const prevPos1 = typeof prevItem1?.position === 'number' ? (prevItem1!.position as number) : undefined;
-      const nextPos1 = typeof nextItem1?.position === 'number' ? (nextItem1!.position as number) : undefined;
-      let newPos1: number;
-      if (prevPos1 !== undefined && nextPos1 !== undefined && prevPos1 < nextPos1) {
-        newPos1 = (prevPos1 + nextPos1) / 2;
-      } else if (prevPos1 !== undefined) {
-        newPos1 = prevPos1 + 1000;
-      } else if (nextPos1 !== undefined) {
-        newPos1 = nextPos1 - 1000;
-          } else {
-        newPos1 = 1000;
-          }
-
-          // Reflect these updates in local containers immediately to keep UI and persistence consistent
-          updatedContainers[overContainer][movedIndex] = {
-            ...movedItem,
-            requiredTags: updatedRequiredTags,
-            outlinePointId: finalOutlinePointId,
-            position: newPos1,
-          };
-          setContainers(updatedContainers);
-          containersRef.current = updatedContainers;
-
-          // Persist the updated thought
-          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
-          if (thought) {
-            const updatedThought: Thought = {
-              ...thought,
-              tags: [
-                ...updatedRequiredTags,
-                ...(movedItem.customTagNames || []).map((tag) => tag.name),
-              ],
-              outlinePointId: finalOutlinePointId,
-              position: newPos1,
-            };
-            debouncedSaveThought(sermon.id, updatedThought);
-            positionPersisted = true;
-          }
-        }
-      }
-
-      // If only reordering within the same group (no container or outline change), still persist position
-      if (!positionPersisted) {
-        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
-        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
-        if (movedItem && sermon) {
-          const groupKey2 = (movedItem.outlinePointId || '__unassigned__');
-          const sameGroupIndexes2: number[] = [];
-          for (let i = 0; i < updatedContainers[overContainer].length; i++) {
-            const it = updatedContainers[overContainer][i];
-            const itKey = it.outlinePointId || '__unassigned__';
-            if (itKey === groupKey2) sameGroupIndexes2.push(i);
-          }
-          let prevIdxInSection2: number | null = null;
-          let nextIdxInSection2: number | null = null;
-          for (const idx of sameGroupIndexes2) {
-            if (idx < movedIndex) prevIdxInSection2 = idx;
-            if (idx > movedIndex) { nextIdxInSection2 = idx; break; }
-          }
-          const prevItem2 = prevIdxInSection2 !== null ? updatedContainers[overContainer][prevIdxInSection2] : undefined;
-          const nextItem2 = nextIdxInSection2 !== null ? updatedContainers[overContainer][nextIdxInSection2] : undefined;
-          const prevPos2 = typeof prevItem2?.position === 'number' ? (prevItem2!.position as number) : undefined;
-          const nextPos2 = typeof nextItem2?.position === 'number' ? (nextItem2!.position as number) : undefined;
-          let newPos2: number;
-          if (prevPos2 !== undefined && nextPos2 !== undefined && prevPos2 < nextPos2) {
-            newPos2 = (prevPos2 + nextPos2) / 2;
-          } else if (prevPos2 !== undefined) {
-            newPos2 = prevPos2 + 1000;
-          } else if (nextPos2 !== undefined) {
-            newPos2 = nextPos2 - 1000;
-          } else {
-            newPos2 = 1000;
-          }
-          // Update UI and persist
-          updatedContainers[overContainer][movedIndex] = {
-            ...movedItem,
-            position: newPos2,
-          };
-          setContainers(updatedContainers);
-          containersRef.current = updatedContainers;
-
-          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
-          if (thought) {
-            const updatedThought: Thought = {
-              ...thought,
-              position: newPos2,
-            };
-            debouncedSaveThought(sermon.id, updatedThought);
-          }
-        }
-      }
-      
-      // Update structure if needed
-      const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
-      if (changesDetected) {
-        await updateStructure(sermon.id, newStructure);
-        setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure} : prev));
-      }
-      
-    } catch (error) {
-      console.error("Error updating drag and drop:", error);
-      
-      // Rollback optimistic updates on error
-      setContainers(previousContainers);
-      containersRef.current = previousContainers;
-      setSermon(previousSermon);
-      
-      // Show user-friendly error message
-      toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
-    }
-  };
-
   // Move a thought from a concrete section to the ambiguous section
   const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
     if (!sermon) return;
@@ -932,75 +376,13 @@ function StructurePageContent() {
     }
 
     // Persist structure
-    const newStructure = {
+    const newStructure: Structure = {
       introduction: updatedContainers.introduction.map((it) => it.id),
       main: updatedContainers.main.map((it) => it.id),
       conclusion: updatedContainers.conclusion.map((it) => it.id),
       ambiguous: updatedContainers.ambiguous.map((it) => it.id),
     };
     debouncedSaveStructure(sermon.id, newStructure);
-  };
-
-  const handleToggleFocusMode = (columnId: string) => {
-    if (focusedColumn === columnId) {
-      // If the same column is clicked, exit focus mode
-      setFocusedColumn(null);
-      
-      // Update URL to remove focus mode
-      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
-      newSearchParams.delete('mode');
-      newSearchParams.delete('section');
-      
-      // Preserve sermonId if it exists
-      if (sermonId) {
-        newSearchParams.set('sermonId', sermonId);
-      }
-      
-      router.push(`${pathname}?${newSearchParams.toString()}`);
-    } else {
-      // Otherwise, enter focus mode for the clicked column
-      setFocusedColumn(columnId);
-      
-      // Update URL to include focus mode and section
-      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
-      newSearchParams.set('mode', 'focus');
-      newSearchParams.set('section', columnId);
-      
-      // Preserve sermonId if it exists
-      if (sermonId) {
-        newSearchParams.set('sermonId', sermonId);
-      }
-      
-      router.push(`${pathname}?${newSearchParams.toString()}`);
-    }
-  };
-
-  // Function to get navigation sections for focus mode
-  const getNavigationSections = (currentSection: string) => {
-    const sections = ['introduction', 'main', 'conclusion'];
-    const currentIndex = sections.indexOf(currentSection);
-    
-    if (currentIndex === -1) return { previous: null, next: null };
-    
-    return {
-      previous: currentIndex > 0 ? sections[currentIndex - 1] : null,
-      next: currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null
-    };
-  };
-
-  // Function to navigate to a specific section in focus mode
-  const navigateToSection = (sectionId: string) => {
-    if (!sermonId) return;
-    
-    setFocusedColumn(sectionId);
-    
-    // Update URL to include focus mode and section
-    const newSearchParams = new URLSearchParams();
-    newSearchParams.set('mode', 'focus');
-    newSearchParams.set('section', sectionId);
-    newSearchParams.set('sermonId', sermonId);
-    
-    router.push(`${pathname}?${newSearchParams.toString()}`);
   };
 
   const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
@@ -1013,342 +395,6 @@ function StructurePageContent() {
       format, 
       includeTags: options?.includeTags
     });
-  };
-
-
-
-  const handleAiSort = async (columnId: string) => {
-    if (!sermon || !sermonId) return;
-    if (isSorting) return;
-    setIsSorting(true);
-
-    // Save the current state before sorting for comparison/rollback
-    const currentColumnItems = [...containers[columnId]];
-    setPreSortState({
-      [columnId]: currentColumnItems
-    });
-    
-    try {
-      // We'll now sort all items, not just unassigned ones
-      const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
-      
-      // Limit to reasonable number for AI
-      const MAX_THOUGHTS_FOR_SORTING = 25;
-      const totalItems = containers[columnId].length;
-      const itemsToSort = containers[columnId].slice(0, MAX_THOUGHTS_FOR_SORTING);
-      const remainingItems = totalItems > MAX_THOUGHTS_FOR_SORTING ? 
-        containers[columnId].slice(MAX_THOUGHTS_FOR_SORTING) : 
-        [];
-      
-      if (itemsToSort.length === 0) {
-        toast.info(t('structure.noItemsToSort'));
-        setIsSorting(false);
-        setPreSortState(null);
-        return;
-      }
-      
-      // Call the AI sorting service
-      const sortedItems = await sortItemsWithAI(
-        columnId,
-        itemsToSort,
-        sermonId,
-        outlinePointsForColumn
-      );
-      
-      if (!sortedItems || !Array.isArray(sortedItems)) {
-        toast.error(t('errors.aiSortFailedFormat'));
-        setIsSorting(false);
-        setPreSortState(null);
-        return;
-      }
-      
-      // Track items that were changed by AI
-      const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};
-      
-      // Find what changes were made by AI
-      for (const item of sortedItems) {
-        const originalItem = currentColumnItems.find(i => i.id === item.id);
-        
-        if (!originalItem) continue; // Should not happen but safety first
-        
-        // Check if outline point was assigned (only for previously unassigned thoughts)
-        if (item.outlinePointId && !originalItem.outlinePointId) {
-          newHighlightedItems[item.id] = { type: 'assigned' };
-        } 
-        // Check if position changed
-        else if (
-          currentColumnItems.findIndex(i => i.id === item.id) !== 
-          sortedItems.findIndex(i => i.id === item.id)
-        ) {
-          newHighlightedItems[item.id] = { type: 'moved' };
-        }
-      }
-      
-      // Combine sorted items with remaining items
-      const finalSortedItems = [...sortedItems, ...remainingItems];
-      
-      // Only enter diff mode if any changes were made
-      const hasChanges = Object.keys(newHighlightedItems).length > 0;
-      
-      if (hasChanges) {
-        // Update state with new highlighted items and enable diff mode
-        setHighlightedItems(newHighlightedItems);
-        setIsDiffModeActive(true);
-        
-        // Update containers with the new sorted items
-        setContainers(prev => ({
-          ...prev,
-          [columnId]: finalSortedItems
-        }));
-        
-        // Notify the user of changes
-        toast.success(t('structure.aiSortSuggestionsReady', { 
-          defaultValue: 'AI sorting completed. Review and confirm the changes.'
-        }));
-      } else {
-        // No changes were made, simply inform the user
-        toast.info(t('structure.aiSortNoChanges', {
-          defaultValue: 'AI sort did not suggest any changes.'
-        }));
-        
-        // Clean up
-        setPreSortState(null);
-      }
-    } catch {
-      toast.error(t('errors.failedToSortItems'));
-      // Reset state on error
-      setPreSortState(null);
-    } finally {
-      setIsSorting(false);
-    }
-  };
-
-  // Handler for accepting a single item change
-  const handleKeepItem = (itemId: string, columnId: string) => {
-    // Find the current item
-    const item = containers[columnId].find(i => i.id === itemId);
-    if (!item) return;
-
-    // Remove from highlighted items
-    setHighlightedItems(prev => {
-      const newHighlighted = { ...prev };
-      delete newHighlighted[itemId];
-      
-      // If no more highlighted items, exit diff mode
-      if (Object.keys(newHighlighted).length === 0) {
-        setIsDiffModeActive(false);
-        setPreSortState(null);
-      }
-      
-      return newHighlighted;
-    });
-
-    // Save if outline point was assigned
-    if (item.outlinePointId && sermon) {
-      const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-      if (thought) {
-        // Create updated thought with the new outline point ID
-        const updatedThought: Thought = {
-          ...thought,
-          outlinePointId: item.outlinePointId
-        };
-        
-        // Save the thought
-        debouncedSaveThought(sermonId!, updatedThought);
-      }
-    }
-
-    // Save the current structure
-    const newStructure = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure);
-  };
-
-  // Handler for reverting a single item change
-  const handleRevertItem = (itemId: string, columnId: string) => {
-    if (!preSortState || !preSortState[columnId]) return;
-    
-    // Find the original item state
-    const originalItem = preSortState[columnId].find(i => i.id === itemId);
-    if (!originalItem) return;
-    
-    // Find current position in the container
-    const currentIndex = containers[columnId].findIndex(i => i.id === itemId);
-    if (currentIndex === -1) return;
-    
-    // Find original position
-    const originalIndex = preSortState[columnId].findIndex(i => i.id === itemId);
-    
-    // Update containers to revert this item
-    setContainers(prev => {
-      // Create a copy of the current items
-      const updatedItems = [...prev[columnId]];
-      
-      // Remove item from current position
-      updatedItems.splice(currentIndex, 1);
-      
-      // Find proper insertion position (considering other items may have moved)
-      let insertPosition = originalIndex;
-      if (insertPosition > updatedItems.length) {
-        insertPosition = updatedItems.length;
-      }
-      
-      // Insert item at the proper position
-      updatedItems.splice(insertPosition, 0, originalItem);
-      
-      return {
-        ...prev,
-        [columnId]: updatedItems
-      };
-    });
-    
-    // Update containersRef to match
-    containersRef.current = {
-      ...containersRef.current,
-      [columnId]: [...containers[columnId]]
-    };
-    
-    // Remove from highlighted items
-    setHighlightedItems(prev => {
-      const newHighlighted = { ...prev };
-      delete newHighlighted[itemId];
-      
-      // If no more highlighted items, exit diff mode
-      if (Object.keys(newHighlighted).length === 0) {
-        setIsDiffModeActive(false);
-        setPreSortState(null);
-      }
-      
-      return newHighlighted;
-    });
-    
-    // If there was an outline point change, revert it in the database
-    if (sermon) {
-      const currentItem = containers[columnId][currentIndex];
-      if (currentItem.outlinePointId !== originalItem.outlinePointId) {
-        const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-        if (thought) {
-          // Create reverted thought
-          const updatedThought: Thought = {
-            ...thought,
-            outlinePointId: originalItem.outlinePointId
-          };
-          
-          // Save the thought
-          debouncedSaveThought(sermonId!, updatedThought);
-        }
-      }
-    }
-    
-    // Save the updated structure
-    const newStructure = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure);
-  };
-
-  // Handler for accepting all remaining changes
-  const handleKeepAll = () => {
-    if (!highlightedItems || Object.keys(highlightedItems).length === 0) return;
-    
-    // Create a list of all thoughts that need to be updated
-    const thoughtUpdates: Array<{id: string, outlinePointId?: string}> = [];
-    
-    // Check for outline point assignments
-    for (const itemId of Object.keys(highlightedItems)) {
-      // Skip if not an outline point assignment
-      if (highlightedItems[itemId].type !== 'assigned') continue;
-      
-      // Find the item in the containers
-      for (const items of Object.values(containers)) {
-        const item = items.find(i => i.id === itemId);
-        if (item && item.outlinePointId && sermon) {
-          const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-          if (thought && thought.outlinePointId !== item.outlinePointId) {
-            // Add to updates list
-            thoughtUpdates.push({
-              id: itemId,
-              outlinePointId: item.outlinePointId
-            });
-          }
-        }
-      }
-    }
-    
-    // Process thought updates
-    if (thoughtUpdates.length > 0 && sermon) {
-      for (const update of thoughtUpdates) {
-        const thought = sermon.thoughts.find((t: Thought) => t.id === update.id);
-        if (thought) {
-          const updatedThought: Thought = {
-            ...thought,
-            outlinePointId: update.outlinePointId
-          };
-          
-          // Save the thought with debouncing
-          debouncedSaveThought(sermonId!, updatedThought);
-        }
-      }
-    }
-    
-    // Save the current structure
-    const newStructure = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure);
-    
-    // Clear highlighted items and exit diff mode
-    setHighlightedItems({});
-    setIsDiffModeActive(false);
-    setPreSortState(null);
-    
-    // Show confirmation toast
-    toast.success(t('structure.aiSortChangesAccepted', {
-      defaultValue: 'All AI suggestions accepted.'
-    }));
-  };
-
-  // Handler for reverting all changes
-  const handleRevertAll = (columnId: string) => {
-    if (!preSortState || !preSortState[columnId]) return;
-    
-    // Revert the column to its pre-sort state
-    setContainers(prev => ({
-      ...prev,
-      [columnId]: [...preSortState[columnId]]
-    }));
-    
-    // Update containersRef to match
-    containersRef.current = {
-      ...containersRef.current,
-      [columnId]: [...preSortState[columnId]]
-    };
-    
-    // Clear highlighted items and exit diff mode
-    setHighlightedItems({});
-    setIsDiffModeActive(false);
-    setPreSortState(null);
-    
-    // Show confirmation toast
-    toast.info(t('structure.aiSortChangesReverted', {
-      defaultValue: 'All AI suggestions reverted.'
-    }));
   };
 
   // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
@@ -1373,7 +419,7 @@ function StructurePageContent() {
       return;
     }
 
-    // <<< Set deleting state BEFORE async call >>>
+    // Set deleting state BEFORE async call
     setDeletingItemId(itemId);
 
     try {
@@ -1401,7 +447,7 @@ function StructurePageContent() {
       };
 
       // 3. Recalculate structure for DB update (based on updated containers)
-      const newStructure = {
+      const newStructure: Structure = {
           introduction: (newContainers.introduction || []).map((item: Item) => item.id),
           main: (newContainers.main || []).map((item: Item) => item.id),
           conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
@@ -1428,72 +474,10 @@ function StructurePageContent() {
     } catch {
       toast.error(t('errors.deletingError') || "Failed to delete thought.");
     } finally {
-      // <<< Clear deleting state AFTER operation (success or error) >>>
+      // Clear deleting state AFTER operation (success or error)
       setDeletingItemId(null);
     }
   };
-
-  // Save functions for structure and thoughts
-  const saveStructure = useCallback(
-    async (sermonId: string, structure: Structure) => {
-      try {
-        await updateStructure(sermonId, structure);
-      } catch {
-        toast.error(t('errors.failedToSaveStructure'));
-      }
-    },
-    [t]
-  );
-
-  const saveThought = useCallback(
-    async (sermonId: string, thought: Thought) => {
-      try {
-        const updatedThought = await updateThought(sermonId, thought);
-        setSermon((prev: Sermon | null) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            thoughts: prev.thoughts.map((t: Thought) => (t.id === updatedThought.id ? updatedThought : t)),
-          };
-        });
-      } catch {
-        toast.error(t('errors.failedToSaveThought'));
-      }
-    },
-    [setSermon, t]
-  );
-
-  // Create debounced versions
-  const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
-  const debouncedSaveThought = useMemo(() => debounce(saveThought, 500), [saveThought]);
-
-  // Calculate counts of thoughts per outline point
-  const getThoughtsPerOutlinePoint = () => {
-    if (!sermon || !sermon.outline) return {};
-    
-    const result: Record<string, number> = {};
-    
-    // Initialize with zero counts
-    for (const section of ['introduction', 'main', 'conclusion']) {
-      const points = sermon.outline[section as keyof typeof sermon.outline] || [];
-      for (const point of points) {
-        result[point.id] = 0;
-      }
-    }
-    
-    // Count thoughts per outline point
-    for (const section of ['introduction', 'main', 'conclusion']) {
-      for (const item of containers[section]) {
-        if (item.outlinePointId) {
-          result[item.outlinePointId] = (result[item.outlinePointId] || 0) + 1;
-        }
-      }
-    }
-    
-    return result;
-  };
-  
-  const thoughtsPerOutlinePoint = getThoughtsPerOutlinePoint();
 
   // Function to handle outline updates from Column components
   const handleOutlineUpdate = (updatedOutline: Outline) => {
@@ -1512,6 +496,23 @@ function StructurePageContent() {
         outline: mergedOutline
       };
     });
+  };
+
+  const onDragEndWrapper = (event: DragEndEvent) => {
+    const { active } = event;
+    const activeKey = String(active?.id ?? "");
+    if (activeKey && activeKey in highlightedItems) {
+      setHighlightedItems((prev) => {
+        const next = { ...prev } as typeof prev;
+        delete next[activeKey];
+        if (Object.keys(next).length === 0) {
+          setIsDiffModeActive(false);
+          setPreSortState(null);
+        }
+        return next;
+      });
+    }
+    handleDragEnd(event);
   };
 
   // Add loading and error handling based on the hook's state
@@ -1536,142 +537,34 @@ function StructurePageContent() {
           <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
             {t('structure.title')} {sermon.title}
           </h1>
-          {!focusedColumn && (
-            <div className="text-center">
-              <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                {t('structure.backToSermon')}
-              </Link>
-              <div className="mt-2 flex justify-center space-x-4">
-                <span className="text-gray-600 dark:text-gray-400">{t('structure.focusMode')}:</span>
-                <Link 
-                  href={sermonId ? getFocusModeUrlUtil('introduction', sermonId) : '#'}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                >
-                  {t('structure.introduction')}
-                </Link>
-                <Link 
-                  href={sermonId ? getFocusModeUrlUtil('main', sermonId) : '#'}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                >
-                  {t('structure.mainPart')}
-                </Link>
-                <Link 
-                  href={sermonId ? getFocusModeUrlUtil('conclusion', sermonId) : '#'}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                >
-                  {t('structure.conclusion')}
-                </Link>
-              </div>
-            </div>
-          )}
-          {focusedColumn && (
-            <div className="text-center">
-              <div className="flex justify-center items-center space-x-4">
-                <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                  {t('structure.backToSermon')}
-                </Link>
-                <span className="text-gray-400">•</span>
-                <button
-                  onClick={() => handleToggleFocusMode(focusedColumn)}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                >
-                  {t('structure.normalMode')}
-                </button>
-              </div>
-              <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                {t('structure.focusMode')}: {t(`structure.${focusedColumn === 'main' ? 'mainPart' : focusedColumn}`)}
-              </div>
-              
-              {/* Navigation buttons for focus mode */}
-              <div className="mt-4 flex flex-col items-center space-y-3">
-                {/* Quick section navigation */}
-                <div className="flex justify-center items-center space-x-2">
-                  {(['introduction', 'mainPart', 'conclusion'] as const).map((section) => {
-                    const sectionKey = section === 'mainPart' ? 'main' : section;
-                    const buttonColors = getFocusModeButtonColors(section);
-                    const isActive = focusedColumn === sectionKey;
-                    
-                    return (
-                      <button
-                        key={section}
-                        onClick={() => navigateToSection(sectionKey)}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200 ${
-                          isActive
-                            ? `${buttonColors.bg} ${buttonColors.text}`
-                            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {t(`structure.${section}`)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+          <FocusNav
+            sermon={sermon}
+            sermonId={sermonId}
+            focusedColumn={focusedColumn}
+            onToggleFocusMode={handleToggleFocusMode}
+            onNavigateToSection={navigateToSection}
+          />
         </div>
         
         <DndContext
           data-testid="dnd-context"
-          sensors={sensors}
+          sensors={dndSensors}
           collisionDetection={pointerWithin}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
+          onDragStart={onDragStartHook}
+          onDragOver={onDragOverHook}
+          onDragEnd={onDragEndWrapper}
         >
-          {/* Only show ambiguous section if not in focus mode or if it has content */}
-          {(!focusedColumn || containers.ambiguous.length > 0) && (
-            <div className="mt-8">
-              <div
-                className={`bg-white dark:bg-gray-800 rounded-md shadow border ${
-                  containers.ambiguous.length > 0 ? "border-red-500" : "border-gray-200 dark:border-gray-700"
-                }`}
-              >
-                <div
-                  className="flex items-center justify-between p-4 cursor-pointer"
-                  onClick={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
-                >
-                  <h2 className="text-xl font-semibold dark:text-white">
-                    {columnTitles["ambiguous"]} <span className="ml-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-0.5 rounded-full">{containers.ambiguous.length}</span>
-                  </h2>
-                  <svg
-                    className={`w-6 h-6 transform transition-transform duration-200 ${
-                      isAmbiguousVisible ? "rotate-0" : "-rotate-90"
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {isAmbiguousVisible && (
-                  <SortableContext items={containers.ambiguous} strategy={focusedColumn ? verticalListSortingStrategy : rectSortingStrategy}>
-                    <div className={`min-h-[100px] p-4 ${
-                      !focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'space-y-3'
-                    }`}>
-                      {containers.ambiguous.length === 0 ? (
-                        <DummyDropZone container="ambiguous" />
-                      ) : (
-                        containers.ambiguous.map((item) => (
-                          <SortableItem 
-                            key={item.id} 
-                            item={item} 
-                            containerId="ambiguous" 
-                            onEdit={handleEdit} 
-                            showDeleteIcon={true}
-                            onDelete={handleRemoveFromStructure}
-                            isDeleting={item.id === deletingItemId}
-                            activeId={activeId}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </SortableContext>
-                )}
-              </div>
-            </div>
-          )}
+          <AmbiguousSection
+            items={containers.ambiguous}
+            isVisible={isAmbiguousVisible}
+            onToggleVisibility={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
+            onEdit={handleEdit}
+            onDelete={handleRemoveFromStructure}
+            deletingItemId={deletingItemId}
+            activeId={dndActiveId}
+            focusedColumn={focusedColumn}
+            columnTitle={columnTitles["ambiguous"]}
+          />
           
           <div className={`${!focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'flex flex-col'} w-full mt-8`}>
             {/* Introduction column - only show if not in focus mode or if it's the focused column */}
@@ -1700,7 +593,7 @@ function StructurePageContent() {
                 onRevertItem={handleRevertItem}
                 onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("introduction")}
-                activeId={activeId}
+                activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
@@ -1731,7 +624,7 @@ function StructurePageContent() {
                 onRevertItem={handleRevertItem}
                 onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("main")}
-                activeId={activeId}
+                activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
@@ -1762,19 +655,19 @@ function StructurePageContent() {
                 onRevertItem={handleRevertItem}
                 onKeepAll={handleKeepAll}
                 onRevertAll={() => handleRevertAll("conclusion")}
-                activeId={activeId}
+                activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
               />
             )}
           </div>
           <DragOverlay>
-            {activeId && (() => {
+            {dndActiveId && (() => {
               const containerKey = Object.keys(containers).find(
-                (key) => containers[key].some((item) => item.id === activeId)
+                (key) => containers[key].some((item) => item.id === dndActiveId)
               );
               
               const activeItem = containerKey
-                ? containers[containerKey].find((item) => item.id === activeId)
+                ? containers[containerKey].find((item) => item.id === dndActiveId)
                 : null;
                 
               return activeItem ? (
