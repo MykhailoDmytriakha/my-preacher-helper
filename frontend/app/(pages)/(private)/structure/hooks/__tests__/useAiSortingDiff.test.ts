@@ -74,7 +74,7 @@ describe('useAiSortingDiff', () => {
       const { result } = renderHook(() => useAiSortingDiff(defaultProps));
 
       expect(result.current.preSortState).toBeNull();
-      expect(result.current.highlightedItems).toEqual([]);
+      expect(result.current.highlightedItems).toEqual({});
       expect(result.current.isDiffModeActive).toBe(false);
       expect(result.current.isSorting).toBe(false);
       expect(typeof result.current.handleAiSort).toBe('function');
@@ -104,9 +104,9 @@ describe('useAiSortingDiff', () => {
       });
 
       expect(mockSortItemsWithAI).toHaveBeenCalledWith(
-        'sermon-1',
         'introduction',
         mockContainers.introduction,
+        'sermon-1',
         mockOutlinePoints.introduction
       );
       expect(result.current.isSorting).toBe(false);
@@ -211,7 +211,7 @@ describe('useAiSortingDiff', () => {
 
       expect(result.current.isDiffModeActive).toBe(true);
       expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
-      expect(result.current.highlightedItems).toContain('thought-1'); // thought-1 gets assigned to outline point
+      expect(result.current.highlightedItems).toHaveProperty('thought-1'); // thought-1 gets assigned to outline point
     });
 
     it('should highlight changed items correctly', async () => {
@@ -232,7 +232,7 @@ describe('useAiSortingDiff', () => {
         await result.current.handleAiSort('introduction');
       });
 
-      expect(result.current.highlightedItems).toContain('thought-1'); // thought-1 gets assigned to outline point
+      expect(result.current.highlightedItems).toHaveProperty('thought-1'); // thought-1 gets assigned to outline point
     });
   });
 
@@ -259,7 +259,7 @@ describe('useAiSortingDiff', () => {
         result.current.handleKeepItem('thought-1', 'introduction');
       });
 
-      expect(result.current.highlightedItems).not.toContain('thought-1');
+      expect(result.current.highlightedItems).not.toHaveProperty('thought-1');
       expect(mockSetContainers).toHaveBeenCalled();
     });
 
@@ -285,7 +285,7 @@ describe('useAiSortingDiff', () => {
         result.current.handleRevertItem('thought-1', 'introduction');
       });
 
-      expect(result.current.highlightedItems).not.toContain('thought-1');
+      expect(result.current.highlightedItems).not.toHaveProperty('thought-1');
       expect(mockSetContainers).toHaveBeenCalled();
     });
 
@@ -312,7 +312,7 @@ describe('useAiSortingDiff', () => {
       });
 
       expect(result.current.isDiffModeActive).toBe(false);
-      expect(result.current.highlightedItems).toEqual([]);
+      expect(result.current.highlightedItems).toEqual({});
       expect(mockSetContainers).toHaveBeenCalled();
     });
 
@@ -339,7 +339,7 @@ describe('useAiSortingDiff', () => {
       });
 
       expect(result.current.isDiffModeActive).toBe(false);
-      expect(result.current.highlightedItems).toEqual([]);
+      expect(result.current.highlightedItems).toEqual({});
       expect(mockSetContainers).toHaveBeenCalled();
     });
   });
@@ -491,9 +491,9 @@ describe('useAiSortingDiff', () => {
       });
 
       expect(mockSortItemsWithAI).toHaveBeenCalledWith(
-        'sermon-1',
         'introduction',
         largeItems,
+        'sermon-1',
         mockOutlinePoints.introduction
       );
     });
@@ -539,9 +539,9 @@ describe('useAiSortingDiff', () => {
       });
 
       expect(mockSortItemsWithAI).toHaveBeenCalledWith(
-        'sermon-1',
         'main',
         mockContainers.main,
+        'sermon-1',
         mockOutlinePoints.main
       );
     });
@@ -572,7 +572,7 @@ describe('useAiSortingDiff', () => {
 
       // 3. Verify final state
       expect(result.current.isDiffModeActive).toBe(false);
-      expect(result.current.highlightedItems).toEqual([]);
+      expect(result.current.highlightedItems).toEqual({});
       expect(mockSetContainers).toHaveBeenCalled();
     });
   });

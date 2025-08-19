@@ -28,7 +28,7 @@ export const useAiSortingDiff = ({
   
   // AI Sort with Interactive Confirmation state
   const [preSortState, setPreSortState] = useState<Record<string, Item[]> | null>(null);
-  const [highlightedItems, setHighlightedItems] = useState<string[]>([]);
+  const [highlightedItems, setHighlightedItems] = useState<Record<string, { type: 'assigned' | 'moved' }>>({});
   const [isDiffModeActive, setIsDiffModeActive] = useState<boolean>(false);
   const [isSorting, setIsSorting] = useState(false);
 
@@ -60,9 +60,9 @@ export const useAiSortingDiff = ({
       
       // Call the AI sorting service
       const sortedItems = await sortItemsWithAI(
-        sermonId,
         columnId,
         currentColumnItems,
+        sermonId,
         outlinePointsForColumn
       );
       
@@ -74,7 +74,7 @@ export const useAiSortingDiff = ({
       }
       
       // Track items that were changed by AI
-      const newHighlightedItems: string[] = [];
+      const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};
       
       // Find what changes were made by AI
       for (const item of sortedItems) {
@@ -84,14 +84,14 @@ export const useAiSortingDiff = ({
         
         // Check if outline point was assigned (only for previously unassigned thoughts)
         if (item.outlinePointId && !originalItem.outlinePointId) {
-          newHighlightedItems.push(item.id);
+          newHighlightedItems[item.id] = { type: 'assigned' };
         } 
         // Check if position changed
         else if (
           currentColumnItems.findIndex(i => i.id === item.id) !== 
           sortedItems.findIndex(i => i.id === item.id)
         ) {
-          newHighlightedItems.push(item.id);
+          newHighlightedItems[item.id] = { type: 'moved' };
         }
       }
       
@@ -101,7 +101,7 @@ export const useAiSortingDiff = ({
       )];
       
       // Only enter diff mode if any changes were made
-      const hasChanges = newHighlightedItems.length > 0;
+      const hasChanges = Object.keys(newHighlightedItems).length > 0;
       
       if (hasChanges) {
         // Update state with new highlighted items and enable diff mode
@@ -161,10 +161,11 @@ export const useAiSortingDiff = ({
 
     // Remove from highlighted items
     setHighlightedItems(prev => {
-      const newHighlighted = prev.filter(id => id !== itemId);
+      const newHighlighted = { ...prev };
+      delete newHighlighted[itemId];
       
       // If no more highlighted items, exit diff mode
-      if (newHighlighted.length === 0) {
+      if (Object.keys(newHighlighted).length === 0) {
         setIsDiffModeActive(false);
         setPreSortState(null);
       }
@@ -245,10 +246,11 @@ export const useAiSortingDiff = ({
     
     // Remove from highlighted items
     setHighlightedItems(prev => {
-      const newHighlighted = prev.filter(id => id !== itemId);
+      const newHighlighted = { ...prev };
+      delete newHighlighted[itemId];
       
       // If no more highlighted items, exit diff mode
-      if (newHighlighted.length === 0) {
+      if (Object.keys(newHighlighted).length === 0) {
         setIsDiffModeActive(false);
         setPreSortState(null);
       }
@@ -296,13 +298,13 @@ export const useAiSortingDiff = ({
 
   // Handler for accepting all remaining changes
   const handleKeepAll = useCallback(() => {
-    if (!highlightedItems || highlightedItems.length === 0) return;
+    if (!highlightedItems || Object.keys(highlightedItems).length === 0) return;
     
     // Create a list of all thoughts that need to be updated
     const thoughtUpdates: Array<{id: string, outlinePointId?: string}> = [];
     
     // Check for outline point assignments
-    for (const itemId of highlightedItems) {
+    for (const itemId of Object.keys(highlightedItems)) {
       // Find the item in the containers
       for (const items of Object.values(containers)) {
         if (!Array.isArray(items)) continue;
@@ -349,7 +351,7 @@ export const useAiSortingDiff = ({
     debouncedSaveStructure(sermonId!, newStructure);
     
     // Clear highlighted items and exit diff mode
-    setHighlightedItems([]);
+    setHighlightedItems({});
     setIsDiffModeActive(false);
     setPreSortState(null);
     
@@ -378,7 +380,7 @@ export const useAiSortingDiff = ({
     }));
     
     // Clear highlighted items and exit diff mode
-    setHighlightedItems([]);
+    setHighlightedItems({});
     setIsDiffModeActive(false);
     setPreSortState(null);
     
