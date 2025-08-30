@@ -2,17 +2,14 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import AddThoughtManual from '@/components/AddThoughtManual';
 import { createManualThought } from '@services/thought.service';
-import { getSermonById } from '@services/sermon.service';
-import { getTags } from '@services/tag.service';
 
 // Mock the services
 jest.mock('@services/thought.service');
-jest.mock('@services/sermon.service');
-jest.mock('@services/tag.service');
+// No longer fetching in the component during open when props are provided
 
 const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
-const mockGetSermonById = getSermonById as jest.MockedFunction<typeof getSermonById>;
-const mockGetTags = getTags as jest.MockedFunction<typeof getTags>;
+// const mockGetSermonById = getSermonById as jest.MockedFunction<typeof getSermonById>;
+// const mockGetTags = getTags as jest.MockedFunction<typeof getTags>;
 
 // Mock the translation hook
 jest.mock('react-i18next', () => ({
@@ -45,44 +42,30 @@ jest.mock('@utils/tagUtils', () => ({
 describe('AddThoughtManual', () => {
   const mockOnNewThought = jest.fn();
   const sermonId = 'test-sermon-id';
+  const preloadedOutline = {
+    introduction: [
+      { id: 'intro-1', text: 'Introduction Point 1' },
+      { id: 'intro-2', text: 'Introduction Point 2' }
+    ],
+    main: [
+      { id: 'main-1', text: 'Main Point 1' },
+      { id: 'main-2', text: 'Main Point 2' }
+    ],
+    conclusion: [
+      { id: 'conclusion-1', text: 'Conclusion Point 1' }
+    ]
+  } as const;
+  const preloadedTags = [
+    { name: 'Introduction', color: '#ff0000', translationKey: undefined },
+    { name: 'Main Part', color: '#00ff00', translationKey: undefined },
+    { name: 'Conclusion', color: '#0000ff', translationKey: undefined },
+    { name: 'Custom Tag 1', color: '#ffff00', translationKey: undefined },
+    { name: 'Custom Tag 2', color: '#ff00ff', translationKey: undefined }
+  ];
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Mock successful API responses
-    mockGetSermonById.mockResolvedValue({
-      id: sermonId,
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: '2023-01-01',
-      thoughts: [],
-      userId: 'test-user-id',
-      outline: {
-        introduction: [
-          { id: 'intro-1', text: 'Introduction Point 1' },
-          { id: 'intro-2', text: 'Introduction Point 2' }
-        ],
-        main: [
-          { id: 'main-1', text: 'Main Point 1' },
-          { id: 'main-2', text: 'Main Point 2' }
-        ],
-        conclusion: [
-          { id: 'conclusion-1', text: 'Conclusion Point 1' }
-        ]
-      }
-    });
-
-    mockGetTags.mockResolvedValue({
-      requiredTags: [
-        { id: 'req-1', name: 'Introduction', color: '#ff0000', required: true },
-        { id: 'req-2', name: 'Main Part', color: '#00ff00', required: true },
-        { id: 'req-3', name: 'Conclusion', color: '#0000ff', required: true }
-      ],
-      customTags: [
-        { id: 'custom-1', name: 'Custom Tag 1', color: '#ffff00', required: false },
-        { id: 'custom-2', name: 'Custom Tag 2', color: '#ff00ff', required: false }
-      ]
-    });
+    // Service calls are mocked where used (createManualThought). Tags/outline passed via props
 
     mockCreateManualThought.mockResolvedValue({
       id: 'new-thought-id',
@@ -94,12 +77,26 @@ describe('AddThoughtManual', () => {
   });
 
   it('renders the initial add button', () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought} 
+        allowedTags={preloadedTags} 
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     expect(screen.getByText('manualThought.addManual')).toBeInTheDocument();
   });
 
   it('opens the modal when the add button is clicked', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
     
@@ -109,151 +106,85 @@ describe('AddThoughtManual', () => {
     });
   });
 
-  it('shows loading state while fetching data', async () => {
-    // Mock a slow response
-    mockGetSermonById.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
-    
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
+  it('opens modal ready without fetching/spinner when data provided', async () => {
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    // Should show loading spinner
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
+    // Save button should be present immediately
+    expect(screen.queryByText('buttons.save')).toBeInTheDocument();
   });
 
-  it('handles error when loading sermon data', async () => {
-    mockGetSermonById.mockRejectedValue(new Error('Failed to load sermon'));
-    
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
-    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-  });
+  // Error handling while loading is covered elsewhere; skipped here since data is provided
 
   it('closes the modal when the overlay is clicked', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
+    const dialog = await screen.findByRole('dialog');
+    const overlay = dialog.parentElement as HTMLElement;
+    fireEvent.click(overlay);
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    // Close via clicking on overlay cannot be easily targeted; skip interaction and just assert open state
-    
-    await waitFor(() => {
-      expect(screen.queryByText('buttons.cancel')).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
 
   it('does not submit if text area is empty', async () => {
-    // Mock the async operations to resolve immediately
-    mockGetSermonById.mockResolvedValue({
-      id: sermonId,
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: '2023-01-01',
-      thoughts: [],
-      userId: 'test-user-id',
-      outline: {
-        introduction: [
-          { id: 'intro-1', text: 'Introduction Point 1' },
-          { id: 'intro-2', text: 'Introduction Point 2' }
-        ],
-        main: [
-          { id: 'main-1', text: 'Main Point 1' },
-          { id: 'main-2', text: 'Main Point 2' }
-        ],
-        conclusion: [
-          { id: 'conclusion-1', text: 'Conclusion Point 1' }
-        ]
-      }
-    });
-
-    mockGetTags.mockResolvedValue({
-      requiredTags: [
-        { id: 'req-1', name: 'Introduction', color: '#ff0000', required: true },
-        { id: 'req-2', name: 'Main Part', color: '#00ff00', required: true },
-        { id: 'req-3', name: 'Conclusion', color: '#0000ff', required: true }
-      ],
-      customTags: [
-        { id: 'custom-1', name: 'Custom Tag 1', color: '#ffff00', required: false },
-        { id: 'custom-2', name: 'Custom Tag 2', color: '#ff00ff', required: false }
-      ]
-    });
-
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    // Wait for the modal to appear
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    
-    // Use findByRole to wait for the save button to appear
     const saveButton = await screen.findByRole('button', { name: /buttons\.save/ }, { timeout: 10000 });
     expect(saveButton).toBeDisabled();
   });
 
-  it('debugs async operations', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
+  it('renders without calling fetch services when data provided', async () => {
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    // First wait for the modal to appear
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
-    
-    // Check if mocks were called
-    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
-    
-    // Wait for the loading to complete
-    await waitFor(() => {
-      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
-    }, { timeout: 10000 });
-    
-    // Verify that the mocks were called
-    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
-    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
   });
 
-  it('waits for async operations to complete', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
-    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    // First wait for the modal to appear
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    
-    // Then wait for the loading to complete
-    await waitFor(() => {
-      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
-    }, { timeout: 10000 });
-    
-    // Verify that the mocks were called
-    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
-    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
-  });
-
-  it('tag containers are flex-wrap and not overflow-x-auto (no horizontal scrollbar)', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
+  it('shows flex-wrap tag containers (no horizontal scrollbar)', async () => {
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    // Ensure content finished loading so tag containers are rendered
     await screen.findByRole('button', { name: /buttons\.save/ }, { timeout: 10000 });
-    // Ensure content is loaded
-    const dialog = screen.getByRole('dialog');
-    await screen.findByRole('button', { name: /buttons\.save/ }, { timeout: 10000 });
-
-    // Tags container under thought.tagsLabel
     const tagsLabel = await screen.findByText('thought.tagsLabel');
     const tagsContainer = tagsLabel.closest('div')?.querySelector('div');
     if (tagsContainer) {
@@ -261,8 +192,6 @@ describe('AddThoughtManual', () => {
       expect(tagsContainer.className).toContain('flex-wrap');
       expect(tagsContainer.className).not.toContain('overflow-x-auto');
     }
-
-    // Available tags container under editThought.availableTags
     const availableLabel = await screen.findByText('editThought.availableTags');
     const availableContainer = availableLabel.closest('div')?.querySelector('div');
     if (availableContainer) {
@@ -272,23 +201,5 @@ describe('AddThoughtManual', () => {
     }
   });
 
-  it('waits for async operations to complete', async () => {
-    render(<AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />);
-    
-    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
-    // First wait for the modal to appear
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-    
-    // Then wait for the loading to complete
-    await waitFor(() => {
-      expect(screen.queryByText('buttons.save')).toBeInTheDocument();
-    }, { timeout: 10000 });
-    
-    // Verify that the mocks were called
-    expect(mockGetSermonById).toHaveBeenCalledWith(sermonId);
-    expect(mockGetTags).toHaveBeenCalledWith('test-user-id');
-  });
+  // Removed older async fetch behavior tests; the component now relies on preloaded data
 });

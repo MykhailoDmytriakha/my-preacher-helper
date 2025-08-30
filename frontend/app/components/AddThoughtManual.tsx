@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Thought, Outline } from '@/models/models';
 import { createManualThought } from '@services/thought.service';
 import { getSermonById } from '@services/sermon.service';
@@ -15,35 +15,46 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 interface AddThoughtManualProps {
   sermonId: string;
   onNewThought: (thought: Thought) => void;
+  // Optional preloaded data to avoid fetching on open
+  allowedTags?: { name: string; color: string; translationKey?: string }[];
+  sermonOutline?: Outline;
 }
 
-export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtManualProps) {
+export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: allowedTagsProp, sermonOutline: sermonOutlineProp }: AddThoughtManualProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [selectedOutlinePointId, setSelectedOutlinePointId] = useState<string | undefined>();
-  const [sermonOutline, setSermonOutline] = useState<Outline | undefined>();
-  const [allowedTags, setAllowedTags] = useState<{ name: string; color: string; translationKey?: string }[]>([]);
+  const [sermonOutlineState, setSermonOutlineState] = useState<Outline | undefined>(sermonOutlineProp);
+  const [allowedTagsState, setAllowedTagsState] = useState<{ name: string; color: string; translationKey?: string }[]>(allowedTagsProp || []);
   const [loading, setLoading] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load sermon data and tags when modal opens
+  // Load sermon data and tags early (on mount or when needed) if not provided via props
   const loadSermonData = useCallback(async () => {
     setLoading(true);
     try {
-      // Load sermon to get outline and userId
+      // Skip fetching if props already have data
+      if (sermonOutlineProp && (allowedTagsProp && allowedTagsProp.length > 0)) {
+        return;
+      }
+
       const sermon = await getSermonById(sermonId);
-      if (sermon) {
-        setSermonOutline(sermon.outline);
-        
-        // Load tags using sermon's userId
+      if (!sermon) return;
+
+      // Outline
+      if (!sermonOutlineProp) setSermonOutlineState(sermon.outline);
+
+      // Tags using sermon's userId
+      if (!allowedTagsProp || allowedTagsProp.length === 0) {
         const tagsData = await getTags(sermon.userId);
         const allTags = [
           ...(tagsData.requiredTags || []),
           ...(tagsData.customTags || [])
         ];
-        setAllowedTags(allTags);
+        setAllowedTagsState(allTags);
       }
     } catch (error) {
       console.error("Error loading sermon data:", error);
@@ -51,13 +62,22 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
     } finally {
       setLoading(false);
     }
-  }, [sermonId, t]);
+  }, [sermonId, t, allowedTagsProp, sermonOutlineProp]);
 
+  // Preload on mount when data isn't provided
   useEffect(() => {
-    if (open) {
+    if (!sermonOutlineProp || !allowedTagsProp || allowedTagsProp.length === 0) {
       loadSermonData();
     }
-  }, [open, loadSermonData]);
+  }, [loadSermonData, sermonOutlineProp, allowedTagsProp]);
+
+  // If user clicked the button before data finished loading, open once ready
+  useEffect(() => {
+    if (!loading && pendingOpen) {
+      setOpen(true);
+      setPendingOpen(false);
+    }
+  }, [loading, pendingOpen]);
 
   const handleAddTag = (tag: string) => {
     if (!tags.includes(tag)) {
@@ -105,23 +125,26 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
   };
 
   // Create a flat array of all outline points with section information
+  const effectiveOutline: Outline | undefined = useMemo(() => sermonOutlineProp || sermonOutlineState, [sermonOutlineProp, sermonOutlineState]);
+  const effectiveAllowedTags = useMemo(() => allowedTagsProp && allowedTagsProp.length > 0 ? allowedTagsProp : allowedTagsState, [allowedTagsProp, allowedTagsState]);
+
   const allOutlinePoints: { id: string; text: string; section: string }[] = [];
   
-  if (sermonOutline) {
-    if (sermonOutline.introduction && Array.isArray(sermonOutline.introduction)) {
-      sermonOutline.introduction.forEach(point => {
+  if (effectiveOutline) {
+    if (effectiveOutline.introduction && Array.isArray(effectiveOutline.introduction)) {
+      effectiveOutline.introduction.forEach(point => {
         allOutlinePoints.push({ ...point, section: t('outline.introduction') });
       });
     }
     
-    if (sermonOutline.main && Array.isArray(sermonOutline.main)) {
-      sermonOutline.main.forEach(point => {
+    if (effectiveOutline.main && Array.isArray(effectiveOutline.main)) {
+      effectiveOutline.main.forEach(point => {
         allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
       });
     }
     
-    if (sermonOutline.conclusion && Array.isArray(sermonOutline.conclusion)) {
-      sermonOutline.conclusion.forEach(point => {
+    if (effectiveOutline.conclusion && Array.isArray(effectiveOutline.conclusion)) {
+      effectiveOutline.conclusion.forEach(point => {
         allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
       });
     }
@@ -130,16 +153,25 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
   // Find the selected outline point text for display
   const selectedPointInfo = allOutlinePoints.find(point => point.id === selectedOutlinePointId);
 
-  const availableTags = allowedTags.filter(t => !tags.includes(t.name));
+  const availableTags = effectiveAllowedTags.filter(t => !tags.includes(t.name));
 
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center gap-2"
+        onClick={() => {
+          const hasDataReady = (effectiveAllowedTags && effectiveAllowedTags.length > 0) && Boolean(effectiveOutline);
+          if (hasDataReady) {
+            setOpen(true);
+          } else {
+            setPendingOpen(true);
+            if (!loading) loadSermonData();
+          }
+        }}
+        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center gap-2 disabled:opacity-70"
+        disabled={loading}
       >
         <PlusIcon className="w-5 h-5" />
-        {t('manualThought.addManual')}
+        {loading ? t('settings.loading') : t('manualThought.addManual')}
       </button>
       {open && (
         <div
@@ -155,11 +187,6 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
           >
             <h2 id="manual-thought-modal-title" className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
             <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
-              {loading && (
-                <div className="flex items-center justify-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              )}
                 <div className="mb-6 flex-grow overflow-auto">
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel') || 'Text'}</label>
@@ -174,7 +201,7 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                     />
                   </div>
 
-                  {sermonOutline && (
+                  {effectiveOutline && (
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'Outline Point'}</label>
                       <select
@@ -187,9 +214,9 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                         
                         {/* Group outline points by section */}
                         {Object.entries({
-                          introduction: sermonOutline.introduction || [],
-                          main: sermonOutline.main || [],
-                          conclusion: sermonOutline.conclusion || []
+                          introduction: effectiveOutline.introduction || [],
+                          main: effectiveOutline.main || [],
+                          conclusion: effectiveOutline.conclusion || []
                         }).map(([section, points]) => 
                           points.length > 0 ? (
                             <optgroup key={section} label={t(`outline.${section === 'main' ? 'mainPoints' : section}`) || section}>
@@ -287,16 +314,14 @@ export default function AddThoughtManual({ sermonId, onNewThought }: AddThoughtM
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 mt-auto">
-                  {!loading && (
-                    <button
-                      type="button"
-                      onClick={() => setOpen(false)}
-                      className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
-                      disabled={isSubmitting}
-                    >
-                      {t('buttons.cancel')}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+                    disabled={isSubmitting}
+                  >
+                    {t('buttons.cancel')}
+                  </button>
                   <button
                     type="submit"
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"

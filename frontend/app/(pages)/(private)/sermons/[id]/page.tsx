@@ -560,7 +560,12 @@ export default function SermonPage() {
                             />
                           </div>
                         </div>
-                        <AddThoughtManual sermonId={sermon.id} onNewThought={handleNewManualThought} />
+                        <AddThoughtManual 
+                          sermonId={sermon.id} 
+                          onNewThought={handleNewManualThought}
+                          allowedTags={allowedTags}
+                          sermonOutline={sermon.outline}
+                        />
                       </div>
                       <div className="space-y-5">
                         {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
