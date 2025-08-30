@@ -283,7 +283,7 @@
     "selectedOutlinePoint": "Выбран пункт плана из раздела «{{section}}»"
   },
   "structure": {
-    "title": "Структура проповеди:",
+    "title": "Композиция проповеди:",
     "entries": "записей",
     "recommended": "Рекомендуется: {{percent}}%",
     "workButton": "Работать над структурой",

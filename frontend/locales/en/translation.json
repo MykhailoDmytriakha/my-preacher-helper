@@ -282,7 +282,7 @@
     "selectedOutlinePoint": "Selected outline point from {{section}}"
   },
   "structure": {
-    "title": "Sermon Structure:",
+    "title": "Sermon Composition:",
     "entries": "entries",
     "recommended": "Recommended: {{percent}}%",
     "workButton": "Work on Structure",

@@ -283,7 +283,7 @@
     "selectedOutlinePoint": "Вибрано пункт плану з розділу «{{section}}»"
   },
   "structure": {
-    "title": "Структура проповіді:",
+    "title": "Композиція проповіді:",
     "entries": "записів",
     "recommended": "Рекомендується: {{percent}}%",
     "workButton": "Працювати над структурою",
