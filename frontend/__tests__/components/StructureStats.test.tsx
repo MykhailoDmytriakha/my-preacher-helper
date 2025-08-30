@@ -283,7 +283,7 @@ describe('StructureStats Component', () => {
     
     focusModeButtons.forEach((button) => {
       const link = button.closest('a');
-      expect(link).toHaveClass('px-2', 'py-1', 'rounded', 'text-xs', 'transition-colors', 'block');
+      expect(link).toHaveClass('inline-flex', 'items-center', 'justify-center', 'h-9', 'px-3', 'rounded', 'text-xs', 'transition-colors');
     });
   });
 

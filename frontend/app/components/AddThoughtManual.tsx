@@ -240,7 +240,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                     <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
                     <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
                       {tags.map((tag, idx) => {
-                        const tagInfo = allowedTags.find(t => t.name === tag);
+                        const tagInfo = effectiveAllowedTags.find(t => t.name === tag);
                         let displayName = tag;
                         const structureTagStatus = isStructureTag(tag);
                         

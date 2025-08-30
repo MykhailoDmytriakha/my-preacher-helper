@@ -73,7 +73,7 @@ export const FocusNav: React.FC<FocusNavProps> = ({
       {/* Navigation buttons for focus mode */}
       <div className="mt-4 flex flex-col items-center space-y-3">
         {/* Quick section navigation */}
-        <div className="flex justify-center items-center space-x-2">
+        <div className="flex flex-wrap justify-center items-stretch gap-2">
           {(['introduction', 'mainPart', 'conclusion'] as const).map((section) => {
             const sectionKey = section === 'mainPart' ? 'main' : section;
             const buttonColors = getFocusModeButtonColors(section);
@@ -83,7 +83,7 @@ export const FocusNav: React.FC<FocusNavProps> = ({
               <button
                 key={section}
                 onClick={() => onNavigateToSection(sectionKey)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200 ${
+                className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200 whitespace-nowrap ${
                   isActive
                     ? `${buttonColors.bg} ${buttonColors.text}`
                     : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'

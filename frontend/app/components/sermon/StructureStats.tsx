@@ -79,50 +79,50 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             />
           </div>
         </div>
-        <div className="flex justify-between text-xs sm:text-sm">
-          <div className="text-center" style={{ color: introColor }}>
+        <div className="flex items-stretch text-xs sm:text-sm">
+          <div className="flex-1 flex flex-col items-center text-center" style={{ color: introColor }}>
             <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.introduction')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
-            <div className="mt-2">
+            <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('introduction', sermon.id)}
-                className={`px-2 py-1 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors block`}
+                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors`}
               >
                 {t('structure.focusMode')}
               </Link>
             </div>
           </div>
-          <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
-          <div className="text-center" style={{ color: mainColor }}>
+          <div className="self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-2 sm:mx-4" />
+          <div className="flex-1 flex flex-col items-center text-center" style={{ color: mainColor }}>
             <div className="text-base sm:text-lg font-bold">{mainPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.mainPart')}&rdquo;
               <br />
               {t('structure.recommended', { percent: 60 })}
             </span>
-            <div className="mt-2">
+            <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('main', sermon.id)}
-                className={`px-2 py-1 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors block`}
+                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors`}
               >
                 {t('structure.focusMode')}
               </Link>
             </div>
           </div>
-          <div className="border-l border-gray-200 dark:border-gray-700 mx-2 sm:mx-4" />
-          <div className="text-center" style={{ color: conclusionColor }}>
+          <div className="self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-2 sm:mx-4" />
+          <div className="flex-1 flex flex-col items-center text-center" style={{ color: conclusionColor }}>
             <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.conclusion')}&rdquo; <br />
               {t('structure.recommended', { percent: 20 })}
             </span>
-            <div className="mt-2">
+            <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('conclusion', sermon.id)}
-                className={`px-2 py-1 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors block`}
+                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors`}
               >
                 {t('structure.focusMode')}
               </Link>
