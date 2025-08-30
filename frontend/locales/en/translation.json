@@ -429,6 +429,10 @@
   },
   "plan": {
     "pageTitle": "Sermon Plan",
+    "columns": {
+      "thoughts": "Thoughts",
+      "plan": "Plan"
+    },
     "editor": "Editor",
     "copyFullPlan": "Copy Full Plan",
     "showThoughts": "Show Thoughts",

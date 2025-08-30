@@ -430,6 +430,10 @@
   },
   "plan": {
     "pageTitle": "План проповеди",
+    "columns": {
+      "thoughts": "Мысли",
+      "plan": "План"
+    },
     "editor": "Редактор",
     "copyFullPlan": "Копировать полный план",
     "showThoughts": "Показать мысли",

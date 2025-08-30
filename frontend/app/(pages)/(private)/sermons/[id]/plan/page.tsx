@@ -10,7 +10,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, Sparkles, FileText, Pencil, Key } from "lucide-react";
+import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
@@ -114,6 +114,36 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
   
   return (
     <div className={`inline-block animate-spin rounded-full border-2 border-solid border-gray-300 border-t-blue-600 ${sizeClasses[size]} ${className}`}></div>
+  );
+};
+
+// Section header spanning both columns with clear column labels
+const SectionHeader = ({ section }: { section: 'introduction' | 'main' | 'conclusion' }) => {
+  const { t } = useTranslation();
+  const themeSection = section === 'main' ? 'mainPart' : section; // map to theme colors
+  const colors = SERMON_SECTION_COLORS[themeSection as 'introduction' | 'mainPart' | 'conclusion'];
+  return (
+    <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${colors.border} dark:${colors.darkBorder} ${colors.bg} dark:${colors.darkBg}`}>
+      <div className={`p-3 border-b ${colors.border} dark:${colors.darkBorder}`} style={{ backgroundColor: colors.light }}>
+        <h2 className="text-xl font-semibold text-white dark:text-white">
+          {t(`sections.${section}`)}
+        </h2>
+        <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
+              <Lightbulb className="h-4 w-4" />
+              {t('plan.columns.thoughts')}
+            </span>
+          </div>
+          <div className="flex items-center justify-start lg:justify-end gap-2">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
+              <List className="h-4 w-4" />
+              {t('plan.columns.plan')}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -1211,17 +1241,13 @@ export default function PlanPage() {
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Introduction header */}
+          <SectionHeader section="introduction" />
           {/* Intro Left & Right */}
           <div 
             data-testid="plan-introduction-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.introduction.light }}
-            >
-              {t("sections.introduction")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.introduction.map((outlinePoint) => (
                 <OutlinePointCard
@@ -1252,12 +1278,6 @@ export default function PlanPage() {
             data-testid="plan-introduction-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.introduction.light }}
-            >
-              {t("sections.introduction")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.introduction.map((outlinePoint) => (
                 <div 
@@ -1372,17 +1392,13 @@ export default function PlanPage() {
             </div>
           </div>
           
+          {/* Main header */}
+          <SectionHeader section="main" />
           {/* Main Left & Right */}
           <div 
             data-testid="plan-main-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.mainPart.light }}
-            >
-              {t("sections.main")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.main.map((outlinePoint) => (
                 <OutlinePointCard
@@ -1413,12 +1429,6 @@ export default function PlanPage() {
             data-testid="plan-main-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.mainPart.light }}
-            >
-              {t("sections.main")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.main.map((outlinePoint) => (
                 <div 
@@ -1533,17 +1543,13 @@ export default function PlanPage() {
             </div>
           </div>
           
+          {/* Conclusion header */}
+          <SectionHeader section="conclusion" />
           {/* Conclusion Left & Right */}
           <div 
             data-testid="plan-conclusion-left-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.conclusion.light }}
-            >
-              {t("sections.conclusion")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.conclusion.map((outlinePoint) => (
                 <OutlinePointCard
@@ -1574,12 +1580,6 @@ export default function PlanPage() {
             data-testid="plan-conclusion-right-section"
             className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
           >
-            <h2
-              className={`text-xl font-semibold p-3 text-white dark:text-white border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}
-              style={{ backgroundColor: SERMON_SECTION_COLORS.conclusion.light }}
-            >
-              {t("sections.conclusion")}
-            </h2>
             <div className="p-3">
               {sermon.outline?.conclusion.map((outlinePoint) => (
                 <div 

@@ -430,6 +430,10 @@
   },
   "plan": {
     "pageTitle": "План проповіді",
+    "columns": {
+      "thoughts": "Думки",
+      "plan": "План"
+    },
     "editor": "Редактор",
     "copyFullPlan": "Копіювати повний план",
     "showThoughts": "Показати думки",

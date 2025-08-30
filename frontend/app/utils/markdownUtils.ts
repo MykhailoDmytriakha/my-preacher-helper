@@ -24,8 +24,9 @@ export const sanitizeMarkdown = (content: string): string => {
   sanitized = sanitized.replace(/\*\*([^*]+)\*\*/g, '**$1**'); // Fix bold formatting
   sanitized = sanitized.replace(/\*([^*]+)\*/g, '*$1*'); // Fix italic formatting
   
-  // Remove any control characters that might cause issues
-  sanitized = sanitized.replace(/[\x00-\x1F\x7F]/g, '');
+  // Remove control characters except line breaks and tabs
+  // Keep \n (0x0A), \r (0x0D) and \t (0x09) so Markdown structure remains intact
+  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
   
   return sanitized.trim();
 };
@@ -44,7 +45,7 @@ export const isValidMarkdownContent = (content: string): boolean => {
   const problematicPatterns = [
     /\*\*\*\*\*/, // Multiple asterisks
     /\*\*\*\*/, // Four asterisks
-    /[\x00-\x1F\x7F]/, // Control characters
+    /[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/, // Control characters excluding \t, \n, \r
   ];
   
   return !problematicPatterns.some(pattern => pattern.test(content));
