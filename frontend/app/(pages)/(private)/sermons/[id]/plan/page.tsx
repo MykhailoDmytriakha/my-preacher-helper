@@ -124,8 +124,11 @@ const SectionHeader = ({ section }: { section: 'introduction' | 'main' | 'conclu
   const colors = SERMON_SECTION_COLORS[themeSection as 'introduction' | 'mainPart' | 'conclusion'];
   return (
     <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${colors.border} dark:${colors.darkBorder} ${colors.bg} dark:${colors.darkBg}`}>
-      <div className={`p-3 border-b ${colors.border} dark:${colors.darkBorder}`} style={{ backgroundColor: colors.light }}>
-        <h2 className="text-xl font-semibold text-white dark:text-white">
+      <div
+        className={`p-3 border-b border-l-4 ${colors.border} dark:${colors.darkBorder}`}
+        style={{ borderLeftColor: colors.light }}
+      >
+        <h2 className={`text-xl font-semibold ${colors.text} dark:${colors.darkText}`}>
           {t(`sections.${section}`)}
         </h2>
         <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3">

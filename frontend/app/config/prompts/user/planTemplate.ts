@@ -125,7 +125,7 @@ export function createThoughtsPlanUserMessage(
     - Keep main points to 3-6 words maximum
     - Make each point immediately recognizable and actionable
     - Structure for quick visual scanning during preaching
-    - Respond in the EXACT SAME LANGUAGE as the sermon content
+    - Respond in the EXACT SAME LANGUAGE as the THOUGHTS provided
     - Focus on organizing existing thoughts into preaching-friendly format
     - Use bullet points (*) for easy scanning
     - Create logical flow that guides the preacher naturally
@@ -138,6 +138,6 @@ export function createThoughtsPlanUserMessage(
     THOUGHT FLOW REQUIREMENT:
     Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
     
-    LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
+    LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the THOUGHTS. DO NOT translate.
   `;
-} 
+}

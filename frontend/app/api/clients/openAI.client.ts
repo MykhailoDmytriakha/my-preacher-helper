@@ -1128,9 +1128,15 @@ export async function generatePlanPointContent(
   sectionName: string,
   keyFragments: string[] = []
 ): Promise<{ content: string; success: boolean }> {
-  // Detect language - simple heuristic based on non-Latin characters
-  const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermonTitle + sermonVerse);
-  const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
+  // Detect language — base primarily on THOUGHTS text to avoid
+  // generating a different language than the thoughts themselves
+  const languageProbe = `${relatedThoughtsTexts.join(' ')} ${sermonTitle || ''} ${sermonVerse || ''}`;
+  const hasNonLatinChars = /[^\u0000-\u007F]/.test(languageProbe);
+  // Explicitly detect Cyrillic presence to enforce alphabet-level constraints
+  const isCyrillic = /[\u0400-\u04FF]/.test(languageProbe);
+  const detectedLanguage = isCyrillic
+    ? "Cyrillic (likely Russian/Ukrainian)"
+    : (hasNonLatinChars ? "non-English" : "English");
   
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
@@ -1142,6 +1148,23 @@ export async function generatePlanPointContent(
   
   try {
     // Construct the prompt for generating a structured plan for the outline point
+    // Provide a language-specific directive and example to avoid mixed-language outputs
+    const languageDirective = isCyrillic
+      ? `OUTPUT LANGUAGE: Use only Cyrillic characters. Keep the entire response in the exact same language as the THOUGHTS (e.g., Russian/Ukrainian). Do NOT use any Latin letters in headings or bullets.`
+      : `OUTPUT LANGUAGE: Use English consistently.`;
+
+    const formatExample = isCyrillic
+      ? `### **Краткий, ясный заголовок**
+*Короткая поддерживающая деталь*
+
+* Подпункт (1–2 слова)
+* Другой подпункт`
+      : `### **Main Concept** 
+*Supporting detail or Bible verse*
+
+* Key subpoint
+* Another subpoint`;
+
     const systemPrompt = `You are a sermon planning assistant specializing in creating memory-friendly outlines for preachers.
 
 Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can be quickly scanned during sermon delivery.
@@ -1166,23 +1189,24 @@ CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE T
 Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
 The preacher must be able to read the full verse directly from the plan without opening a Bible.
 
-LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
+LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the provided THOUGHTS. DO NOT translate.
+${languageDirective}
 
 IMPORTANT: 
-1. Always generate the plan in the SAME LANGUAGE as the input. Do not translate.
+1. Always generate the plan in the SAME LANGUAGE as the THOUGHTS text. Do not translate.
 2. Focus ONLY on the specific outline point and its related thoughts.
-3. Maintain the theological perspective from the original thoughts.
-4. Do not add new theological content or Bible references that aren't in the provided thoughts.
+3. Maintain the theological perspective and vocabulary from the original thoughts.
+4. STRICT: Do not add new theological content, ideas, names, facts or Bible references that are not explicitly present in the THOUGHTS. If something is missing, OMIT it.
 5. Organize ideas in a logical sequence that will help with sermon delivery.
-6. Include the most important key ideas from the provided thoughts.
+6. Include only the key ideas that come directly from the THOUGHTS.
 7. Format the response using Markdown:
    - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon.
    - Use only a single level of bullet points (* ) for supporting details.
 8. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
-9. CRITICAL: Each main point should provide a clear theological insight or practical application, not just copy-paste from the original thoughts.
-10. CRITICAL: Explain the connection between modern examples and biblical stories, showing how they illustrate the same spiritual principles.
-11. CRITICAL: Focus on the deeper meaning and application, not just surface-level facts.
-12. CRITICAL: Include ALL Bible verses and quotes COMPLETELY - do not abbreviate, summarize, or reference them partially. Every scripture reference must be written out in full.
+9. STRICT: Create EXACTLY the same number of main points (###) as the number of THOUGHTS provided (one heading per thought, in order). Do not add extra headings.
+10. STRICT: Bullet points must paraphrase or quote phrases from the corresponding THOUGHT and/or provided key fragments. Do not introduce new subpoints that are not grounded in that THOUGHT.
+11. CRITICAL: Explain connections and applications only if they are already present in the THOUGHTS.
+12. CRITICAL: Include ALL Bible verses and quotes COMPLETELY ONLY IF they are explicitly present in the THOUGHTS. Do not invent new references.
 ${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments into your response as supporting details, NOT as the main content. Key fragments should complement and enhance the broader ideas from the thoughts, not dominate them.' : ''}
 
 Your response should be a simple outline optimized for quick preaching reference.`;
@@ -1237,31 +1261,27 @@ The preacher must be able to read the full verse directly from the plan without 
 THOUGHT FLOW REQUIREMENT:
 Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
 
-LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the sermon content. DO NOT translate.
+LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the THOUGHTS. DO NOT translate.
+${isCyrillic ? 'For Cyrillic languages, absolutely do not use Latin letters anywhere in the output.' : ''}
 
 IMPORTANT INSTRUCTIONS:
-1. Generate the plan in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
+1. Generate the plan in the ${isCyrillic ? 'same Cyrillic language as the THOUGHTS (no Latin letters)' : (hasNonLatinChars ? 'same non-English language' : 'English')} detected from the THOUGHTS.
 2. Provide only main points (###) and a single level of bullet points (* ) - DO NOT create a deeply nested hierarchy.
-3. Keep it concise - I need only the high-level structure, not detailed development.
-4. Identify just 2-4 key points that support the outline point, grouped logically under headings.
-5. Include only brief notes on illustrations or examples where essential.
-6. Add scripture references in *italic* and key theological concepts in **bold**.
+3. Keep it concise - only high-level structure, not detailed development.
+4. Create exactly ${relatedThoughtsTexts.length} main headings (###) — one per THOUGHT in the same order. No extra headings.
+5. Bullet points must be derived from the same THOUGHT’s text or key fragments. Do not invent new content.
+6. Add scripture references in *italic* and key theological concepts in **bold**, but only if they already exist in the THOUGHTS.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
 9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon. The title should be actionable and specific.
 10. CRITICAL: The order of the main points (###) and their content in your plan MUST strictly follow the order of the provided THOUGHTS above.
-11. CRITICAL: Focus on theological insights and practical applications, not just copying facts.
-12. CRITICAL: Explain how modern examples connect to biblical principles and spiritual truths.
-13. CRITICAL: Emphasize the deeper meaning and spiritual significance of each example.
-14. CRITICAL: Include ALL Bible verses and quotes COMPLETELY - do not abbreviate, summarize, or reference them partially. Every scripture reference must be written out in full.
-${keyFragments.length > 0 ? '15. CRITICAL: Integrate key fragments naturally as supporting details, not as main content. They should complement the broader ideas from the thoughts.' : ''}
+11. STRICT: Do not add examples, claims, or Bible verses that were not mentioned in the THOUGHTS.
+12. If any content would require invention, write nothing for that part instead of inventing.
+13. Ensure every bullet can be traced back to wording in THOUGHTS or key fragments.
+${keyFragments.length > 0 ? '14. CRITICAL: Integrate key fragments naturally as supporting details, not as main content. They should complement the broader ideas from the thoughts.' : ''}
 
 FORMAT EXAMPLE:
-## **Main Concept** 
-*Supporting detail or Bible reference*
-
-* Key subpoint
-* Another subpoint
+${formatExample}
 
 FINAL CHECK: Each point should be scannable in under 2 seconds and immediately trigger the full context for the preacher.`;
 
@@ -1291,8 +1311,35 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
     );
     
     // Extract the content from the response
-    const content = response.choices[0]?.message?.content?.trim() || "";
-    
+    let content = response.choices[0]?.message?.content?.trim() || "";
+
+    // Post-process: limit the number of main headings (###) to the number of THOUGHTS
+    try {
+      const maxHeadings = relatedThoughtsTexts.length;
+      let headingCount = 0;
+      const lines = content.split(/\r?\n/);
+      const kept: string[] = [];
+      let keepingBlock = true;
+      for (const line of lines) {
+        if (/^###\s/.test(line.trim())) {
+          headingCount += 1;
+          if (headingCount <= maxHeadings) {
+            keepingBlock = true;
+            kept.push(line);
+          } else {
+            // Skip extra headings and their following content until next heading
+            keepingBlock = false;
+          }
+          continue;
+        }
+        // Keep non-heading lines only if within an allowed block
+        if (keepingBlock) kept.push(line);
+      }
+      content = kept.join("\n");
+    } catch (_) {
+      // If anything goes wrong, return the original content
+    }
+
     return { content, success: content.length > 0 };
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
