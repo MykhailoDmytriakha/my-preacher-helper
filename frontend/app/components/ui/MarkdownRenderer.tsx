@@ -3,6 +3,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { sanitizeMarkdown } from "../../utils/markdownUtils";
 
 interface MarkdownRendererProps {
   markdown: string;
@@ -27,6 +28,9 @@ export const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) =
         : "dark:text-gray-300";
 
   if (!markdown) return null;
+
+  // Sanitize the markdown content
+  const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
     <div className={`prose prose-sm max-w-none ${sectionTextClass} ${sectionDarkTextClass}`}>
@@ -89,7 +93,7 @@ export const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) =
           )
         }}
       >
-        {markdown}
+        {sanitizedMarkdown}
       </ReactMarkdown>
     </div>
   );

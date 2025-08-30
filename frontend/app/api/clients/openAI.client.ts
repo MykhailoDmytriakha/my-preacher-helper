@@ -46,24 +46,29 @@ const gemini = new OpenAI({
 const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
 const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
 
-// Create XML function definition for Claude models
+// Create XML function definition for Claude/Gemini-style prompts using JSON Schema
+// Correctly interprets the function.parameters JSON Schema and asks the model
+// to return an arguments object that CONFORMS to that schema (not the schema itself).
 function createXmlFunctionDefinition(functionSchema: Record<string, unknown>): string {
   const schema = functionSchema.function as Record<string, unknown>;
-  const parameters = schema.parameters as Record<string, Record<string, unknown>>;
-  
+  const parametersSchema = schema.parameters as Record<string, unknown>;
+
+  // parametersSchema follows JSON Schema: { type: 'object', properties: { ... }, required: [...] }
+  const properties = (parametersSchema && (parametersSchema as any).properties) || {};
+
   let xmlDefinition = `
 <function name="${schema.name as string}">
   <parameters>`;
-  
-  // Add each parameter
-  for (const [paramName, paramSchema] of Object.entries(parameters)) {
-    const param = paramSchema as Record<string, unknown>;
+
+  // List each top-level argument (actual properties of the JSON Schema)
+  for (const [propName, propSchema] of Object.entries(properties as Record<string, any>)) {
+    const p = propSchema as Record<string, unknown>;
     xmlDefinition += `
-    <parameter name="${paramName}" type="${param.type as string}">
-      ${param.description as string || ''}
+    <parameter name="${propName}" type="${(p.type as string) || 'object'}">
+      ${(p.description as string) || ''}
     </parameter>`;
   }
-  
+
   xmlDefinition += `
   </parameters>
 </function>
@@ -75,17 +80,21 @@ Your response should be structured as follows:
 {
 `;
 
-  // Add a template for each parameter
-  for (const [paramName, paramSchema] of Object.entries(parameters)) {
-    const param = paramSchema as Record<string, unknown>;
-    if (param.type === "array") {
-      xmlDefinition += `  "${paramName}": [],\n`;
-    } else if (param.type === "object") {
-      xmlDefinition += `  "${paramName}": {},\n`;
-    } else if (param.type === "boolean") {
-      xmlDefinition += `  "${paramName}": false,\n`;
+  // Provide an arguments template for each property
+  for (const [propName, propSchema] of Object.entries(properties as Record<string, any>)) {
+    const p = propSchema as Record<string, unknown>;
+    const t = (p.type as string) || 'object';
+    if (t === 'array') {
+      xmlDefinition += `  "${propName}": [],\n`;
+    } else if (t === 'object') {
+      xmlDefinition += `  "${propName}": {},\n`;
+    } else if (t === 'boolean') {
+      xmlDefinition += `  "${propName}": false,\n`;
+    } else if (t === 'number' || t === 'integer') {
+      xmlDefinition += `  "${propName}": 0,\n`;
     } else {
-      xmlDefinition += `  "${paramName}": "",\n`;
+      // default to string
+      xmlDefinition += `  "${propName}": "",\n`;
     }
   }
 
@@ -96,7 +105,8 @@ Your response should be structured as follows:
 </arguments>
 </function_call>
 
-The response MUST be valid JSON within the <arguments> tags.`;
+Only return the JSON arguments object that matches the schema inside <arguments>.
+Do not include the JSON Schema itself inside <arguments>. The response MUST be valid JSON.`;
 
   return xmlDefinition;
 }
@@ -122,6 +132,18 @@ function cleanPotentiallyInvalidJsonString(jsonString: string): string {
 
 function extractStructuredResponseFromContent<T>(responseContent: string): T {
   try {
+    // Zeroth try: If the whole content is valid JSON, parse it directly
+    // This covers cases where the model returns plain JSON as the message content
+    const trimmed = responseContent.trim();
+    try {
+      // Only attempt if it looks like a JSON object/array to avoid obvious failures
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        return JSON.parse(trimmed) as T;
+      }
+    } catch (_) {
+      // Ignore and continue with other extraction strategies
+    }
+
     // First try: Extract JSON from within the <arguments> tags
     const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
     if (argumentsMatch && argumentsMatch[1]) {
@@ -129,7 +151,18 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
       // Clean the string before parsing
       jsonString = cleanPotentiallyInvalidJsonString(jsonString); 
       try {
-        return JSON.parse(jsonString) as T;
+        const parsed = JSON.parse(jsonString);
+        // If the parsed content looks like a JSON Schema (e.g., has 'type' and/or 'properties'),
+        // it's likely the model echoed the schema rather than actual arguments. In that case, fall through
+        // to try other extraction methods (like a subsequent JSON block with real data).
+        const looksLikeSchema = parsed && typeof parsed === 'object' && (
+          (Object.prototype.hasOwnProperty.call(parsed, 'properties')) ||
+          (Object.prototype.hasOwnProperty.call(parsed, 'type') && (parsed.type === 'object' || parsed.type === 'array'))
+        );
+        if (!looksLikeSchema) {
+          return parsed as T;
+        }
+        console.warn('Detected schema-like content inside <arguments>; attempting alternative extraction for data.');
       } catch (parseError) {
         console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
         // Fall through if parsing still fails
@@ -140,9 +173,10 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
     console.log("No <arguments> tags found or failed to parse, trying alternative extraction methods");
     
     // Try to extract JSON from code blocks
-    const codeBlockMatch = responseContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch && codeBlockMatch[1]) {
-      let codeBlockContent = codeBlockMatch[1].trim();
+    // If multiple code blocks exist, try the last one first as it often contains the final data
+    const codeBlockMatches = [...responseContent.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
+    if (codeBlockMatches.length > 0) {
+      let codeBlockContent = codeBlockMatches[codeBlockMatches.length - 1][1].trim();
       try {
         // Attempt to salvage truncated JSON (existing logic)
         const lastBrace = codeBlockContent.lastIndexOf('}');
@@ -174,9 +208,13 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
       }
     }
     
-    // Try to extract any JSON object in the response
-    const jsonRegex = /\{[\s\S]*\}/;
-    const jsonMatch = responseContent.match(jsonRegex);
+    // Try to extract any JSON object/array in the response
+    // Prefer the largest balanced block rather than the smallest non-greedy match
+    const jsonMatches = [...responseContent.matchAll(/\{[\s\S]*\}|\[[\s\S]*\]/g)];
+    // Choose the longest match which is more likely to be the outer structure
+    const jsonMatch = jsonMatches.length > 0 
+      ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest)) 
+      : null;
     
     if (jsonMatch) {
       try {

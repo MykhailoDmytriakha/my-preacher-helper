@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Check } from 'lucide-react';
 import { exportToWord, PlanData } from '../../utils/wordExport';
+import { sanitizeMarkdown } from "../utils/markdownUtils";
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
@@ -72,7 +73,7 @@ interface ExportTxtModalProps {
   isOpen: boolean;
   onClose: () => void;
   content?: string;
-  getContent?: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
+  getContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
   format?: 'plain' | 'markdown';
 }
 
@@ -256,7 +257,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
             ) : (
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {exportContent}
+                  {sanitizeMarkdown(exportContent)}
                 </ReactMarkdown>
               </div>
             )}

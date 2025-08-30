@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getPlanMarkdownStyles } from './markdownStyles';
+import { sanitizeMarkdown } from "../../utils/markdownUtils";
 
 
 interface ViewPlanMenuProps {
@@ -30,11 +31,14 @@ interface MarkdownRendererProps {
 const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
   const sectionClass = section ? `prose-${section}` : '';
   const sectionDivClass = section ? `${section}-section` : '';
+  
+  // Sanitize the markdown content
+  const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
     <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {markdown}
+        {sanitizedMarkdown}
       </ReactMarkdown>
     </div>
   );

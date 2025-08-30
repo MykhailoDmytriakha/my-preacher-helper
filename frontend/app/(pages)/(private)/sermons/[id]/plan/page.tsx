@@ -17,6 +17,7 @@ import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
+import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -119,11 +120,14 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
 const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: 'introduction' | 'main' | 'conclusion' }) => {
   const sectionClass = section ? `prose-${section}` : '';
   const sectionDivClass = section ? `${section}-section` : '';
+  
+  // Sanitize the markdown content
+  const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
     <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {markdown}
+        {sanitizedMarkdown}
       </ReactMarkdown>
     </div>
   );

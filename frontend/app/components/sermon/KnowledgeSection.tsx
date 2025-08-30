@@ -70,11 +70,25 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
 
   // Get thoughts plan from insights or sermon plan
   const getThoughtsPlan = () => {
+    // Helper to coerce API results that may be arrays into a markdown string
+    const toMarkdown = (value: unknown): string | undefined => {
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) return value.join('\n');
+      return undefined;
+    };
+
     // First try to get from insights.thoughtsPlan
     if (localInsights?.thoughtsPlan) {
-      return localInsights.thoughtsPlan;
+      console.log('🎯 Getting thoughts plan from insights.thoughtsPlan', localInsights.thoughtsPlan);
+      const tp: any = localInsights.thoughtsPlan as any;
+      return {
+        introduction: toMarkdown(tp?.introduction) || '',
+        main: toMarkdown(tp?.main) || '',
+        conclusion: toMarkdown(tp?.conclusion) || ''
+      };
     }
     // If not available in insights, convert sermon.plan to ThoughtsPlan format
+    console.log('🎯 Getting thoughts plan from sermon.plan', localPlan);
     if (localPlan) {
       return {
         introduction: localPlan.introduction.outline,
