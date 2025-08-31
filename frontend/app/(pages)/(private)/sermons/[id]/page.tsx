@@ -485,6 +485,15 @@ export default function SermonPage() {
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
         <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
+        {/* Mobile-first placement of Structure section between header and audio */}
+        <div className="lg:hidden">
+          <StructureStats 
+            sermon={sermon!} 
+            tagCounts={tagCounts} 
+            totalThoughts={totalThoughts} 
+            hasInconsistentThoughts={hasInconsistentThoughts} 
+          />
+        </div>
         
         <motion.div
           className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 ${uiMode === 'prep' ? 'prep-mode' : ''}`}
@@ -786,12 +795,15 @@ export default function SermonPage() {
             className="space-y-6"
             transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
           >
-            <StructureStats 
-              sermon={sermon!} 
-              tagCounts={tagCounts} 
-              totalThoughts={totalThoughts} 
-              hasInconsistentThoughts={hasInconsistentThoughts} 
-            />
+            {/* Hide duplicate Structure section on mobile, show on lg+ */}
+            <div className="hidden lg:block">
+              <StructureStats 
+                sermon={sermon!} 
+                tagCounts={tagCounts} 
+                totalThoughts={totalThoughts} 
+                hasInconsistentThoughts={hasInconsistentThoughts} 
+              />
+            </div>
             <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
             <SermonOutline 
               sermon={sermon!} 

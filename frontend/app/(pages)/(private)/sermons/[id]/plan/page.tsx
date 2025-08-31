@@ -343,62 +343,53 @@ export default function PlanPage() {
   
   // Function to synchronize heights
   const syncHeights = () => {
-    // Step 1: Reset all heights to auto
-    Object.keys(introPointRefs.current).forEach(pointId => {
-      const { left, right } = introPointRefs.current[pointId];
-      if (left && right) {
-        left.style.height = 'auto';
-        right.style.height = 'auto';
-      }
-    });
-    
-    Object.keys(mainPointRefs.current).forEach(pointId => {
-      const { left, right } = mainPointRefs.current[pointId];
-      if (left && right) {
-        left.style.height = 'auto';
-        right.style.height = 'auto';
-      }
-    });
-    
-    Object.keys(conclusionPointRefs.current).forEach(pointId => {
-      const { left, right } = conclusionPointRefs.current[pointId];
-      if (left && right) {
-        left.style.height = 'auto';
-        right.style.height = 'auto';
-      }
-    });
-    
+    // Always reset heights first
+    const resetHeights = () => {
+      Object.keys(introPointRefs.current).forEach(pointId => {
+        const { left, right } = introPointRefs.current[pointId];
+        if (left) left.style.height = 'auto';
+        if (right) right.style.height = 'auto';
+      });
+      Object.keys(mainPointRefs.current).forEach(pointId => {
+        const { left, right } = mainPointRefs.current[pointId];
+        if (left) left.style.height = 'auto';
+        if (right) right.style.height = 'auto';
+      });
+      Object.keys(conclusionPointRefs.current).forEach(pointId => {
+        const { left, right } = conclusionPointRefs.current[pointId];
+        if (left) left.style.height = 'auto';
+        if (right) right.style.height = 'auto';
+      });
+    };
+
+    resetHeights();
+
+    // Only equalize heights on large screens (Tailwind lg: 1024px)
+    if (typeof window === 'undefined') return;
+    const isLarge = window.matchMedia('(min-width: 1024px)').matches;
+    if (!isLarge) {
+      // On mobile/tablet we leave heights as auto to avoid tall cards
+      return;
+    }
+
     // Force reflow to ensure natural heights are calculated
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     document.body.offsetHeight;
-    
-    // Step 2: Measure and apply maximum heights
-    Object.keys(introPointRefs.current).forEach(pointId => {
-      const { left, right } = introPointRefs.current[pointId];
-      if (left && right) {
-        const maxHeight = Math.max(left.offsetHeight, right.offsetHeight);
-        left.style.height = `${maxHeight}px`;
-        right.style.height = `${maxHeight}px`;
-      }
-    });
-    
-    Object.keys(mainPointRefs.current).forEach(pointId => {
-      const { left, right } = mainPointRefs.current[pointId];
-      if (left && right) {
-        const maxHeight = Math.max(left.offsetHeight, right.offsetHeight);
-        left.style.height = `${maxHeight}px`;
-        right.style.height = `${maxHeight}px`;
-      }
-    });
-    
-    Object.keys(conclusionPointRefs.current).forEach(pointId => {
-      const { left, right } = conclusionPointRefs.current[pointId];
-      if (left && right) {
-        const maxHeight = Math.max(left.offsetHeight, right.offsetHeight);
-        left.style.height = `${maxHeight}px`;
-        right.style.height = `${maxHeight}px`;
-      }
-    });
+
+    const applyMaxHeights = (refs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>) => {
+      Object.keys(refs.current).forEach(pointId => {
+        const { left, right } = refs.current[pointId];
+        if (left && right) {
+          const maxHeight = Math.max(left.offsetHeight, right.offsetHeight);
+          left.style.height = `${maxHeight}px`;
+          right.style.height = `${maxHeight}px`;
+        }
+      });
+    };
+
+    applyMaxHeights(introPointRefs);
+    applyMaxHeights(mainPointRefs);
+    applyMaxHeights(conclusionPointRefs);
   };
   
   // Create a debounced version of syncHeights with a 200ms delay
@@ -423,11 +414,24 @@ export default function PlanPage() {
     
     // Initial sync
     setTimeout(syncHeights, 500);
-    
+
     return () => {
       observer.disconnect();
     };
   }, [sermon?.outline, debouncedSyncHeights]);
+
+  // Keep heights correct when resizing across breakpoints
+  useEffect(() => {
+    const onResize = () => debouncedSyncHeights();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', onResize);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', onResize);
+      }
+    };
+  }, [debouncedSyncHeights]);
   
   // Load the sermon
   useEffect(() => {

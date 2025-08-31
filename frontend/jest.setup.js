@@ -205,6 +205,7 @@ jest.mock('next/router', () => ({
 // Mock Next.js navigation
 jest.mock('next/navigation', () => ({
   usePathname: jest.fn().mockReturnValue('/'),
+  useParams: jest.fn().mockReturnValue({ id: 'test-sermon-id' }),
   useRouter: () => ({
     route: '/',
     pathname: '',
