@@ -15,20 +15,20 @@ const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThou
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 describe('usePersistence', () => {
-  const mockSermon: Sermon = {
-    id: 'sermon-1',
-    title: 'Test Sermon',
-    thoughts: [
-      { id: 'thought-1', text: 'Test thought 1', tags: ['introduction'], date: new Date().toISOString() },
-      { id: 'thought-2', text: 'Test thought 2', tags: ['main'], date: new Date().toISOString() },
-    ],
-    structure: {
-      introduction: ['thought-1'],
-      main: ['thought-2'],
-      conclusion: [],
-      ambiguous: []
-    }
-  } as Sermon;
+  // Use fake timers to control debounce-based timing deterministically
+  beforeAll(() => {
+    jest.useFakeTimers();
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
+  const flushDebounce = async (ms = 500) => {
+    // Advance timers to trigger lodash.debounce and then flush microtasks
+    jest.advanceTimersByTime(ms);
+    await Promise.resolve();
+  };
 
   const mockThought: Thought = {
     id: 'thought-1',
@@ -180,8 +180,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveThought('sermon-1', mockThought);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should only be called once due to debouncing
       expect(mockUpdateThought).toHaveBeenCalledTimes(1);
@@ -196,8 +196,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveThought('sermon-1', thought2);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should be called for the last thought
       expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', thought2);
@@ -211,8 +211,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveThought('sermon-2', mockThought);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should be called for the last sermonId
       expect(mockUpdateThought).toHaveBeenCalledWith('sermon-2', mockThought);
@@ -230,8 +230,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveStructure('sermon-1', mockStructure);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should only be called once due to debouncing
       expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
@@ -246,8 +246,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveStructure('sermon-1', structure2);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should be called for the last structure
       expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', structure2);
@@ -261,8 +261,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveStructure('sermon-2', mockStructure);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should be called for the last sermonId
       expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-2', mockStructure);
@@ -334,8 +334,8 @@ describe('usePersistence', () => {
       // Should execute quickly (debouncing should not block)
       expect(executionTime).toBeLessThan(100);
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce execution
+      await flushDebounce();
 
       // Should only make one actual API call
       expect(mockUpdateThought).toHaveBeenCalledTimes(1);
@@ -404,8 +404,8 @@ describe('usePersistence', () => {
         result.current.debouncedSaveStructure('sermon-1', mockStructure);
       });
 
-      // Wait for debounce delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Trigger debounce executions
+      await flushDebounce();
 
       expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
       expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
@@ -427,7 +427,7 @@ describe('usePersistence', () => {
       expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
 
       // Wait for thought debounce
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await flushDebounce();
       expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
     });
   });
