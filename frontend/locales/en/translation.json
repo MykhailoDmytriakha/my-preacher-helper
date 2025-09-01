@@ -573,10 +573,17 @@
           "findContext": "Find the context",
           "findRepeatedWords": "Find repeated words and phrases"
         },
+        "readWholeBookOnceHelp": "Read the whole book once through the lens of your selected verse. Switch to Classic Mode to take notes while reading, then return here.",
+        "passageSummary": {
+          "title": "Capture the gist",
+          "label": "In your own words: what is this passage about?",
+          "placeholder": "Write a brief 1–2 sentence summary to keep the main idea in view…",
+          "help": "A quick summary helps you read the whole book through this lens and recall the passage at a glance."
+        },
         "passageInput": {
           "label": "Scripture passage",
           "placeholder": "e.g., Romans 8:14; John 3:16-21",
-          "help": "This field is synchronized with the sermon verse. Editing and saving here updates the same data."
+          "help": "This field is synchronized with the sermon verse."
         },
         "contextInput": {
           "label": "Describe the passage and chapter context",

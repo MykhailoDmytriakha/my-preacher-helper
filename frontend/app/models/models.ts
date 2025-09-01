@@ -83,6 +83,7 @@ export interface Preparation {
   };
   textContext?: {
     passage?: string;
+    passageSummary?: string;
     repeatedWords?: string[];
     contextNotes?: string;
     readWholeBookOnceConfirmed?: boolean;

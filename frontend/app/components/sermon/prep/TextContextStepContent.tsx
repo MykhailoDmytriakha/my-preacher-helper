@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
@@ -11,26 +11,40 @@ interface TextContextStepContentProps {
   onSaveVerse: (nextVerse: string) => Promise<void> | void;
   readWholeBookOnceConfirmed?: boolean;
   onToggleReadWholeBookOnce?: (checked: boolean) => Promise<void> | void;
+  initialPassageSummary?: string;
+  onSavePassageSummary?: (summary: string) => Promise<void> | void;
   initialContextNotes?: string;
   onSaveContextNotes?: (notes: string) => Promise<void> | void;
   initialRepeatedWords?: string[];
   onSaveRepeatedWords?: (words: string[]) => Promise<void> | void;
 }
 
-const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initialVerse, onSaveVerse, readWholeBookOnceConfirmed = false, onToggleReadWholeBookOnce, initialContextNotes = '', onSaveContextNotes, initialRepeatedWords = [], onSaveRepeatedWords }) => {
+const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initialVerse, onSaveVerse, readWholeBookOnceConfirmed = false, onToggleReadWholeBookOnce, initialPassageSummary = '', onSavePassageSummary, initialContextNotes = '', onSaveContextNotes, initialRepeatedWords = [], onSaveRepeatedWords }) => {
   const { t } = useTranslation();
   const [verseDraft, setVerseDraft] = useState<string>(initialVerse || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState<string>(initialPassageSummary || '');
+  const [isSavingSummary, setIsSavingSummary] = useState(false);
   const [contextDraft, setContextDraft] = useState<string>(initialContextNotes || '');
   const [isSavingContext, setIsSavingContext] = useState(false);
   const [repeatedDraft, setRepeatedDraft] = useState<string>((initialRepeatedWords || []).join(', '));
   const [isSavingRepeated, setIsSavingRepeated] = useState(false);
   const [initialVerseMemo] = useState<string>(initialVerse || '');
+  const verseRef = useRef<HTMLTextAreaElement | null>(null);
 
   // keep input in sync when sermon verse changes outside
   React.useEffect(() => {
     setVerseDraft(initialVerse || '');
   }, [initialVerse]);
+  React.useEffect(() => {
+    setSummaryDraft(initialPassageSummary || '');
+  }, [initialPassageSummary]);
+  React.useEffect(() => {
+    const el = verseRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [verseDraft]);
   React.useEffect(() => {
     setContextDraft(initialContextNotes || '');
   }, [initialContextNotes]);
@@ -40,6 +54,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
 
   const canSave = useMemo(() => verseDraft.trim().length > 0 && verseDraft.trim() !== (initialVerse || '').trim(), [verseDraft, initialVerse]);
   const verseHasChanges = canSave;
+  const summaryHasChanges = useMemo(() => (initialPassageSummary || '') !== summaryDraft, [initialPassageSummary, summaryDraft]);
   const contextHasChanges = useMemo(() => (initialContextNotes || '') !== contextDraft, [initialContextNotes, contextDraft]);
   const repeatedHasChanges = useMemo(() => (initialRepeatedWords || []).join(', ') !== repeatedDraft, [initialRepeatedWords, repeatedDraft]);
 
@@ -60,6 +75,16 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
       await onSaveContextNotes(contextDraft);
     } finally {
       setIsSavingContext(false);
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (!onSavePassageSummary) return;
+    try {
+      setIsSavingSummary(true);
+      await onSavePassageSummary(summaryDraft.trim());
+    } finally {
+      setIsSavingSummary(false);
     }
   };
 
@@ -89,13 +114,20 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
           {t('wizard.steps.textContext.passageInput.label')}
         </label>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input
+          <textarea
             id="passage-input"
-            type="text"
+            rows={3}
+            ref={verseRef}
             value={verseDraft}
-            onChange={(e) => setVerseDraft(e.target.value)}
+            onChange={(e) => {
+              const el = e.target as HTMLTextAreaElement;
+              // simple auto-resize to fit content
+              el.style.height = 'auto';
+              el.style.height = `${el.scrollHeight}px`;
+              setVerseDraft(el.value);
+            }}
             placeholder={t('wizard.steps.textContext.passageInput.placeholder') || ''}
-            className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
+            className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0 resize-y max-h-80`}
           />
           {verseHasChanges ? (
             <div className="flex items-center gap-2">
@@ -122,6 +154,49 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
         <p className="mt-2 text-xs text-gray-500">{t('wizard.steps.textContext.passageInput.help')}</p>
       </div>
 
+      {/* Section 1.5: Passage summary in own words */}
+      <div className={`p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <BookOpen className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+          <h4 className="text-sm font-semibold">{t('wizard.steps.textContext.passageSummary.title')}</h4>
+        </div>
+        <label htmlFor="summary-input" className="block text-sm font-medium mb-2">
+          {t('wizard.steps.textContext.passageSummary.label')}
+        </label>
+        <textarea
+          id="summary-input"
+          rows={3}
+          value={summaryDraft}
+          onChange={(e) => setSummaryDraft(e.target.value)}
+          placeholder={t('wizard.steps.textContext.passageSummary.placeholder') || ''}
+          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
+        />
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-gray-500">{t('wizard.steps.textContext.passageSummary.help')}</p>
+          {onSavePassageSummary && summaryHasChanges && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveSummary}
+                disabled={isSavingSummary}
+                className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
+                title={t('actions.save') || 'Save'}
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSummaryDraft(initialPassageSummary || '')}
+                className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
+                title={t('actions.cancel') || 'Cancel'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Section 2: Read whole book once */}
       <div className={`p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg}`}>
         <div className="flex items-center gap-2 mb-1">
@@ -137,6 +212,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
           />
           <span className="text-sm">{t('wizard.steps.textContext.confirmation.readWholeBookOnce')}</span>
         </label>
+        <p className="mt-2 text-xs text-gray-500">{t('wizard.steps.textContext.readWholeBookOnceHelp')}</p>
       </div>
 
       {/* Section 3: Find context */}
@@ -229,5 +305,3 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
 };
 
 export default TextContextStepContent;
-
-

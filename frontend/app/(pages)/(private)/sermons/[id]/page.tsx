@@ -712,6 +712,15 @@ export default function SermonPage() {
                         setPrepDraft(next);
                         await savePreparation(next);
                       }}
+                      initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
+                      onSavePassageSummary={async (summary: string) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          textContext: { ...(prepDraft.textContext ?? {}), passageSummary: summary },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
                       initialContextNotes={prepDraft?.textContext?.contextNotes || ''}
                       onSaveContextNotes={async (notes: string) => {
                         const next: Preparation = {
