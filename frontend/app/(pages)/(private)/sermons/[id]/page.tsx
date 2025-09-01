@@ -27,6 +27,7 @@ import SpiritualStepContent from '@/components/sermon/prep/SpiritualStepContent'
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
+import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import { STRUCTURE_TAGS } from '@lib/constants';
@@ -113,13 +114,13 @@ export default function SermonPage() {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Determine active step based on data completeness
-  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' = getActiveStepId(prepDraft);
+  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' = getActiveStepId(prepDraft);
 
-  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea') => {
+  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals') => {
     return id === activeStepId || manuallyExpanded.has(id);
   }, [activeStepId, manuallyExpanded]);
 
-  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea') => {
+  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals') => {
     if (id === activeStepId) return; // active step stays open
     setManuallyExpanded(prev => {
       const next = new Set(prev);
@@ -128,11 +129,11 @@ export default function SermonPage() {
     });
   }, [activeStepId]);
 
-  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan)
+  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals)
   const prepStepParam = searchParams?.get('prepStep');
   useEffect(() => {
     const target = prepStepParam;
-    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea') {
+    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals') {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
@@ -233,6 +234,11 @@ export default function SermonPage() {
     prepDraft.mainIdea.textIdea.trim().length > 0 &&
     prepDraft?.mainIdea?.argumentation && 
     prepDraft.mainIdea.argumentation.trim().length > 0
+  );
+
+  const isGoalsDone = Boolean(
+    (prepDraft?.timelessTruth || '').trim().length > 0 &&
+    (prepDraft?.preachingGoal?.statement || '').trim().length > 0
   );
 
 
@@ -780,6 +786,51 @@ export default function SermonPage() {
                         const next: Preparation = {
                           ...prepDraft,
                           mainIdea: { ...(prepDraft.mainIdea ?? {}), argumentation: text },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                    />
+                  </PrepStepCard>
+
+                  <PrepStepCard
+                    stepId="goals"
+                    stepNumber={5}
+                    title={t('wizard.steps.goals.title') as string}
+                    icon={<Sparkles className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+                    isActive={activeStepId === 'goals'}
+                    isExpanded={isStepExpanded('goals')}
+                    onToggle={() => toggleStep('goals')}
+                    stepRef={(el) => { stepRefs.current['goals'] = el; }}
+                    done={isGoalsDone}
+                  >
+                    <GoalsStepContent
+                      initialTimelessTruth={prepDraft?.timelessTruth || ''}
+                      onSaveTimelessTruth={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, timelessTruth: text };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialChristConnection={prepDraft?.christConnection || ''}
+                      onSaveChristConnection={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, christConnection: text };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialGoalStatement={prepDraft?.preachingGoal?.statement || ''}
+                      onSaveGoalStatement={async (text: string) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          preachingGoal: { ...(prepDraft?.preachingGoal || {}), statement: text },
+                        };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialGoalType={(prepDraft?.preachingGoal?.type || '') as any}
+                      onSaveGoalType={async (type) => {
+                        const next: Preparation = {
+                          ...prepDraft,
+                          preachingGoal: { ...(prepDraft?.preachingGoal || {}), type },
                         };
                         setPrepDraft(next);
                         await savePreparation(next);

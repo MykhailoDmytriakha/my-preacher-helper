@@ -683,7 +683,80 @@
           "placeholder": "Identify argumentation that supports the main idea..."
         }
       },
-      "goals": { "title": "Goals & Christ-connection" },
+      "goals": {
+        "title": "Goals & Christ-connection",
+        "instruction": {
+          "show": "Show instruction",
+          "hide": "Hide instruction",
+          "tt": {
+            "definition1": "Identify how the passage relates to an absolute, universal truth.",
+            "definition2": "God’s principles are unchanging and true for all people, all times, all places.",
+            "question": "What TIMELESS BIBLICAL TRUTH do I want to convey?",
+            "otNt": "If preaching from the OT, find the same truth in the NT as well.",
+            "warningTitle": "Warning!",
+            "warning1": "Do not invent or import a universal truth — derive it from context and reliable historical-cultural data.",
+            "howToFind": {
+              "title": "How to find TBT?",
+              "scan": "Read the passage and identify the key verse(s) around which the whole text revolves.",
+              "fromKeyVerse": "From the key verse, derive the universal truth."
+            },
+            "examplePhilip": {
+              "title": "Example: Philip and the Eunuch (Acts 8)",
+              "key": "Key: Acts 8:36–37 — faith as the condition for baptism.",
+              "explains": "This key explains the whole text:",
+              "q1": "Why did the angel send Philip?",
+              "q2": "What hindered the eunuch? Not his condition but lack of faith.",
+              "q3": "Why did Philip preach Christ?",
+              "q4": "Why did the eunuch go away rejoicing? He became part of the church."
+            },
+            "example2Peter": {
+              "title": "Example: 2 Pet. 1:2–11",
+              "summary": "Believers are granted all they need; therefore show your faith, entering the Kingdom.",
+              "key": "Key: 2 Pet. 1:5 — ‘make every effort, add to your faith…’.",
+              "explains": "The key helps answer:",
+              "q1": "What is everything given for?",
+              "q2": "How to show faith?",
+              "q3": "What is the result of such faith?"
+            }
+          },
+          "cc": {
+            "road": "From every verse there is a road to Christ — seek it, don’t force it."
+          },
+          "goal": {
+            "purpose": "The main idea becomes the goal to which your exposition is devoted.",
+            "keepSearching": "Keep searching until you find it — with practice, author’s intent indicators become clearer.",
+            "typesTitle": "Goal types:",
+            "typeInformative": "Informative: awaken desire to know.",
+            "typeProclamation": "Proclamation: declare God’s will as a herald.",
+            "typeDidactic": "Didactic: teach and explain.",
+            "typeExhortative": "Exhortative: move listeners to purposeful action."
+          }
+        },
+        "timelessTruth": {
+          "title": "Timeless Biblical Truth",
+          "instruction": "Identify a universal truth from the text (true for all people, all times) based on context and sound evidence.",
+          "placeholder": "Formulate the timeless truth..."
+        },
+        "christConnection": {
+          "title": "Connection to Christ",
+          "instruction": "Consider how the main idea leads to Christ. Seek the road to Christ from the text without forcing it.",
+          "placeholder": "Describe the text’s connection to Christ...",
+          "warning": "Be careful: if you don’t see a connection, don’t force it."
+        },
+        "goal": {
+          "title": "What goal am I leading to?",
+          "typeLabel": "Sermon goal type",
+          "typePlaceholder": "Select a goal type",
+          "types": {
+            "informative": "Informative",
+            "proclamation": "Proclamation of God’s will",
+            "didactic": "Didactic (teaching)",
+            "exhortative": "Exhortative"
+          },
+          "placeholder": "Write the goal in one clear sentence...",
+          "note": "Often the goal is tied to the passage’s main verb. Write it as a full sentence — it becomes the focus of your explanation."
+        }
+      },
       "thesis": { "title": "Thesis" },
       "structure": { "title": "Structure" },
       "outline": { "title": "Outline" },

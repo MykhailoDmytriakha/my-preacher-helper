@@ -101,6 +101,20 @@ export interface Preparation {
   };
   timelessTruth?: string;
   christConnection?: string;
+  preachingGoal?: {
+    /**
+     * High-level goal type of the sermon message
+     * informative – inform the listener
+     * proclamation – proclaim God's will (as a herald)
+     * didactic – teach and explain
+     * exhortative – move listeners to purposeful action
+     */
+    type?: 'informative' | 'proclamation' | 'didactic' | 'exhortative';
+    /**
+     * Clear goal statement: "К какой цели я веду?"
+     */
+    statement?: string;
+  };
 }
 
 export interface ExegeticalPlanNode {
@@ -175,4 +189,3 @@ export interface Plan {
     outlinePoints?: Record<string, string>;
   }
 }
-

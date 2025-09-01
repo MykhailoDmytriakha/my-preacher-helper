@@ -1,6 +1,6 @@
 import type { Preparation, ExegeticalPlanNode } from '@/models/models';
 
-export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea';
+export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals';
 
 // Helper function to check if any node in the exegetical plan tree has a valid title
 function hasValidTitleInTree(nodes: ExegeticalPlanNode[]): boolean {
@@ -30,7 +30,20 @@ export function getActiveStepId(prep: Preparation | undefined | null): PrepStepI
   
   if (!isExegeticalPlanDone) return 'exegeticalPlan';
   
-  return 'mainIdea';
-}
+  // Main idea completeness
+  const isMainIdeaDone = Boolean(
+    prep?.mainIdea?.contextIdea && prep.mainIdea.contextIdea.trim().length > 0 &&
+    prep?.mainIdea?.textIdea && prep.mainIdea.textIdea.trim().length > 0 &&
+    prep?.mainIdea?.argumentation && prep.mainIdea.argumentation.trim().length > 0
+  );
+  if (!isMainIdeaDone) return 'mainIdea';
 
+  // Goals completeness: require Timeless Truth and Goal statement
+  const hasTimelessTruth = Boolean(prep?.timelessTruth && prep.timelessTruth.trim().length > 0);
+  const hasGoalStatement = Boolean(prep?.preachingGoal?.statement && prep.preachingGoal.statement.trim().length > 0);
+
+  if (!(hasTimelessTruth && hasGoalStatement)) return 'goals';
+
+  return 'goals';
+}
 
