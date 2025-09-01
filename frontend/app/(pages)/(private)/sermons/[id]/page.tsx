@@ -29,6 +29,7 @@ import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanSt
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
 import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
+import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import { STRUCTURE_TAGS } from '@lib/constants';
@@ -115,13 +116,13 @@ export default function SermonPage() {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Determine active step based on data completeness
-  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' = getActiveStepId(prepDraft);
+  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan' = getActiveStepId(prepDraft);
 
-  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis') => {
+  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan') => {
     return id === activeStepId || manuallyExpanded.has(id);
   }, [activeStepId, manuallyExpanded]);
 
-  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis') => {
+  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan') => {
     if (id === activeStepId) return; // active step stays open
     setManuallyExpanded(prev => {
       const next = new Set(prev);
@@ -130,11 +131,11 @@ export default function SermonPage() {
     });
   }, [activeStepId]);
 
-  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals|thesis)
+  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals|thesis|homileticPlan)
   const prepStepParam = searchParams?.get('prepStep');
   useEffect(() => {
     const target = prepStepParam;
-    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals' || target === 'thesis') {
+    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals' || target === 'thesis' || target === 'homileticPlan') {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
@@ -246,6 +247,11 @@ export default function SermonPage() {
     (prepDraft?.thesis?.exegetical || '').trim().length > 0 &&
     (prepDraft?.thesis?.homiletical || '').trim().length > 0 &&
     (prepDraft?.thesis?.oneSentence || '').trim().length > 0
+  );
+
+  const isHomileticPlanDone = Boolean(
+    (prepDraft?.homileticPlan?.modernTranslation || '').trim().length > 0 &&
+    ((prepDraft?.homileticPlan?.sermonPlan || []).filter(p => (p.title || '').trim().length > 0).length >= 2)
   );
 
 
@@ -912,6 +918,38 @@ export default function SermonPage() {
                       sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
                       onSaveSermonInOneSentence={async (text: string) => {
                         const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), sermonInOneSentence: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                    />
+                  </PrepStepCard>
+                  <PrepStepCard
+                    stepId="homileticPlan"
+                    stepNumber={7}
+                    title={t('wizard.steps.homileticPlan.title') as string}
+                    icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+                    isActive={activeStepId === 'homileticPlan'}
+                    isExpanded={isStepExpanded('homileticPlan')}
+                    onToggle={() => toggleStep('homileticPlan')}
+                    stepRef={(el) => { stepRefs.current['homileticPlan'] = el; }}
+                    done={isHomileticPlanDone}
+                  >
+                    <HomileticPlanStepContent
+                      initialModernTranslation={prepDraft?.homileticPlan?.modernTranslation || ''}
+                      onSaveModernTranslation={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), modernTranslation: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialUpdatedPlan={prepDraft?.homileticPlan?.updatedPlan || []}
+                      onSaveUpdatedPlan={async (items) => {
+                        const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), updatedPlan: items } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      initialSermonPlan={prepDraft?.homileticPlan?.sermonPlan || []}
+                      onSaveSermonPlan={async (items) => {
+                        const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), sermonPlan: items } };
                         setPrepDraft(next);
                         await savePreparation(next);
                       }}

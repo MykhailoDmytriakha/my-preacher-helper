@@ -125,6 +125,12 @@ export interface Preparation {
      */
     statement?: string;
   };
+  /** Homiletic planning container */
+  homileticPlan?: {
+    modernTranslation?: string;
+    updatedPlan?: { id: string; title: string }[];
+    sermonPlan?: { id: string; title: string }[];
+  };
 }
 
 export interface ExegeticalPlanNode {

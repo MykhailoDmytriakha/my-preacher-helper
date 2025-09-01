@@ -1,6 +1,6 @@
 import type { Preparation, ExegeticalPlanNode } from '@/models/models';
 
-export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis';
+export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan';
 
 // Helper function to check if any node in the exegetical plan tree has a valid title
 function hasValidTitleInTree(nodes: ExegeticalPlanNode[]): boolean {
@@ -49,6 +49,12 @@ export function getActiveStepId(prep: Preparation | undefined | null): PrepStepI
   const ho = (prep?.thesis?.homiletical || '').trim().length > 0;
   const os = (prep?.thesis?.oneSentence || '').trim().length > 0;
   if (!(ex && ho && os)) return 'thesis';
+
+  // Step 7 completeness: require modern translation and at least two sermon plan items
+  const modernOk = Boolean((prep?.homileticPlan?.modernTranslation || '').trim().length > 0);
+  const sermonPlanLen = prep?.homileticPlan?.sermonPlan?.filter(i => (i.title || '').trim().length > 0).length || 0;
+  const isHomileticPlanDone = modernOk && sermonPlanLen >= 2;
+  if (!isHomileticPlanDone) return 'homileticPlan';
 
   return 'thesis';
 }

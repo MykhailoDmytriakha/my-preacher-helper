@@ -803,6 +803,145 @@
           "sermonPh": "Essence of the sermon in one line..."
         }
       },
+      "homileticPlan": {
+        "title": "Homiletic Plan",
+        "instruction": { "show": "Show instruction", "hide": "Hide instruction" },
+        "sections": {
+          "homileticPlan": "Homiletic plan",
+          "modernTranslation": "Modern translation",
+          "updatedPlan": "‘Actualized’ plan",
+          "sermonPlan": "Sermon plan"
+        },
+        "homiletic": {
+          "note": "Take the exegetical structure and make it presentable for listeners — accessible and clear."
+        },
+        "instructions": {
+          "modernTranslation": {
+            "p1": "Write a modern-language translation of the selected passage.",
+            "p2": "Compare how it’s phrased in modern Bible translations.",
+            "p3": "Ensure the modern rendering matches the correct meaning without additions or omissions."
+          },
+          "updatedPlan": {
+            "p1": "Based on the modern rendering, compose a new ‘actualized’ plan.",
+            "p2": "Sometimes the exegetical and the ‘actualized’ plan fully coincide."
+          },
+          "sermonPlan": {
+            "definition": "After defining the thesis, identify how the author proves and develops the idea.",
+            "unity": "Strive for unity, order, and progress; keep logical sequencing.",
+            "transitions": "Provide clear transitions between parts of the sermon.",
+            "principles": "Each (sub)point supports the thesis; one assertion per point; prove and illustrate from Scripture; show application."
+          }
+        },
+        "guide": {
+          "planDefinition": {
+            "title": "Defining the passage plan",
+            "p1": "After you form the thesis of the passage, consider how the author supports and proves the idea.",
+            "diagram": {
+              "title": "The plan is closely tied to the text diagram:",
+              "basedOnStructure": "It is based on the text’s structure (exegetical plan).",
+              "topicSentences": "Find the key sentences in each exegetical point (topic sentences).",
+              "intentRelation": "Relate each topic sentence to the author’s intent.",
+              "commonAcrossPoints": "Identify what unites all points of the exegetical plan."
+            }
+          },
+          "unityOrderProgress": {
+            "title": "Unity, order, and progress",
+            "logicalChronological": "Points should have logical and chronological connection:",
+            "generalToSpecific": "From general to specific.",
+            "focusFlow": "General view → focus.",
+            "psychSequence": "Psychological sequence:",
+            "notCorner": "Do not corner the listener.",
+            "showRoad": "Show the road to life.",
+            "rule2to4": "Rule of 2–4 points."
+          },
+          "transitions": {
+            "title": "Transitions between sermon parts"
+          },
+          "principles": {
+            "title": "General principles for composing a sermon plan",
+            "p1": "Each point must support the sermon thesis.",
+            "p2": "Each subpoint must support the main point it belongs to.",
+            "p3": "Each (sub)point should consist of one assertion.",
+            "p4": "Each (sub)point should accomplish the goal set by the thesis.",
+            "p5": "Each group of points should be united by one idea.",
+            "p6": "Each group of points should have a parallel structure.",
+            "p7": "You cannot have a single subpoint: if there is 1 — there must be 2; if A — then B.",
+            "p8": "Each point must be expressed clearly.",
+            "p9": "Each point must be proven or supported from Scripture and sound logic.",
+            "p10": "Each point should be illustrated or explained; help listeners apply the truth in practice."
+          },
+          "structureExamples": {
+            "title": "Sermon structure",
+            "timeLogic": {
+              "title": "a) Logic of time",
+              "items": {
+                "i1": "Paul’s life before knowing God (1:13–15)",
+                "i2": "Paul’s conversion (1:15–16)",
+                "i3": "Period of spiritual growth (1:17–18)",
+                "i4": "Meeting the Apostles and confirming the Gospel (1:18–19; 2:1–2)",
+                "i5": "Paul’s ministry (1:11–12)"
+              }
+            },
+            "placeLogic": {
+              "title": "b) Logic of place",
+              "items": {
+                "i1": "Witness of Christ in Jerusalem",
+                "i2": "Witness of Christ in Judea",
+                "i3": "Witness of Christ in Samaria",
+                "i4": "Witness of Christ to the ends of the earth"
+              }
+            },
+            "qualities": {
+              "title": "c) Different qualities of one subject",
+              "items": {
+                "i1": "Perfection strengthening the soul",
+                "i2": "Faithfulness making the simple wise",
+                "i3": "Righteousness rejoicing the heart",
+                "i4": "Light enlightening the eyes",
+                "i5": "Purity enduring forever",
+                "i6": "Absolutely just truthfulness"
+              }
+            }
+          },
+          "structures8": {
+            "title": "8 main sermon structures",
+            "items": {
+              "deductive": "1) Deductive: thesis/title stated at the beginning; the sermon substantiates the thesis.",
+              "inductive": "2) Inductive: thesis or title is formed at the end of the study.",
+              "narrative": "3) Narrative: from a historical narrative text derive biblical principles and commands.",
+              "biographical": "4) Biographical: study a biblical character’s life (stage) and draw lessons.",
+              "problemSolution": "5) Problem → Solution: raise a relevant problem from the text and give a biblical solution.",
+              "thematic": "6) Thematic: reveal an important topic using several Scripture texts.",
+              "motivational": "7) Motivational: goal is to move listeners to important church decisions.",
+              "dramatic": "8) Dramatic: preacher’s monologue to involve listeners emotionally and spiritually."
+            }
+          }
+        },
+        "fields": {
+          "modernTranslation": {
+            "label": "Modern translation (free form)",
+            "placeholder": "Write your modern translation of the passage..."
+          },
+          "updatedPlan": {
+            "label": "Updated (‘actualized’) plan",
+            "addItem": "Add point",
+            "itemPlaceholder": "Point title...",
+            "itemLabel": "Plan point",
+            "moveUp": "Move up",
+            "moveDown": "Move down",
+            "remove": "Remove point"
+          },
+          "sermonPlan": {
+            "label": "Sermon plan",
+            "addItem": "Add point",
+            "itemPlaceholder": "Point title...",
+            "itemLabel": "Plan point",
+            "moveUp": "Move up",
+            "moveDown": "Move down",
+            "remove": "Remove point"
+          }
+        }
+      },
       "structure": { "title": "Structure" },
       "outline": { "title": "Outline" },
       "plan": { "title": "Plan" },
