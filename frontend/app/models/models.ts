@@ -97,7 +97,17 @@ export interface Preparation {
   thesis?: {
     exegetical?: string;
     homiletical?: string;
-    oneSentence?: string;
+    oneSentence?: string; // Тезис в одном предложении (до 20 слов)
+    // Доп. поля для детального оформления тезиса
+    questionWord?: string; // Вопрос к тезису (почему/как/что/когда/где)
+    pluralKey?: string; // Ключевое слово (существительное во множественном числе)
+    transitionSentence?: string; // Переходная фраза к пунктам
+    sermonInOneSentence?: string; // Вся проповедь, сжатая в одном предложении
+    homileticalAnswers?: { // Ответы на вопросы к экзегетическому тезису
+      whyPreach?: string;
+      impactOnChurch?: string;
+      practicalQuestions?: string;
+    }
   };
   timelessTruth?: string;
   christConnection?: string;

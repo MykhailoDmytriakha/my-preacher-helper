@@ -1,6 +1,6 @@
 import type { Preparation, ExegeticalPlanNode } from '@/models/models';
 
-export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals';
+export type PrepStepId = 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis';
 
 // Helper function to check if any node in the exegetical plan tree has a valid title
 function hasValidTitleInTree(nodes: ExegeticalPlanNode[]): boolean {
@@ -44,6 +44,11 @@ export function getActiveStepId(prep: Preparation | undefined | null): PrepStepI
 
   if (!(hasTimelessTruth && hasGoalStatement)) return 'goals';
 
-  return 'goals';
-}
+  // Thesis completeness: require exegetical + homiletical + oneSentence
+  const ex = (prep?.thesis?.exegetical || '').trim().length > 0;
+  const ho = (prep?.thesis?.homiletical || '').trim().length > 0;
+  const os = (prep?.thesis?.oneSentence || '').trim().length > 0;
+  if (!(ex && ho && os)) return 'thesis';
 
+  return 'thesis';
+}

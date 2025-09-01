@@ -757,7 +757,52 @@
           "note": "Often the goal is tied to the passage’s main verb. Write it as a full sentence — it becomes the focus of your explanation."
         }
       },
-      "thesis": { "title": "Thesis" },
+      "thesis": {
+        "title": "Thesis",
+        "instruction": { "show": "Show instruction", "hide": "Hide instruction" },
+        "note": {
+          "usingTBT": "With the Timeless Biblical Truth, form your thesis",
+          "mainMessage": "This is the main message to convey",
+          "naming": "Main idea is also called theme, big idea, thesis",
+          "verb": "Often tied to the passage’s main verb (not always)"
+        },
+        "exegetical": {
+          "title": "Exegetical Thesis",
+          "definition": "A concise, accurate expression of the text’s main idea from careful study",
+          "whereFound": "Sometimes explicit; sometimes from repeated ideas or context analysis",
+          "placeholder": "Write the exegetical thesis..."
+        },
+        "homiletical": {
+          "title": "Homiletical Thesis & Questions",
+          "q": {
+            "why": "Why should I preach this truth to my church?",
+            "impact": "How will this truth foster spiritual maturity in my church?",
+            "practical": "Which practical questions of my audience does it answer and how?",
+            "whyPh": "Answer the ‘why’...",
+            "impactPh": "Describe the impact on maturity...",
+            "practicalPh": "List practical questions and how it answers them..."
+          },
+          "own": "State the homiletical thesis in your own words",
+          "ownPh": "Homiletical thesis in accessible language..."
+        },
+        "oneSentence": {
+          "title": "Thesis in one sentence (≤ 20 words)",
+          "question": "Usually tied to the main points via a question word: why, how, what, when, where",
+          "pluralKey": "Use a plural key noun that unites the points",
+          "transition": "A transition sentence connects thesis to points; key component — the key noun",
+          "sermon": "Entire sermon compressed into one sentence",
+          "questionLabel": "Question for the thesis",
+          "questionPh": "e.g., why / how / what...",
+          "pluralKeyLabel": "Key noun (plural)",
+          "pluralKeyPh": "e.g., reasons, steps, marks...",
+          "transitionLabel": "Transition sentence",
+          "transitionPh": "Bridge thesis to the main points...",
+          "oneLabel": "One-sentence thesis",
+          "onePh": "Short thesis sentence...",
+          "sermonLabel": "Sermon in one sentence",
+          "sermonPh": "Essence of the sermon in one line..."
+        }
+      },
       "structure": { "title": "Structure" },
       "outline": { "title": "Outline" },
       "plan": { "title": "Plan" },

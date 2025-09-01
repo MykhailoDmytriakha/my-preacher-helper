@@ -28,6 +28,7 @@ import TextContextStepContent from '@/components/sermon/prep/TextContextStepCont
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
 import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
+import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import { STRUCTURE_TAGS } from '@lib/constants';
@@ -114,13 +115,13 @@ export default function SermonPage() {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Determine active step based on data completeness
-  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' = getActiveStepId(prepDraft);
+  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' = getActiveStepId(prepDraft);
 
-  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals') => {
+  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis') => {
     return id === activeStepId || manuallyExpanded.has(id);
   }, [activeStepId, manuallyExpanded]);
 
-  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals') => {
+  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis') => {
     if (id === activeStepId) return; // active step stays open
     setManuallyExpanded(prev => {
       const next = new Set(prev);
@@ -129,11 +130,11 @@ export default function SermonPage() {
     });
   }, [activeStepId]);
 
-  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals)
+  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals|thesis)
   const prepStepParam = searchParams?.get('prepStep');
   useEffect(() => {
     const target = prepStepParam;
-    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals') {
+    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals' || target === 'thesis') {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
@@ -239,6 +240,12 @@ export default function SermonPage() {
   const isGoalsDone = Boolean(
     (prepDraft?.timelessTruth || '').trim().length > 0 &&
     (prepDraft?.preachingGoal?.statement || '').trim().length > 0
+  );
+
+  const isThesisDone = Boolean(
+    (prepDraft?.thesis?.exegetical || '').trim().length > 0 &&
+    (prepDraft?.thesis?.homiletical || '').trim().length > 0 &&
+    (prepDraft?.thesis?.oneSentence || '').trim().length > 0
   );
 
 
@@ -792,7 +799,6 @@ export default function SermonPage() {
                       }}
                     />
                   </PrepStepCard>
-
                   <PrepStepCard
                     stepId="goals"
                     stepNumber={5}
@@ -832,6 +838,80 @@ export default function SermonPage() {
                           ...prepDraft,
                           preachingGoal: { ...(prepDraft?.preachingGoal || {}), type },
                         };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                    />
+                  </PrepStepCard>
+                  <PrepStepCard
+                    stepId="thesis"
+                    stepNumber={6}
+                    title={t('wizard.steps.thesis.title') as string}
+                    icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+                    isActive={activeStepId === 'thesis'}
+                    isExpanded={isStepExpanded('thesis')}
+                    onToggle={() => toggleStep('thesis')}
+                    stepRef={(el) => { stepRefs.current['thesis'] = el; }}
+                    done={isThesisDone}
+                  >
+                    <ThesisStepContent
+                      exegetical={prepDraft?.thesis?.exegetical || ''}
+                      onSaveExegetical={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), exegetical: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      whyPreach={prepDraft?.thesis?.homileticalAnswers?.whyPreach || ''}
+                      onSaveWhyPreach={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homileticalAnswers: { ...(prepDraft?.thesis?.homileticalAnswers || {}), whyPreach: text } } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      impactOnChurch={prepDraft?.thesis?.homileticalAnswers?.impactOnChurch || ''}
+                      onSaveImpactOnChurch={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homileticalAnswers: { ...(prepDraft?.thesis?.homileticalAnswers || {}), impactOnChurch: text } } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      practicalQuestions={prepDraft?.thesis?.homileticalAnswers?.practicalQuestions || ''}
+                      onSavePracticalQuestions={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homileticalAnswers: { ...(prepDraft?.thesis?.homileticalAnswers || {}), practicalQuestions: text } } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      homiletical={prepDraft?.thesis?.homiletical || ''}
+                      onSaveHomiletical={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homiletical: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      questionWord={prepDraft?.thesis?.questionWord || ''}
+                      onSaveQuestionWord={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), questionWord: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      pluralKey={prepDraft?.thesis?.pluralKey || ''}
+                      onSavePluralKey={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), pluralKey: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      transitionSentence={prepDraft?.thesis?.transitionSentence || ''}
+                      onSaveTransitionSentence={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), transitionSentence: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      oneSentence={prepDraft?.thesis?.oneSentence || ''}
+                      onSaveOneSentence={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), oneSentence: text } };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
+                      sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
+                      onSaveSermonInOneSentence={async (text: string) => {
+                        const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), sermonInOneSentence: text } };
                         setPrepDraft(next);
                         await savePreparation(next);
                       }}
