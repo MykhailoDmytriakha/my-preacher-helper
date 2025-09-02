@@ -335,17 +335,21 @@ export const AudioRecorder = ({
 
   // Button styles based on state
   const getButtonStyles = () => {
-    const baseStyles = "relative overflow-hidden transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:transform-none disabled:hover:scale-100";
+    // Keep transitions/rings consistent across variants
+    const baseStyles = "relative overflow-hidden transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:transform-none disabled:hover:scale-100";
+
+    // Reduce default size by 5% for BOTH variants and allow hover up to 100%.
+    const scaleStyles = "transform scale-[0.95] hover:scale-100 active:scale-95";
     
     switch (recordingState) {
       case 'processing':
-        return `${baseStyles} bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 cursor-wait`;
+        return `${baseStyles} ${scaleStyles} bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 cursor-wait`;
       case 'initializing':
-        return `${baseStyles} bg-yellow-500 hover:bg-yellow-600 text-white focus:ring-yellow-500 cursor-wait`;
+        return `${baseStyles} ${scaleStyles} bg-yellow-500 hover:bg-yellow-600 text-white focus:ring-yellow-500 cursor-wait`;
       case 'recording':
-        return `${baseStyles} bg-red-500 hover:bg-red-600 text-white focus:ring-red-500 shadow-lg shadow-red-500/25`;
+        return `${baseStyles} ${scaleStyles} bg-red-500 hover:bg-red-600 text-white focus:ring-red-500 shadow-lg shadow-red-500/25`;
       default:
-        return `${baseStyles} bg-green-600 hover:bg-green-700 text-white focus:ring-green-500 shadow-lg hover:shadow-green-500/25`;
+        return `${baseStyles} ${scaleStyles} bg-green-600 hover:bg-green-700 text-white focus:ring-green-500 shadow-lg hover:shadow-green-500/25`;
     }
   };
 

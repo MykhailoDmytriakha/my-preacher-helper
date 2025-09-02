@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react"; // Import useCallback
+import type { ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
@@ -38,6 +39,36 @@ import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new lis
 import BrainstormModule from '@/components/sermon/BrainstormModule';
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 export const dynamic = "force-dynamic";
+
+// Smoothly animates its height to match children (prevents jumps when content changes size)
+function AutoHeight({ children, duration = 0.25, delay = 0, className = '' }: { children: ReactNode; duration?: number; delay?: number; className?: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!containerRef.current || typeof window === 'undefined') return;
+    const RO: any = (window as any).ResizeObserver;
+    if (!RO) return; // Fallback: no animation in environments without ResizeObserver (e.g., some tests)
+    const observer = new RO((entries: any[]) => {
+      const cr = entries[0]?.contentRect;
+      if (cr && typeof cr.height === 'number') setHeight(cr.height);
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <motion.div
+      className={className}
+      initial={false}
+      animate={height !== undefined ? { height } : undefined}
+      transition={{ duration, ease: 'easeInOut', delay }}
+      style={{ overflow: 'hidden' }}
+    >
+      <div ref={containerRef}>{children}</div>
+    </motion.div>
+  );
+}
 
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
@@ -114,6 +145,435 @@ export default function SermonPage() {
   // Prep steps expand/collapse management
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Close filter dropdown when switching to prep mode to avoid floating UI
+  useEffect(() => {
+    if (uiMode === 'prep' && isFilterOpen) setIsFilterOpen(false);
+  }, [uiMode]);
+
+  // Reusable renderer for classic content (brainstorm, filters, thoughts)
+  const renderClassicContent = (options?: { withBrainstorm?: boolean }) => (
+    <motion.div layout className="space-y-4 sm:space-y-6">
+      <AnimatePresence initial={false}>
+        {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
+          <motion.section
+            key="ideas"
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            style={{ overflow: 'hidden' }}
+          >
+            <BrainstormModule sermonId={sermon!.id} />
+          </motion.section>
+        )}
+      </AnimatePresence>
+      <section>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
+            <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              {activeCount} / {totalThoughts}
+            </span>
+            <AnimatePresence initial={false}>
+              {uiMode === 'classic' && (
+                <motion.div
+                  key="filter"
+                  className="relative ml-0 sm:ml-3"
+                  initial={{ opacity: 0, y: -6, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -6, height: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <button
+                    ref={filterButtonRef}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsFilterOpen(!isFilterOpen);
+                    }}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    data-testid="thought-filter-button"
+                  >
+                    {t('filters.filter')}
+                    {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
+                      <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
+                    )}
+                    <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <ThoughtFilterControls 
+                    isOpen={isFilterOpen}
+                    setIsOpen={setIsFilterOpen}
+                    viewFilter={viewFilter}
+                    setViewFilter={setViewFilter}
+                    structureFilter={structureFilter}
+                    setStructureFilter={setStructureFilter}
+                    tagFilters={tagFilters}
+                    toggleTagFilter={toggleTagFilter}
+                    resetFilters={resetFilters}
+                    sortOrder={sortOrder}
+                    setSortOrder={setSortOrder}
+                    allowedTags={allowedTags}
+                    hasStructureTags={hasStructureTags}
+                    buttonRef={filterButtonRef}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <div>
+            <AddThoughtManual 
+              sermonId={sermon!.id} 
+              onNewThought={handleNewManualThought}
+              allowedTags={allowedTags}
+              sermonOutline={sermon!.outline}
+            />
+          </div>
+        </div>
+        <AnimatePresence initial={false}>
+          {uiMode === 'classic' && (viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
+            <motion.div
+              key="active-filters"
+              className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md"
+              initial={{ opacity: 0, y: -6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -6, height: 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {t('filters.activeFilters')}:
+              </span>
+              {viewFilter === 'missingTags' && (
+                <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
+                  {t('filters.missingTags')}
+                </span>
+              )}
+              {structureFilter !== 'all' && (
+                <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+                  {t(`tags.${structureFilter.toLowerCase().replace(/\s+/g, '_')}`)}
+                </span>
+              )}
+              {sortOrder === 'structure' && (
+                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+                  {t('filters.sortByStructure') || 'Sorted by Structure'}
+                </span>
+              )}
+              {tagFilters.map((tag: string) => {
+                const tagInfo = allowedTags.find(t => t.name === tag);
+                return (
+                  <span 
+                    key={tag}
+                    className="px-2 py-1 text-xs rounded-full"
+                    style={{ 
+                      backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
+                      color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
+                    }}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
+              <button 
+                onClick={resetFilters}
+                className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
+              >
+                {t('filters.clear')}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <motion.div layout transition={{ duration: 0.45, ease: 'easeInOut' }}>
+          <ThoughtList
+            filteredThoughts={filteredThoughts}
+            totalThoughtsCount={totalThoughts}
+            allowedTags={allowedTags}
+            sermonOutline={sermon?.outline}
+            onDelete={handleDeleteThought}
+            onEditStart={handleEditThoughtStart}
+            resetFilters={resetFilters}
+          />
+        </motion.div>
+      </section>
+    </motion.div>
+  );
+
+  // Reusable renderer for preparation flow (all prep step cards)
+  const renderPrepContent = () => (
+    <div className="space-y-4 sm:space-y-6">
+      <PrepStepCard
+        stepId="spiritual"
+        stepNumber={1}
+        title={t('wizard.steps.spiritual.title') as string}
+        icon={<Sparkles className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'spiritual'}
+        isExpanded={isStepExpanded('spiritual')}
+        onToggle={() => toggleStep('spiritual')}
+        stepRef={(el) => { stepRefs.current['spiritual'] = el; }}
+        done={isSpiritualDone}
+      >
+        <SpiritualStepContent
+          prepDraft={prepDraft}
+          setPrepDraft={setPrepDraft}
+          savePreparation={savePreparation}
+          savingPrep={savingPrep}
+          formatSuperscriptVerses={formatSuperscriptVerses}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="textContext"
+        stepNumber={2}
+        title={t('wizard.steps.textContext.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'textContext'}
+        isExpanded={isStepExpanded('textContext')}
+        onToggle={() => toggleStep('textContext')}
+        stepRef={(el) => { stepRefs.current['textContext'] = el; }}
+        done={isTextContextDone}
+      >
+        <TextContextStepContent
+          initialVerse={sermon!.verse}
+          onSaveVerse={async (nextVerse: string) => {
+            setSermon(prev => prev ? { ...prev, verse: nextVerse } : prev);
+            const updated = await updateSermon({ ...sermon!, verse: nextVerse });
+            if (updated) setSermon(updated);
+          }}
+          readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
+          onToggleReadWholeBookOnce={async (checked: boolean) => {
+            const next: Preparation = {
+              ...prepDraft,
+              textContext: { ...(prepDraft.textContext ?? {}), readWholeBookOnceConfirmed: checked },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
+          onSavePassageSummary={async (summary: string) => {
+            const next: Preparation = {
+              ...prepDraft,
+              textContext: { ...(prepDraft.textContext ?? {}), passageSummary: summary },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialContextNotes={prepDraft?.textContext?.contextNotes || ''}
+          onSaveContextNotes={async (notes: string) => {
+            const next: Preparation = {
+              ...prepDraft,
+              textContext: { ...(prepDraft.textContext ?? {}), contextNotes: notes },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialRepeatedWords={prepDraft?.textContext?.repeatedWords || []}
+          onSaveRepeatedWords={async (words: string[]) => {
+            const next: Preparation = {
+              ...prepDraft,
+              textContext: { ...(prepDraft.textContext ?? {}), repeatedWords: words },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="exegeticalPlan"
+        stepNumber={3}
+        title={t('wizard.steps.exegeticalPlan.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'exegeticalPlan'}
+        isExpanded={isStepExpanded('exegeticalPlan')}
+        onToggle={() => toggleStep('exegeticalPlan')}
+        stepRef={(el) => { stepRefs.current['exegeticalPlan'] = el; }}
+        done={isExegeticalPlanDone}
+      >
+        <ExegeticalPlanStepContent
+          value={prepDraft?.exegeticalPlan || []}
+          onChange={(nodes) => {
+            setPrepDraft(prev => ({ ...(prev || {}), exegeticalPlan: nodes }));
+          }}
+          onSave={async (nodes) => {
+            const next = { ...(prepDraft || {}), exegeticalPlan: nodes } as Preparation;
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          saving={savingPrep}
+          authorIntent={prepDraft?.authorIntent || ''}
+          onSaveAuthorIntent={async (text: string) => {
+            const next: Preparation = { ...(prepDraft || {}), authorIntent: text };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="mainIdea"
+        stepNumber={4}
+        title={t('wizard.steps.mainIdea.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'mainIdea'}
+        isExpanded={isStepExpanded('mainIdea')}
+        onToggle={() => toggleStep('mainIdea')}
+        stepRef={(el) => { stepRefs.current['mainIdea'] = el; }}
+        done={isMainIdeaDone}
+      >
+        <MainIdeaStepContent
+          initialContextIdea={prepDraft?.mainIdea?.contextIdea || ''}
+          onSaveContextIdea={async (text: string) => {
+            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), contextIdea: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialTextIdea={prepDraft?.mainIdea?.textIdea || ''}
+          onSaveTextIdea={async (text: string) => {
+            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), textIdea: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialArgumentation={prepDraft?.mainIdea?.argumentation || ''}
+          onSaveArgumentation={async (text: string) => {
+            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), argumentation: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="goals"
+        stepNumber={5}
+        title={t('wizard.steps.goals.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'goals'}
+        isExpanded={isStepExpanded('goals')}
+        onToggle={() => toggleStep('goals')}
+        stepRef={(el) => { stepRefs.current['goals'] = el; }}
+        done={isGoalsDone}
+      >
+        <GoalsStepContent
+          initialTimelessTruth={prepDraft?.timelessTruth || ''}
+          onSaveTimelessTruth={async (text: string) => {
+            const next: Preparation = { ...prepDraft, timelessTruth: text };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialChristConnection={prepDraft?.christConnection || ''}
+          onSaveChristConnection={async (text: string) => {
+            const next: Preparation = { ...prepDraft, christConnection: text };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialGoalStatement={prepDraft?.preachingGoal?.statement || ''}
+          onSaveGoalStatement={async (text: string) => {
+            const next: Preparation = {
+              ...prepDraft,
+              preachingGoal: { ...(prepDraft?.preachingGoal || {}), statement: text },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialGoalType={(prepDraft?.preachingGoal?.type || '') as any}
+          onSaveGoalType={async (type) => {
+            const next: Preparation = {
+              ...prepDraft,
+              preachingGoal: { ...(prepDraft?.preachingGoal || {}), type },
+            };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="thesis"
+        stepNumber={6}
+        title={t('wizard.steps.thesis.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'thesis'}
+        isExpanded={isStepExpanded('thesis')}
+        onToggle={() => toggleStep('thesis')}
+        stepRef={(el) => { stepRefs.current['thesis'] = el; }}
+        done={isThesisDone}
+      >
+        <ThesisStepContent
+          exegetical={prepDraft?.thesis?.exegetical || ''}
+          onSaveExegetical={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), exegetical: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          homiletical={prepDraft?.thesis?.homiletical || ''}
+          onSaveHomiletical={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homiletical: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          pluralKey={prepDraft?.thesis?.pluralKey || ''}
+          onSavePluralKey={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), pluralKey: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          transitionSentence={prepDraft?.thesis?.transitionSentence || ''}
+          onSaveTransitionSentence={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), transitionSentence: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          oneSentence={prepDraft?.thesis?.oneSentence || ''}
+          onSaveOneSentence={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), oneSentence: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
+          onSaveSermonInOneSentence={async (text: string) => {
+            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), sermonInOneSentence: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+
+      <PrepStepCard
+        stepId="homileticPlan"
+        stepNumber={7}
+        title={t('wizard.steps.homileticPlan.title') as string}
+        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
+        isActive={activeStepId === 'homileticPlan'}
+        isExpanded={isStepExpanded('homileticPlan')}
+        onToggle={() => toggleStep('homileticPlan')}
+        stepRef={(el) => { stepRefs.current['homileticPlan'] = el; }}
+        done={isHomileticPlanDone}
+      >
+        <HomileticPlanStepContent
+          initialModernTranslation={prepDraft?.homileticPlan?.modernTranslation || ''}
+          onSaveModernTranslation={async (text: string) => {
+            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), modernTranslation: text } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialUpdatedPlan={prepDraft?.homileticPlan?.updatedPlan || []}
+          onSaveUpdatedPlan={async (items) => {
+            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), updatedPlan: items } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+          initialSermonPlan={prepDraft?.homileticPlan?.sermonPlan || []}
+          onSaveSermonPlan={async (items) => {
+            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), sermonPlan: items } };
+            setPrepDraft(next);
+            await savePreparation(next);
+          }}
+        />
+      </PrepStepCard>
+    </div>
+  );
 
   // Determine active step based on data completeness
   const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan' = getActiveStepId(prepDraft);
@@ -514,6 +974,21 @@ export default function SermonPage() {
           />
         </div>
         
+        {/* Single persistent recorder with smooth height transition */}
+        <AutoHeight>
+          <AudioRecorder 
+            onRecordingComplete={handleNewRecording} 
+            isProcessing={isProcessing}
+            onRetry={handleRetryTranscription}
+            retryCount={retryCount}
+            maxRetries={3}
+            transcriptionError={transcriptionError}
+            onClearError={handleClearError}
+            hideKeyboardShortcuts={uiMode === 'prep'}
+          />
+        </AutoHeight>
+
+        {false && (
         <motion.div
           className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 ${uiMode === 'prep' ? 'prep-mode' : ''}`}
         >
@@ -525,9 +1000,9 @@ export default function SermonPage() {
                 {uiMode === 'classic' && (
                   <motion.div
                     key="classicColumn"
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, x: -40 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -40 }}
                     transition={{ duration: 0.3, ease: 'easeInOut' }}
                     className="space-y-4 sm:space-y-6"
                   >
@@ -543,7 +1018,7 @@ export default function SermonPage() {
                       />
                     </section>
                     <section>
-                      <BrainstormModule sermonId={sermon.id} />
+                      <BrainstormModule sermonId={sermon!.id} />
                     </section>
                     <section>
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
@@ -589,10 +1064,10 @@ export default function SermonPage() {
                           </div>
                         </div>
                         <AddThoughtManual 
-                          sermonId={sermon.id} 
+                          sermonId={sermon!.id} 
                           onNewThought={handleNewManualThought}
                           allowedTags={allowedTags}
-                          sermonOutline={sermon.outline}
+                          sermonOutline={sermon!.outline}
                         />
                       </div>
                       <div className="space-y-5">
@@ -658,9 +1133,9 @@ export default function SermonPage() {
               {uiMode === 'prep' ? (
                 <motion.div
                   key="prepColumn"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 40 }}
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                   className="space-y-4 sm:space-y-6"
                 >
@@ -696,11 +1171,11 @@ export default function SermonPage() {
                     done={isTextContextDone}
                   >
                     <TextContextStepContent
-                      initialVerse={sermon.verse}
+                      initialVerse={sermon!.verse}
                       onSaveVerse={async (nextVerse: string) => {
                         // optimistic update
                         setSermon(prev => prev ? { ...prev, verse: nextVerse } : prev);
-                        const updated = await updateSermon({ ...sermon, verse: nextVerse });
+                        const updated = await updateSermon({ ...sermon!, verse: nextVerse });
                         if (updated) setSermon(updated);
                       }}
                       readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
@@ -969,28 +1444,99 @@ export default function SermonPage() {
             </AnimatePresence>
           </motion.div>
 
-          <motion.div
-            className="space-y-6"
-            transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
-          >
-            {/* Hide duplicate Structure section on mobile, show on lg+ */}
-            <div className="hidden lg:block">
-              <StructureStats 
-                sermon={sermon!} 
-                tagCounts={tagCounts} 
-                totalThoughts={totalThoughts} 
-                hasInconsistentThoughts={hasInconsistentThoughts} 
-              />
-            </div>
-            <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
-            <SermonOutline 
-              sermon={sermon!} 
-              thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
-              onOutlineUpdate={handleOutlineUpdate}
-            />
-            {sermon!.structure && <StructurePreview sermon={sermon!} />}
-          </motion.div>
+          <MotionConfig reducedMotion="user">
+            <AnimatePresence initial={false} mode="wait">
+              {uiMode === 'classic' ? (
+                <motion.div
+                  key="rightPanel"
+                  className="space-y-6"
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 40 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
+                >
+                  {/* Hide duplicate Structure section on mobile, show on lg+ */}
+                  <div className="hidden lg:block">
+                    <StructureStats 
+                      sermon={sermon!} 
+                      tagCounts={tagCounts} 
+                      totalThoughts={totalThoughts} 
+                      hasInconsistentThoughts={hasInconsistentThoughts} 
+                    />
+                  </div>
+                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
+                  <SermonOutline 
+                    sermon={sermon!} 
+                    thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
+                    onOutlineUpdate={handleOutlineUpdate}
+                  />
+                  {sermon!.structure && <StructurePreview sermon={sermon!} />}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="thoughtsColumn"
+                  className="space-y-6"
+                  initial={{ opacity: 0, x: -40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
+                >
+                  {renderClassicContent()}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </MotionConfig>
         </motion.div>
+        )}
+
+        {/* Slider container that moves viewport left/right */}
+        <div className="relative overflow-hidden">
+          <motion.div
+            className="flex"
+            initial={false}
+            animate={{ x: uiMode === 'prep' ? '0%' : '-50%' }}
+            transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
+            style={{ width: '200%', willChange: 'transform' }}
+          >
+            {/* Slide 1: Preparation layout (left) */}
+            <div className="basis-1/2 shrink-0">
+              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
+                <div className="lg:col-span-2">
+                  {renderPrepContent()}
+                </div>
+                <div className="space-y-6">
+                  {renderClassicContent({ withBrainstorm: false })}
+                </div>
+              </div>
+            </div>
+
+            {/* Slide 2: Classic layout (right) */}
+            <div className="basis-1/2 shrink-0">
+              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
+                <div className="lg:col-span-2">
+                  {renderClassicContent()}
+                </div>
+                <div className="space-y-6">
+                  <div className="hidden lg:block">
+                    <StructureStats 
+                      sermon={sermon!} 
+                      tagCounts={tagCounts} 
+                      totalThoughts={totalThoughts} 
+                      hasInconsistentThoughts={hasInconsistentThoughts} 
+                    />
+                  </div>
+                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
+                  <SermonOutline 
+                    sermon={sermon!} 
+                    thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
+                    onOutlineUpdate={handleOutlineUpdate}
+                  />
+                  {sermon!.structure && <StructurePreview sermon={sermon!} />}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       {editingModalData && (
         <EditThoughtModal
           initialText={editingModalData.thought.text}

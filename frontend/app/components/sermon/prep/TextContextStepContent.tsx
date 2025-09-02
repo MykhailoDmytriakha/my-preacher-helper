@@ -212,7 +212,6 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
           />
           <span className="text-sm">{t('wizard.steps.textContext.confirmation.readWholeBookOnce')}</span>
         </label>
-        <p className="mt-2 text-xs text-gray-500">{t('wizard.steps.textContext.readWholeBookOnceHelp')}</p>
       </div>
 
       {/* Section 3: Find context */}

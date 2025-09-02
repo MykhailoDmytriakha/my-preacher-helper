@@ -573,7 +573,6 @@
           "findContext": "Find the context",
           "findRepeatedWords": "Find repeated words and phrases"
         },
-        "readWholeBookOnceHelp": "Read the whole book once through the lens of your selected verse. Switch to Classic Mode to take notes while reading, then return here.",
         "passageSummary": {
           "title": "Capture the gist",
           "label": "In your own words: what is this passage about?",

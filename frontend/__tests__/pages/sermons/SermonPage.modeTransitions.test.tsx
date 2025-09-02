@@ -69,10 +69,10 @@ describe('SermonPage mode transitions', () => {
     expect(screen.getByTestId('brainstorm')).toBeInTheDocument();
   });
 
-  test('prep mode hides recorder and brainstorm', async () => {
+  test('prep mode shows mini recorder and hides brainstorm', async () => {
     searchParamsMock.set('mode', 'prep');
     render(<SermonPage />);
-    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
   });
 
@@ -134,7 +134,7 @@ describe('SermonPage mode transitions', () => {
     render(<SermonPage />);
     
     // Should render in prep mode
-    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
   });
 
@@ -168,5 +168,4 @@ describe('SermonPage mode transitions', () => {
     });
   });
 });
-
 
