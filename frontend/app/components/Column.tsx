@@ -149,6 +149,25 @@ const OutlinePointPlaceholder: React.FC<{
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const popoverContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Close mini-recorder popover on outside click
+  useEffect(() => {
+    if (!showAudioPopover) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (!popoverContainerRef.current) return;
+      const target = e.target as Node | null;
+      if (target && !popoverContainerRef.current.contains(target)) {
+        setShowAudioPopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside, true);
+    document.addEventListener('touchstart', handleOutside, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside, true);
+      document.removeEventListener('touchstart', handleOutside, true);
+    };
+  }, [showAudioPopover]);
 
   return (
     <div 
@@ -172,7 +191,7 @@ const OutlinePointPlaceholder: React.FC<{
             </span>
             {/* Mini recorder button (per outline point) */}
             {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
-              <div className="relative">
+              <div className="relative" ref={popoverContainerRef}>
                 <button
                   onClick={() => setShowAudioPopover(v => !v)}
                   className="p-1 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
@@ -395,6 +414,25 @@ export default function Column({
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
+  const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Close normal-mode recorder popover on outside click
+  useEffect(() => {
+    if (!showAudioPopover) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (!normalModePopoverRef.current) return;
+      const target = e.target as Node | null;
+      if (target && !normalModePopoverRef.current.contains(target)) {
+        setShowAudioPopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside, true);
+    document.addEventListener('touchstart', handleOutside, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside, true);
+      document.removeEventListener('touchstart', handleOutside, true);
+    };
+  }, [showAudioPopover]);
 
   // Update local state if the prop changes (e.g., after initial load or external update)
   useEffect(() => {
@@ -1055,7 +1093,7 @@ export default function Column({
           <div className="flex items-center space-x-2">
             {/* Mic button (normal mode) */}
             {sermonId && onAudioThoughtCreated && (id === 'introduction' || id === 'main' || id === 'conclusion') && (
-              <div className="relative">
+              <div className="relative" ref={normalModePopoverRef}>
                 <button
                   onClick={() => setShowAudioPopover((v) => !v)}
                   className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
