@@ -6,7 +6,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { updateSermonOutline, getSermonOutline, generateOutlinePointsForSection } from "@/services/outline.service";
 import SortableItem from "./SortableItem";
-import { Item, OutlinePoint, Outline } from "@/models/models";
+import { Item, OutlinePoint, Outline, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
@@ -14,6 +14,8 @@ import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 import { AudioRecorder } from "./AudioRecorder";
+import { MicrophoneIcon } from "@/components/Icons";
+import { getSectionLabel } from "@/lib/sections";
 
 interface ColumnProps {
   id: string;
@@ -42,6 +44,7 @@ interface ColumnProps {
   onRevertAll?: (columnId: string) => void;
   activeId?: string | null; // Add activeId prop for proper drag state detection
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void; // Move-to-ambiguous action
+  onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void; // New callback: append audio thought into section
 }
 
 // Define SectionType based on Column ID mapping
@@ -286,7 +289,8 @@ export default function Column({
   onKeepAll,
   onRevertAll,
   activeId,
-  onMoveToAmbiguous
+  onMoveToAmbiguous,
+  onAudioThoughtCreated
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -317,6 +321,7 @@ export default function Column({
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
 
   // Update local state if the prop changes (e.g., after initial load or external update)
   useEffect(() => {
@@ -585,29 +590,17 @@ export default function Column({
                           setAudioError(null);
                           
                           // Determine the force tag based on column ID
-                          let forceTag: string;
-                          switch (id) {
-                            case 'introduction':
-                              forceTag = 'Вступление';
-                              break;
-                            case 'main':
-                              forceTag = 'Основная часть';
-                              break;
-                            case 'conclusion':
-                              forceTag = 'Заключение';
-                              break;
-                            default:
-                              forceTag = 'Основная часть';
-                          }
+                          const forceTag =
+                            id === 'introduction' ? getSectionLabel(t, 'introduction') :
+                            id === 'main' ? getSectionLabel(t, 'main') :
+                            id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                            undefined;
                           
                           // Import the service function dynamically to avoid circular dependencies
                           const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
-                          const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag);
-                          
-                          // Call the onAddThought callback to add the new thought to the UI
-                          if (onAddThought) {
-                            onAddThought(id);
-                          }
+                          const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag || null);
+                          // Append newly created thought into the current section (UI + structure)
+                          onAudioThoughtCreated?.(newThought, id as 'introduction' | 'main' | 'conclusion');
                           
                           toast.success(`Запись добавлена в раздел "${forceTag}"`);
                         } catch (error) {
@@ -952,7 +945,7 @@ export default function Column({
   // Normal mode UI (non-focused)
   return (
     <div className={`flex flex-col ${className}`}>
-          <div className="relative overflow-hidden mb-2 rounded-t-md">
+          <div className="relative mb-2 rounded-t-md">
         <div 
           className={`p-3 flex justify-between items-center`}
           style={headerBgStyle}
@@ -985,6 +978,61 @@ export default function Column({
             </div>
           </h2>
           <div className="flex items-center space-x-2">
+            {/* Mic button (normal mode) */}
+            {sermonId && onAudioThoughtCreated && (id === 'introduction' || id === 'main' || id === 'conclusion') && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowAudioPopover((v) => !v)}
+                  className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
+                  title={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
+                  aria-label={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
+                >
+                  <MicrophoneIcon className="h-4 w-4 text-white" />
+                </button>
+                {showAudioPopover && (
+                  <div className="absolute right-0 mt-2 z-50">
+                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 w-[320px]">
+                      <AudioRecorder
+                        variant="mini"
+                        hideKeyboardShortcuts={true}
+                        autoStart={true}
+                        onRecordingComplete={async (audioBlob) => {
+                          try {
+                            setIsRecordingAudio(true);
+                            setAudioError(null);
+                            const forceTag =
+                              id === 'introduction' ? getSectionLabel(t, 'introduction') :
+                              id === 'main' ? getSectionLabel(t, 'main') :
+                              id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                              undefined;
+                            const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
+                            const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag || null);
+                            onAudioThoughtCreated?.(newThought, id as 'introduction' | 'main' | 'conclusion');
+                            setShowAudioPopover(false);
+                            toast.success(
+                              t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' })
+                            );
+                          } catch (error) {
+                            console.error('Error recording audio thought (normal mode):', error);
+                            const errorMessage = error instanceof Error ? error.message : t('errors.audioProcessing');
+                            setAudioError(String(errorMessage));
+                            toast.error(String(errorMessage));
+                          } finally {
+                            setIsRecordingAudio(false);
+                          }
+                        }}
+                        isProcessing={isRecordingAudio}
+                        maxDuration={90}
+                        onError={(error) => {
+                          setAudioError(error);
+                          setIsRecordingAudio(false);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {onAddThought && (
               <button
                 onClick={() => onAddThought(id)}

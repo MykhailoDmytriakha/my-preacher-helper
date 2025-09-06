@@ -308,6 +308,7 @@
     "sortButton": "Сортировать",
     "sorting": "Сортировка...",
     "sortInfo": "Сортировка обрабатывает только непривязанные мысли, до 25 за раз.",
+    "recordAudio": "Записать голосом",
     "assigned": "Привязаны к плану",
     "unassigned": "Непривязанные",
     "assignedUnassignedTooltip": "{{assigned}} привязано к пунктам плана / {{unassigned}} не привязано",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { MicrophoneIcon } from "@components/Icons";
+import { MicFilledIcon } from "@components/Icons";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
@@ -19,6 +19,7 @@ interface AudioRecorderProps {
   onClearError?: () => void;
   variant?: "standard" | "mini"; // New prop for mini version
   hideKeyboardShortcuts?: boolean; // New prop to hide keyboard shortcuts text
+  autoStart?: boolean; // Auto-start recording on mount (useful for popovers)
 }
 
 export const AudioRecorder = ({
@@ -35,6 +36,7 @@ export const AudioRecorder = ({
   onClearError,
   variant = "standard", // Default to standard version
   hideKeyboardShortcuts = false,
+  autoStart = false,
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -313,6 +315,17 @@ export const AudioRecorder = ({
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, [isRecording, startRecording, stopRecording, cancelRecording]);
 
+  // Auto-start on mount (e.g., when opened from a popover after a user click)
+  useEffect(() => {
+    if (autoStart && !isRecording && !isProcessing && !isInitializing) {
+      // Delay a tick to ensure mount and layout are stable
+      const id = setTimeout(() => {
+        startRecording();
+      }, 0);
+      return () => clearTimeout(id);
+    }
+  }, [autoStart, isRecording, isProcessing, isInitializing, startRecording]);
+
   // Memoized values
   const formatTime = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -366,7 +379,7 @@ export const AudioRecorder = ({
         return (
           <div className="flex items-center justify-center">
             <div className="animate-pulse">
-              <MicrophoneIcon className="w-5 h-5 mr-2" fill="white" />
+              <MicFilledIcon className="w-5 h-5 mr-2" />
             </div>
             {t('audio.initializing')}
           </div>
@@ -375,7 +388,7 @@ export const AudioRecorder = ({
         return (
           <div className="flex items-center justify-center">
             <div className="relative mr-2">
-              <MicrophoneIcon className="w-5 h-5 animate-pulse" fill="white" />
+              <MicFilledIcon className="w-5 h-5 animate-pulse" />
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
             </div>
             {t('audio.stopRecording')}
@@ -384,7 +397,7 @@ export const AudioRecorder = ({
       default:
         return (
           <div className="flex items-center justify-center">
-            <MicrophoneIcon className="w-5 h-5 mr-2" fill="white" />
+            <MicFilledIcon className="w-5 h-5 mr-2" />
             {t('audio.newRecording')}
           </div>
         );
@@ -431,7 +444,7 @@ export const AudioRecorder = ({
               >
                 <div className="flex items-center justify-center w-4/5">
                   <div className="relative mr-2">
-                    <MicrophoneIcon className="w-5 h-5 animate-pulse" fill="white" />
+                    <MicFilledIcon className="w-5 h-5 animate-pulse" />
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
                   </div>
                   {t('audio.stopRecording')}

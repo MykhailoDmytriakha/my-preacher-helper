@@ -307,6 +307,7 @@
     "sortButton": "Sort",
     "sorting": "Sorting...",
     "sortInfo": "Sorting only processes unassigned thoughts, up to 25 at a time.",
+    "recordAudio": "Record by voice",
     "assigned": "Assigned to plan",
     "unassigned": "Unassigned",
     "assignedUnassignedTooltip": "{{assigned}} assigned to outline points / {{unassigned}} unassigned",

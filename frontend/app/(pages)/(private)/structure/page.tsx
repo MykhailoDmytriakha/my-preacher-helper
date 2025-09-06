@@ -169,6 +169,66 @@ function StructurePageContent() {
     setAddingThoughtToSection(sectionId);
   };
 
+  // Handle a newly created audio thought: append to data model and UI, and persist structure
+  const handleAudioThoughtCreated = useCallback(async (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => {
+    if (!sermon) return;
+
+    try {
+      // Determine localized structural tag for the section
+      const sectionTag = columnTitles[sectionId];
+
+      // Compute custom tags (exclude structural tag), preserving original order
+      const customTags = (thought.tags || []).filter((tag) => {
+        const norm = (tag || '').trim().toLowerCase();
+        return norm !== sectionTag.trim().toLowerCase() &&
+               norm !== 'introduction' && norm !== 'main part' && norm !== 'conclusion' &&
+               norm !== 'вступление' && norm !== 'основная часть' && norm !== 'заключение';
+      });
+
+      // Build UI item
+      const newItem: Item = {
+        id: thought.id,
+        content: thought.text,
+        requiredTags: [sectionTag],
+        customTagNames: customTags.map((name) => ({
+          name,
+          color: allowedTags.find((t) => t.name === name)?.color || '#4c51bf',
+        })),
+      };
+
+      // 1) Update sermon state
+      setSermon((prev) => prev ? { ...prev, thoughts: [...prev.thoughts, thought] } : prev);
+
+      // 2) Update containers UI (append to end of the target section)
+      setContainers((prev) => {
+        const next = { ...prev };
+        next[sectionId] = [...(prev[sectionId] || []), newItem];
+        return next;
+      });
+
+      // 3) Persist updated structure (append id to the section)
+      const updatedContainers = {
+        ...containersRef.current,
+        [sectionId]: [...(containersRef.current[sectionId] || []), newItem],
+      } as Record<string, Item[]>;
+
+      containersRef.current = updatedContainers;
+
+      const newStructure: Structure = {
+        introduction: (updatedContainers.introduction || []).map((it) => it.id),
+        main: (updatedContainers.main || []).map((it) => it.id),
+        conclusion: (updatedContainers.conclusion || []).map((it) => it.id),
+        ambiguous: (updatedContainers.ambiguous || []).map((it) => it.id),
+      };
+
+      // Use debounced structure save
+      debouncedSaveStructure(sermon.id, newStructure);
+    } catch (e) {
+      console.error('Error handling audio thought creation:', e);
+      toast.error(t('errors.savingError'));
+    }
+  }, [allowedTags, columnTitles, debouncedSaveStructure, sermon, t]);
+
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
     
@@ -585,6 +645,7 @@ function StructurePageContent() {
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
+                onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}
@@ -608,7 +669,7 @@ function StructurePageContent() {
                 headerColor={requiredTagColors.main}
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.main}
-                showFocusButton={containers.ambiguous.length === 0}
+                showFocusButton={true}
                 isFocusMode={focusedColumn === "main"}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSort={() => handleAiSort("main")}
@@ -616,6 +677,7 @@ function StructurePageContent() {
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
+                onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}
@@ -639,7 +701,7 @@ function StructurePageContent() {
                 headerColor={requiredTagColors.conclusion}
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.conclusion}
-                showFocusButton={containers.ambiguous.length === 0}
+                showFocusButton={true}
                 isFocusMode={focusedColumn === "conclusion"}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSort={() => handleAiSort("conclusion")}
@@ -647,6 +709,7 @@ function StructurePageContent() {
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
+                onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
                 isDiffModeActive={isDiffModeActive}

@@ -35,23 +35,50 @@ export const GoogleIcon = ({ className, ...props }: IconProps) => (
 export const MicrophoneIcon = ({ className, ...props }: IconProps) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="90 90 500 300"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
     className={`w-5 h-5 ${className}`}
     {...props}
   >
-    <g>
-      <path
-        d="M245.5,322.9c53,0,96.2-43.2,96.2-96.2V96.2c0-53-43.2-96.2-96.2-96.2s-96.2,43.2-96.2,96.2v130.5
-        C149.3,279.8,192.5,322.9,245.5,322.9z M173.8,96.2c0-39.5,32.2-71.7,71.7-71.7s71.7,32.2,71.7,71.7v130.5
-        c0,39.5-32.2,71.7-71.7,71.7s-71.7-32.2-71.7-71.7V96.2z"
-      />
-      <path
-        d="M94.4,214.5c-6.8,0-12.3,5.5-12.3,12.3c0,85.9,66.7,156.6,151.1,162.8v76.7h-63.9c-6.8,0-12.3,5.5-12.3,12.3
-        s5.5,12.3,12.3,12.3h152.3c6.8,0,12.3-5.5,12.3-12.3s-5.5-12.3-12.3-12.3h-63.9v-76.7c84.4-6.3,151.1-76.9,151.1-162.8
-        c0-6.8-5.5-12.3-12.3-12.3s-12.3,5.5-12.3,12.3c0,76.6-62.3,138.9-138.9,138.9s-138.9-62.3-138.9-138.9
-        C106.6,220,101.2,214.5,94.4,214.5z"
-      />
-    </g>
+    {/* Mic capsule */}
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 2.75a3.25 3.25 0 0 0-3.25 3.25v6a3.25 3.25 0 0 0 6.5 0v-6A3.25 3.25 0 0 0 12 2.75z"
+    />
+    {/* Ears / envelope */}
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5 11.5v1A7 7 0 0 0 12 19.5a7 7 0 0 0 7-7v-1"
+    />
+    {/* Stand */}
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 19.5V22M9.5 22h5"
+    />
+  </svg>
+);
+
+// Filled Microphone Icon (for buttons with text-white)
+export const MicFilledIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={`w-5 h-5 ${className}`}
+    {...props}
+  >
+    {/* Capsule */}
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    {/* Ears / envelope */}
+    <path d="M5 11a7 7 0 0014 0h-2a5 5 0 01-10 0H5z" />
+    {/* Stand */}
+    <rect x="11" y="19" width="2" height="3" rx="1" />
+    <rect x="9" y="21" width="6" height="2" rx="1" />
   </svg>
 );
 
