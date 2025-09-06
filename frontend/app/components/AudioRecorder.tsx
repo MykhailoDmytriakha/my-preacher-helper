@@ -53,6 +53,8 @@ export const AudioRecorder = ({
   const chunks = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const { t } = useTranslation();
+  // Track if we've already auto-started to avoid unintended restarts after stop
+  const hasAutoStartedRef = useRef(false);
 
   // Cleanup function to properly dispose of resources
   const cleanup = useCallback(() => {
@@ -315,16 +317,16 @@ export const AudioRecorder = ({
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, [isRecording, startRecording, stopRecording, cancelRecording]);
 
-  // Auto-start on mount (e.g., when opened from a popover after a user click)
+  // Auto-start exactly once per mount (avoid auto-restarting after stop)
   useEffect(() => {
-    if (autoStart && !isRecording && !isProcessing && !isInitializing) {
-      // Delay a tick to ensure mount and layout are stable
-      const id = setTimeout(() => {
-        startRecording();
-      }, 0);
-      return () => clearTimeout(id);
-    }
-  }, [autoStart, isRecording, isProcessing, isInitializing, startRecording]);
+    if (!autoStart) return;
+    if (hasAutoStartedRef.current) return;
+    hasAutoStartedRef.current = true;
+    const id = setTimeout(() => {
+      startRecording();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [autoStart, startRecording]);
 
   // Memoized values
   const formatTime = useCallback((seconds: number) => {
