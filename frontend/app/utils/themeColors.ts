@@ -20,8 +20,8 @@ export const SERMON_SECTION_COLORS = {
     dark: "#1d4ed8",       // Blue-700
     bg: "bg-blue-50",
     darkBg: "bg-blue-900/20",
-    border: "border-blue-200",
-    darkBorder: "border-blue-800",
+    border: "border-blue-50",
+    darkBorder: "border-blue-300",
     hover: "hover:bg-blue-100",
     darkHover: "hover:bg-blue-900/40",
     text: "text-blue-800",
