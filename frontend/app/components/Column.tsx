@@ -912,84 +912,84 @@ export default function Column({
             className={`flex-grow w-full md:min-w-[700px] lg:min-w-[900px] xl:min-w-[1100px] min-h-[600px] overflow-y-auto p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
-            {items.length === 0 ? (
-              <div className="p-8 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 rounded-lg">
-                {t('structure.noEntries')}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Show outline points with grouped thoughts in focus mode */}
-                {localOutlinePoints && localOutlinePoints.length > 0 ? (
-                  <>
-                    {/* Render placeholders for each outline point with their thoughts */}
-                    {localOutlinePoints.map((point) => (
-                      <OutlinePointPlaceholder
-                        key={point.id}
-                        point={point}
-                        items={items}
-                        containerId={id}
-                        onEdit={onEdit}
-                        isHighlighted={isItemHighlighted}
-                        getHighlightType={getItemHighlightType}
-                        onKeepItem={onKeepItem}
-                        onRevertItem={onRevertItem}
-                        headerColor={headerColor}
-                        t={t}
-                        activeId={activeId}
-                        onMoveToAmbiguous={onMoveToAmbiguous}
-                        sermonId={sermonId}
-                        onAudioThoughtCreated={onAudioThoughtCreated}
-                      />
-                    ))}
-                    
-                    {/* Show unassigned thoughts section if there are any */}
-                    {unassignedItemsForDisplay.length > 0 && (
-                      <div className="mt-8">
-                        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
-                            {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
-                          </h4>
-                          <UnassignedThoughtsDropTarget
-                            items={unassignedItemsForDisplay}
-                            containerId={id}
-                            onEdit={onEdit}
-                            isHighlighted={isItemHighlighted}
-                            getHighlightType={getItemHighlightType}
-                            onKeepItem={onKeepItem}
-                            onRevertItem={onRevertItem}
-                            t={t}
-                            activeId={activeId}
-                            onMoveToAmbiguous={onMoveToAmbiguous}
-                          />
-                        </div>
+            <div className="space-y-6">
+              {/* In focus mode, show outline points even when there are no items */}
+              {localOutlinePoints && localOutlinePoints.length > 0 ? (
+                <>
+                  {/* Render placeholders for each outline point with their thoughts */}
+                  {localOutlinePoints.map((point) => (
+                    <OutlinePointPlaceholder
+                      key={point.id}
+                      point={point}
+                      items={items}
+                      containerId={id}
+                      onEdit={onEdit}
+                      isHighlighted={isItemHighlighted}
+                      getHighlightType={getItemHighlightType}
+                      onKeepItem={onKeepItem}
+                      onRevertItem={onRevertItem}
+                      headerColor={headerColor}
+                      t={t}
+                      activeId={activeId}
+                      onMoveToAmbiguous={onMoveToAmbiguous}
+                      sermonId={sermonId}
+                      onAudioThoughtCreated={onAudioThoughtCreated}
+                    />
+                  ))}
+
+                  {/* Show unassigned thoughts section if there are any */}
+                  {unassignedItemsForDisplay.length > 0 && (
+                    <div className="mt-8">
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                        <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                          {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                        </h4>
+                        <UnassignedThoughtsDropTarget
+                          items={unassignedItemsForDisplay}
+                          containerId={id}
+                          onEdit={onEdit}
+                          isHighlighted={isItemHighlighted}
+                          getHighlightType={getItemHighlightType}
+                          onKeepItem={onKeepItem}
+                          onRevertItem={onRevertItem}
+                          t={t}
+                          activeId={activeId}
+                          onMoveToAmbiguous={onMoveToAmbiguous}
+                        />
                       </div>
-                    )}
-                    
-                    {/* Always show drop target for unassigned thoughts, even if empty */}
-                    {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
-                      <div className="mt-8">
-                        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                          <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
-                            {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
-                          </h4>
-                          <UnassignedThoughtsDropTarget
-                            items={[]}
-                            containerId={id}
-                            onEdit={onEdit}
-                            isHighlighted={isItemHighlighted}
-                            getHighlightType={getItemHighlightType}
-                            onKeepItem={onKeepItem}
-                            onRevertItem={onRevertItem}
-                            t={t}
-                            activeId={activeId}
-                            onMoveToAmbiguous={onMoveToAmbiguous}
-                          />
-                        </div>
+                    </div>
+                  )}
+
+                  {/* Always show drop target for unassigned thoughts, even if empty */}
+                  {unassignedItemsForDisplay.length === 0 && (
+                    <div className="mt-8">
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                        <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
+                          {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                        </h4>
+                        <UnassignedThoughtsDropTarget
+                          items={[]}
+                          containerId={id}
+                          onEdit={onEdit}
+                          isHighlighted={isItemHighlighted}
+                          getHighlightType={getItemHighlightType}
+                          onKeepItem={onKeepItem}
+                          onRevertItem={onRevertItem}
+                          t={t}
+                          activeId={activeId}
+                          onMoveToAmbiguous={onMoveToAmbiguous}
+                        />
                       </div>
-                    )}
-                  </>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Fallback: show all items in simple list if no outline points exist */
+                items.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 rounded-lg">
+                    {t('structure.noEntries')}
+                  </div>
                 ) : (
-                  /* Fallback: show all items in simple list if no outline points exist */
                   <div className="space-y-4">
                     {items.map((item) => (
                       <SortableItem 
@@ -1006,11 +1006,11 @@ export default function Column({
                       />
                     ))}
                   </div>
-                )}
-                {/* Extra dummy element to always provide a drop target */}
-                <div id="dummy-drop-zone" className="h-16" />
-              </div>
-            )}
+                )
+              )}
+              {/* Extra dummy element to always provide a drop target */}
+              <div id="dummy-drop-zone" className="h-16" />
+            </div>
           </div>
         </SortableContext>
       </div>

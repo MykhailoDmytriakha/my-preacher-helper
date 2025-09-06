@@ -597,8 +597,12 @@ describe('Column Component', () => {
         />
       );
       
-      // Find the list item containing the outline point text
-      const pointItem = screen.getByText('Existing outline point').closest('li')!;
+      // Find the list item containing the outline point text (sidebar entry)
+      const sidebarPoint = screen
+        .getAllByText('Existing outline point')
+        .map(el => el.closest('li'))
+        .find(Boolean)!;
+      const pointItem = sidebarPoint as HTMLElement;
       expect(pointItem).toHaveClass('hover:bg-white/15');
     });
     
@@ -760,6 +764,36 @@ describe('Column Component', () => {
       
       // Should not show outline points structure
       expect(screen.queryByText(/Unassigned Thoughts/)).not.toBeInTheDocument();
+    });
+
+    // Regression coverage for bug: in focus mode, outline points disappeared when there were no items
+    it('renders outline points in right content area when there are no items (focus mode)', () => {
+      const outlinePointsOnly = [
+        { id: 'p1', text: 'Focus Outline Point' }
+      ];
+
+      const { container } = render(
+        <Column 
+          id="introduction" 
+          title="Introduction" 
+          items={[]}
+          isFocusMode={true}
+          outlinePoints={outlinePointsOnly}
+        />
+      );
+
+      // Select the right content container by its responsive class (used elsewhere in the suite)
+      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]') as HTMLElement;
+      expect(rightContent).toBeInTheDocument();
+
+      // The outline point header should appear in the right content area even with zero items
+      expect(rightContent).toHaveTextContent('Focus Outline Point');
+
+      // "No entries" message should NOT appear in focus mode when outline points exist
+      expect(screen.queryByText('No entries')).not.toBeInTheDocument();
+
+      // Unassigned drop target should be shown with count (0)
+      expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
     });
   });
 
