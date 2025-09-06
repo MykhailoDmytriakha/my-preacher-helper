@@ -186,6 +186,19 @@ function StructurePageContent() {
       });
 
       // Build UI item
+      // If thought is linked to an outline point, find its text (for bubble header use)
+      let outlinePoint: { text: string; section: string } | undefined = undefined;
+      if (thought.outlinePointId && sermon.outline) {
+        const sections = ['introduction', 'main', 'conclusion'] as const;
+        for (const sec of sections) {
+          const p = sermon.outline[sec]?.find((pt: OutlinePoint) => pt.id === thought.outlinePointId);
+          if (p) {
+            outlinePoint = { text: p.text, section: '' };
+            break;
+          }
+        }
+      }
+
       const newItem: Item = {
         id: thought.id,
         content: thought.text,
@@ -194,6 +207,8 @@ function StructurePageContent() {
           name,
           color: allowedTags.find((t) => t.name === name)?.color || '#4c51bf',
         })),
+        outlinePointId: thought.outlinePointId,
+        outlinePoint,
       };
 
       // 1) Update sermon state

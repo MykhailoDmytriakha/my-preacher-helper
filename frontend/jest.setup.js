@@ -12,6 +12,19 @@ import React from 'react';
 // Set React to development mode for better error messages
 process.env.NODE_ENV = 'development';
 
+// Polyfill Web Fetch API primitives for Next route tests (Node/Jest)
+try {
+  const undici = require('undici');
+  globalThis.Blob = globalThis.Blob || undici.Blob;
+  globalThis.File = globalThis.File || undici.File;
+  globalThis.FormData = globalThis.FormData || undici.FormData;
+  globalThis.Headers = globalThis.Headers || undici.Headers;
+  globalThis.Request = globalThis.Request || undici.Request;
+  globalThis.Response = globalThis.Response || undici.Response;
+} catch (_) {
+  // ignore if undici not available; jsdom may already provide these
+}
+
 // Create a portal root element where portal content will be rendered
 const portalRoot = document.createElement('div');
 portalRoot.setAttribute('id', 'portal-root');

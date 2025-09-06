@@ -72,6 +72,7 @@ export async function POST(request: Request) {
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
     const forceTag = formData.get('forceTag') as string | null; // Extract forceTag from form data
+    const outlinePointId = formData.get('outlinePointId') as string | null; // NEW: outline point to attach
     
     if (!sermonId) {
       console.error("Thoughts route: sermonId is null.");
@@ -154,6 +155,11 @@ export async function POST(request: Request) {
       date: new Date().toISOString()
       // originalText: generationResult.originalText // Optionally add originalText to the Thought model if needed
     };
+
+    // Attach outlinePointId if provided
+    if (outlinePointId) {
+      thought.outlinePointId = outlinePointId;
+    }
     
     //verify that thought has everything that is needed
     if (!thought.id || !thought.text || !thought.tags || !thought.date) {

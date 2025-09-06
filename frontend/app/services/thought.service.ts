@@ -17,7 +17,8 @@ export const createAudioThoughtWithForceTag = async (
   sermonId: string,
   forceTag: string | null = null,
   retryCount: number = 0,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  outlinePointId?: string
 ): Promise<Thought> => {
   // If we've exceeded max retries, throw immediately
   if (retryCount >= maxRetries) {
@@ -35,6 +36,9 @@ export const createAudioThoughtWithForceTag = async (
     formData.append("sermonId", sermonId);
     if (forceTag) {
       formData.append("forceTag", forceTag);
+    }
+    if (outlinePointId) {
+      formData.append("outlinePointId", outlinePointId);
     }
 
     console.log(

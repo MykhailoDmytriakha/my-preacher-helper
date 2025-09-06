@@ -369,6 +369,28 @@ describe('Thought Service', () => {
         createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag)
       ).rejects.toThrow('API Error');
     });
+
+    it('sends outlinePointId in FormData when provided', async () => {
+      const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
+      const sermonId = 'test-sermon-123';
+      const forceTag = 'Вступление';
+      const outlinePointId = 'op-xyz';
+
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: 't1', text: 'ok', tags: [forceTag], date: new Date().toISOString(), outlinePointId }),
+      });
+      // @ts-ignore
+      global.fetch = fetchMock;
+
+      await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag, 0, 3, outlinePointId);
+
+      const callArgs = fetchMock.mock.calls[0][1];
+      const body = callArgs.body as FormData;
+      expect(body.get('sermonId')).toBe(sermonId);
+      expect(body.get('forceTag')).toBe(forceTag);
+      expect(body.get('outlinePointId')).toBe(outlinePointId);
+    });
   });
 
   describe('retryAudioTranscription with force tag', () => {
