@@ -7,6 +7,7 @@ import { getExportContent } from '@utils/exportContent';
 import type { Sermon } from '@/models/models';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
+import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 
 export interface SermonHeaderProps {
@@ -57,6 +58,20 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
     }
   };
 
+  // Handler passed to EditableVerse
+  const handleSaveSermonVerse = async (newVerse: string) => {
+    const updatedSermonData = { ...sermon, verse: newVerse };
+    try {
+      const updatedResult = await updateSermon(updatedSermonData);
+      if (updatedResult && onUpdate) {
+        onUpdate(updatedResult);
+      }
+    } catch (error) {
+      console.error("Error saving sermon verse:", error);
+      throw error; 
+    }
+  };
+
   return (
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
       {/* Left side: Title, Date, Verse */}
@@ -71,12 +86,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
             ID: {sermon.id}
           </span>
         </div>
-        <div>
-          {sermon.verse && (
-            <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line">
-              {sermon.verse}
-            </p>
-          )}
+        <div className="mt-2">
+          <EditableVerse 
+            initialVerse={sermon.verse || ''}
+            onSave={handleSaveSermonVerse}
+          />
         </div>
       </div>
 

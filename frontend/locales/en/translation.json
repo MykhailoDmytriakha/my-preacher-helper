@@ -245,6 +245,7 @@
     "failedToSaveStructure": "Failed to save structure",
     "failedToSaveThought": "Failed to save thought",
     "failedToSaveTitle": "Failed to save title",
+    "failedToSaveVerse": "Failed to save verse",
     "failedToSortItems": "Failed to sort items",
     "fetchPlanError": "Failed to fetch plan",
     "fetchSermonStructureError": "Failed to fetch sermon structure",

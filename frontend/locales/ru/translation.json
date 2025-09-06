@@ -245,6 +245,7 @@
     "failedToSaveStructure": "Не удалось сохранить структуру",
     "failedToSaveThought": "Не удалось сохранить мысль",
     "failedToSaveTitle": "Не удалось сохранить заголовок",
+    "failedToSaveVerse": "Не удалось сохранить стих",
     "failedToSortItems": "Не удалось отсортировать элементы",
     "fetchPlanError": "Не удалось загрузить план",
     "fetchSermonStructureError": "Не удалось загрузить структуру проповеди",
