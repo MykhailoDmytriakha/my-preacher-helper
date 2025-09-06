@@ -132,34 +132,50 @@ jest.mock('react-dom/client', () => {
 jest.mock('react-dom', () => {
   const originalModule = jest.requireActual('react-dom');
   const clientModule = jest.requireActual('react-dom/client');
-  
-  // Create a mock implementation that renders children directly to the DOM
-  // This is needed for older versions of testing-library
-  const mockCreatePortal = (children, container) => {
-    // For testing, we'll render the children directly to the container
-    // or to the portal root if no container is provided
+
+  // Reuse a single portal root per container to avoid duplicate content on re-renders
+  const rootsMap = new Map(); // container -> { root, portalElement }
+
+  function ensureRoot(targetContainer) {
+    let record = rootsMap.get(targetContainer);
+    if (!record || !record.portalElement || !record.portalElement.isConnected) {
+      const portalElement = document.createElement('div');
+      portalElement.setAttribute('data-testid', 'portal-content');
+      targetContainer.appendChild(portalElement);
+      const root = clientModule.createRoot(portalElement);
+      record = { root, portalElement };
+      rootsMap.set(targetContainer, record);
+    }
+    return record;
+  }
+
+  const PortalWrapper = ({ children, container }) => {
     const targetContainer = container || portalRoot;
-    
-    // Wrap children in a div with a data attribute for easier querying
-    const portalElement = document.createElement('div');
-    portalElement.setAttribute('data-testid', 'portal-content');
-    targetContainer.appendChild(portalElement);
-    
-    // Use React 18's createRoot to render the children into the portal element
-    const root = clientModule.createRoot(portalElement);
-    root.render(children);
-    
-    // Return a React element that represents the portal
-    return React.createElement('div', { 
-      'data-testid': 'portal-wrapper',
-      className: 'portal-wrapper'
-    }, null);
+
+    React.useEffect(() => {
+      const record = ensureRoot(targetContainer);
+      record.root.render(children);
+      return () => {
+        const rec = rootsMap.get(targetContainer);
+        if (rec) {
+          try { rec.root.unmount(); } catch {}
+          if (rec.portalElement && rec.portalElement.parentNode) {
+            rec.portalElement.parentNode.removeChild(rec.portalElement);
+          }
+          rootsMap.delete(targetContainer);
+        }
+      };
+    }, [children, targetContainer]);
+
+    // Render a lightweight marker into the normal tree
+    return React.createElement('div', { 'data-testid': 'portal-wrapper', className: 'portal-wrapper' }, null);
   };
-  
+
+  const mockCreatePortal = (children, container) => React.createElement(PortalWrapper, { children, container });
+
   return {
     ...originalModule,
     createPortal: mockCreatePortal,
-    // Add a legacy render method for backward compatibility with testing-library
     render: (element, container) => {
       const root = clientModule.createRoot(container);
       root.render(element);

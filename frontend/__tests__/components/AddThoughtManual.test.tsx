@@ -106,6 +106,40 @@ describe('AddThoughtManual', () => {
     });
   });
 
+  it('renders modal into body portal and centers overlay (regression)', async () => {
+    // Render inside a wrapper that could apply transforms in real app
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('id', 'transform-wrapper');
+    document.body.appendChild(wrapper);
+
+    render(
+      <AddThoughtManual 
+        sermonId={sermonId} 
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />,
+      { container: wrapper }
+    );
+
+    // Open modal
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+
+    // Dialog should be present and rendered inside the portal content container (document.body)
+    const dialog = await screen.findByRole('dialog');
+    const portalContent = screen.getByTestId('portal-content');
+    expect(portalContent.contains(dialog)).toBe(true);
+
+    // Ensure it is NOT rendered under the wrapper (prevents transform-offset issues)
+    expect(wrapper.contains(dialog)).toBe(false);
+
+    // Overlay div should use fixed + centered flex classes
+    const overlay = portalContent.querySelector('div');
+    expect(overlay).toBeTruthy();
+    const classList = (overlay as HTMLElement).className.split(' ');
+    expect(classList).toEqual(expect.arrayContaining(['fixed', 'inset-0', 'flex', 'items-center', 'justify-center']));
+  });
+
   it('opens modal ready without fetching/spinner when data provided', async () => {
     render(
       <AddThoughtManual 
