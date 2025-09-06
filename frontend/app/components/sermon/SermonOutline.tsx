@@ -10,6 +10,8 @@ import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroico
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
+import Link from 'next/link';
+import { getFocusModeUrl } from '@/utils/urlUtils';
 
 interface SermonOutlineProps {
   sermon: Sermon;
@@ -357,12 +359,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     return (
       <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border ${colors.border}`}>
         {/* Section Header */}
-        <button 
-          onClick={() => toggleSection(sectionType)}
-          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${colors.headerHover} focus:outline-none focus:ring-2 focus:ring-opacity-50 focus:ring-blue-400`}
+        <div 
+          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${colors.headerHover}`}
         >
-          <div className="flex items-center">
-            {sectionTitles[sectionType]}
+          {/* Toggle (title + counters) */}
+          <button
+            onClick={() => toggleSection(sectionType)}
+            className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
+          >
+            <span>{sectionTitles[sectionType]}</span>
             <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${colors.badge}`}>
               {points.length}
             </span>
@@ -371,9 +376,23 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                 {totalThoughts} {t('structure.entries')}
               </span>
             )}
+            <ChevronDownIcon className={`ml-2 h-5 w-5 text-gray-500 dark:text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Actions: Focus mode link (same icon as Structure columns) */}
+          <div className="flex items-center gap-2">
+            <Link
+              href={getFocusModeUrl(sectionType === 'mainPart' ? 'main' : sectionType, sermon.id)}
+              title={t('structure.focusMode')}
+              aria-label={t('structure.focusMode')}
+              className="p-1 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 rounded-full transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+              </svg>
+            </Link>
           </div>
-          <ChevronDownIcon className={`h-5 w-5 text-gray-500 dark:text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-        </button>
+        </div>
 
         {/* Section Content (Collapsible) */}
         {isExpanded && (

@@ -398,4 +398,30 @@ describe('SermonOutline Component', () => {
       expect(screen.getByText('errors.fetchOutlineError')).toBeInTheDocument();
     });
   });
-}); 
+
+  test('renders focus-mode link in each section header with correct URL', async () => {
+    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+
+    // Wait for outline to render
+    await waitFor(() => {
+      expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+    });
+
+    const introSection = screen.getByTestId('outline-section-introduction');
+    const mainSection = screen.getByTestId('outline-section-mainPart');
+    const conclSection = screen.getByTestId('outline-section-conclusion');
+
+    // Helper to assert link
+    const expectFocusLink = (container: HTMLElement, expectedHref: string) => {
+      const link = within(container).getByLabelText('structure.focusMode');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('title', 'structure.focusMode');
+      expect(link).toHaveAttribute('href', expectedHref);
+    };
+
+    expectFocusLink(introSection, `/structure?mode=focus&section=introduction&sermonId=${mockSermon.id}`);
+    // mainPart maps to section=main in URL
+    expectFocusLink(mainSection, `/structure?mode=focus&section=main&sermonId=${mockSermon.id}`);
+    expectFocusLink(conclSection, `/structure?mode=focus&section=conclusion&sermonId=${mockSermon.id}`);
+  });
+});
