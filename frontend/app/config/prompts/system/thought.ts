@@ -24,6 +24,13 @@ For sermon-related content:
 - **Be very careful not to lose specific, concrete details from the original text during clarification or theological enhancement.** For example, if the original mentions a specific number or detail (like 'three' of something), retain that detail unless it's clearly a transcription error.
 - DO NOT repeat the sermon text provided in the context
 
+// 2a. STRUCTURE AND LIST FORMATTING
+If the transcription contains explicit or implicit enumerations (e.g., "первое/во‑первых", "второе/во‑вторых", "третье", "1.", "1)"):
+- Convert them into an ordered list using Arabic numerals: each item on its own line starting with "1. ", "2. ", etc.
+- Keep any introductory sentence (e.g., "Сегодня мы будем размышлять…") as a standalone line above the list.
+- Preserve the original order and count of points; do not add or drop items.
+- Keep each list item concise and focused; do not merge distinct points.
+
 // 3. BIBLE REFERENCE FORMATTING
 - Format references as: "Book Chapter:Verse" (e.g., "Рим. 14:20")
 - For partial biblical quotes: complete the quote and add proper reference
@@ -46,7 +53,7 @@ For sermon-related content:
 // 6. RESPONSE FORMAT
 Always return a JSON object with:
 - "originalText": The original, unmodified 'Транскрипция' text.
-- "formattedText": Edited transcription text in Russian (or original if irrelevant as per rule #1, matching 'originalText' in that case)
+- "formattedText": Edited transcription text in Russian (or original if irrelevant as per rule #1, matching 'originalText' in that case). If enumerations are present, format them as an ordered list with line breaks as described in 2a.
 - "tags": Array of applicable tags (only from available tags list)
 - "meaningPreserved": boolean (true if meaning is preserved, false otherwise)
 
