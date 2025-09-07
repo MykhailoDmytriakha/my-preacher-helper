@@ -394,31 +394,68 @@ export default function PlanPage() {
   
   // Create a debounced version of syncHeights with a 200ms delay
   const debouncedSyncHeights = useRef(debounce(syncHeights, 200)).current;
-  
-  // Update MutationObserver to be simpler and more focused
-  useEffect(() => {
-    // Direct sync on relevant changes
-    const observer = new MutationObserver(() => {
-      debouncedSyncHeights();
-    });
-    
-    const containers = document.querySelectorAll('.rounded-lg.overflow-hidden');
-    
-    containers.forEach(container => {
-      observer.observe(container, { 
-        childList: true, 
-        subtree: true, 
-        characterData: true 
+
+  // Helper: find section by outline point id
+  const getSectionByPointId = (outlinePointId: string): 'introduction' | 'main' | 'conclusion' | null => {
+    if (!sermon?.outline) return null;
+    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) return 'introduction';
+    if (sermon.outline.main.some(op => op.id === outlinePointId)) return 'main';
+    if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) return 'conclusion';
+    return null;
+  };
+
+  // Helper: choose refs storage for section
+  const getRefsForSection = (
+    section: 'introduction' | 'main' | 'conclusion'
+  ): React.MutableRefObject<Record<string, { left: HTMLDivElement | null; right: HTMLDivElement | null }>> => {
+    switch (section) {
+      case 'introduction':
+        return introPointRefs;
+      case 'main':
+        return mainPointRefs;
+      case 'conclusion':
+      default:
+        return conclusionPointRefs;
+    }
+  };
+
+  // Pair-specific height sync with double rAF to wait layout
+  const syncPairHeights = (section: 'introduction' | 'main' | 'conclusion', pointId: string) => {
+    if (typeof window === 'undefined') return;
+    const refs = getRefsForSection(section);
+    const pair = refs.current[pointId];
+    if (!pair?.left || !pair?.right) return;
+
+    // schedule after layout settles
+    requestAnimationFrame(() => {
+      // Reset to natural height for measurement
+      pair.left!.style.height = 'auto';
+      pair.right!.style.height = 'auto';
+
+      requestAnimationFrame(() => {
+        const lh = pair.left!.offsetHeight;
+        const rh = pair.right!.offsetHeight;
+        const max = Math.max(lh, rh);
+        pair.left!.style.height = `${max}px`;
+        pair.right!.style.height = `${max}px`;
       });
     });
-    
-    // Initial sync
-    setTimeout(syncHeights, 500);
+  };
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [sermon?.outline, debouncedSyncHeights]);
+  const syncPairHeightsByPointId = (pointId: string) => {
+    const section = getSectionByPointId(pointId);
+    if (section) {
+      syncPairHeights(section, pointId);
+    }
+  };
+
+  // Initial sync after outline renders (no MutationObserver)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      syncHeights();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [sermon?.outline]);
 
   // Keep heights correct when resizing across breakpoints
   useEffect(() => {
@@ -613,6 +650,11 @@ export default function PlanPage() {
       
       // Update the combined plan
       updateCombinedPlan(outlinePointId, outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
+
+      // Equalize only this pair after content generation
+      if (section) {
+        syncPairHeights(section as 'introduction' | 'main' | 'conclusion', outlinePointId);
+      }
       
       toast.success(t("plan.contentGenerated"));
     } catch (err) {
@@ -825,10 +867,9 @@ export default function PlanPage() {
       ...prev,
       [outlinePointId]: !prev[outlinePointId]
     }));
-    
-    // When switching to view mode, we need to sync heights after a short delay
-    // to ensure proper rendering of the formatted content
-    setTimeout(debouncedSyncHeights, 50);
+
+    // After toggling, equalize only this pair to avoid page-wide jumps
+    syncPairHeightsByPointId(outlinePointId);
   };
   
   // Handle thought update from key fragments modal
@@ -1016,6 +1057,16 @@ export default function PlanPage() {
     >
       <style jsx global>{sectionButtonStyles}</style>
       <style jsx global>{`
+        /* Prevent scroll anchoring in dynamic plan columns */
+        [data-testid="plan-introduction-left-section"],
+        [data-testid="plan-introduction-right-section"],
+        [data-testid="plan-main-left-section"],
+        [data-testid="plan-main-right-section"],
+        [data-testid="plan-conclusion-left-section"],
+        [data-testid="plan-conclusion-right-section"] {
+          overflow-anchor: none;
+        }
+
         /* Markdown content styling */
         .markdown-content {
           line-height: 1.5;
@@ -1366,8 +1417,8 @@ export default function PlanPage() {
                           // Height will be synced by the MutationObserver
                         }}
                         onHeightChange={() => {
-                          // Use debounced sync when the textarea's height changes
-                          debouncedSyncHeights();
+                          // Equalize only the affected pair to reduce scroll jumps
+                          syncPairHeights('introduction', outlinePoint.id);
                         }}
                       />
                     ) : (
@@ -1517,8 +1568,8 @@ export default function PlanPage() {
                           // Height will be synced by the MutationObserver
                         }}
                         onHeightChange={() => {
-                          // Use debounced sync when the textarea's height changes
-                          debouncedSyncHeights();
+                          // Equalize only the affected pair to reduce scroll jumps
+                          syncPairHeights('main', outlinePoint.id);
                         }}
                       />
                     ) : (
@@ -1668,8 +1719,8 @@ export default function PlanPage() {
                           // Height will be synced by the MutationObserver
                         }}
                         onHeightChange={() => {
-                          // Use debounced sync when the textarea's height changes
-                          debouncedSyncHeights();
+                          // Equalize only the affected pair to reduce scroll jumps
+                          syncPairHeights('conclusion', outlinePoint.id);
                         }}
                       />
                     ) : (
