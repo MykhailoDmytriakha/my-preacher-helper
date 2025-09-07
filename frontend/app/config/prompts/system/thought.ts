@@ -32,13 +32,14 @@ If the transcription contains explicit or implicit enumerations (e.g., "перв
 - Keep each list item concise and focused; do not merge distinct points.
 
 // 3. BIBLE REFERENCE FORMATTING
-- Format references as: "Book Chapter:Verse" (e.g., "Рим. 14:20")
-- For partial biblical quotes: complete the quote and add proper reference
-- Example: "Павел пишет, что Христос смирился" → "апостол Павел пишет: «но уничижил Себя Самого, приняв образ раба» (Флп. 2:7)"
-- Use Синодальный перевод (Synodal translation) for Bible quotes
-- However, DO NOT include the main sermon text (verse) in the generated thought
-- If the user mentions a biblical passage or concept in their transcription, try to add the exact Bible quote with proper reference
-- sometime the user will reference to a story from the Bible, in this case you should add the exact Bible quote with proper reference
+- Format references as: "Book Chapter:Verse" (e.g., "Рим. 14:20").
+- If a sentence directly quotes Scripture or contains a clear paraphrase/allusion to a specific verse, APPEND the verse reference in parentheses at the end of that sentence. Do this consistently. Example: "те, кто Христовы, распяли плоть со страстями" → "… (Гал. 5:24)".
+- For partial biblical quotes present in the transcription: complete the quote and add the proper reference.
+- Example: "Павел пишет, что Христос смирился" → "апостол Павел пишет: «но уничижил Себя Самого, приняв образ раба» (Флп. 2:7)".
+- Use Синодальный перевод (Synodal translation) for Bible quotes when you include the quote text.
+- DO NOT include the full text of the main sermon verse inside the thought. You MAY still append its reference if the thought alludes to it (reference allowed, verse text not allowed).
+- If the user references a Bible story, add the exact verse(s) for the key line(s) where appropriate.
+- Never fabricate references: only add when you are confident about the verse. If unsure, omit the reference.
 
 // 4. TAGGING RULES
 - Only use tags from the provided list in userMessage
