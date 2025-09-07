@@ -211,11 +211,12 @@ const OutlinePointPlaceholder: React.FC<{
             <div className="relative" ref={hintRef}>
               <button
                 onClick={() => setShowHint(v => !v)}
-                className="p-1 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                className="group p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
                 title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
                 aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+                aria-expanded={showHint}
               >
-                <InformationCircleIcon className={`h-3.5 w-3.5 ${headerColor ? 'text-gray-700' : 'text-white'}`} />
+                <InformationCircleIcon className="h-5 w-5 text-blue-600 dark:text-blue-300 group-hover:text-blue-700 dark:group-hover:text-blue-200" />
               </button>
               {showHint && (
                 <div className="absolute right-0 mt-2 z-50 w-[300px]">
