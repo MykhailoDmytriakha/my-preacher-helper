@@ -1,7 +1,7 @@
 "use client";
 
 // External libraries
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 
 // Path alias imports
@@ -43,6 +43,58 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
     return thought ? thought.text.slice(0, 100) + '...' : thoughtId;
   };
 
+  // Build helpers to mirror the reading order used on /structure
+  const outlineIndexByPoint = useMemo(() => {
+    const map: Record<string, number> = {};
+    const outline = sermon.outline;
+    if (outline) {
+      (['introduction', 'main', 'conclusion'] as const).forEach((sec) => {
+        const pts = outline[sec] || [];
+        pts.forEach((p, idx) => { map[p.id] = idx; });
+      });
+    }
+    return map;
+  }, [sermon.outline]);
+
+  const thoughtById = useMemo(() => {
+    const map: Record<string, Thought> = {};
+    (sermon.thoughts || []).forEach(t => { map[t.id] = t; });
+    return map;
+  }, [sermon.thoughts]);
+
+  const getSortedIdsForSection = (section: 'introduction' | 'main' | 'conclusion'): string[] => {
+    const ids = (sermon.structure as any)?.[section] || [];
+    // Unique while preserving input order
+    const seen = new Set<string>();
+    const unique = ids.filter((id: string) => (seen.has(id) ? false : (seen.add(id), true)));
+    
+    const withinSectionIndex = new Map<string, number>();
+    unique.forEach((id: string, idx: number) => withinSectionIndex.set(id, idx));
+
+    return [...unique].sort((aId, bId) => {
+      const a = thoughtById[aId];
+      const b = thoughtById[bId];
+      // 1) Outline point order
+      const aO = a?.outlinePointId ? outlineIndexByPoint[a.outlinePointId] ?? 9999 : 9999;
+      const bO = b?.outlinePointId ? outlineIndexByPoint[b.outlinePointId] ?? 9999 : 9999;
+      if (aO !== bO) return aO - bO;
+      // 2) Position inside point (if available)
+      const aP = typeof a?.position === 'number' ? (a!.position as number) : Number.POSITIVE_INFINITY;
+      const bP = typeof b?.position === 'number' ? (b!.position as number) : Number.POSITIVE_INFINITY;
+      if (aP !== bP) return aP - bP;
+      // 3) Fallback to original section order saved in structure
+      const aS = withinSectionIndex.get(aId) ?? 99999;
+      const bS = withinSectionIndex.get(bId) ?? 99999;
+      if (aS !== bS) return aS - bS;
+      // 4) Stable fallback by date (newest first)
+      const aD = a ? new Date(a.date).getTime() : 0;
+      const bD = b ? new Date(b.date).getTime() : 0;
+      if (aD !== bD) return bD - aD;
+      // 5) Final stability by id
+      return (aId || '').localeCompare(bId || '');
+    });
+  };
+
   // Default colors
   const introColor = SERMON_SECTION_COLORS.introduction.base;
   const mainColor = SERMON_SECTION_COLORS.mainPart.base;
@@ -77,7 +129,7 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
                 <strong className={`${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>{t('tags.introduction')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.introduction.map((item, index) => {
+                {getSortedIdsForSection('introduction').map((item, index) => {
                   const tag = getTagStyling('introduction');
                   return (
                   <span key={`intro-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>
@@ -95,7 +147,7 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
                 <strong className={`${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>{t('tags.mainPart')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.main.map((item, index) => {
+                {getSortedIdsForSection('main').map((item, index) => {
                   const tag = getTagStyling('mainPart');
                   return (
                   <span key={`main-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>
@@ -113,7 +165,7 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
                 <strong className={`${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>{t('tags.conclusion')}</strong>
               </div>
               <div className="text-sm text-gray-700 dark:text-gray-300 font-medium ml-5">
-                {sermon.structure.conclusion.map((item, index) => {
+                {getSortedIdsForSection('conclusion').map((item, index) => {
                   const tag = getTagStyling('conclusion');
                   return (
                   <span key={`conclusion-${index}`} className={`inline-block px-2 py-0.5 rounded m-0.5 whitespace-pre-wrap ${tag.bg} ${tag.text}`}>

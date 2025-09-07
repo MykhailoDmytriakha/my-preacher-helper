@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { Thought, Sermon } from '@/models/models';
+import type { Thought, Sermon, Outline, OutlinePoint } from '@/models/models';
 import { STRUCTURE_TAGS } from '@lib/constants'; // Use new @lib alias
 import { normalizeStructureTag } from '@utils/tagUtils';
 
@@ -10,6 +10,7 @@ export type StructureFilter = string; // Can be 'all' or a specific structure ta
 interface UseThoughtFilteringProps {
   initialThoughts: Thought[];
   sermonStructure: Sermon['structure']; // Pass sermon structure for sorting
+  sermonOutline?: Sermon['outline']; // Optional: outline to refine structure order
 }
 
 interface UseThoughtFilteringReturn {
@@ -30,6 +31,7 @@ interface UseThoughtFilteringReturn {
 export function useThoughtFiltering({
   initialThoughts,
   sermonStructure,
+  sermonOutline,
 }: UseThoughtFilteringProps): UseThoughtFilteringReturn {
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [structureFilter, setStructureFilter] = useState<StructureFilter>('all');
@@ -70,38 +72,81 @@ export function useThoughtFiltering({
 
     // Apply sorting (use direct prop)
     if (sortOrder === 'structure' && hasStructureTags) {
-        thoughtsToProcess.sort((a, b) => {
-          // Use sermon.structure if available for precise ordering
-          if (sermonStructure) {
-              const structuredIds = [
-                  ...(sermonStructure.introduction || []),
-                  ...(sermonStructure.main || []),
-                  ...(sermonStructure.conclusion || [])
-              ];
-              const aIndex = structuredIds.indexOf(a.id);
-              const bIndex = structuredIds.indexOf(b.id);
-              if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-              if (aIndex !== -1) return -1; // a is structured, b is not
-              if (bIndex !== -1) return 1;  // b is structured, a is not
-          }
-  
-          // Fallback to tag-based sorting if structure doesn't include these thoughts
-          const aStructureTag = a.tags.find(tag => normalizeStructureTag(tag) !== null);
-          const bStructureTag = b.tags.find(tag => normalizeStructureTag(tag) !== null);
-  
-          if (aStructureTag && bStructureTag) {
-              const aCanonical = normalizeStructureTag(aStructureTag);
-              const bCanonical = normalizeStructureTag(bStructureTag);
-              const order: Record<string, number> = { intro: 0, main: 1, conclusion: 2 };
-              if (aCanonical !== bCanonical) return (aCanonical ? order[aCanonical] : 99) - (bCanonical ? order[bCanonical] : 99);
-          }
-          
-          // Prioritize thoughts with any structure tag over those without
-          if (aStructureTag && !bStructureTag) return -1;
-          if (!aStructureTag && bStructureTag) return 1;
-          
-          // Fallback to date sort if structure tags are the same or absent
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
+      // Precompute lookup maps to follow the actual reading order
+      const sectionOrder: Record<string, number> = { introduction: 0, main: 1, conclusion: 2 };
+
+      // Map thoughtId -> section and index within provided sermonStructure arrays
+      const structuredIndexById: Record<string, { section: keyof typeof sectionOrder; index: number }> = {};
+      if (sermonStructure) {
+        (['introduction', 'main', 'conclusion'] as const).forEach((sec) => {
+          const arr = sermonStructure[sec] || [];
+          arr.forEach((id, idx) => {
+            structuredIndexById[id] = { section: sec, index: idx };
+          });
+        });
+      }
+
+      // Map outlinePointId -> section + index in its section
+      const outlineIndexByPoint: Record<string, { section: keyof typeof sectionOrder; index: number }> = {};
+      if (sermonOutline) {
+        (['introduction', 'main', 'conclusion'] as const).forEach((sec) => {
+          const pts = (sermonOutline as Outline)?.[sec] || [];
+          (pts as OutlinePoint[]).forEach((p, idx) => {
+            outlineIndexByPoint[p.id] = { section: sec, index: idx };
+          });
+        });
+      }
+
+      const getSectionRank = (t: Thought): number => {
+        // Prefer explicit sermonStructure membership
+        const sIdx = structuredIndexById[t.id]?.section;
+        if (sIdx) return sectionOrder[sIdx];
+        // Next prefer outline point section
+        if (t.outlinePointId && outlineIndexByPoint[t.outlinePointId]) {
+          return sectionOrder[outlineIndexByPoint[t.outlinePointId].section];
+        }
+        // Fallback to tag canonical
+        const tag = t.tags.find(tag => normalizeStructureTag(tag) !== null);
+        const canonical = tag ? normalizeStructureTag(tag) : null;
+        if (canonical === 'intro') return sectionOrder['introduction'];
+        if (canonical === 'main') return sectionOrder['main'];
+        if (canonical === 'conclusion') return sectionOrder['conclusion'];
+        // Unknown/ambiguous goes last
+        return 99;
+      };
+
+      const getOutlineRank = (t: Thought): number => {
+        if (t.outlinePointId && outlineIndexByPoint[t.outlinePointId]) {
+          return outlineIndexByPoint[t.outlinePointId].index;
+        }
+        // Not attached to outline → after all outline points
+        return 9999;
+      };
+
+      const getWithinSectionRank = (t: Thought): number => {
+        // Exact index from sermonStructure if present
+        if (structuredIndexById[t.id]) return structuredIndexById[t.id].index;
+        // Position field can be present from Structure page; use it next
+        if (typeof t.position === 'number') return t.position;
+        // Fallback to date (newest first like other lists)
+        return -new Date(t.date).getTime();
+      };
+
+      thoughtsToProcess.sort((a, b) => {
+        const sa = getSectionRank(a);
+        const sb = getSectionRank(b);
+        if (sa !== sb) return sa - sb;
+
+        const oa = getOutlineRank(a);
+        const ob = getOutlineRank(b);
+        if (oa !== ob) return oa - ob;
+
+        const wa = getWithinSectionRank(a);
+        const wb = getWithinSectionRank(b);
+        if (wa !== wb) return wa - wb;
+
+        // Stable fallback
+        return a.id.localeCompare(b.id);
       });
     } else { // Default sort by date
       thoughtsToProcess.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -168,6 +213,8 @@ export function useThoughtFiltering({
     setTagFilters([]);
     setSortOrder('date');
   }, []);
+
+  // No debug logging in production
 
   return {
     filteredThoughts,

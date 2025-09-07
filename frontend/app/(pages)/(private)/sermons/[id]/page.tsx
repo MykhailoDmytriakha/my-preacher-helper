@@ -34,6 +34,8 @@ import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStep
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import { normalizeStructureTag } from '@utils/tagUtils';
+import { getSectionLabel } from '@/lib/sections';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
 import BrainstormModule from '@/components/sermon/BrainstormModule';
@@ -153,7 +155,8 @@ export default function SermonPage() {
 
   // Reusable renderer for classic content (brainstorm, filters, thoughts)
   const renderClassicContent = (options?: { withBrainstorm?: boolean }) => (
-    <motion.div layout className="space-y-4 sm:space-y-6">
+    // Disable layout animations to avoid vertical stretch on filter changes
+    <motion.div layout={false} className="space-y-4 sm:space-y-6">
       <AnimatePresence initial={false}>
         {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
           <motion.section
@@ -179,12 +182,13 @@ export default function SermonPage() {
               {uiMode === 'classic' && (
                 <motion.div
                   key="filter"
-                  className="relative ml-0 sm:ml-3"
+                  className="relative ml-0 sm:ml-3 z-50"
                   initial={{ opacity: 0, y: -6, height: 0 }}
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, y: -6, height: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  style={{ overflow: 'hidden' }}
+                  // Allow dropdown to render outside wrapper bounds
+                  style={{ overflow: 'visible' }}
                 >
                   <button
                     ref={filterButtonRef}
@@ -237,11 +241,11 @@ export default function SermonPage() {
             <motion.div
               key="active-filters"
               className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md"
-              initial={{ opacity: 0, y: -6, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -6, height: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
-              style={{ overflow: 'hidden' }}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.15, ease: 'easeInOut' }}
+              layout={false}
             >
               <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                 {t('filters.activeFilters')}:
@@ -252,9 +256,21 @@ export default function SermonPage() {
                 </span>
               )}
               {structureFilter !== 'all' && (
-                <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-                  {t(`tags.${structureFilter.toLowerCase().replace(/\s+/g, '_')}`)}
-                </span>
+                (() => {
+                  const canonical = normalizeStructureTag(structureFilter);
+                  const label = canonical === 'intro'
+                    ? getSectionLabel(t, 'introduction')
+                    : canonical === 'main'
+                      ? getSectionLabel(t, 'main')
+                      : canonical === 'conclusion'
+                        ? getSectionLabel(t, 'conclusion')
+                        : structureFilter;
+                  return (
+                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+                      {label}
+                    </span>
+                  );
+                })()
               )}
               {sortOrder === 'structure' && (
                 <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
@@ -285,7 +301,8 @@ export default function SermonPage() {
             </motion.div>
           )}
         </AnimatePresence>
-        <motion.div layout transition={{ duration: 0.45, ease: 'easeInOut' }}>
+        {/* Do not animate the thoughts column when toggling filter */}
+        <motion.div layout={false}>
           <ThoughtList
             filteredThoughts={filteredThoughts}
             totalThoughtsCount={totalThoughts}
@@ -627,7 +644,8 @@ export default function SermonPage() {
     hasStructureTags 
   } = useThoughtFiltering({
     initialThoughts: sermon?.thoughts ?? [],
-    sermonStructure: sermon?.structure // Pass structure to hook
+    sermonStructure: sermon?.structure, // Pass structure to hook
+    sermonOutline: sermon?.outline // Also pass outline to refine ordering
   });
   
   // Ref for the filter toggle button (passed to controls)

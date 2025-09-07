@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ViewFilter, StructureFilter, SortOrder } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import { normalizeStructureTag } from '@utils/tagUtils';
+import { getSectionLabel } from '@/lib/sections';
 
 interface ThoughtFilterControlsProps {
   isOpen: boolean;
@@ -38,34 +40,84 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
 }) => {
   const { t } = useTranslation();
   const filterRef = useRef<HTMLDivElement>(null);
+  const uid = useId(); // Unique per instance to isolate radio groups
+
+  // Debug helper removed
+
+  // Helper: resolve a proper localized label for structure-related tags
+  const getStructureTagLabel = (tag: string) => {
+    const canonical = normalizeStructureTag(tag);
+    if (canonical === 'intro') return getSectionLabel(t, 'introduction');
+    if (canonical === 'main') return getSectionLabel(t, 'main');
+    if (canonical === 'conclusion') return getSectionLabel(t, 'conclusion');
+    // Fallback to a best-effort translation key or raw tag
+    return t(`tags.${tag.toLowerCase().replace(/\s+/g, '_')}`) || tag;
+  };
 
   // Handle clicks outside the filter dropdown
+  // Use pointerdown (capture) with composedPath to correctly detect clicks on labels/text
+  // and avoid closing when interacting inside the menu.
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        isOpen && 
-        filterRef.current && 
-        !filterRef.current.contains(event.target as Node) &&
-        buttonRef.current && // Check button ref as well
-        !buttonRef.current.contains(event.target as Node)
-      ) {
+    function isInside(event: Event): boolean {
+      const path = (event as any).composedPath?.() as EventTarget[] | undefined;
+      const targetNode = event.target as Node | null;
+      if (path && path.length) {
+        const insideFilter = !!(filterRef.current && path.includes(filterRef.current));
+        const insideButton = !!(buttonRef.current && path.includes(buttonRef.current));
+        if (insideFilter || insideButton) return true;
+
+        // NEW: If there are multiple filter menus mounted (e.g., due to slider),
+        // treat clicks inside ANY of them as inside to prevent cross-closing.
+        try {
+          const allMenus = Array.from(document.querySelectorAll('[data-testid="thought-filter-controls"]')) as HTMLElement[];
+          const allButtons = Array.from(document.querySelectorAll('[data-testid="thought-filter-button"]')) as HTMLElement[];
+          const inAnyMenu = allMenus.some(el => path.includes(el) || (!!targetNode && el.contains(targetNode)));
+          const inAnyButton = allButtons.some(el => path.includes(el) || (!!targetNode && el.contains(targetNode)));
+          if (inAnyMenu || inAnyButton) return true;
+        } catch (_err) {
+          // swallow query errors silently
+        }
+      }
+      if (!targetNode) return false;
+      if (filterRef.current?.contains(targetNode)) return true;
+      if (buttonRef.current?.contains(targetNode)) return true;
+      return false;
+    }
+
+    function handlePointerDown(event: PointerEvent | MouseEvent | TouchEvent) {
+      if (!isOpen) return;
+      const target = event.target as HTMLElement | null;
+      const path = (event as any).composedPath?.() as EventTarget[] | undefined;
+      const inside = isInside(event);
+      if (!inside) {
         setIsOpen(false);
       }
     }
-    
-    document.addEventListener('mousedown', handleClickOutside);
+
+    // Capture phase ensures reliable outside detection across browsers
+    document.addEventListener('pointerdown', handlePointerDown as any, true);
+    // Fallbacks for environments without Pointer Events
+    document.addEventListener('mousedown', handlePointerDown as any, true);
+    document.addEventListener('touchstart', handlePointerDown as any, true);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('pointerdown', handlePointerDown as any, true);
+      document.removeEventListener('mousedown', handlePointerDown as any, true);
+      document.removeEventListener('touchstart', handlePointerDown as any, true);
     };
-  }, [filterRef, buttonRef, isOpen, setIsOpen]); // Include buttonRef and setIsOpen
+  }, [filterRef, buttonRef, isOpen, setIsOpen]);
+
+  // No runtime logging
 
   if (!isOpen) return null;
 
   return (
     <div 
       ref={filterRef}
-      onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
-      className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-10"
+      // Stop pointer/touch in capture so global outside handlers don’t run.
+      // Allow click to bubble so React onChange for radios/checkboxes fires.
+      onPointerDownCapture={(e) => { e.stopPropagation(); }}
+      onTouchStartCapture={(e) => { e.stopPropagation(); }}
+      className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
       style={{ maxWidth: 'calc(100vw - 32px)' }}
       data-testid="thought-filter-controls"
     >
@@ -75,7 +127,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-sm font-medium">{t('filters.viewOptions')}</h3>
             <button 
-              onClick={resetFilters}
+              onClick={() => { resetFilters(); }}
               className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
             >
               {t('filters.reset')}
@@ -85,10 +137,10 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             <label className="flex items-center">
               <input
                 type="radio"
-                name="viewFilter"
+                name={`viewFilter-${uid}`}
                 value="all"
                 checked={viewFilter === 'all'}
-                onChange={() => setViewFilter('all')}
+                onChange={() => { setViewFilter('all'); }}
                 className="h-4 w-4 text-blue-600"
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.all')}</span>
@@ -96,10 +148,10 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             <label className="flex items-center">
               <input
                 type="radio"
-                name="viewFilter"
+                name={`viewFilter-${uid}`}
                 value="missingTags"
                 checked={viewFilter === 'missingTags'}
-                onChange={() => setViewFilter('missingTags')}
+                onChange={() => { setViewFilter('missingTags'); }}
                 className="h-4 w-4 text-blue-600"
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.missingTags')}</span>
@@ -121,10 +173,10 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <input
                 type="radio"
-                name="structureFilter"
+                name={`structureFilter-${uid}`}
                 value="all"
                 checked={structureFilter === 'all'}
-                onChange={() => setStructureFilter('all')}
+                onChange={() => { setStructureFilter('all'); }}
                 className="h-4 w-4 text-blue-600"
                 disabled={!hasStructureTags}
               />
@@ -135,14 +187,14 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
               <label key={tag} className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <input
                   type="radio"
-                  name="structureFilter"
+                  name={`structureFilter-${uid}`}
                   value={tag}
                   checked={structureFilter === tag}
-                  onChange={() => setStructureFilter(tag)}
+                  onChange={() => { setStructureFilter(tag); }}
                   className="h-4 w-4 text-blue-600"
                   disabled={!hasStructureTags}
                 />
-                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t(`tags.${tag.toLowerCase().replace(/\s+/g, '_')}`)}</span> {/* Adjust translation key if needed */}
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{getStructureTagLabel(tag)}</span>
               </label>
             ))}
           </div>
@@ -155,10 +207,10 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             <label className="flex items-center">
               <input
                 type="radio"
-                name="sortOrder"
+                name={`sortOrder-${uid}`}
                 value="date"
                 checked={sortOrder === 'date'}
-                onChange={() => setSortOrder('date')}
+                onChange={() => { setSortOrder('date'); }}
                 className="h-4 w-4 text-blue-600"
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
@@ -166,10 +218,10 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <input
                 type="radio"
-                name="sortOrder"
+                name={`sortOrder-${uid}`}
                 value="structure"
                 checked={sortOrder === 'structure'}
-                onChange={() => setSortOrder('structure')}
+                onChange={() => { setSortOrder('structure'); }}
                 className="h-4 w-4 text-blue-600"
                 disabled={!hasStructureTags}
               />
@@ -189,12 +241,15 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
         <div className="px-4 py-2">
           <h3 className="text-sm font-medium">{t('filters.byTags')}</h3>
           <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-            {allowedTags.map(tag => (
+            {allowedTags
+              // Hide structure tags here; they are controlled by the section above
+              .filter(tag => normalizeStructureTag(tag.name) === null)
+              .map(tag => (
               <label key={tag.name} className="flex items-center">
                 <input
                   type="checkbox"
                   checked={tagFilters.includes(tag.name)}
-                  onChange={() => toggleTagFilter(tag.name)}
+                  onChange={() => { toggleTagFilter(tag.name); }}
                   className="h-4 w-4 text-blue-600"
                 />
                 <span className="ml-2 text-sm" style={{ color: tag.color }}>{tag.name}</span>
