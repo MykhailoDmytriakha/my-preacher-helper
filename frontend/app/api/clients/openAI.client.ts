@@ -1188,6 +1188,9 @@ MANDATORY BIBLE VERSE REQUIREMENT:
 CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
 Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
 The preacher must be able to read the full verse directly from the plan without opening a Bible.
+Allowed sources: ONLY the THOUGHTS for this outline point, the OUTLINE POINT TEXT, and provided KEY FRAGMENTS.
+Treat SERMON TITLE and SCRIPTURE as context only. Do NOT quote or introduce content from them unless the exact Bible reference also appears in the THOUGHTS or in the OUTLINE POINT TEXT.
+
 
 LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the provided THOUGHTS. DO NOT translate.
 ${languageDirective}
@@ -1196,7 +1199,7 @@ IMPORTANT:
 1. Always generate the plan in the SAME LANGUAGE as the THOUGHTS text. Do not translate.
 2. Focus ONLY on the specific outline point and its related thoughts.
 3. Maintain the theological perspective and vocabulary from the original thoughts.
-4. STRICT: Do not add new theological content, ideas, names, facts or Bible references that are not explicitly present in the THOUGHTS. If something is missing, OMIT it.
+4. STRICT: Do not add new theological content, ideas, names, facts or Bible references that are not explicitly present in the THOUGHTS or the OUTLINE POINT TEXT. If something is missing, OMIT it.
 5. Organize ideas in a logical sequence that will help with sermon delivery.
 6. Include only the key ideas that come directly from the THOUGHTS.
 7. Format the response using Markdown:
@@ -1215,7 +1218,7 @@ Your response should be a simple outline optimized for quick preaching reference
     const userMessage = `Create a PREACHING-FRIENDLY plan for the following point in the ${sectionName.toUpperCase()} section that can be quickly scanned during sermon delivery:
 
 SERMON TITLE: ${sermonTitle}
-SCRIPTURE: ${sermonVerse}
+SCRIPTURE (TEXT BANK — use only when the same reference appears in THOUGHTS or OUTLINE POINT): ${sermonVerse}
 OUTLINE POINT: "${outlinePointText}"
 
 ${keyFragments.length > 0 ? `==== SUPPORTING KEY FRAGMENTS ====
@@ -1270,7 +1273,7 @@ IMPORTANT INSTRUCTIONS:
 3. Keep it concise - only high-level structure, not detailed development.
 4. Create exactly ${relatedThoughtsTexts.length} main headings (###) — one per THOUGHT in the same order. No extra headings.
 5. Bullet points must be derived from the same THOUGHT’s text or key fragments. Do not invent new content.
-6. Add scripture references in *italic* and key theological concepts in **bold**, but only if they already exist in the THOUGHTS.
+6. Add scripture references in *italic* and key theological concepts in **bold**, but only if they already exist in the THOUGHTS or the OUTLINE POINT TEXT.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
 9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon. The title should be actionable and specific.
