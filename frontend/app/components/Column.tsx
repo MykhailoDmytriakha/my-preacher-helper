@@ -9,7 +9,7 @@ import SortableItem from "./SortableItem";
 import { Item, OutlinePoint, Outline, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
@@ -100,6 +100,27 @@ const OutlinePointPlaceholder: React.FC<{
   const pointItems = items.filter(item => item.outlinePointId === point.id);
   const hasItems = pointItems.length > 0;
 
+  // Local info popover state
+  const [showHint, setShowHint] = React.useState(false);
+  const hintRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent | TouchEvent) {
+      if (!hintRef.current) return;
+      const target = e.target as Node;
+      if (!hintRef.current.contains(target)) {
+        setShowHint(false);
+      }
+    }
+    if (showHint) {
+      document.addEventListener('mousedown', onDocClick, true);
+      document.addEventListener('touchstart', onDocClick, true);
+    }
+    return () => {
+      document.removeEventListener('mousedown', onDocClick, true);
+      document.removeEventListener('touchstart', onDocClick, true);
+    };
+  }, [showHint]);
+
   // Color scheme based on section
   const getPlaceholderColors = () => {
     if (headerColor) {
@@ -186,6 +207,32 @@ const OutlinePointPlaceholder: React.FC<{
             {point.text}
           </h4>
           <div className="flex items-center gap-2">
+            {/* Quick help for outline point */}
+            <div className="relative" ref={hintRef}>
+              <button
+                onClick={() => setShowHint(v => !v)}
+                className="p-1 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+                aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+              >
+                <InformationCircleIcon className={`h-3.5 w-3.5 ${headerColor ? 'text-gray-700' : 'text-white'}`} />
+              </button>
+              {showHint && (
+                <div className="absolute right-0 mt-2 z-50 w-[300px]">
+                  <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
+                    <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
+                      {t('structure.outlineHelp.title', { defaultValue: 'Памятка для пункта' })}
+                    </div>
+                    <ul className="list-disc pl-4 space-y-1 text-gray-700 dark:text-gray-200">
+                      <li>{t('structure.outlineHelp.explanation', { defaultValue: 'Объяснение: что говорит текст и что хотел автор — коротко и по сути.' })}</li>
+                      <li>{t('structure.outlineHelp.illustration', { defaultValue: 'Иллюстрация: образ/история, освещающая истину; после неё вновь озвучьте мысль.' })}</li>
+                      <li>{t('structure.outlineHelp.argumentation', { defaultValue: 'Аргументация: почему этому верить — контекст, параллели Писания, логика.' })}</li>
+                      <li>{t('structure.outlineHelp.application', { defaultValue: 'Применение: что делать и как — конкретный шаг, связанный с намерением автора.' })}</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
             <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
               {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
             </span>

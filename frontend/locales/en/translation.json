@@ -346,6 +346,14 @@
     "revertChanges": "Revert Changes",
     "sermonNotFound": "Sermon Not Found",
     "thoughtDeletedSuccess": "Thought Deleted Successfully",
+    "outlineHelp": {
+      "title": "Quick guide for point",
+      "ariaLabel": "Quick help for outline point",
+      "explanation": "Explanation: what the text says and what the author intended — briefly and clearly.",
+      "illustration": "Illustration: an image/story that sheds light; restate the truth after it.",
+      "argumentation": "Argumentation: why to believe this — context, cross‑references, sound reasoning.",
+      "application": "Application: what to do and how — a concrete step tied to the author’s intent."
+    },
     "navigation": {
       "previousSection": "← Previous Section",
       "nextSection": "Next Section →",
