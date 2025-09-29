@@ -39,6 +39,12 @@
     "thoughts": "записей",
     "hasOutline": "Есть план",
     "preached": "Проповедано",
+    "plan": "План",
+    "goToPlan": "Перейти к плану",
+    "structure": "Структура",
+    "goToStructure": "Перейти к структуре",
+    "toPlan": "К плану",
+    "toStructure": "К структуре",
     "stats": {
       "totalSermons": "Всего проповедей",
       "totalThoughts": "Всего записей",

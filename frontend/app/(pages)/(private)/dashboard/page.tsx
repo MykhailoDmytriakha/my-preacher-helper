@@ -1,63 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getSermons } from "@services/sermon.service";
-import { auth } from "@services/firebaseAuth.service";
+import { useMemo, useState } from "react";
 import AddSermonModal from "@components/AddSermonModal";
 import { Sermon } from "@/models/models";
 import SermonList from "@components/dashboard/SermonList";
 import DashboardStats from "@components/dashboard/DashboardStats";
 import { useTranslation } from "react-i18next";
 import { ChevronIcon } from "@components/Icons";
+import { useDashboardSermons } from "@/hooks/useDashboardSermons";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const [sermons, setSermons] = useState<Sermon[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { sermons, setSermons, loading } = useDashboardSermons();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [isMobileSearchVisible, setIsMobileSearchVisible] = useState(false);
   
-  useEffect(() => {
-    async function fetchData() {
-      const currentUser = auth.currentUser;
-      let uid: string | undefined;
-      if (currentUser) {
-        uid = currentUser.uid;
-      } else {
-        try {
-          const guestData = localStorage.getItem("guestUser");
-          if (guestData) {
-            uid = JSON.parse(guestData).uid;
-          }
-        } catch (error) {
-          console.error("Error parsing guestUser from localStorage", error);
-        }
-      }
-      if (uid) {
-        const fetchedSermons = await getSermons(uid);
-        setSermons(fetchedSermons);
-      }
-      setLoading(false);
-    }
-    fetchData();
-  }, []);
-
-  const sortedAndFilteredSermons = () => {
-    // First filter based on search query
+  const sortedAndFilteredSermons = useMemo(() => {
     const filtered = searchQuery
-      ? sermons.filter(sermon => 
+      ? sermons.filter((sermon) =>
           sermon.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          sermon.verse.toLowerCase().includes(searchQuery.toLowerCase()))
+          sermon.verse.toLowerCase().includes(searchQuery.toLowerCase())
+        )
       : sermons;
-    
-    // Then sort: prioritize non-preached, then apply selected option
-    return [...filtered].sort((a, b) => {
-      // Primary sort: Move preached sermons to the bottom
-      if (a.isPreached && !b.isPreached) return 1; // a comes after b
-      if (!a.isPreached && b.isPreached) return -1; // a comes before b
 
-      // Secondary sort: Apply the user-selected sort option
+    return [...filtered].sort((a, b) => {
+      if (a.isPreached && !b.isPreached) return 1;
+      if (!a.isPreached && b.isPreached) return -1;
+
       switch (sortOption) {
         case "newest":
           return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -69,7 +39,7 @@ export default function DashboardPage() {
           return 0;
       }
     });
-  };
+  }, [sermons, searchQuery, sortOption]);
 
   if (loading) {
     return (
@@ -172,7 +142,7 @@ export default function DashboardPage() {
             {t('dashboard.createFirstSermon')}
           </p>
         </div>
-      ) : sortedAndFilteredSermons().length === 0 ? (
+      ) : sortedAndFilteredSermons.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <h3 className="text-xl font-medium text-gray-700 dark:text-gray-300 mb-2">
             {t('dashboard.noSearchResults')}
@@ -183,7 +153,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <SermonList 
-          sermons={sortedAndFilteredSermons()} 
+          sermons={sortedAndFilteredSermons} 
           onDelete={(id: string) => setSermons((prev) => prev.filter((s) => s.id !== id))}
           onUpdate={(updatedSermon: Sermon) => setSermons(prev => 
             prev.map(s => s.id === updatedSermon.id ? updatedSermon : s)

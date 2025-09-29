@@ -155,12 +155,12 @@ describe('SermonList Component', () => {
     
     // Check that we have the correct number of sermon cards
     const sermonLinks = screen.getAllByTestId('next-link');
-    expect(sermonLinks).toHaveLength(2);
-    
+    const uniqueSermonLinks = Array.from(new Set(sermonLinks.map((link) => link.getAttribute('href'))));
+    expect(uniqueSermonLinks).toHaveLength(2);
+
     // Check the second sermon (the one without an outline)
-    const sermonCards = screen.getAllByRole('link');
-    const secondSermonCard = sermonCards[1];
-    
+    const secondSermonCard = screen.getByTestId('sermon-card-sermon-2');
+
     // No "Has outline" badge in the second sermon card
     expect(secondSermonCard.textContent).not.toContain('Has outline');
   });

@@ -9,6 +9,7 @@ import { Sermon } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
 import { DocumentIcon, ChevronIcon } from "@components/Icons";
 import { useTranslation } from "react-i18next";
+import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
 interface SermonListProps {
   sermons: Sermon[];
@@ -60,14 +61,16 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
             )}
 
             {(!sermon.isPreached || (sermon.isPreached && !isPreachedCollapsed)) && (
-              <div className={cardClasses}>
-                <Link href={`/sermons/${sermon.id}`} className="flex-grow flex flex-col overflow-hidden">
-                  <div className="p-4 sm:p-5 flex-grow">
+              <div className={cardClasses} data-testid={`sermon-card-${sermon.id}`}>
+                <div className="flex flex-col h-full overflow-hidden">
+                  <div className="p-4 sm:p-5 flex flex-col flex-grow">
                     <div className="flex items-start justify-between gap-2 mb-3">
-                      <h3 className="text-base sm:text-lg font-semibold group-hover:text-blue-600 
-                         dark:group-hover:text-blue-400 transition-colors line-clamp-2">
-                        {sermon.title}
-                      </h3>
+                      <Link href={`/sermons/${sermon.id}`} className="flex-1 min-w-0">
+                        <h3 className="text-base sm:text-lg font-semibold group-hover:text-blue-600 
+                           dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                          {sermon.title}
+                        </h3>
+                      </Link>
                       <div className="z-20 flex-shrink-0">
                         <OptionMenu
                           sermon={sermon}
@@ -76,10 +79,13 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                         />
                       </div>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 break-words whitespace-pre-line">
+                    <Link
+                      href={`/sermons/${sermon.id}`}
+                      className="block text-sm text-gray-600 dark:text-gray-300 mb-4 break-words whitespace-pre-line"
+                    >
                       {sermon.verse}
-                    </p>
-                    
+                    </Link>
+
                     <div className="flex flex-wrap items-center text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-auto gap-y-2">
                       <div className="flex items-center mr-4">
                         <DocumentIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
@@ -93,19 +99,22 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                       ) : null}
                     </div>
                   </div>
-                  
+
                   <div className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                       {formattedDate}
                     </span>
-                    <ExportButtons
-                      sermonId={sermon.id}
-                      orientation="horizontal"
-                      getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
-                      className="scale-90 sm:scale-100 origin-top-left sm:origin-center"
-                    />
+                    <div className="flex items-center gap-2">
+                      <QuickPlanAccessButton sermon={sermon} t={t} />
+                      <ExportButtons
+                        sermonId={sermon.id}
+                        orientation="horizontal"
+                        getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
+                        className="scale-90 sm:scale-100 origin-top-left sm:origin-center"
+                      />
+                    </div>
                   </div>
-                </Link>
+                </div>
               </div>
             )}
           </React.Fragment>

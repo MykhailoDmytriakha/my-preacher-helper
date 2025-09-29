@@ -11,8 +11,7 @@ alwaysApply: true
 - по меньше комментариев в коде
 - весь код на английском - это стандарт
 - IMPORTANT: gather context from project, (dig so much deep), what files could be related to user query, соберай контекст чем точнее, тем лучше, IN DETAILS with CONFIDENCE 100%
-- if you got a message about bug, error and so on, search info about this issue in the internet, use @web
-- an the end of response write very short conclusion, and what is next. Start this message with **FOLLOW UP** (do not apply this to commit message)
+- if you got a message about bug, error and so on, search info about this issue in the internet, use tool @web
 - пиши модульно, потом тебе же будет легче исправлять ошибки
 - do nor run app by yourself to validate chagnes, ask user to run app and validate
 - do not add much comments, only really necessary, for complex logic
@@ -20,3 +19,4 @@ alwaysApply: true
 - IMPORTANT: if you finished working on fixing/writeing tests, please run tests at the end, and failed tests if their present. you could use terminal
 - never start or restart server, in this case print a command and suggest user to execute it
 - if changes requied BE and UI, start from BE
+- all comments in code should be in english ONLY, IMPORTANT

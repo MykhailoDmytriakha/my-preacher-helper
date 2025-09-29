@@ -19,6 +19,7 @@ const config: Config = {
     // Handle module aliases (aligning with tsconfig.json)
     // Specific paths first
     '^@components/(.*)$': '<rootDir>/app/components/$1',
+    '^@hooks/(.*)$': '<rootDir>/hooks/$1',
     '^@services/(.*)$': '<rootDir>/app/services/$1',
     '^@repositories/(.*)$': '<rootDir>/app/api/repositories/$1', // Corrected target path
     '^@api/(.*)$': '<rootDir>/app/api/$1',

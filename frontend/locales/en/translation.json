@@ -39,6 +39,12 @@
     "thoughts": "thoughts",
     "hasOutline": "Has outline",
     "preached": "Preached",
+    "plan": "Plan",
+    "goToPlan": "Go to plan",
+    "structure": "Structure",
+    "goToStructure": "Go to structure",
+    "toPlan": "To plan",
+    "toStructure": "To structure",
     "stats": {
       "totalSermons": "Total Sermons",
       "totalThoughts": "Total Thoughts",
