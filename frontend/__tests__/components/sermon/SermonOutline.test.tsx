@@ -12,7 +12,7 @@ jest.mock('react-i18next', () => ({
 // Mock DND
 jest.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Droppable: ({ children }: { children: any }) => children({ innerRef: jest.fn(), droppableProps: {}, placeholder: null }),
+  Droppable: ({ children, renderClone }: { children: any; renderClone?: any }) => children({ innerRef: jest.fn(), droppableProps: {}, placeholder: null }),
   Draggable: ({ children }: { children: any }) => children({ innerRef: jest.fn(), draggableProps: {}, dragHandleProps: {} }, { isDragging: false, isDropAnimating: false, draggingOver: null })
 }));
 
@@ -21,27 +21,27 @@ jest.mock('@/utils/themeColors', () => ({
   getSectionStyling: (section: string) => {
     if (section === 'introduction') {
       return {
-        headerBg: "bg-blue-50 dark:bg-blue-900/20",
-        headerHover: "hover:bg-blue-100 dark:hover:bg-blue-800/30",
-        border: "border-blue-200 dark:border-blue-800",
-        dragBg: "bg-blue-50 dark:bg-blue-900/30",
-        badge: "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
+        headerBg: "bg-amber-50 dark:bg-amber-900/40",
+        headerHover: "hover:bg-amber-100 dark:hover:bg-amber-900/40",
+        border: "border-amber-200 dark:border-amber-800",
+        dragBg: "bg-amber-200 dark:bg-amber-700",
+        badge: "bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200"
       };
     } else if (section === 'mainPart') {
       return {
-        headerBg: "bg-purple-50 dark:bg-purple-900/20",
-        headerHover: "hover:bg-purple-100 dark:hover:bg-purple-800/30",
-        border: "border-purple-200 dark:border-purple-800",
-        dragBg: "bg-purple-50 dark:bg-purple-900/30",
-        badge: "bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100"
+        headerBg: "bg-blue-50 dark:bg-blue-900/20",
+        headerHover: "hover:bg-blue-100 dark:hover:bg-blue-900/40",
+        border: "border-blue-50 dark:border-blue-300",
+        dragBg: "bg-blue-200 dark:bg-blue-700",
+        badge: "bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200"
       };
     } else {
       return {
-        headerBg: "bg-green-50 dark:bg-green-900/20",
-        headerHover: "hover:bg-green-100 dark:hover:bg-green-800/30",
+        headerBg: "bg-green-50 dark:bg-green-900/30",
+        headerHover: "hover:bg-green-100 dark:hover:bg-green-900/40",
         border: "border-green-200 dark:border-green-800",
-        dragBg: "bg-green-50 dark:bg-green-900/30",
-        badge: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
+        dragBg: "bg-green-200 dark:bg-green-700",
+        badge: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200"
       };
     }
   }

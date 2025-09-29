@@ -8,19 +8,29 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ClipboardIcon, XMarkIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { ClipboardIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 interface BrainstormModuleProps {
   sermonId: string;
   className?: string;
+  currentSuggestion?: BrainstormSuggestion | null;
+  onSuggestionChange?: (suggestion: BrainstormSuggestion | null) => void;
 }
 
-export default function BrainstormModule({ sermonId, className = "" }: BrainstormModuleProps) {
-  const [currentSuggestion, setCurrentSuggestion] = useState<BrainstormSuggestion | null>(null);
+export default function BrainstormModule({ 
+  sermonId, 
+  className = "",
+  currentSuggestion: externalSuggestion,
+  onSuggestionChange 
+}: BrainstormModuleProps) {
+  const [internalSuggestion, setInternalSuggestion] = useState<BrainstormSuggestion | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+
+  // Use external state if provided, otherwise use internal state
+  const currentSuggestion = externalSuggestion !== undefined ? externalSuggestion : internalSuggestion;
+  const setCurrentSuggestion = onSuggestionChange || setInternalSuggestion;
 
   const handleGenerateSuggestion = async () => {
     if (isLoading) return;
@@ -45,190 +55,121 @@ export default function BrainstormModule({ sermonId, className = "" }: Brainstor
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleToggleExpanded = () => {
-    setIsExpanded(!isExpanded);
-  };
-
-  const handleClose = () => {
-    setIsExpanded(false);
-  };
-
-  // Get complexity badge styling based on complexity level
-  const getComplexityStyle = (complexity?: string) => {
-    switch (complexity) {
-      case 'multi-dimensional':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-700';
-      case 'high':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-700';
-      case 'moderate':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-700';
-      case 'basic':
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600';
-    }
+  const getTypeIcon = (type: string) => {
+    const isQuestion = type === 'question' || type === 'QUESTION';
+    return isQuestion ? '?' : '💡';
   };
 
   return (
     <div className={`relative ${className}`}>
-      {/* Collapsed State */}
-      {!isExpanded && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-          onClick={handleToggleExpanded}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">
-              <LightBulbIcon className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {t('brainstorm.title')}
-              </h3>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                {t('brainstorm.subtitle')}
-              </p>
-            </div>
-          </div>
-          <ChevronDownIcon className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-        </motion.div>
-      )}
-
-      {/* Expanded State */}
-      {isExpanded && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700 shadow-sm"
-        >
-          <div className="p-4 space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+      <AnimatePresence mode="wait">
+        {!currentSuggestion ? (
+          <motion.button
+            key="trigger"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={handleGenerateSuggestion}
+            disabled={isLoading}
+            aria-label={t('brainstorm.generateButton')}
+            className="w-full group relative overflow-hidden bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-gray-800 dark:to-gray-800 border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-xl p-5 hover:border-amber-400 dark:hover:border-amber-600 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 dark:from-amber-600 dark:to-yellow-700 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                {isLoading ? (
+                  <SparklesIcon className="w-6 h-6 text-white animate-spin" />
+                ) : (
+                  <LightBulbIcon className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <div className="flex-1 text-left">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  {isLoading ? t('brainstorm.generating') : t('brainstorm.title')}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {t('brainstorm.subtitle')}
+                </p>
+              </div>
+              {!isLoading && (
                 <div className="flex-shrink-0">
-                  <LightBulbIcon className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                  <div className="px-4 py-2 bg-amber-400 dark:bg-amber-600 text-white rounded-lg font-medium text-sm shadow group-hover:bg-amber-500 dark:group-hover:bg-amber-700 transition-colors">
+                    {t('brainstorm.generateButton')}
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {t('brainstorm.title')}
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                    {t('brainstorm.subtitle')}
+              )}
+            </div>
+            
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+          </motion.button>
+        ) : (
+          <motion.div
+            key="suggestion"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="relative bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-400 to-yellow-500" />
+            
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-amber-100 to-yellow-100 dark:from-amber-900/30 dark:to-yellow-900/30 flex items-center justify-center text-2xl">
+                  {getTypeIcon(currentSuggestion.type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                      {t(`brainstorm.types.${currentSuggestion.type}`)}
+                    </span>
+                  </div>
+                  <p className="text-base leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                    {currentSuggestion.text}
                   </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleGenerateSuggestion}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-yellow-200 dark:border-yellow-700 shadow-sm hover:shadow"
-                  aria-label={currentSuggestion ? t('brainstorm.generateAnother') : t('brainstorm.generateButton')}
-                >
-                  <LightBulbIcon className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  {isLoading
-                    ? t('brainstorm.generating')
-                    : currentSuggestion
-                      ? t('brainstorm.generateAnother')
-                      : t('brainstorm.generateButton')}
-                </button>
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopySuggestion}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                    aria-label={t('brainstorm.copySuggestion')}
+                  >
+                    <ClipboardIcon className="w-4 h-4" />
+                    <span>{copied ? t('brainstorm.copied') : t('brainstorm.copy')}</span>
+                  </button>
+                </div>
                 
-                <button
-                  onClick={handleClose}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  aria-label={t('actions.close')}
-                >
-                  <XMarkIcon className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentSuggestion(null)}
+                    className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
+                  >
+                    {t('actions.close')}
+                  </button>
+                  <button
+                    onClick={handleGenerateSuggestion}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-lg shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <>
+                        <SparklesIcon className="w-4 h-4 animate-spin" />
+                        <span>{t('brainstorm.generating')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <SparklesIcon className="w-4 h-4" />
+                        <span>{t('brainstorm.newSuggestion')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Suggestion Display */}
-            <AnimatePresence mode="wait">
-              {currentSuggestion ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4"
-                >
-                  <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                    <p className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">
-                      {currentSuggestion.text}
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full text-sm font-medium">
-                        {t(`brainstorm.types.${currentSuggestion.type}`)}
-                      </span>
-                      
-                      {currentSuggestion.complexity && (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getComplexityStyle(currentSuggestion.complexity)}`}>
-                          {t(`brainstorm.complexity.${currentSuggestion.complexity}`)}
-                        </span>
-                      )}
-                      
-                      {currentSuggestion.dimensions && currentSuggestion.dimensions.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          {currentSuggestion.dimensions.slice(0, 2).map((dimension, index) => (
-                            <span 
-                              key={index}
-                              className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs font-medium"
-                            >
-                              {dimension}
-                            </span>
-                          ))}
-                          {currentSuggestion.dimensions.length > 2 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              +{currentSuggestion.dimensions.length - 2}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handleCopySuggestion}
-                        className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors"
-                        aria-label={t('brainstorm.copySuggestion')}
-                      >
-                        <ClipboardIcon className="w-4 h-4" />
-                        {copied ? t('brainstorm.copied') : t('brainstorm.copy')}
-                        {copied && (
-                          <span className="ml-1 text-green-600 dark:text-green-400 text-xs font-semibold transition-opacity">✔</span>
-                        )}
-                      </button>
-                      
-                      <button
-                        onClick={handleGenerateSuggestion}
-                        disabled={isLoading}
-                        className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                      >
-                        {t('brainstorm.newSuggestion')}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center py-8"
-                >
-                  <p className="text-gray-600 dark:text-gray-400 text-sm">
-                    {t('brainstorm.clickToStart')}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

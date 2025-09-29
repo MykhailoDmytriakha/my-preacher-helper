@@ -397,7 +397,32 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
         {/* Section Content (Collapsible) */}
         {isExpanded && (
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <Droppable droppableId={sectionType} key={sectionType}>
+            <Droppable 
+              droppableId={sectionType} 
+              key={sectionType}
+              renderClone={(providedDraggable, snapshot, rubric) => {
+                const point = points[rubric.source.index];
+                return (
+                  <li
+                    ref={providedDraggable.innerRef}
+                    {...providedDraggable.draggableProps}
+                    {...providedDraggable.dragHandleProps}
+                    className={`flex items-center group p-2 rounded ${colors.dragBg} shadow-lg border-2 ${colors.border}`}
+                    style={providedDraggable.draggableProps.style}
+                  >
+                    <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                      <Bars3Icon className="h-5 w-5" />
+                    </div>
+                    <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
+                    {getThoughtCount(point.id) > 0 && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full mr-2">
+                        {getThoughtCount(point.id)}
+                      </span>
+                    )}
+                  </li>
+                );
+              }}
+            >
               {(provided: DroppableProvided) => (
                 <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
                   {points.map((point, index) => (
@@ -407,11 +432,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                           ref={providedDraggable.innerRef}
                           {...providedDraggable.draggableProps}
                           {...providedDraggable.dragHandleProps}
-                          className={`flex items-center group p-2 rounded transition-colors ${snapshot.isDragging ? `${colors.dragBg} shadow-md` : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
-                          style={{
-                            ...providedDraggable.draggableProps.style,
-                            // Add any custom styles for dragging if needed
-                          }}
+                          className={`flex items-center group p-2 rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                          style={providedDraggable.draggableProps.style}
                         >
                           {/* Drag Handle */}
                           <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">

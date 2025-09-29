@@ -10,6 +10,6 @@ Run `npm test` under folder `/frontend` in terminal to execute all tests.
 When fixing specific failing tests:
 1. Run only the failing test to save time and focus on the issue
 2. Fix the issue in the relevant files
-3. After completing the fix, run `npm test` again to verify that all tests are passed
+3. After completing the fix, run `npm run test` again to verify that all tests are passed
 4. Make sure your changes don't break other functionality
 5. Execute this is loop

@@ -113,10 +113,10 @@ describe('Sermon Detail Page', () => {
       });
     });
 
-    it('renders the brainstorm module', async () => {
+    it('renders the brainstorm trigger button', async () => {
       await waitFor(() => {
-        expect(screen.getByTestId('brainstorm-module')).toBeInTheDocument();
-        expect(screen.getByText('Brainstorm Module')).toBeInTheDocument();
+        // BrainstormModule is now hidden by default, only the trigger button is visible
+        expect(screen.getByLabelText('brainstorm.title')).toBeInTheDocument();
       });
     });
 
@@ -136,12 +136,14 @@ describe('Sermon Detail Page', () => {
     it('starts in classic mode by default', async () => {
       await waitFor(() => {
         const outline = screen.getByTestId('sermon-outline');
-        const brainstorm = screen.getByTestId('brainstorm-module');
         const knowledge = screen.getByTestId('knowledge-section');
+        
+        // BrainstormModule button is visible in classic mode
+        const brainstormButton = screen.getByLabelText('brainstorm.title');
 
         expect(outline).toHaveAttribute('data-mode', 'classic');
-        expect(brainstorm).toHaveAttribute('data-mode', 'classic');
         expect(knowledge).toHaveAttribute('data-mode', 'classic');
+        expect(brainstormButton).toBeInTheDocument();
       });
     });
 

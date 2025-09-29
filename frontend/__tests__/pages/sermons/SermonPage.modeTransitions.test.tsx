@@ -62,17 +62,34 @@ describe('SermonPage mode transitions', () => {
     mockLocalStorage.setItem.mockClear();
   });
 
-  test('classic mode shows recorder and brainstorm', async () => {
+  test('classic mode shows recorder and brainstorm trigger button', async () => {
     // By default mode is null => classic
     render(<SermonPage />);
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
-    expect(screen.getByTestId('brainstorm')).toBeInTheDocument();
+    
+    // Brainstorm button should be visible
+    const brainstormButton = screen.getByLabelText('brainstorm.title');
+    expect(brainstormButton).toBeInTheDocument();
+    
+    // Brainstorm module should not be visible initially
+    expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
+    
+    // Click to open brainstorm
+    fireEvent.click(brainstormButton);
+    
+    // Now brainstorm module should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('brainstorm')).toBeInTheDocument();
+    });
   });
 
   test('prep mode shows mini recorder and hides brainstorm', async () => {
     searchParamsMock.set('mode', 'prep');
     render(<SermonPage />);
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
+    
+    // Brainstorm button should not be visible in prep mode
+    expect(screen.queryByLabelText('brainstorm.title')).not.toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
   });
 

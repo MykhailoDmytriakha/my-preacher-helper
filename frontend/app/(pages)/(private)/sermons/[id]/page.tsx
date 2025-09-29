@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import type { Sermon, Thought, Outline, Preparation } from "@/models/models";
+import type { Sermon, Thought, Outline, Preparation, BrainstormSuggestion } from "@/models/models";
 import Link from "next/link";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
@@ -153,24 +153,13 @@ export default function SermonPage() {
     if (uiMode === 'prep' && isFilterOpen) setIsFilterOpen(false);
   }, [uiMode]);
 
+  const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
+  const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
+
   // Reusable renderer for classic content (brainstorm, filters, thoughts)
   const renderClassicContent = (options?: { withBrainstorm?: boolean }) => (
     // Disable layout animations to avoid vertical stretch on filter changes
     <motion.div layout={false} className="space-y-4 sm:space-y-6">
-      <AnimatePresence initial={false}>
-        {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
-          <motion.section
-            key="ideas"
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -8, height: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            style={{ overflow: 'hidden' }}
-          >
-            <BrainstormModule sermonId={sermon!.id} />
-          </motion.section>
-        )}
-      </AnimatePresence>
       <section>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -187,7 +176,6 @@ export default function SermonPage() {
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, y: -6, height: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  // Allow dropdown to render outside wrapper bounds
                   style={{ overflow: 'visible' }}
                 >
                   <button
@@ -227,7 +215,26 @@ export default function SermonPage() {
               )}
             </AnimatePresence>
           </div>
-          <div>
+          <div className="flex items-center gap-2">
+            <AnimatePresence initial={false}>
+              {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
+                <motion.button
+                  key="brainstorm-trigger"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setIsBrainstormOpen(!isBrainstormOpen)}
+                  className="inline-flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-md text-sm font-medium bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 text-amber-700 dark:text-amber-300 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/30 dark:hover:to-yellow-900/30 transition-all shadow-sm hover:shadow"
+                  aria-label={t('brainstorm.title')}
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+                  </svg>
+                  <span className="hidden sm:inline">{t('brainstorm.title')}</span>
+                </motion.button>
+              )}
+            </AnimatePresence>
             <AddThoughtManual 
               sermonId={sermon!.id} 
               onNewThought={handleNewManualThought}
@@ -236,6 +243,25 @@ export default function SermonPage() {
             />
           </div>
         </div>
+        <AnimatePresence initial={false}>
+          {uiMode === 'classic' && isBrainstormOpen && (options?.withBrainstorm !== false) && (
+            <motion.div
+              key="brainstorm-panel"
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+              className="mb-4"
+            >
+              <BrainstormModule 
+                sermonId={sermon!.id}
+                currentSuggestion={brainstormSuggestion}
+                onSuggestionChange={setBrainstormSuggestion}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <AnimatePresence initial={false}>
           {uiMode === 'classic' && (viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
             <motion.div
@@ -1034,9 +1060,6 @@ export default function SermonPage() {
                         transcriptionError={transcriptionError}
                         onClearError={handleClearError}
                       />
-                    </section>
-                    <section>
-                      <BrainstormModule sermonId={sermon!.id} />
                     </section>
                     <section>
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">

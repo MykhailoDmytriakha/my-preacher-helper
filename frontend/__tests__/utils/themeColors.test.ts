@@ -52,7 +52,7 @@ describe('themeColors', () => {
       expect(styling.headerBg).toBe('bg-amber-50 dark:bg-amber-900/40');
       expect(styling.headerHover).toBe('hover:bg-amber-100 dark:hover:bg-amber-900/40');
       expect(styling.border).toBe('border-amber-200 dark:border-amber-800');
-      expect(styling.dragBg).toBe('bg-amber-50 dark:bg-amber-900/40');
+      expect(styling.dragBg).toBe('bg-amber-200 dark:bg-amber-700');
       expect(styling.badge).toContain('bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200');
     });
 
@@ -62,7 +62,7 @@ describe('themeColors', () => {
       expect(styling.headerBg).toBe('bg-blue-50 dark:bg-blue-900/20');
       expect(styling.headerHover).toBe('hover:bg-blue-100 dark:hover:bg-blue-900/40');
       expect(styling.border).toBe('border-blue-50 dark:border-blue-300');
-      expect(styling.dragBg).toBe('bg-blue-50 dark:bg-blue-900/20');
+      expect(styling.dragBg).toBe('bg-blue-200 dark:bg-blue-700');
       expect(styling.badge).toContain('bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200');
     });
 
@@ -72,7 +72,7 @@ describe('themeColors', () => {
       expect(styling.headerBg).toBe('bg-green-50 dark:bg-green-900/30');
       expect(styling.headerHover).toBe('hover:bg-green-100 dark:hover:bg-green-900/40');
       expect(styling.border).toBe('border-green-200 dark:border-green-800');
-      expect(styling.dragBg).toBe('bg-green-50 dark:bg-green-900/30');
+      expect(styling.dragBg).toBe('bg-green-200 dark:bg-green-700');
       expect(styling.badge).toContain('bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200');
     });
   });

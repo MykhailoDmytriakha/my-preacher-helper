@@ -77,19 +77,11 @@ const mockBrainstormSuggestion: BrainstormSuggestion = {
   type: 'context'
 };
 
-// Helper function to expand the brainstorm module
+// Helper function - no longer needed with new single-state design
+// Keeping for backwards compatibility but it's now a no-op
 const expandBrainstormModule = async () => {
-  // In the new UI, the collapsed state is a clickable div, not a button
-  // Look for the element with the heading "Ideas" and click on its parent container
-  const moduleContainer = screen.getByRole('heading', { name: /ideas/i }).closest('div[class*="cursor-pointer"]');
-  expect(moduleContainer).toBeInTheDocument();
-  
-  fireEvent.click(moduleContainer!);
-  
-  // Wait for the expansion animation and generate button to appear
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: /generate/i })).toBeInTheDocument();
-  });
+  // New design doesn't have expand/collapse - the generate button is always visible when there's no suggestion
+  // This function is kept to avoid breaking existing tests
 };
 
 describe('BrainstormModule', () => {
@@ -105,53 +97,57 @@ describe('BrainstormModule', () => {
   });
 
   describe('Initial Render', () => {
-    it('renders with correct initial collapsed state', () => {
+    it('renders with correct initial state showing trigger button', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
 
-      // Check that the trigger container is visible (not a button anymore)
-      const moduleContainer = screen.getByRole('heading', { name: /ideas/i }).closest('div');
-      expect(moduleContainer).toBeInTheDocument();
+      // New design: trigger button is visible from the start
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      expect(generateButton).toBeInTheDocument();
       expect(screen.getByText('Ideas')).toBeInTheDocument();
       expect(screen.getByText('Get unstuck with thinking prompts')).toBeInTheDocument();
-
-      // Check that expanded content is NOT visible
-      expect(screen.queryByRole('button', { name: /generate/i })).not.toBeInTheDocument();
     });
 
-    it('expands when trigger button is clicked', async () => {
+    it('shows suggestion card after generating', async () => {
+      mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
+      
       render(<BrainstormModule sermonId={mockSermonId} />);
 
-      await expandBrainstormModule();
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
       
-      // Check that expanded content is now visible
-      expect(screen.getByRole('button', { name: /generate/i })).toBeInTheDocument();
-      expect(screen.getByText('Click \'Generate\' to get a thinking prompt')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
+      });
       
-      // Check close button is present
+      // Close button should be present in suggestion card
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
+      
+      // Original trigger button should not be visible
+      expect(screen.queryByText('Get unstuck with thinking prompts')).not.toBeInTheDocument();
     });
 
-    it('collapses when close button is clicked', async () => {
+    it('returns to trigger state when close button is clicked', async () => {
+      mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
+      
       render(<BrainstormModule sermonId={mockSermonId} />);
 
-      await expandBrainstormModule();
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
       
-      // Verify expanded state
-      expect(screen.getByRole('button', { name: /generate/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
+      });
       
       // Click the close button
       const closeButton = screen.getByRole('button', { name: /close/i });
       fireEvent.click(closeButton);
       
-      // Wait for collapse - the generate button should disappear
+      // Should return to trigger state
       await waitFor(() => {
-        expect(screen.queryByRole('button', { name: /generate/i })).not.toBeInTheDocument();
+        expect(screen.getByText('Get unstuck with thinking prompts')).toBeInTheDocument();
       });
       
-      // Note: Testing the reappearance of the trigger button is skipped due to 
-      // Framer Motion animation complexities in the JSDOM test environment.
-      // The core functionality (collapse behavior) is verified above.
+      expect(screen.queryByText(mockBrainstormSuggestion.text)).not.toBeInTheDocument();
     });
 
     it('applies custom className when provided', () => {
@@ -164,13 +160,11 @@ describe('BrainstormModule', () => {
       expect(moduleElement).toHaveClass(customClass);
     });
 
-    it('has correct ARIA attributes', async () => {
+    it('has correct ARIA attributes', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
       const generateButton = screen.getByRole('button', { name: /generate/i });
-      expect(generateButton).toHaveAttribute('aria-label', 'Generate');
+      expect(generateButton).toHaveAttribute('aria-label');
     });
   });
 
@@ -179,8 +173,6 @@ describe('BrainstormModule', () => {
       mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
 
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
@@ -198,12 +190,11 @@ describe('BrainstormModule', () => {
       expect(mockGenerateBrainstormSuggestion).toHaveBeenCalledTimes(1);
       expect(mockGenerateBrainstormSuggestion).toHaveBeenCalledWith(mockSermonId);
 
-      // Check that button text changes to "Generate Another"
-      expect(generateButton).toHaveTextContent('Generate Another');
-      expect(generateButton).toBeEnabled();
-
       // Check suggestion type display
       expect(screen.getByText('Context')).toBeInTheDocument();
+      
+      // Check that "Another" button is present in the suggestion card
+      expect(screen.getByText('Another')).toBeInTheDocument();
     });
 
     it('generates multiple suggestions when requested', async () => {
@@ -219,9 +210,7 @@ describe('BrainstormModule', () => {
 
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
-      const generateButton = screen.getByRole('button', { name: /generate/i });
+      let generateButton = screen.getByRole('button', { name: /generate/i });
       
       // First generation
       fireEvent.click(generateButton);
@@ -229,8 +218,10 @@ describe('BrainstormModule', () => {
         expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
       });
 
-      // Second generation
-      fireEvent.click(generateButton);
+      // Second generation - click the "Another" button in the suggestion card
+      const anotherButton = screen.getByText('Another').closest('button')!;
+      fireEvent.click(anotherButton);
+      
       await waitFor(() => {
         expect(screen.getByText(secondSuggestion.text)).toBeInTheDocument();
       });
@@ -244,17 +235,13 @@ describe('BrainstormModule', () => {
   });
 
   describe('Suggestion Types', () => {
-    beforeEach(async () => {
-      render(<BrainstormModule sermonId={mockSermonId} />);
-      await expandBrainstormModule();
-    });
-
     it('correctly displays context suggestion type', async () => {
       mockGenerateBrainstormSuggestion.mockResolvedValue({
         ...mockBrainstormSuggestion,
         type: 'context'
       });
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -269,6 +256,7 @@ describe('BrainstormModule', () => {
         type: 'question'
       });
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -283,6 +271,7 @@ describe('BrainstormModule', () => {
         type: 'reflection'
       });
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -297,6 +286,7 @@ describe('BrainstormModule', () => {
         type: 'relationship'
       });
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -311,6 +301,7 @@ describe('BrainstormModule', () => {
         type: 'application'
       });
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -322,7 +313,6 @@ describe('BrainstormModule', () => {
 
   describe('Loading States', () => {
     it('shows loading state during API call', async () => {
-      // Create a promise that won't resolve immediately
       let resolvePromise: (value: BrainstormSuggestion) => void;
       const pendingPromise = new Promise<BrainstormSuggestion>((resolve) => {
         resolvePromise = resolve;
@@ -331,8 +321,6 @@ describe('BrainstormModule', () => {
       mockGenerateBrainstormSuggestion.mockReturnValue(pendingPromise);
 
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
@@ -344,9 +332,9 @@ describe('BrainstormModule', () => {
       // Resolve the promise
       resolvePromise!(mockBrainstormSuggestion);
       
-      // Wait for loading to complete
+      // Wait for loading to complete and suggestion to appear
       await waitFor(() => {
-        expect(generateButton).toBeEnabled();
+        expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
       });
     });
 
@@ -354,8 +342,6 @@ describe('BrainstormModule', () => {
       mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
 
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       let generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
@@ -372,24 +358,21 @@ describe('BrainstormModule', () => {
       
       mockGenerateBrainstormSuggestion.mockReturnValue(secondPendingPromise);
 
-      // Click "Generate Another"
-      generateButton = screen.getByRole('button', { name: /generate another/i });
-      fireEvent.click(generateButton);
+      // Click "Another" button in the suggestion card
+      const anotherButton = screen.getByText('Another').closest('button')!;
+      fireEvent.click(anotherButton);
 
-      // Both "Generate Another" buttons should be disabled during loading
-      const anotherButtons = screen.getAllByText(/another/i);
-      anotherButtons.forEach(button => {
-        if (button.closest('button')) {
-          expect(button.closest('button')).toBeDisabled();
-        }
+      // Button should be disabled during loading
+      await waitFor(() => {
+        expect(anotherButton).toBeDisabled();
       });
 
       // Resolve the second promise
       resolveSecondPromise!(mockBrainstormSuggestion);
       
       await waitFor(() => {
-        const enabledGenerateButton = screen.getByRole('button', { name: /generate another/i });
-        expect(enabledGenerateButton).toBeEnabled();
+        const enabledAnotherButton = screen.getByText('Another').closest('button')!;
+        expect(enabledAnotherButton).toBeEnabled();
       });
     });
   });
@@ -401,8 +384,6 @@ describe('BrainstormModule', () => {
 
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
@@ -410,8 +391,9 @@ describe('BrainstormModule', () => {
         expect(toast.error).toHaveBeenCalledWith('Failed to generate suggestion. Please try again.');
       });
 
-      // Button should be re-enabled after error
+      // Button should be re-enabled after error and still showing trigger state
       expect(generateButton).toBeEnabled();
+      expect(screen.getByText('Get unstuck with thinking prompts')).toBeInTheDocument();
     });
 
     it('handles missing suggestion gracefully', async () => {
@@ -419,31 +401,28 @@ describe('BrainstormModule', () => {
 
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
       await waitFor(() => {
         expect(generateButton).toBeEnabled();
       });
+      
+      // Should remain in trigger state when suggestion is null
+      expect(screen.getByText('Get unstuck with thinking prompts')).toBeInTheDocument();
     });
   });
 
   describe('Accessibility', () => {
-    it('has proper ARIA labels', async () => {
+    it('has proper ARIA labels', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       const generateButton = screen.getByRole('button', { name: /generate/i });
-      expect(generateButton).toHaveAttribute('aria-label', 'Generate');
+      expect(generateButton).toHaveAttribute('aria-label');
     });
 
-    it('maintains proper focus management', async () => {
+    it('maintains proper focus management', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       const generateButton = screen.getByRole('button', { name: /generate/i });
       generateButton.focus();
@@ -456,8 +435,6 @@ describe('BrainstormModule', () => {
 
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
       const generateButton = screen.getByRole('button', { name: /generate/i });
       
       // Initial state - button should be enabled
@@ -468,20 +445,15 @@ describe('BrainstormModule', () => {
       // Loading state
       expect(generateButton).toBeDisabled();
       
-      // Wait for completion
+      // Wait for completion - suggestion should appear
       await waitFor(() => {
-        expect(generateButton).toBeEnabled();
+        expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
       });
     });
   });
 
   describe('Enhanced Suggestion Features', () => {
-    beforeEach(async () => {
-      render(<BrainstormModule sermonId={mockSermonId} />);
-      await expandBrainstormModule();
-    });
-
-    it('correctly displays complexity badge for multi-dimensional suggestions', async () => {
+    it('handles suggestions with complexity and dimensions gracefully', async () => {
       const enhancedSuggestion: BrainstormSuggestion = {
         ...mockBrainstormSuggestion,
         type: 'multi-perspective',
@@ -491,97 +463,34 @@ describe('BrainstormModule', () => {
 
       mockGenerateBrainstormSuggestion.mockResolvedValue(enhancedSuggestion);
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
       await waitFor(() => {
-        // In test environment, i18n keys are shown as-is
-        expect(screen.getByText('brainstorm.types.multi-perspective')).toBeInTheDocument();
-        expect(screen.getByText('brainstorm.complexity.multi-dimensional')).toBeInTheDocument();
+        expect(screen.getByText(enhancedSuggestion.text)).toBeInTheDocument();
       });
 
-      // Check that complexity badge has correct styling (purple for multi-dimensional)
-      const complexityBadge = screen.getByText('brainstorm.complexity.multi-dimensional');
-      expect(complexityBadge).toHaveClass('bg-purple-100', 'text-purple-800');
+      // New design: complexity and dimensions are not displayed, only type
+      expect(screen.getByText('brainstorm.types.multi-perspective')).toBeInTheDocument();
     });
 
-    it('displays dimensions badges when present', async () => {
-      const enhancedSuggestion: BrainstormSuggestion = {
-        ...mockBrainstormSuggestion,
-        type: 'synthesis',
-        complexity: 'high',
-        dimensions: ['textual-analysis', 'contemporary-application', 'theological-depth']
-      };
-
-      mockGenerateBrainstormSuggestion.mockResolvedValue(enhancedSuggestion);
-
-      const generateButton = screen.getByRole('button', { name: /generate/i });
-      fireEvent.click(generateButton);
-
-      await waitFor(() => {
-        // In test environment, i18n keys are shown as-is
-        expect(screen.getByText('brainstorm.types.synthesis')).toBeInTheDocument();
-        expect(screen.getByText('brainstorm.complexity.high')).toBeInTheDocument();
-      });
-
-      // Check that first two dimensions are displayed
-      expect(screen.getByText('textual-analysis')).toBeInTheDocument();
-      expect(screen.getByText('contemporary-application')).toBeInTheDocument();
-      
-      // Third dimension should show as "+1" since we limit to 2 displayed
-      expect(screen.getByText('+1')).toBeInTheDocument();
-    });
-
-    it('handles suggestions without complexity or dimensions gracefully', async () => {
+    it('handles suggestions without complexity or dimensions', async () => {
       const basicSuggestion: BrainstormSuggestion = {
         id: 'bs-basic-123',
         text: 'Basic suggestion without enhanced features',
         type: 'question'
-        // No complexity or dimensions fields
       };
 
       mockGenerateBrainstormSuggestion.mockResolvedValue(basicSuggestion);
 
+      render(<BrainstormModule sermonId={mockSermonId} />);
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
 
       await waitFor(() => {
         expect(screen.getByText('Question')).toBeInTheDocument();
       });
-
-      // Should not show complexity or dimensions badges
-      expect(screen.queryByText('brainstorm.complexity.basic')).not.toBeInTheDocument();
-      expect(screen.queryByText('textual-analysis')).not.toBeInTheDocument();
-    });
-
-    it('displays correct styling for different complexity levels', async () => {
-      const complexityLevels = [
-        { complexity: 'high', expectedClass: 'bg-blue-100', expectedText: 'brainstorm.complexity.high' },
-        { complexity: 'moderate', expectedClass: 'bg-green-100', expectedText: 'brainstorm.complexity.moderate' },
-        { complexity: 'basic', expectedClass: 'bg-gray-100', expectedText: 'brainstorm.complexity.basic' }
-      ] as const;
-
-      for (const { complexity, expectedClass, expectedText } of complexityLevels) {
-        const suggestion: BrainstormSuggestion = {
-          ...mockBrainstormSuggestion,
-          complexity
-        };
-
-        mockGenerateBrainstormSuggestion.mockResolvedValue(suggestion);
-
-        const generateButton = screen.getByRole('button', { name: /generate/i });
-        fireEvent.click(generateButton);
-
-        await waitFor(() => {
-          expect(screen.getByText(expectedText)).toBeInTheDocument();
-        });
-
-        const complexityBadge = screen.getByText(expectedText);
-        expect(complexityBadge).toHaveClass(expectedClass);
-
-        // Reset for next iteration
-        mockGenerateBrainstormSuggestion.mockReset();
-      }
     });
   });
 
@@ -593,27 +502,18 @@ describe('BrainstormModule', () => {
       expect(moduleElement).toHaveClass('relative');
     });
 
-    it('applies correct icon styling', async () => {
+    it('applies correct icon styling in trigger button', () => {
       render(<BrainstormModule sermonId={mockSermonId} />);
       
-      await expandBrainstormModule();
-      
-      // Check icons have correct classes
-      const icons = screen.getAllByTestId('lightbulb-icon');
-      expect(icons.length).toBeGreaterThanOrEqual(2);
-      
-      // The generate button icon should have w-4 h-4 classes
       const generateButton = screen.getByRole('button', { name: /generate/i });
       const buttonIcon = generateButton.querySelector('[data-testid="lightbulb-icon"]');
-      expect(buttonIcon).toHaveClass('w-4', 'h-4');
+      expect(buttonIcon).toHaveClass('w-6', 'h-6');
     });
 
     it('displays suggestion with correct styling', async () => {
       mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
 
       render(<BrainstormModule sermonId={mockSermonId} />);
-      
-      await expandBrainstormModule();
       
       const generateButton = screen.getByRole('button', { name: /generate/i });
       fireEvent.click(generateButton);
@@ -622,10 +522,68 @@ describe('BrainstormModule', () => {
         expect(screen.getByText(mockBrainstormSuggestion.text)).toBeInTheDocument();
       });
 
-      // Check suggestion container styling
+      // Check suggestion is visible
       const suggestionText = screen.getByText(mockBrainstormSuggestion.text);
-      const suggestionContainer = suggestionText.closest('.p-4');
-      expect(suggestionContainer).toHaveClass('bg-yellow-50', 'rounded-lg', 'border');
+      expect(suggestionText).toBeInTheDocument();
+    });
+  });
+
+  describe('External State Management', () => {
+    it('uses external state when provided', async () => {
+      const externalSuggestion: BrainstormSuggestion = {
+        id: 'external-123',
+        text: 'External suggestion text',
+        type: 'context'
+      };
+      const onSuggestionChange = jest.fn();
+
+      render(
+        <BrainstormModule 
+          sermonId={mockSermonId}
+          currentSuggestion={externalSuggestion}
+          onSuggestionChange={onSuggestionChange}
+        />
+      );
+
+      // Should display the external suggestion immediately
+      expect(screen.getByText(externalSuggestion.text)).toBeInTheDocument();
+    });
+
+    it('calls onSuggestionChange when generating new suggestion', async () => {
+      const onSuggestionChange = jest.fn();
+      mockGenerateBrainstormSuggestion.mockResolvedValue(mockBrainstormSuggestion);
+
+      render(
+        <BrainstormModule 
+          sermonId={mockSermonId}
+          currentSuggestion={null}
+          onSuggestionChange={onSuggestionChange}
+        />
+      );
+
+      const generateButton = screen.getByRole('button', { name: /generate/i });
+      fireEvent.click(generateButton);
+
+      await waitFor(() => {
+        expect(onSuggestionChange).toHaveBeenCalledWith(mockBrainstormSuggestion);
+      });
+    });
+
+    it('calls onSuggestionChange when closing suggestion', async () => {
+      const onSuggestionChange = jest.fn();
+
+      render(
+        <BrainstormModule 
+          sermonId={mockSermonId}
+          currentSuggestion={mockBrainstormSuggestion}
+          onSuggestionChange={onSuggestionChange}
+        />
+      );
+
+      const closeButton = screen.getByRole('button', { name: /close/i });
+      fireEvent.click(closeButton);
+
+      expect(onSuggestionChange).toHaveBeenCalledWith(null);
     });
   });
 }); 

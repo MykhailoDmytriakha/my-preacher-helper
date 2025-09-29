@@ -128,7 +128,9 @@ export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclu
     headerBg: `${colors.bg} dark:${colors.darkBg}`,
     headerHover: `${colors.hover} dark:${colors.darkHover}`,
     border: `${colors.border} dark:${colors.darkBorder}`,
-    dragBg: `${colors.bg} dark:${colors.darkBg}`,
+    dragBg: `${colors.bg.split('-')[1] === 'amber' ? 'bg-amber-200 dark:bg-amber-700' : 
+            colors.bg.split('-')[1] === 'blue' ? 'bg-blue-200 dark:bg-blue-700' : 
+            'bg-green-200 dark:bg-green-700'}`,
     // Construct badge classes carefully
     badge: `${colors.bg.split('-')[1] === 'amber' ? 'bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200' : 
             colors.bg.split('-')[1] === 'blue' ? 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200' : 
