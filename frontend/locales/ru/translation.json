@@ -287,6 +287,8 @@
     "availableTags": "Доступные теги для добавления:",
     "outlinePointLabel": "Связанный пункт плана",
     "noOutlinePoint": "Пункт плана не выбран",
+    "noOutlinePointAssigned": "Пункт плана не назначен",
+    "selectOutlinePoint": "Выберите пункт плана",
     "selectedOutlinePoint": "Выбран пункт плана из раздела «{{section}}»"
   },
   "structure": {

@@ -287,6 +287,8 @@
     "availableTags": "Доступні теги для додавання:",
     "outlinePointLabel": "Пов'язаний пункт плану",
     "noOutlinePoint": "Пункт плану не вибрано",
+    "noOutlinePointAssigned": "Пункт плану не призначено",
+    "selectOutlinePoint": "Оберіть пункт плану",
     "selectedOutlinePoint": "Вибрано пункт плану з розділу «{{section}}»"
   },
   "structure": {

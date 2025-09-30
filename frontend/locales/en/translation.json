@@ -286,6 +286,8 @@
     "availableTags": "Available tags to add:",
     "outlinePointLabel": "Associated Outline Point",
     "noOutlinePoint": "No outline point selected",
+    "noOutlinePointAssigned": "Outline point not assigned",
+    "selectOutlinePoint": "Select outline point",
     "selectedOutlinePoint": "Selected outline point from {{section}}"
   },
   "structure": {

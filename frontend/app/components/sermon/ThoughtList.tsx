@@ -8,8 +8,10 @@ interface ThoughtListProps {
   totalThoughtsCount: number;
   allowedTags: { name: string; color: string }[];
   sermonOutline: Outline | null | undefined;
+  sermonId?: string;
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
+  onThoughtUpdate?: (updatedThought: Thought) => void;
   resetFilters: () => void;
 }
 
@@ -18,8 +20,10 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
   totalThoughtsCount,
   allowedTags,
   sermonOutline,
+  sermonId,
   onDelete,
   onEditStart,
+  onThoughtUpdate,
   resetFilters,
 }) => {
   const { t } = useTranslation();
@@ -65,8 +69,10 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
           index={index} // Pass index if needed by ThoughtCard
           allowedTags={allowedTags}
           sermonOutline={sermonOutline ?? undefined} // Pass undefined if null
+          sermonId={sermonId}
           onDelete={() => onDelete(thought.id)} // Pass only thought ID
           onEditStart={() => onEditStart(thought, index)} // Pass thought and index
+          onThoughtUpdate={onThoughtUpdate}
         />
       ))}
     </div>

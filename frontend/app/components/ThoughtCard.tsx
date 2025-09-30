@@ -10,6 +10,7 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 
 // Components
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
+import OutlinePointSelector from './OutlinePointSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Type imports
@@ -22,11 +23,6 @@ type TagInfo = {
   name: string; 
   color: string; 
   translationKey?: string 
-};
-
-type OutlinePointInfo = { 
-  text: string; 
-  section: string 
 };
 
 // Constants
@@ -42,18 +38,16 @@ interface ThoughtCardProps {
   index: number;
   allowedTags: TagInfo[];
   sermonOutline?: Outline;
+  sermonId?: string;
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
+  onThoughtUpdate?: (updatedThought: Thought) => void;
 }
 
 interface TagsDisplayProps {
   tags: string[];
   allowedTags: TagInfo[];
   compact?: boolean;
-}
-
-interface OutlinePointDisplayProps {
-  outlinePoint: OutlinePointInfo | undefined;
 }
 
 interface WarningMessageProps {
@@ -67,8 +61,10 @@ const ThoughtCard = ({
   index,
   allowedTags,
   sermonOutline,
+  sermonId,
   onDelete,
-  onEditStart
+  onEditStart,
+  onThoughtUpdate
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
 
@@ -84,7 +80,7 @@ const ThoughtCard = ({
   }, [t]);
 
   // Helper Functions
-  const findOutlinePoint = useCallback((): OutlinePointInfo | undefined => {
+  const findOutlinePoint = useCallback((): { text: string; section: string } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
     
     const introPoint = sermonOutline.introduction.find(p => p.id === thought.outlinePointId);
@@ -137,6 +133,24 @@ const ThoughtCard = ({
     
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag]);
+
+  const handleOutlinePointChange = useCallback(async (outlinePointId: string | undefined) => {
+    if (!sermonId || !onThoughtUpdate) return;
+    
+    const updatedThought: Thought = {
+      ...thought,
+      outlinePointId
+    };
+    
+    try {
+      const { updateThought } = await import('@/services/thought.service');
+      const savedThought = await updateThought(sermonId, updatedThought);
+      onThoughtUpdate(savedThought);
+    } catch (error) {
+      console.error('Failed to update outline point:', error);
+      throw error;
+    }
+  }, [sermonId, thought, onThoughtUpdate]);
 
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
@@ -219,15 +233,18 @@ const ThoughtCard = ({
         {thought.text}
       </motion.p>
 
-      {outlinePoint && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <OutlinePointDisplay outlinePoint={outlinePoint} getSectionName={getSectionName} />
-        </motion.div>
-      )}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <OutlinePointSelector
+          thought={thought}
+          sermonOutline={sermonOutline}
+          onOutlinePointChange={handleOutlinePointChange}
+          disabled={!sermonId || !onThoughtUpdate}
+        />
+      </motion.div>
     </motion.div>
   );
 };
@@ -310,20 +327,6 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
 });
 
 TagsDisplay.displayName = "TagsDisplay";
-
-const OutlinePointDisplay = memo(({ outlinePoint, getSectionName }: OutlinePointDisplayProps & { getSectionName: (section?: string) => string }) => {
-  if (!outlinePoint) return null;
-  
-  return (
-    <div className="mt-3">
-      <span className="text-sm inline-flex items-center rounded-full px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:border-blue-800 font-medium">
-        {getSectionName(outlinePoint.section)}: {outlinePoint.text}
-      </span>
-    </div>
-  );
-});
-
-OutlinePointDisplay.displayName = "OutlinePointDisplay";
 
 interface WarningMessageWithHelperProps extends WarningMessageProps {
   getSectionName: (section?: string) => string;

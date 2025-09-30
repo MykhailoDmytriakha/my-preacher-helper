@@ -334,8 +334,10 @@ export default function SermonPage() {
             totalThoughtsCount={totalThoughts}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
+            sermonId={sermon?.id}
             onDelete={handleDeleteThought}
             onEditStart={handleEditThoughtStart}
+            onThoughtUpdate={handleThoughtUpdate}
             resetFilters={resetFilters}
           />
         </motion.div>
@@ -833,6 +835,18 @@ export default function SermonPage() {
     setSermon(updatedSermon);
   }, [setSermon]);
 
+  const handleThoughtUpdate = useCallback((updatedThought: Thought) => {
+    setSermon((prevSermon) => {
+      if (!prevSermon) return null;
+      return {
+        ...prevSermon,
+        thoughts: prevSermon.thoughts.map(t => 
+          t.id === updatedThought.id ? updatedThought : t
+        ),
+      };
+    });
+  }, [setSermon]);
+
   if (loading || !sermon) {
     return (
       <div className="py-8">
@@ -1160,8 +1174,10 @@ export default function SermonPage() {
                           totalThoughtsCount={totalThoughts}
                           allowedTags={allowedTags}
                           sermonOutline={sermon?.outline}
+                          sermonId={sermon?.id}
                           onDelete={handleDeleteThought}
                           onEditStart={handleEditThoughtStart}
+                          onThoughtUpdate={handleThoughtUpdate}
                           resetFilters={resetFilters}
                         />
                       </div>
