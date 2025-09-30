@@ -27,6 +27,7 @@
       "@clients/*": ["./app/api/clients/*"],
       "@repositories/*": ["./app/api/repositories/*"],
       "@utils/*": ["./app/utils/*"],
+      "@test-utils/*": ["./test-utils/*"],
       "@locales/*": ["./locales/*"],
       "@hooks/*": ["./hooks/*"],
       "@lib/*": ["./lib/*"]
@@ -34,5 +35,5 @@
     "types": ["node", "jest", "@testing-library/jest-dom"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.js"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "test-utils"]
 }

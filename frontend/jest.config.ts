@@ -25,6 +25,7 @@ const config: Config = {
     '^@api/(.*)$': '<rootDir>/app/api/$1',
     '^@clients/(.*)$': '<rootDir>/app/api/clients/$1', // Added from tsconfig
     '^@utils/(.*)$': '<rootDir>/app/utils/$1',
+    '^@test-utils/(.*)$': '<rootDir>/test-utils/$1',
     '^@locales/(.*)$': '<rootDir>/locales/$1',
     // Base path last
     '^@/(.*)$': '<rootDir>/app/$1', // Corrected base path target

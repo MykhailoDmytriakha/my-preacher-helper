@@ -307,11 +307,11 @@ const OutlinePointPlaceholder: React.FC<{
       <div 
         ref={setNodeRef}
         className={`min-h-[80px] p-4 transition-all ${
-          isOver ? 'bg-blue-100 ring-2 ring-blue-300' : ''
+          isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
         }`}
       >
         {!hasItems ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded">
+          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
             {t('structure.dropThoughtsHere')}
           </div>
         ) : (
@@ -331,6 +331,13 @@ const OutlinePointPlaceholder: React.FC<{
                   onMoveToAmbiguous={onMoveToAmbiguous}
                 />
               ))}
+              
+              {/* Additional drop area at the end */}
+              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
+                isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+              }`}>
+                {t('structure.dropThoughtsToAdd')}
+              </div>
             </div>
           </SortableContext>
         )}
@@ -372,11 +379,11 @@ const UnassignedThoughtsDropTarget: React.FC<{
     <div 
       ref={setNodeRef}
       className={`min-h-[80px] p-4 transition-all rounded-lg ${
-        isOver ? 'bg-blue-100 ring-2 ring-blue-300' : 'bg-gray-50 dark:bg-gray-800'
+        isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : 'bg-gray-50 dark:bg-gray-800'
       }`}
     >
       {items.length === 0 ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded">
+        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
           {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
         </div>
       ) : (
@@ -396,6 +403,13 @@ const UnassignedThoughtsDropTarget: React.FC<{
                 onMoveToAmbiguous={onMoveToAmbiguous}
               />
             ))}
+            
+            {/* Additional drop area at the end for consistency */}
+            <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
+              isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+            }`}>
+              {t('structure.dropToUnassign')}
+            </div>
           </div>
         </SortableContext>
       )}

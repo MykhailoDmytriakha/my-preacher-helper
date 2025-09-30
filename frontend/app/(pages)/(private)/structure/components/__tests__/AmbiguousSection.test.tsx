@@ -72,14 +72,14 @@ describe('AmbiguousSection', () => {
 
     it('should render empty state when no items', () => {
       render(<AmbiguousSection {...defaultProps} items={[]} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
 
     it('should render empty state when items array is undefined', () => {
       render(<AmbiguousSection {...defaultProps} items={undefined as any} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
   });
 
@@ -221,26 +221,26 @@ describe('AmbiguousSection', () => {
   describe('empty state handling', () => {
     it('should show empty state message when no items', () => {
       render(<AmbiguousSection {...defaultProps} items={[]} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
 
     it('should show empty state message when items is null', () => {
       render(<AmbiguousSection {...defaultProps} items={null as any} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
 
     it('should show empty state message when items is undefined', () => {
       render(<AmbiguousSection {...defaultProps} items={undefined as any} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
 
     it('should show empty state message when items array is empty', () => {
       render(<AmbiguousSection {...defaultProps} items={[]} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
   });
 
@@ -345,15 +345,15 @@ describe('AmbiguousSection', () => {
   describe('translation integration', () => {
     it('should use translation keys for text', () => {
       render(<AmbiguousSection {...defaultProps} items={[]} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
 
     it('should handle missing translations gracefully', () => {
       // This test ensures the component doesn't crash if translations are missing
       render(<AmbiguousSection {...defaultProps} items={[]} />);
-      
-      expect(screen.getByText('structure.noEntries')).toBeInTheDocument();
+
+      expect(screen.getByText('structure.dropToAmbiguous')).toBeInTheDocument();
     });
   });
 

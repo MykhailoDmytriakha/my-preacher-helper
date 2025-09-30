@@ -214,7 +214,7 @@ export const useStructureDnd = ({
       outlinePointId = null;
       overContainer = over.data.current?.container;
     } 
-    else if (over.id === "dummy-drop-zone") {
+    else if (over.id === "dummy-drop-zone" || over.id === "ambiguous-additional-drop") {
       overContainer = "ambiguous";
     } else if (!overContainer) {
       overContainer = String(over.id);

@@ -1,5 +1,6 @@
 import React from "react";
 import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { useTranslation } from 'react-i18next';
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
@@ -10,14 +11,44 @@ interface DummyDropZoneProps {
 
 const DummyDropZone: React.FC<DummyDropZoneProps> = ({ container }) => {
   const { t } = useTranslation();
+  const { setNodeRef, isOver } = useDroppable({ 
+    id: 'dummy-drop-zone',
+    data: { container: 'ambiguous' } 
+  });
   
   return (
     <div
+      ref={setNodeRef}
       data-container={container}
       style={{ minHeight: "80px" }}
-      className="p-4 text-center text-gray-500 dark:text-gray-400 border-dashed border-2 border-blue-300 dark:border-blue-600 col-span-full"
+      className={`p-4 text-center text-gray-400 dark:text-gray-500 border-dashed border-2 col-span-full rounded transition-all ${
+        isOver 
+          ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+          : 'border-gray-300 dark:border-gray-600'
+      }`}
     >
-      {t('structure.noEntries')}
+      {t('structure.dropToAmbiguous', { defaultValue: 'Drop thoughts here to mark as unclear' })}
+    </div>
+  );
+};
+
+const AdditionalDropZone: React.FC = () => {
+  const { t } = useTranslation();
+  const { setNodeRef, isOver } = useDroppable({ 
+    id: 'ambiguous-additional-drop',
+    data: { container: 'ambiguous' } 
+  });
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={`p-3 text-center text-gray-400 dark:text-gray-500 border-dashed border-2 rounded transition-all ${
+        isOver 
+          ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+          : 'border-gray-300 dark:border-gray-600'
+      }`}
+    >
+      {t('structure.dropToAmbiguous')}
     </div>
   );
 };
@@ -91,18 +122,25 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
               {itemCount === 0 ? (
                 <DummyDropZone container="ambiguous" />
               ) : (
-                safeItems.map((item) => (
-                  <SortableItem 
-                    key={item.id} 
-                    item={item} 
-                    containerId="ambiguous" 
-                    onEdit={onEdit} 
-                    showDeleteIcon={true}
-                    onDelete={onDelete}
-                    isDeleting={item.id === deletingItemId}
-                    activeId={activeId}
-                  />
-                ))
+                <>
+                  {safeItems.map((item) => (
+                    <SortableItem 
+                      key={item.id} 
+                      item={item} 
+                      containerId="ambiguous" 
+                      onEdit={onEdit} 
+                      showDeleteIcon={true}
+                      onDelete={onDelete}
+                      isDeleting={item.id === deletingItemId}
+                      activeId={activeId}
+                    />
+                  ))}
+                  
+                  {/* Additional drop area at the end for consistency */}
+                  <div className={`col-span-full ${focusedColumn ? '' : 'md:col-span-3'}`}>
+                    <AdditionalDropZone />
+                  </div>
+                </>
               )}
             </div>
           </SortableContext>
