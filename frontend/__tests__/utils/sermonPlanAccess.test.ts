@@ -66,12 +66,12 @@ describe('sermonPlanAccess utilities', () => {
     expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
   });
 
-  it('returns null access when neither plan nor structure exists', () => {
+  it('defaults to structure access when neither plan nor structure exists', () => {
     const sermon = { ...baseSermon };
 
     expect(isSermonReadyForPlan(sermon)).toBe(false);
-    expect(getSermonAccessType(sermon)).toBeNull();
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
+    expect(getSermonAccessType(sermon)).toBe('structure');
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
   });
 
   it('handles partial plan and partial structure inputs consistently', () => {

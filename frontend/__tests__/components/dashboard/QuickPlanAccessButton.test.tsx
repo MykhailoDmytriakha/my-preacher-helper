@@ -40,8 +40,9 @@ describe('QuickPlanAccessButton Component', () => {
     mockT.mockClear();
   });
 
-  it('does not render when sermon has no access type available', () => {
-    mockGetSermonAccessType.mockReturnValue(null);
+  it('renders structure button by default when sermon has no plan or structure data', () => {
+    mockGetSermonAccessType.mockReturnValue('structure');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/structure?sermonId=sermon-1');
 
     const sermon: Sermon = {
       id: 'sermon-1',
@@ -52,8 +53,12 @@ describe('QuickPlanAccessButton Component', () => {
       userId: 'user-1',
     };
 
-    const { container } = render(<QuickPlanAccessButton sermon={sermon} t={mockT as any} />);
-    expect(container.firstChild).toBeNull();
+    render(<QuickPlanAccessButton sermon={sermon} t={mockT as any} />);
+    
+    const button = screen.getByRole('button');
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveTextContent('To structure');
+    expect(button).toHaveClass('bg-blue-600');
   });
 
   it('renders plan access button when access type is plan', () => {
@@ -176,7 +181,8 @@ describe('QuickPlanAccessButton Component', () => {
   });
 
   it('calls getSermonAccessType with correct sermon', () => {
-    mockGetSermonAccessType.mockReturnValue(null);
+    mockGetSermonAccessType.mockReturnValue('structure');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/structure?sermonId=sermon-1');
 
     const sermon: Sermon = {
       id: 'sermon-1',

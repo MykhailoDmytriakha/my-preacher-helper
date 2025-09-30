@@ -45,8 +45,9 @@ export function isSermonReadyForPlan(sermon: Sermon): boolean {
 /**
  * Gets the access type for a sermon (plan or structure)
  * Returns the specific type of access available
+ * Defaults to 'structure' for new sermons without data
  */
-export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' | null {
+export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
   const planReady = hasPlan(sermon);
   const structureReady = hasStructure(sermon);
   const thoughtsReady = allThoughtsAssigned(sermon);
@@ -55,29 +56,21 @@ export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' | null
     return 'plan';
   }
 
-  if (planReady || structureReady) {
-    return 'structure';
-  }
-
-  return null;
+  return 'structure';
 }
 
 /**
  * Gets the preferred plan access route for a sermon
  * Prioritizes plan over structure if both exist and thoughts are assigned
+ * Defaults to structure page for new sermons
  */
 export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): string {
   const planReady = hasPlan(sermon);
-  const structureReady = hasStructure(sermon);
   const thoughtsReady = allThoughtsAssigned(sermon);
 
   if (planReady && thoughtsReady) {
     return `/sermons/${sermonId}/plan`;
   }
 
-  if (planReady || structureReady) {
-    return `/structure?sermonId=${sermonId}`;
-  }
-
-  return `/sermons/${sermonId}/plan`;
+  return `/structure?sermonId=${sermonId}`;
 }

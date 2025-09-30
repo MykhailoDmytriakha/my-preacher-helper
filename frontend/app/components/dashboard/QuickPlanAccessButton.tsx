@@ -12,12 +12,12 @@ interface QuickPlanAccessButtonProps {
 /**
  * Quick access button for sermon plan/structure
  * Shows "To plan" (green) or "To structure" (blue) based on sermon state
+ * Always visible - allows navigation even if no structure/plan data exists yet
  */
 export function QuickPlanAccessButton({ sermon, t }: QuickPlanAccessButtonProps) {
   const router = useRouter();
   const accessType = getSermonAccessType(sermon);
-  if (!accessType) return null;
-
+  
   const route = getSermonPlanAccessRoute(sermon.id, sermon);
   const isPlanAccess = accessType === 'plan';
 
