@@ -20,10 +20,10 @@ describe('ExegeticalPlanStepContent', () => {
   it('adds a child and sibling, then deletes a node', () => {
     render(<ExegeticalPlanStepContent value={[{ id: 'root', title: 'Root', children: [] }]} />);
     // Add child to root
-    const addChildBtn = screen.getByTitle('wizard.steps.exegeticalPlan.builder.tooltips.addChild');
+    const addChildBtn = screen.getByTitle(/wizard.steps.exegeticalPlan.builder.tooltips.addChild/i);
     fireEvent.click(addChildBtn);
     // Add sibling to root (multiple buttons may exist after adding a child)
-    const addSiblingBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.addSibling');
+    const addSiblingBtns = screen.getAllByTitle(/wizard.steps.exegeticalPlan.builder.tooltips.addSibling/i);
     fireEvent.click(addSiblingBtns[0]);
 
     // There should be multiple inputs now
@@ -80,7 +80,7 @@ describe('ExegeticalPlanStepContent', () => {
     // Save button should be disabled initially (no changes)
     const saveButton = screen.getByRole('button', { name: /buttons.save/i });
     expect(saveButton).toBeDisabled();
-    expect(saveButton).toHaveClass('bg-gray-400', 'cursor-not-allowed');
+    expect(saveButton).toHaveClass('bg-gray-100', 'cursor-not-allowed');
   });
 
   it('enables save button when there are unsaved changes', () => {
@@ -93,7 +93,23 @@ describe('ExegeticalPlanStepContent', () => {
     // Save button should now be enabled
     const saveButton = screen.getByRole('button', { name: /buttons.save/i });
     expect(saveButton).not.toBeDisabled();
-    expect(saveButton).toHaveClass('bg-green-600', 'hover:bg-green-700');
+    expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
+  });
+
+  it('enables save button when a node is deleted', () => {
+    render(<ExegeticalPlanStepContent value={[{ id: 'root', title: 'Root', children: [{ id: 'child', title: 'Child', children: [] }] }]} />);
+    
+    // Initially save button should be disabled
+    const saveButton = screen.getByRole('button', { name: /buttons.save/i });
+    expect(saveButton).toBeDisabled();
+
+    // Delete the child node
+    const deleteBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.delete');
+    fireEvent.click(deleteBtns[1]); // Delete child (first is root)
+
+    // Save button should now be enabled
+    expect(saveButton).not.toBeDisabled();
+    expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
   });
 });
 
