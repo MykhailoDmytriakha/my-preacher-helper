@@ -6,6 +6,8 @@ import '@testing-library/jest-dom';
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/sermons/test-sermon-id/plan',
 }));
 
 // i18n mock

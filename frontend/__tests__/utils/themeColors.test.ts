@@ -36,9 +36,9 @@ describe('themeColors', () => {
       expect(SERMON_SECTION_COLORS.introduction.border).toBe('border-amber-200');
       expect(SERMON_SECTION_COLORS.introduction.darkBorder).toBe('border-amber-800');
 
-      // Updated lighter borders for mainPart
-      expect(SERMON_SECTION_COLORS.mainPart.border).toBe('border-blue-50');
-      expect(SERMON_SECTION_COLORS.mainPart.darkBorder).toBe('border-blue-300');
+      // Updated borders for mainPart
+      expect(SERMON_SECTION_COLORS.mainPart.border).toBe('border-blue-200');
+      expect(SERMON_SECTION_COLORS.mainPart.darkBorder).toBe('border-blue-800');
 
       expect(SERMON_SECTION_COLORS.conclusion.border).toBe('border-green-200');
       expect(SERMON_SECTION_COLORS.conclusion.darkBorder).toBe('border-green-800');
@@ -61,7 +61,7 @@ describe('themeColors', () => {
       
       expect(styling.headerBg).toBe('bg-blue-50 dark:bg-blue-900/20');
       expect(styling.headerHover).toBe('hover:bg-blue-100 dark:hover:bg-blue-900/40');
-      expect(styling.border).toBe('border-blue-50 dark:border-blue-300');
+      expect(styling.border).toBe('border-blue-200 dark:border-blue-800');
       expect(styling.dragBg).toBe('bg-blue-200 dark:bg-blue-700');
       expect(styling.badge).toContain('bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200');
     });

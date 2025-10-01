@@ -522,7 +522,8 @@
     "formatted": "Форматированный текст",
     "copyText": "Копировать текст",
     "copyMarkdown": "Копировать Markdown",
-    "copyFormatted": "Копировать форматированный текст"
+    "copyFormatted": "Копировать форматированный текст",
+    "copying": "Копирование..."
   },
   "brainstorm": {
     "title": "Идеи",

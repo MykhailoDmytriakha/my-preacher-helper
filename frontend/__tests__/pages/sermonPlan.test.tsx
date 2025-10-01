@@ -13,7 +13,9 @@ global.MutationObserver = jest.fn(() => ({
 // Mock Next.js router and params
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
-  useRouter: () => ({ push: jest.fn() }), 
+  useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/sermons/test-sermon-id/plan',
 }));
 
 // Mock hooks

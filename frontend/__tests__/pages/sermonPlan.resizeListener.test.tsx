@@ -9,6 +9,8 @@ jest.mock('react-i18next', () => ({
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/sermons/test-sermon-id/plan',
 }));
 jest.mock('@/services/sermon.service', () => ({
   getSermonById: jest.fn(async () => null), // keep simple, we don't rely on data here

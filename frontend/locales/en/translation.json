@@ -521,7 +521,8 @@
     "formatted": "Formatted",
     "copyText": "Copy Text",
     "copyMarkdown": "Copy Markdown",
-    "copyFormatted": "Copy Formatted"
+    "copyFormatted": "Copy Formatted",
+    "copying": "Copying..."
   },
   "brainstorm": {
     "title": "Ideas",

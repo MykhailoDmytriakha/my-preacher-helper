@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
 import { OutlinePoint, Sermon, Thought, Plan, Structure } from "@/models/models";
 import { useTranslation } from "react-i18next";
@@ -10,7 +10,8 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import Link from "next/link";
 import React from "react";
-import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List, Maximize2, Copy, Minimize2, X, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
@@ -18,6 +19,8 @@ import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+
+type PlanViewMode = "overlay" | "immersive";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -59,7 +62,7 @@ const Button = ({
   children,
   title
 }: { 
-  onClick?: () => void, 
+  onClick?: () => void | Promise<void>, 
   variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure", 
   sectionColor?: { base: string, light: string, dark: string },
   className?: string, 
@@ -165,6 +168,69 @@ const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: '
     </div>
   );
 };
+
+interface FullPlanContentProps {
+  sermonVerse?: string;
+  combinedPlan: {
+    introduction: string;
+    main: string;
+    conclusion: string;
+  };
+  t: (key: string, options?: Record<string, unknown>) => string;
+}
+
+const FullPlanContent = ({ sermonVerse, combinedPlan, t }: FullPlanContentProps) => (
+  <>
+    {sermonVerse && (
+      <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+        <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
+          {sermonVerse}
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          {t("common.scripture")}
+        </p>
+      </div>
+    )}
+
+    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+        {t("sections.introduction")}
+      </h2>
+      <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
+        <MarkdownRenderer 
+          markdown={combinedPlan.introduction || t("plan.noContent")} 
+          section="introduction"
+        />
+      </div>
+    </div>
+
+    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+        {t("sections.main")}
+      </h2>
+      <div
+        className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}
+      >
+        <MarkdownRenderer 
+          markdown={combinedPlan.main || t("plan.noContent")} 
+          section="main"
+        />
+      </div>
+    </div>
+
+    <div className="mb-4">
+      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+        {t("sections.conclusion")}
+      </h2>
+      <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
+        <MarkdownRenderer 
+          markdown={combinedPlan.conclusion || t("plan.noContent")} 
+          section="conclusion"
+        />
+      </div>
+    </div>
+  </>
+);
 
 interface OutlinePointCardProps {
   outlinePoint: OutlinePoint;
@@ -285,6 +351,43 @@ export default function PlanPage() {
   const params = useParams();
   const sermonId = params?.id as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const planViewParam = searchParams.get("planView");
+  const planViewMode: PlanViewMode | null = useMemo(() => {
+    if (planViewParam === "overlay" || planViewParam === "immersive") {
+      return planViewParam;
+    }
+    return null;
+  }, [planViewParam]);
+
+  const updatePlanViewMode = useCallback((mode: PlanViewMode | null, { replace = true }: { replace?: boolean } = {}) => {
+    if (!pathname) return;
+    const paramsCopy = new URLSearchParams(searchParams.toString());
+    if (mode) {
+      paramsCopy.set("planView", mode);
+    } else {
+      paramsCopy.delete("planView");
+    }
+    const query = paramsCopy.toString();
+    const targetUrl = query ? `${pathname}?${query}` : pathname;
+    if (replace) {
+      router.replace(targetUrl, { scroll: false });
+    } else {
+      router.push(targetUrl, { scroll: false });
+    }
+  }, [pathname, router, searchParams]);
+
+  const isPlanOverlay = planViewMode === "overlay";
+  const isPlanImmersive = planViewMode === "immersive";
+  const copyButtonClasses = "flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700";
+  const copyButtonStatusClasses: Record<CopyStatus, string> = {
+    idle: '',
+    copying: 'opacity-80 cursor-wait',
+    success: 'border-2 border-green-500 bg-green-600 hover:bg-green-700',
+    error: 'border-2 border-red-500 bg-red-600 hover:bg-red-700'
+  };
   
   const [sermon, setSermon] = useState<Sermon | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -306,6 +409,13 @@ export default function PlanPage() {
   const introPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   const mainPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   const conclusionPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
+  const planOverlayContentRef = useRef<HTMLDivElement | null>(null);
+  const immersiveContentRef = useRef<HTMLDivElement | null>(null);
+  const overlayCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const immersiveCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
+  const [overlayCopyStatus, setOverlayCopyStatus] = useState<CopyStatus>('idle');
+  const [immersiveCopyStatus, setImmersiveCopyStatus] = useState<CopyStatus>('idle');
   
   // Track saved outline points
   const [savedOutlinePoints, setSavedOutlinePoints] = useState<Record<string, boolean>>({});
@@ -340,6 +450,50 @@ export default function PlanPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showSectionMenu]);
+
+  useEffect(() => {
+    if (!isPlanOverlay) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isPlanOverlay]);
+
+  useEffect(() => {
+    return () => {
+      if (overlayCopyTimeoutRef.current) {
+        clearTimeout(overlayCopyTimeoutRef.current);
+      }
+      if (immersiveCopyTimeoutRef.current) {
+        clearTimeout(immersiveCopyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPlanOverlay) {
+      if (overlayCopyTimeoutRef.current) {
+        clearTimeout(overlayCopyTimeoutRef.current);
+        overlayCopyTimeoutRef.current = null;
+      }
+      setOverlayCopyStatus('idle');
+    }
+  }, [isPlanOverlay]);
+
+  useEffect(() => {
+    if (!isPlanImmersive) {
+      if (immersiveCopyTimeoutRef.current) {
+        clearTimeout(immersiveCopyTimeoutRef.current);
+        immersiveCopyTimeoutRef.current = null;
+      }
+      setImmersiveCopyStatus('idle');
+    }
+  }, [isPlanImmersive]);
   
   // Function to synchronize heights
   const syncHeights = () => {
@@ -901,6 +1055,97 @@ export default function PlanPage() {
     
     return outlinePoint;
   };
+
+  const copyFormattedFromElement = useCallback(async (element: HTMLDivElement | null) => {
+    if (!element) {
+      return false;
+    }
+
+    const plainText = element.innerText ?? '';
+    const htmlContent = element.innerHTML ?? '';
+
+    const advancedClipboardAvailable =
+      typeof window !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      !!navigator.clipboard &&
+      typeof navigator.clipboard.write === 'function' &&
+      'ClipboardItem' in window;
+
+    try {
+      if (advancedClipboardAvailable) {
+        const clipboardWindow = window as typeof window & { ClipboardItem: typeof ClipboardItem };
+        const clipboardItem = new clipboardWindow.ClipboardItem({
+          'text/html': new Blob([htmlContent], { type: 'text/html' }),
+          'text/plain': new Blob([plainText], { type: 'text/plain' })
+        });
+        await navigator.clipboard.write([clipboardItem]);
+        return true;
+      }
+
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(plainText);
+        return true;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+
+    const selection = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+    const range = document.createRange();
+    const tempContainer = document.createElement('div');
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.pointerEvents = 'none';
+    tempContainer.style.opacity = '0';
+    tempContainer.style.zIndex = '-1';
+    tempContainer.innerHTML = htmlContent || plainText;
+    document.body.appendChild(tempContainer);
+
+    try {
+      range.selectNodeContents(tempContainer);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (document.execCommand('copy')) {
+        selection?.removeAllRanges();
+        document.body.removeChild(tempContainer);
+        return true;
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      selection?.removeAllRanges();
+      document.body.removeChild(tempContainer);
+    }
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = plainText;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus({ preventScroll: true });
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return success;
+    } catch (error) {
+      console.error(error);
+    }
+
+    return false;
+  }, []);
+
+  const handleClosePlanView = useCallback(() => {
+    updatePlanViewMode(null);
+  }, [updatePlanViewMode]);
+
+  const handleOpenPlanOverlay = useCallback(() => {
+    updatePlanViewMode("overlay");
+  }, [updatePlanViewMode]);
+
+  const handleOpenPlanImmersive = useCallback(() => {
+    updatePlanViewMode("immersive");
+  }, [updatePlanViewMode]);
   
   // Generate content for export as text
   const getExportContent = async (format: 'plain' | 'markdown'): Promise<string> => {
@@ -1049,12 +1294,215 @@ export default function PlanPage() {
       </div>
     );
   }
+
+  if (isPlanImmersive) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900" data-testid="sermon-plan-immersive-view">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+          <div>
+            <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
+          </div>
+          <div className="flex items-center gap-2 h-10">
+            <Button
+              onClick={async () => {
+                if (immersiveCopyStatus === 'copying') {
+                  return;
+                }
+                setImmersiveCopyStatus('copying');
+                const copied = await copyFormattedFromElement(immersiveContentRef.current);
+                if (copied) {
+                  toast.success(t("plan.copySuccess"));
+                  setImmersiveCopyStatus('success');
+                  if (immersiveCopyTimeoutRef.current) {
+                    clearTimeout(immersiveCopyTimeoutRef.current);
+                  }
+                  immersiveCopyTimeoutRef.current = setTimeout(() => {
+                    setImmersiveCopyStatus('idle');
+                    immersiveCopyTimeoutRef.current = null;
+                  }, 2000);
+                } else {
+                  toast.error(t("plan.copyError"));
+                  setImmersiveCopyStatus('error');
+                  if (immersiveCopyTimeoutRef.current) {
+                    clearTimeout(immersiveCopyTimeoutRef.current);
+                  }
+                  immersiveCopyTimeoutRef.current = setTimeout(() => {
+                    setImmersiveCopyStatus('idle');
+                    immersiveCopyTimeoutRef.current = null;
+                  }, 2500);
+                }
+              }}
+              variant="secondary"
+              className={`${copyButtonClasses} ${copyButtonStatusClasses[immersiveCopyStatus]}`}
+              title={
+                immersiveCopyStatus === 'success'
+                  ? t("common.copied")
+                  : immersiveCopyStatus === 'error'
+                    ? t("plan.copyError")
+                    : immersiveCopyStatus === 'copying'
+                      ? t('copy.copying', { defaultValue: 'Copying…' })
+                      : t("copy.copyFormatted")
+              }
+              disabled={immersiveCopyStatus === 'copying'}
+            >
+              {immersiveCopyStatus === 'copying' ? (
+                <LoadingSpinner size="small" />
+              ) : immersiveCopyStatus === 'success' ? (
+                <Check className="h-6 w-6 text-green-200" />
+              ) : immersiveCopyStatus === 'error' ? (
+                <X className="h-6 w-6 text-rose-200" />
+              ) : (
+                <Copy className="h-6 w-6" />
+              )}
+            </Button>
+            <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              {immersiveCopyStatus === 'success'
+                ? t("plan.copySuccess")
+                : immersiveCopyStatus === 'error'
+                  ? t("plan.copyError")
+                  : immersiveCopyStatus === 'copying'
+                    ? t('copy.copying', { defaultValue: 'Copying…' })
+                    : ''}
+            </span>
+            <button
+              onClick={handleOpenPlanOverlay}
+              className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+              title={t("plan.exitFullscreen")}
+            >
+              <Minimize2 className="h-7 w-7" />
+            </button>
+            <button
+              onClick={handleClosePlanView}
+              className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+              title={t("actions.close")}
+            >
+              <X className="h-7 w-7" />
+            </button>
+          </div>
+        </div>
+        <main className="flex-1 overflow-y-auto">
+          <div ref={immersiveContentRef} className="max-w-5xl mx-auto px-6 py-8">
+            <FullPlanContent 
+              sermonVerse={sermon.verse}
+              combinedPlan={combinedPlan}
+              t={t}
+            />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const planOverlayPortal = isPlanOverlay && typeof document !== 'undefined' && sermon
+    ? createPortal(
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
+          <div className="flex flex-1 justify-center p-4 overflow-y-auto">
+            <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
+                <div>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
+                </div>
+                <div className="flex items-center gap-2 h-10">
+                  <Button
+                    onClick={async () => {
+                      if (overlayCopyStatus === 'copying') {
+                        return;
+                      }
+                      setOverlayCopyStatus('copying');
+                      const copied = await copyFormattedFromElement(planOverlayContentRef.current);
+                      if (copied) {
+                        toast.success(t("plan.copySuccess"));
+                        setOverlayCopyStatus('success');
+                        if (overlayCopyTimeoutRef.current) {
+                          clearTimeout(overlayCopyTimeoutRef.current);
+                        }
+                        overlayCopyTimeoutRef.current = setTimeout(() => {
+                          setOverlayCopyStatus('idle');
+                          overlayCopyTimeoutRef.current = null;
+                        }, 2000);
+                      } else {
+                        toast.error(t("plan.copyError"));
+                        setOverlayCopyStatus('error');
+                        if (overlayCopyTimeoutRef.current) {
+                          clearTimeout(overlayCopyTimeoutRef.current);
+                        }
+                        overlayCopyTimeoutRef.current = setTimeout(() => {
+                          setOverlayCopyStatus('idle');
+                          overlayCopyTimeoutRef.current = null;
+                        }, 2500);
+                      }
+                    }}
+                    variant="secondary"
+                    className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
+                    title={
+                      overlayCopyStatus === 'success'
+                        ? t("common.copied")
+                        : overlayCopyStatus === 'error'
+                          ? t("plan.copyError")
+                          : overlayCopyStatus === 'copying'
+                            ? t('copy.copying', { defaultValue: 'Copying…' })
+                            : t("copy.copyFormatted")
+                    }
+                    disabled={overlayCopyStatus === 'copying'}
+                  >
+                    {overlayCopyStatus === 'copying' ? (
+                      <LoadingSpinner size="small" />
+                    ) : overlayCopyStatus === 'success' ? (
+                      <Check className="h-6 w-6 text-green-200" />
+                    ) : overlayCopyStatus === 'error' ? (
+                      <X className="h-6 w-6 text-rose-200" />
+                    ) : (
+                      <Copy className="h-6 w-6" />
+                    )}
+                  </Button>
+                  <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                    {overlayCopyStatus === 'success'
+                      ? t("plan.copySuccess")
+                      : overlayCopyStatus === 'error'
+                        ? t("plan.copyError")
+                        : overlayCopyStatus === 'copying'
+                          ? t('copy.copying', { defaultValue: 'Copying…' })
+                          : ''}
+                  </span>
+                  <button
+                    onClick={handleOpenPlanImmersive}
+                    className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                    title={t("plan.fullscreen")}
+                  >
+                    <Maximize2 className="h-7 w-7" />
+                  </button>
+                  <button
+                    onClick={handleClosePlanView}
+                    className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                    title={t("actions.close")}
+                  >
+                    <X className="h-7 w-7" />
+                  </button>
+                </div>
+              </div>
+              <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+                <FullPlanContent 
+                  sermonVerse={sermon.verse}
+                  combinedPlan={combinedPlan}
+                  t={t}
+                />
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
   
   return (
-    <div 
-      className="p-4"
-      data-testid="sermon-plan-page-container"
-    >
+    <>
+      {planOverlayPortal}
+      <div 
+        className="p-4"
+        data-testid="sermon-plan-page-container"
+      >
       <style jsx global>{sectionButtonStyles}</style>
       <style jsx global>{`
         /* Prevent scroll anchoring in dynamic plan columns */
@@ -1277,11 +1725,11 @@ export default function PlanPage() {
               <div className="flex flex-wrap gap-3 mt-6">
                 <ViewPlanMenu
                   sermonTitle={sermon.title}
-                  sermonVerse={sermon.verse}
                   combinedPlan={combinedPlan}
                   sectionMenuRef={sectionMenuRef}
                   showSectionMenu={showSectionMenu}
                   setShowSectionMenu={setShowSectionMenu}
+                  onRequestPlanOverlay={handleOpenPlanOverlay}
                 />
                 
                 {/* Add Export Buttons */}
@@ -1771,5 +2219,6 @@ export default function PlanPage() {
         })()}
       </div>
     </div>
+    </>
   );
 } 

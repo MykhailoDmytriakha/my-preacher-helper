@@ -522,7 +522,8 @@
     "formatted": "Форматований текст",
     "copyText": "Копіювати текст",
     "copyMarkdown": "Копіювати Markdown",
-    "copyFormatted": "Копіювати форматований текст"
+    "copyFormatted": "Копіювати форматований текст",
+    "copying": "Копіювання..."
   },
   "brainstorm": {
     "title": "Ідеї",
