@@ -164,7 +164,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
       ) : (
         <div className="flex items-start gap-2 group w-full">
           <p className={`${textSizeClass} text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line break-words flex-grow`}>
-            {editedVerse}
+            {initialVerse}
           </p>
           <button
             onClick={handleEditClick}
