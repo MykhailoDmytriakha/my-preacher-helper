@@ -44,6 +44,7 @@ export const AudioRecorder = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
+  const [isMobileView, setIsMobileView] = useState(false);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -55,6 +56,50 @@ export const AudioRecorder = ({
   const { t } = useTranslation();
   // Track if we've already auto-started to avoid unintended restarts after stop
   const hasAutoStartedRef = useRef(false);
+
+  // Track viewport width to switch variants on mobile
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (typeof window.matchMedia === 'function') {
+      const mediaQuery = window.matchMedia('(max-width: 767px)');
+
+      const updateIsMobile = (event: MediaQueryList | MediaQueryListEvent) => {
+        setIsMobileView(event.matches);
+      };
+
+      updateIsMobile(mediaQuery);
+
+      const listener = (event: MediaQueryListEvent) => updateIsMobile(event);
+
+      if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', listener);
+        return () => {
+          mediaQuery.removeEventListener('change', listener);
+        };
+      }
+
+      const legacyListener = (event: MediaQueryListEvent) => updateIsMobile(event);
+      mediaQuery.addListener(legacyListener as unknown as (this: MediaQueryList, ev: MediaQueryListEvent) => void);
+      return () => {
+        mediaQuery.removeListener(legacyListener as unknown as (this: MediaQueryList, ev: MediaQueryListEvent) => void);
+      };
+    }
+
+    const MOBILE_MAX_WIDTH = 767;
+    const checkIsMobile = () => {
+      setIsMobileView(window.innerWidth <= MOBILE_MAX_WIDTH);
+    };
+
+    checkIsMobile();
+    window.addEventListener('resize', checkIsMobile);
+
+    return () => {
+      window.removeEventListener('resize', checkIsMobile);
+    };
+  }, []);
 
   // Cleanup function to properly dispose of resources
   const cleanup = useCallback(() => {
@@ -348,6 +393,15 @@ export const AudioRecorder = ({
     return 'idle';
   }, [isProcessing, isInitializing, isRecording]);
 
+  const appliedVariant = useMemo<"standard" | "mini">(() => {
+    if (variant === "mini") {
+      return "mini";
+    }
+    return isMobileView ? "mini" : "standard";
+  }, [variant, isMobileView]);
+
+  const keyboardHintTextClass = appliedVariant === "mini" ? "text-sm" : "text-xs";
+
   // Button styles based on state
   const getButtonStyles = () => {
     // Keep transitions/rings consistent across variants
@@ -407,12 +461,13 @@ export const AudioRecorder = ({
   };
 
   return (
-    <div className={`space-y-4 ${className} ${variant === "mini" ? "space-y-3" : ""}`}>
+    <div className={`space-y-4 ${className} ${appliedVariant === "mini" ? "space-y-3" : ""}`}>
       {/* Main controls */}
-      <div className={`${variant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4"}`}>
+      <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4"}`}>
         {/* Show main button only when not recording in mini variant, or always in standard variant */}
-        {(!isRecording || variant === "standard") && (
+        {(!isRecording || appliedVariant === "standard") && (
           <button
+            type="button"
             onClick={() => {
               if (isRecording) {
                 stopRecording();
@@ -421,7 +476,7 @@ export const AudioRecorder = ({
               }
             }}
             disabled={isButtonDisabled}
-            className={`${variant === "mini" ? "min-w-full px-4 py-3 text-sm font-medium" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium ${getButtonStyles()}`}
+            className={`${appliedVariant === "mini" ? "min-w-full px-4 py-3 text-sm font-medium" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium ${getButtonStyles()}`}
             aria-label={
               isRecording 
                 ? t('audio.stopRecording') 
@@ -435,50 +490,52 @@ export const AudioRecorder = ({
         
         {/* Show cancel button only when recording */}
         {isRecording && (
-          variant === "mini" ? (
-            // Combined button for mini variant
+          appliedVariant === "mini" ? (
+            // Combined button layout for mini variant with separate cancel control
             <div className="relative w-full">
               <button
+                type="button"
                 onClick={stopRecording}
-                className="w-full px-4 py-3 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 relative overflow-hidden"
+                className="w-full px-4 py-3 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                 aria-label={t('audio.stopRecording')}
                 title={t('audio.stopRecording')}
               >
-                <div className="flex items-center justify-center w-4/5">
+                <div className="flex items-center justify-center w-full">
                   <div className="relative mr-2">
                     <MicFilledIcon className="w-5 h-5 animate-pulse" />
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
                   </div>
                   {t('audio.stopRecording')}
                 </div>
-                
-                {/* Cancel button overlay on the right */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cancelRecording();
-                  }}
-                  className="absolute right-0 top-0 h-full w-1/5 bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group"
-                  aria-label={t('audio.cancelRecording')}
-                  title={`${t('audio.cancelRecording')} (Esc)`}
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  cancelRecording();
+                }}
+                className="absolute right-0 top-0 h-full w-1/5 rounded-r-xl bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group focus:outline-none focus:ring-2 focus:ring-red-200"
+                aria-label={t('audio.cancelRecording')}
+                title={`${t('audio.cancelRecording')} (Esc)`}
+              >
+                <svg 
+                  className="w-4 h-4 text-white group-hover:text-red-100 transition-colors" 
+                  fill="currentColor" 
+                  viewBox="0 0 20 20"
                 >
-                  <svg 
-                    className="w-4 h-4 text-white group-hover:text-red-100 transition-colors" 
-                    fill="currentColor" 
-                    viewBox="0 0 20 20"
-                  >
-                    <path 
-                      fillRule="evenodd" 
-                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
-                      clipRule="evenodd" 
-                    />
-                  </svg>
-                </button>
+                  <path 
+                    fillRule="evenodd" 
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
+                    clipRule="evenodd" 
+                  />
+                </svg>
               </button>
             </div>
           ) : (
             // Standard separate buttons for standard variant
             <button
+              type="button"
               onClick={cancelRecording}
               className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
               aria-label={t('audio.cancelRecording')}
@@ -493,7 +550,7 @@ export const AudioRecorder = ({
         {(transcriptionErrorState || transcriptionError) && storedAudioBlob && retryCount < maxRetries && (
           <button
             onClick={retryTranscription}
-            className={`${variant === "mini" ? "px-4 py-2 text-sm font-medium" : "px-4 py-2"} rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-600 dark:hover:bg-orange-900/50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2`}
+            className={`${appliedVariant === "mini" ? "px-4 py-2 text-sm font-medium" : "px-4 py-2"} rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-600 dark:hover:bg-orange-900/50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2`}
             aria-label={t('audio.retryTranscription')}
           >
             {t('audio.retryTranscription')} ({retryCount + 1}/{maxRetries})
@@ -501,13 +558,13 @@ export const AudioRecorder = ({
         )}
         
         {/* Timer and audio level indicator - show only when recording or in standard variant */}
-        {(isRecording || variant === "standard") && (
-          <div className={`${variant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3"}`}>
-            <div className={`${variant === "mini" ? "w-full" : ""}`}>
-              <div className={`${variant === "mini" ? "text-sm px-3 py-2 font-medium" : "text-sm px-3 py-1"} font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg text-center relative overflow-hidden`}>
+        {(isRecording || appliedVariant === "standard") && (
+          <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3"}`}>
+            <div className={`${appliedVariant === "mini" ? "w-full" : ""}`}>
+              <div className={`${appliedVariant === "mini" ? "text-sm px-3 py-2 font-medium" : "text-sm px-3 py-1"} font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg text-center relative overflow-hidden`}>
                 <span className="relative z-10">{formatTime(recordingTime)} / {formatTime(maxDuration)}</span>
                 {/* Progress bar overlay - only for mini variant */}
-                {variant === "mini" && isRecording && (
+                {appliedVariant === "mini" && isRecording && (
                   <div 
                     className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 transition-all duration-1000 ease-out"
                     style={{ width: `${progressPercentage}%` }}
@@ -516,7 +573,7 @@ export const AudioRecorder = ({
               </div>
             </div>
             
-            {isRecording && variant === "standard" && (
+            {isRecording && appliedVariant === "standard" && (
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                 <div className="text-xs text-gray-600 dark:text-gray-400">
@@ -530,13 +587,13 @@ export const AudioRecorder = ({
 
       {/* Error message */}
       {(transcriptionErrorState || transcriptionError) && (
-        <div className={`${variant === "mini" ? "p-3" : "p-3"} bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg`}>
+        <div className={`${appliedVariant === "mini" ? "p-3" : "p-3"} bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <span className={`${variant === "mini" ? "text-sm" : "text-sm"} font-medium`}>{transcriptionErrorState || transcriptionError}</span>
+              <span className={`${appliedVariant === "mini" ? "text-sm" : "text-sm"} font-medium`}>{transcriptionErrorState || transcriptionError}</span>
             </div>
             <button
               onClick={closeError}
@@ -553,7 +610,7 @@ export const AudioRecorder = ({
       )}
 
       {/* Progress bar - show only when recording or in standard variant */}
-      {(isRecording || variant === "standard") && variant === "standard" && (
+      {(isRecording || appliedVariant === "standard") && appliedVariant === "standard" && (
         <div className="w-full">
           <div className="w-full bg-gray-200 rounded-full dark:bg-gray-700 overflow-hidden shadow-inner h-3">
             <div
@@ -581,8 +638,8 @@ export const AudioRecorder = ({
       )}
 
       {/* Keyboard shortcuts hint */}
-      {!isRecording && !hideKeyboardShortcuts && (
-        <div className={`${variant === "mini" ? "text-sm" : "text-xs"} text-gray-400 dark:text-gray-500 text-center`}>
+      {!isRecording && !hideKeyboardShortcuts && appliedVariant === "standard" && (
+        <div className={`${keyboardHintTextClass} text-gray-400 dark:text-gray-500 text-center`}>
           {t('audio.keyboardShortcuts')}: Ctrl+Space {t('audio.toRecord')}, Esc {t('audio.toCancel')}
         </div>
       )}

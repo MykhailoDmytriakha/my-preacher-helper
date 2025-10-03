@@ -116,3 +116,33 @@ describe('AudioRecorder autoStart behavior', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('AudioRecorder responsive variant', () => {
+  it('switches to the mini variant automatically on narrow screens', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const addEventListener = jest.fn();
+    const removeEventListener = jest.fn();
+
+    window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener,
+      removeEventListener,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+      onchange: null,
+    } as MediaQueryList));
+
+    const { container, unmount } = render(
+      <AudioRecorder onRecordingComplete={jest.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(container.firstChild).toHaveClass('space-y-3');
+    });
+
+    unmount();
+    window.matchMedia = originalMatchMedia;
+  });
+});
