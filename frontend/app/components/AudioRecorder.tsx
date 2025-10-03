@@ -463,7 +463,7 @@ export const AudioRecorder = ({
   return (
     <div className={`space-y-4 ${className} ${appliedVariant === "mini" ? "space-y-3" : ""}`}>
       {/* Main controls */}
-      <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4"}`}>
+      <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full"}`}>
         {/* Show main button only when not recording in mini variant, or always in standard variant */}
         {(!isRecording || appliedVariant === "standard") && (
           <button
@@ -487,6 +487,8 @@ export const AudioRecorder = ({
             {getButtonContent()}
           </button>
         )}
+
+        {/* Keyboard shortcuts tooltip removed: record button already shows this in title */}
         
         {/* Show cancel button only when recording */}
         {isRecording && (
@@ -557,27 +559,35 @@ export const AudioRecorder = ({
           </button>
         )}
         
-        {/* Timer and audio level indicator - show only when recording or in standard variant */}
-        {(isRecording || appliedVariant === "standard") && (
-          <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3"}`}>
-            <div className={`${appliedVariant === "mini" ? "w-full" : ""}`}>
-              <div className={`${appliedVariant === "mini" ? "text-sm px-3 py-2 font-medium" : "text-sm px-3 py-1"} font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg text-center relative overflow-hidden`}>
-                <span className="relative z-10">{formatTime(recordingTime)} / {formatTime(maxDuration)}</span>
-                {/* Progress bar overlay - only for mini variant */}
-                {appliedVariant === "mini" && isRecording && (
+        {/* Timer and inline progress — show only while actively recording */}
+        {isRecording && (
+          <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3 flex-1"}`}>
+            {/* MINI: keep compact timer chip with subtle overlay */}
+            {appliedVariant === "mini" && (
+              <div className="w-full">
+                <div className="text-sm px-3 py-2 font-medium font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg text-center relative overflow-hidden">
+                  <span className="relative z-10">{formatTime(recordingTime)} / {formatTime(maxDuration)}</span>
                   <div 
                     className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 transition-all duration-1000 ease-out"
                     style={{ width: `${progressPercentage}%` }}
                   />
-                )}
+                </div>
               </div>
-            </div>
-            
-            {isRecording && appliedVariant === "standard" && (
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  {t('audio.recording')}
+            )}
+
+            {/* STANDARD: long progress bar that expands and shows timer inside */}
+            {appliedVariant === "standard" && (
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner h-4">
+                  <div
+                    className="absolute inset-y-0 left-0 h-full transition-all duration-300 ease-out bg-gradient-to-r from-red-500 to-red-600"
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="font-mono text-xs text-gray-800 dark:text-gray-200">
+                      {formatTime(recordingTime)} / {formatTime(maxDuration)}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -609,40 +619,25 @@ export const AudioRecorder = ({
         </div>
       )}
 
-      {/* Progress bar - show only when recording or in standard variant */}
-      {(isRecording || appliedVariant === "standard") && appliedVariant === "standard" && (
+      {/* Audio level indicator (kept below) */}
+      {isRecording && audioLevel > 0 && (
         <div className="w-full">
-          <div className="w-full bg-gray-200 rounded-full dark:bg-gray-700 overflow-hidden shadow-inner h-3">
-            <div
-              className="h-full rounded-full transition-all duration-1000 ease-out bg-gradient-to-r from-red-500 to-red-600"
-              style={{ width: `${progressPercentage}%` }}
-            />
-          </div>
-          
-          {/* Audio level indicator */}
-          {isRecording && audioLevel > 0 && (
-            <div className="mt-3">
-              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span className="font-medium">{t('audio.audioLevel')}:</span>
-                <div className="flex-1 bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 transition-all duration-100"
-                    style={{ width: `${audioLevel}%` }}
-                  />
-                </div>
-                <span className="w-8 text-right font-mono">{Math.round(audioLevel)}%</span>
+          <div className="mt-3">
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-medium">{t('audio.audioLevel')}:</span>
+              <div className="flex-1 bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 transition-all duration-100"
+                  style={{ width: `${audioLevel}%` }}
+                />
               </div>
+              <span className="w-8 text-right font-mono">{Math.round(audioLevel)}%</span>
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Keyboard shortcuts hint */}
-      {!isRecording && !hideKeyboardShortcuts && appliedVariant === "standard" && (
-        <div className={`${keyboardHintTextClass} text-gray-400 dark:text-gray-500 text-center`}>
-          {t('audio.keyboardShortcuts')}: Ctrl+Space {t('audio.toRecord')}, Esc {t('audio.toCancel')}
-        </div>
-      )}
+      {/* Keyboard shortcuts hint moved to tooltip (see controls row) */}
     </div>
   );
 };
