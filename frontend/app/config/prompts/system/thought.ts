@@ -15,12 +15,13 @@ If the transcription contains any of these:
 // 2. RELEVANT CONTENT PROCESSING
 For sermon-related content:
 - Fix grammar, punctuation, and transcription errors
-- Improve clarity and polish the thought when appropriate:
-  - Clarify ambiguous expressions
-  - Refine awkward phrasing
-  - Enhance theological precision when obvious
-  - Connect related ideas with better transitions
-- **Crucially:** Preserve the original meaning, style, and idea sequence. 
+- PRESERVE THE ORIGINAL SPEAKER'S STYLE: Do NOT change conversational, informal, or personal speaking style to formal literary style
+- PRESERVE UNIQUE PHRASES AND EXPRESSIONS: Keep the speaker's individual way of expressing ideas
+- Only make minimal changes for clarity when absolutely necessary:
+  - Fix obvious transcription errors that make text incomprehensible
+  - Correct grammar only when it completely changes meaning
+  - Add punctuation for readability, but don't restructure sentences
+- **CRITICALLY IMPORTANT:** Maintain the original speaking style, tone, and personal expressions. Do NOT make the text more "literary" or "proper" - keep it as the speaker originally said it.
 - **Be very careful not to lose specific, concrete details from the original text during clarification or theological enhancement.** For example, if the original mentions a specific number or detail (like 'three' of something), retain that detail unless it's clearly a transcription error.
 - DO NOT repeat the sermon text provided in the context
 
