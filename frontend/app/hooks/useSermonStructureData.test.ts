@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useSermonStructureData } from './useSermonStructureData';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
@@ -251,8 +251,112 @@ describe('useSermonStructureData Hook', () => {
     expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
     expect(result.current.allowedTags.length).toBeGreaterThan(0);
 
-    // Outline points should be default empty arrays
-    expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
+    // Outline points should be synced with sermon.outline when getSermonOutline fails
+    expect(result.current.outlinePoints).toEqual(mockOutline);
+  });
+
+  it('should sync outlinePoints with sermon.outline when outline is updated', async () => {
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Initial state
+    expect(result.current.outlinePoints).toEqual({
+      introduction: [{ id: 'op1', text: 'Opening point' }],
+      main: [{ id: 'op2', text: 'Main point A' }],
+      conclusion: [],
+    });
+
+    // Simulate sermon outline update with isReviewed field
+    const updatedOutline: Outline = {
+      introduction: [{ id: 'op1', text: 'Opening point', isReviewed: true }],
+      main: [
+        { id: 'op2', text: 'Main point A' },
+        { id: 'op3', text: 'New point', isReviewed: false }
+      ],
+      conclusion: [{ id: 'op4', text: 'Conclusion point', isReviewed: true }],
+    };
+
+    // Update the sermon state
+    act(() => {
+      result.current.setSermon({
+        ...mockSermon,
+        outline: updatedOutline,
+      });
+    });
+
+    // outlinePoints should be synced with the new outline
+    await waitFor(() => {
+      expect(result.current.outlinePoints).toEqual(updatedOutline);
+    });
+  });
+
+  it('should handle outline points with isReviewed field from initial load', async () => {
+    const outlineWithReviews: Outline = {
+      introduction: [{ id: 'op1', text: 'Opening point', isReviewed: true }],
+      main: [{ id: 'op2', text: 'Main point A', isReviewed: false }],
+      conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
+    };
+
+    const sermonWithReviewedOutline: Sermon = {
+      ...mockSermon,
+      outline: outlineWithReviews,
+    };
+
+    mockedGetSermonById.mockResolvedValueOnce(sermonWithReviewedOutline);
+    mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
+
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.outlinePoints).toEqual(outlineWithReviews);
+  });
+
+  it('should handle partial outline updates with isReviewed field', async () => {
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Update only main section with isReviewed field
+    const partialUpdate: Outline = {
+      introduction: mockOutline.introduction,
+      main: [{ id: 'op2', text: 'Main point A', isReviewed: true }],
+      conclusion: mockOutline.conclusion,
+    };
+
+    act(() => {
+      result.current.setSermon({
+        ...mockSermon,
+        outline: partialUpdate,
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.outlinePoints).toEqual(partialUpdate);
+    });
+  });
+
+  it('should handle empty outline sections with isReviewed fields', async () => {
+    const emptyOutlineWithReviews: Outline = {
+      introduction: [],
+      main: [{ id: 'op1', text: 'Only main point', isReviewed: true }],
+      conclusion: [],
+    };
+
+    const sermonWithEmptySections: Sermon = {
+      ...mockSermon,
+      outline: emptyOutlineWithReviews,
+    };
+
+    mockedGetSermonById.mockResolvedValueOnce(sermonWithEmptySections);
+    mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
+
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.outlinePoints).toEqual(emptyOutlineWithReviews);
   });
 
   it('dedupes duplicate ids from structure while preserving order', async () => {

@@ -18,6 +18,36 @@ Where `API_BASE` is defined in the environment configuration.
 
 The API uses Firebase Authentication. Most endpoints require a valid Firebase Authentication token.
 
+## AI Text Processing
+
+### Dictated Speech Artifacts Handling
+
+The application includes sophisticated AI processing to clean up common artifacts that appear in dictated speech while preserving the speaker's unique voice and style.
+
+#### Supported Artifact Types
+
+1. **Self-corrections and revisions**: "это важно... нет, даже очень важно" → "это даже очень важно"
+2. **Intentional repetitions**: "да, да, именно так" → preserved (shows passion)
+3. **False starts**: "ну вот, я хотел сказать что... эээ... короче" → cleaned up
+4. **Tangential thoughts**: Smoothly integrated or removed while keeping main thread
+5. **Filler words**: "э-э-э", "ну", "типа", "в общем" → removed unless rhetorical
+6. **Stream of consciousness**: Converted to coherent paragraphs preserving conversational flow
+7. **Biblical quotes**: "Итак" - что ты, Петр, хочет нам сказать? → ""Итак" - что ты, Петр, хочет нам сказать?"
+8. **Connecting words**: "жить по воле Божьей, и оставаться верными" → preserved natural flow
+
+#### Key Principles
+
+- **PRESERVE SPEAKER'S VOICE**: Maintain conversational style, personal expressions, rhetorical questions, and emphasis
+- **CLEAN WITHOUT STERILIZING**: Remove confusion while keeping unique personality and passion
+- **MAINTAIN THEOLOGICAL ACCURACY**: Ensure biblical references and doctrinal content remain intact
+
+#### Processing Pipeline
+
+1. **Transcription**: Audio → Text (via OpenAI Whisper or similar)
+2. **AI Cleanup**: Remove artifacts using specialized prompts
+3. **Tag Assignment**: Automatically assign relevant sermon section tags
+4. **Bible Reference Formatting**: Format references as "Book Chapter:Verse"
+
 ## Data Models
 
 ### Thought

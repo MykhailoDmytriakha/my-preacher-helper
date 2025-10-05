@@ -12,6 +12,7 @@ export interface Thought {
 export interface OutlinePoint {
   id: string;
   text: string;
+  isReviewed?: boolean;
 }
 
 export interface Outline {

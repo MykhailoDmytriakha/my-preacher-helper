@@ -15,15 +15,27 @@ If the transcription contains any of these:
 // 2. RELEVANT CONTENT PROCESSING
 For sermon-related content:
 - Fix grammar, punctuation, and transcription errors
-- PRESERVE THE ORIGINAL SPEAKER'S STYLE: Do NOT change conversational, informal, or personal speaking style to formal literary style
-- PRESERVE UNIQUE PHRASES AND EXPRESSIONS: Keep the speaker's individual way of expressing ideas
-- Only make minimal changes for clarity when absolutely necessary:
-  - Fix obvious transcription errors that make text incomprehensible
-  - Correct grammar only when it completely changes meaning
-  - Add punctuation for readability, but don't restructure sentences
-- **CRITICALLY IMPORTANT:** Maintain the original speaking style, tone, and personal expressions. Do NOT make the text more "literary" or "proper" - keep it as the speaker originally said it.
-- **Be very careful not to lose specific, concrete details from the original text during clarification or theological enhancement.** For example, if the original mentions a specific number or detail (like 'three' of something), retain that detail unless it's clearly a transcription error.
+- **CRITICAL: PRESERVE SPEAKER'S VOICE** - Do NOT change speaking style from conversational to literary
+- **FORBIDDEN:** Do NOT remove or change personal expressions, rhetorical questions, or emphasis words
+- **PRESERVE:** Maintain original rhythm, repetition, and speaking patterns
+- Only fix:
+  - Obvious transcription errors that make text incomprehensible (like "обскрывают" → "открывают")
+  - Missing punctuation that affects readability
+  - Grammar errors that completely change meaning
+- **CRITICALLY IMPORTANT:** The output should sound like the speaker is still speaking, not like a written article
 - DO NOT repeat the sermon text provided in the context
+
+// 2b. SPOKEN SPEECH ARTIFACTS HANDLING (CRITICAL FOR DICTATED CONTENT)
+Dictated speech often contains artifacts from the natural speaking process. Handle them carefully:
+- **SELF-CORRECTIONS & REVISIONS:** When speaker says something, then corrects themselves (e.g., "это важно... нет, даже очень важно"), keep the FINAL version but preserve the speaker's emphasis/intention. Convert to smooth flow while maintaining emotional weight.
+- **REPETITIONS FOR EMPHASIS:** If speaker repeats words/phrases intentionally for emphasis ("да, да, именно так"), preserve these - they show passion and conviction.
+- **FALSE STARTS & RESTARTS:** Remove incomplete thoughts and false starts (e.g., "ну вот, я хотел сказать что... эээ... короче"), but keep the final, complete thought.
+- **TANGENTIAL THOUGHTS:** If speaker goes off on a tangent then returns (e.g., "кстати, вспомнил... но вернемся"), smoothly integrate or remove tangents while keeping the main thread.
+- **VERBAL FILLER WORDS:** Remove "э-э-э", "ну", "типа", "в общем", "короче" unless they serve rhetorical purpose.
+- **STREAM-OF-CONSCIOUSNESS:** Convert rambling streams into coherent paragraphs while preserving the original conversational flow and personal touch.
+- **BIBLICAL QUOTES PRESERVATION:** If speaker quotes Scripture or refers to specific verses, ADD QUOTES around the quoted text to clearly indicate it's a direct biblical reference (e.g., "Итак, что ты, Петр, хочешь нам сказать?" becomes ""Итак" - что ты, Петр, хочешь нам сказать?"). This helps distinguish between speaker's commentary and actual biblical text.
+- **CONNECTING WORDS:** Preserve natural connecting words like "и" that create logical flow between ideas (e.g., "жить по воле Божьей, и оставаться верными").
+- **KEY PRINCIPLE:** Clean up the confusion WITHOUT sterilizing the speaker's unique voice, passion, or personality. The result should still sound like THIS speaker, just clearer.
 
 // 2a. STRUCTURE AND LIST FORMATTING
 If the transcription contains explicit or implicit enumerations (e.g., "первое/во‑первых", "второе/во‑вторых", "третье", "1.", "1)"):

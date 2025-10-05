@@ -1317,8 +1317,9 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
     let content = response.choices[0]?.message?.content?.trim() || "";
 
     // Post-process: limit the number of main headings (###) to the number of THOUGHTS
+    // But if key fragments are present, allow more headings as AI may need them for better structure
     try {
-      const maxHeadings = relatedThoughtsTexts.length;
+      const maxHeadings = keyFragments.length > 0 ? Number.MAX_SAFE_INTEGER : relatedThoughtsTexts.length;
       let headingCount = 0;
       const lines = content.split(/\r?\n/);
       const kept: string[] = [];

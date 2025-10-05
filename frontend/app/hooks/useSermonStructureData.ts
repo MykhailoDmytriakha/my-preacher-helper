@@ -495,6 +495,17 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     // Ensure dependencies are correct. 't' is included as columnTitles depends on it.
   }, [sermonId, t, columnTitles]);
 
+  // Sync outlinePoints state with sermon.outline when it changes
+  useEffect(() => {
+    if (sermon?.outline) {
+      setOutlinePoints({
+        introduction: sermon.outline.introduction || [],
+        main: sermon.outline.main || [],
+        conclusion: sermon.outline.conclusion || [],
+      });
+    }
+  }, [sermon?.outline]);
+
   return {
     sermon,
     setSermon,

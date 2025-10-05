@@ -1,5 +1,12 @@
 // Base colors for sermon structure sections
 // Introduction = Amber/Yellow, Main = Blue, Conclusion = Green
+//
+// IMPORTANT: When changing any color values here, also update tailwind.config.ts safelist!
+// Tailwind CSS only generates CSS for classes that are statically found in code.
+// Dynamic classes from variables need to be explicitly listed in safelist.
+//
+// Example: if you change darkBg: "bg-green-900/50" to darkBg: "bg-green-900/20",
+// you MUST add 'dark:bg-green-900/20' to safelist in tailwind.config.ts
 export const SERMON_SECTION_COLORS = {
   introduction: {
     base: "#d97706",       // Amber-600
@@ -32,7 +39,7 @@ export const SERMON_SECTION_COLORS = {
     light: "#22c55e",      // Green-500
     dark: "#15803d",       // Green-700
     bg: "bg-green-50",
-    darkBg: "bg-green-900/30",
+    darkBg: "bg-green-900/20",
     border: "border-green-200",
     darkBorder: "border-green-800",
     hover: "hover:bg-green-100",

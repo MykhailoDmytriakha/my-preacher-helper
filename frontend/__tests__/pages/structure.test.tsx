@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
@@ -161,6 +162,203 @@ describe('Structure Page', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/drop thoughts here to add/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('handleToggleReviewed', () => {
+    let mockSermon: any;
+    let mockSetSermon: jest.Mock;
+    let mockToast: any;
+
+    beforeEach(() => {
+      mockSermon = createMockSermon({
+        id: 'test-sermon',
+        outline: {
+          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
+          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+        },
+      });
+      mockSetSermon = jest.fn();
+
+      // Mock toast
+      mockToast = { success: jest.fn(), error: jest.fn() };
+      jest.mock('sonner', () => ({ toast: mockToast }));
+
+      // Mock updateSermonOutline
+      jest.mock('@/services/outline.service', () => ({
+        updateSermonOutline: jest.fn().mockResolvedValue({}),
+      }));
+    });
+
+    it('should toggle isReviewed from false to true', async () => {
+      const { updateSermonOutline } = require('@/services/outline.service');
+      updateSermonOutline.mockResolvedValue({});
+
+      const { result } = renderHook(() => useSermonStructureData('sermon-123', mockTranslations));
+
+      // Simulate the handleToggleReviewed logic
+      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+        if (!mockSermon) return;
+
+        try {
+          const updatedOutline = {
+            introduction: mockSermon.outline?.introduction?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            main: mockSermon.outline?.main?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || []
+          };
+
+          mockSetSermon({ ...mockSermon, outline: updatedOutline });
+          await updateSermonOutline(mockSermon.id, updatedOutline);
+
+          mockToast.success('Marked as reviewed');
+        } catch (error) {
+          mockToast.error('Error saving');
+        }
+      };
+
+      await handleToggleReviewed('op1', true);
+
+      expect(mockSetSermon).toHaveBeenCalledWith({
+        ...mockSermon,
+        outline: {
+          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
+          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+        },
+      });
+
+      expect(updateSermonOutline).toHaveBeenCalledWith('test-sermon', {
+        introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
+        main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+        conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+      });
+
+      expect(mockToast.success).toHaveBeenCalledWith('Marked as reviewed');
+    });
+
+    it('should toggle isReviewed from true to false', async () => {
+      const { updateSermonOutline } = require('@/services/outline.service');
+      updateSermonOutline.mockResolvedValue({});
+
+      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+        if (!mockSermon) return;
+
+        try {
+          const updatedOutline = {
+            introduction: mockSermon.outline?.introduction?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            main: mockSermon.outline?.main?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || []
+          };
+
+          mockSetSermon({ ...mockSermon, outline: updatedOutline });
+          await updateSermonOutline(mockSermon.id, updatedOutline);
+
+          mockToast.success('Marked as unreviewed');
+        } catch (error) {
+          mockToast.error('Error saving');
+        }
+      };
+
+      await handleToggleReviewed('op2', false);
+
+      expect(mockSetSermon).toHaveBeenCalledWith({
+        ...mockSermon,
+        outline: {
+          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
+          main: [{ id: 'op2', text: 'Main point', isReviewed: false }],
+          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+        },
+      });
+
+      expect(mockToast.success).toHaveBeenCalledWith('Marked as unreviewed');
+    });
+
+    it('should handle errors when saving outline', async () => {
+      const { updateSermonOutline } = require('@/services/outline.service');
+      updateSermonOutline.mockRejectedValue(new Error('Network error'));
+
+      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+        if (!mockSermon) return;
+
+        try {
+          const updatedOutline = {
+            introduction: mockSermon.outline?.introduction?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            main: mockSermon.outline?.main?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || []
+          };
+
+          mockSetSermon({ ...mockSermon, outline: updatedOutline });
+          await updateSermonOutline(mockSermon.id, updatedOutline);
+
+          mockToast.success('Marked as reviewed');
+        } catch (error) {
+          mockToast.error('Error saving');
+        }
+      };
+
+      await handleToggleReviewed('op1', true);
+
+      expect(mockToast.error).toHaveBeenCalledWith('Error saving');
+    });
+
+    it('should handle points without existing isReviewed field', async () => {
+      const { updateSermonOutline } = require('@/services/outline.service');
+      updateSermonOutline.mockResolvedValue({});
+
+      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+        if (!mockSermon) return;
+
+        try {
+          const updatedOutline = {
+            introduction: mockSermon.outline?.introduction?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            main: mockSermon.outline?.main?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || [],
+            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
+              point.id === outlinePointId ? { ...point, isReviewed } : point
+            ) || []
+          };
+
+          mockSetSermon({ ...mockSermon, outline: updatedOutline });
+          await updateSermonOutline(mockSermon.id, updatedOutline);
+
+          mockToast.success('Marked as reviewed');
+        } catch (error) {
+          mockToast.error('Error saving');
+        }
+      };
+
+      await handleToggleReviewed('op3', true);
+
+      expect(mockSetSermon).toHaveBeenCalledWith({
+        ...mockSermon,
+        outline: {
+          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
+          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+          conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
+        },
       });
     });
   });

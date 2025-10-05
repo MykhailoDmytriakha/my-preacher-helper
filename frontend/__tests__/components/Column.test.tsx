@@ -46,8 +46,11 @@ jest.mock('react-i18next', () => ({
           'structure.rejectAll': 'Reject All',
           'structure.rejectAllChanges': 'Reject all suggestions',
           'structure.outlinePointsExist': 'Outline points already exist',
-          'structure.generateOutlinePoints': 'Generate outline points',
-          'structure.generate': 'Generate',
+        'structure.generateOutlinePoints': 'Generate outline points',
+        'structure.generate': 'Generate',
+        'structure.markAsReviewed': 'Mark as reviewed',
+        'structure.markAsUnreviewed': 'Mark as unreviewed',
+        'structure.outlineHelp.ariaLabel': 'Quick help for outline point',
           'common.generating': 'Generating...',
           'errors.saveOutlineError': 'Failed to save outline',
           'common.save': 'Save',
@@ -1147,6 +1150,119 @@ describe('Column Component', () => {
       expect(acceptButton).toHaveClass('dark:bg-green-900/30');
       expect(acceptButton).toHaveClass('text-green-800');
       expect(acceptButton).toHaveClass('dark:text-green-200');
+    });
+  });
+
+  describe('Column with outline points and isReviewed functionality', () => {
+    const mockOutlinePoints = [
+      { id: 'op1', text: 'Point 1', isReviewed: false },
+      { id: 'op2', text: 'Point 2', isReviewed: true },
+    ];
+
+    const mockItemsWithOutlinePoints: Item[] = [
+      {
+        id: '1',
+        content: 'Thought for point 1',
+        outlinePointId: 'op1',
+        requiredTags: ['Introduction'],
+        customTagNames: [],
+      },
+      {
+        id: '2',
+        content: 'Thought for point 2',
+        outlinePointId: 'op2',
+        requiredTags: ['Introduction'],
+        customTagNames: [],
+      },
+    ];
+
+    it('renders toggle reviewed buttons for outline points', () => {
+      const mockOnToggleReviewed = jest.fn();
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={mockItemsWithOutlinePoints}
+          outlinePoints={mockOutlinePoints}
+          onToggleReviewed={mockOnToggleReviewed}
+        />
+      );
+
+      // Should render buttons for both outline points
+      const markAsReviewedButton = screen.getByRole('button', { name: /mark as reviewed/i });
+      const markAsUnreviewedButton = screen.getByRole('button', { name: /mark as unreviewed/i });
+
+      expect(markAsReviewedButton).toBeInTheDocument();
+      expect(markAsUnreviewedButton).toBeInTheDocument();
+    });
+
+    it('calls onToggleReviewed when toggle buttons are clicked', () => {
+      const mockOnToggleReviewed = jest.fn();
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={mockItemsWithOutlinePoints}
+          outlinePoints={mockOutlinePoints}
+          onToggleReviewed={mockOnToggleReviewed}
+        />
+      );
+
+      // Click the "mark as reviewed" button for unreviewed point
+      const markAsReviewedButton = screen.getByRole('button', { name: /mark as reviewed/i });
+      fireEvent.click(markAsReviewedButton);
+
+      expect(mockOnToggleReviewed).toHaveBeenCalledWith('op1', true);
+
+      // Click the "mark as unreviewed" button for reviewed point
+      const markAsUnreviewedButton = screen.getByRole('button', { name: /mark as unreviewed/i });
+      fireEvent.click(markAsUnreviewedButton);
+
+      expect(mockOnToggleReviewed).toHaveBeenCalledWith('op2', false);
+    });
+
+    it('does not render toggle buttons when onToggleReviewed is not provided', () => {
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={mockItemsWithOutlinePoints}
+          outlinePoints={mockOutlinePoints}
+        />
+      );
+
+      const markAsReviewedButton = screen.queryByRole('button', { name: /mark as reviewed/i });
+      const markAsUnreviewedButton = screen.queryByRole('button', { name: /mark as unreviewed/i });
+
+      expect(markAsReviewedButton).not.toBeInTheDocument();
+      expect(markAsUnreviewedButton).not.toBeInTheDocument();
+    });
+
+    it('handles outline points without isReviewed field', () => {
+      const mockOutlinePointsWithoutIsReviewed = [
+        { id: 'op1', text: 'Point 1' }, // No isReviewed field
+        { id: 'op2', text: 'Point 2', isReviewed: true },
+      ];
+
+      const mockOnToggleReviewed = jest.fn();
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={mockItemsWithOutlinePoints}
+          outlinePoints={mockOutlinePointsWithoutIsReviewed}
+          onToggleReviewed={mockOnToggleReviewed}
+        />
+      );
+
+      // Should show "mark as reviewed" for point without isReviewed
+      const markAsReviewedButton = screen.getByRole('button', { name: /mark as reviewed/i });
+      fireEvent.click(markAsReviewedButton);
+
+      expect(mockOnToggleReviewed).toHaveBeenCalledWith('op1', true);
     });
   });
 

@@ -57,3 +57,51 @@
       expect(oldThought.forceTag).toBeUndefined();
     });
   });
+
+  describe('OutlinePoint Model', () => {
+    describe('isReviewed field', () => {
+      it('should allow undefined isReviewed field', () => {
+        const outlinePoint: OutlinePoint = {
+          id: 'op1',
+          text: 'Test outline point',
+        };
+
+        expect(outlinePoint.isReviewed).toBeUndefined();
+        expect(outlinePoint.id).toBe('op1');
+        expect(outlinePoint.text).toBe('Test outline point');
+      });
+
+      it('should allow false isReviewed field', () => {
+        const outlinePoint: OutlinePoint = {
+          id: 'op1',
+          text: 'Test outline point',
+          isReviewed: false,
+        };
+
+        expect(outlinePoint.isReviewed).toBe(false);
+      });
+
+      it('should allow true isReviewed field', () => {
+        const outlinePoint: OutlinePoint = {
+          id: 'op1',
+          text: 'Test outline point',
+          isReviewed: true,
+        };
+
+        expect(outlinePoint.isReviewed).toBe(true);
+      });
+
+      it('should be compatible with existing OutlinePoint structure', () => {
+        const outlinePoints: OutlinePoint[] = [
+          { id: 'op1', text: 'Point 1' },
+          { id: 'op2', text: 'Point 2', isReviewed: false },
+          { id: 'op3', text: 'Point 3', isReviewed: true },
+        ];
+
+        expect(outlinePoints).toHaveLength(3);
+        expect(outlinePoints[0].isReviewed).toBeUndefined();
+        expect(outlinePoints[1].isReviewed).toBe(false);
+        expect(outlinePoints[2].isReviewed).toBe(true);
+      });
+    });
+  });

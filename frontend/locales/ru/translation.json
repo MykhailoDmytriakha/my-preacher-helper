@@ -371,7 +371,11 @@
       "goToIntroduction": "Перейти к вступлению",
       "goToMainPart": "Перейти к основной части",
       "goToConclusion": "Перейти к заключению"
-    }
+    },
+    "markAsReviewed": "Отметить как проверено",
+    "markAsUnreviewed": "Снять отметку проверено",
+    "markedAsReviewed": "Отмечено как проверено",
+    "markedAsUnreviewed": "Снята отметка проверено"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

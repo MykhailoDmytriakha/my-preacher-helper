@@ -371,7 +371,11 @@
       "goToIntroduction": "Перейти до вступу",
       "goToMainPart": "Перейти до основної частини",
       "goToConclusion": "Перейти до висновку"
-    }
+    },
+    "markAsReviewed": "Позначити як перевірено",
+    "markAsUnreviewed": "Зняти позначку перевірено",
+    "markedAsReviewed": "Позначено як перевірено",
+    "markedAsUnreviewed": "Знято позначку перевірено"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",

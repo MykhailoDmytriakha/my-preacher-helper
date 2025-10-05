@@ -45,6 +45,7 @@ interface ColumnProps {
   activeId?: string | null; // Add activeId prop for proper drag state detection
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void; // Move-to-ambiguous action
   onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void; // New callback: append audio thought into section
+  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void; // Toggle reviewed status for outline point
 }
 
 // Define SectionType based on Column ID mapping
@@ -70,21 +71,23 @@ const OutlinePointPlaceholder: React.FC<{
   getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
   onKeepItem?: (itemId: string, columnId: string) => void;
   onRevertItem?: (itemId: string, columnId: string) => void;
+  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void;
   headerColor?: string;
   t: (key: string, options?: Record<string, unknown>) => string;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   sermonId?: string;
   onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void;
-}> = ({ 
-  point, 
-  items, 
-  containerId, 
-  onEdit, 
-  isHighlighted, 
-  getHighlightType, 
-  onKeepItem, 
-  onRevertItem, 
+}> = ({
+  point,
+  items,
+  containerId,
+  onEdit,
+  isHighlighted,
+  getHighlightType,
+  onKeepItem,
+  onRevertItem,
+  onToggleReviewed,
   headerColor,
   t,
   activeId,
@@ -207,6 +210,27 @@ const OutlinePointPlaceholder: React.FC<{
             {point.text}
           </h4>
           <div className="flex items-center gap-2">
+            {/* Toggle reviewed status button */}
+            {onToggleReviewed && (
+              <button
+                onClick={() => onToggleReviewed(point.id, !point.isReviewed)}
+                className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 ${
+                  point.isReviewed
+                    ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
+                    : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                title={point.isReviewed
+                  ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
+                  : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
+                }
+                aria-label={point.isReviewed
+                  ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
+                  : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
+                }
+              >
+                <CheckIcon className={`h-4 w-4 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
+              </button>
+            )}
             {/* Quick help for outline point */}
             <div className="relative" ref={hintRef}>
               <button
@@ -444,7 +468,8 @@ export default function Column({
   onRevertAll,
   activeId,
   onMoveToAmbiguous,
-  onAudioThoughtCreated
+  onAudioThoughtCreated,
+  onToggleReviewed
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -1028,6 +1053,7 @@ export default function Column({
                       getHighlightType={getItemHighlightType}
                       onKeepItem={onKeepItem}
                       onRevertItem={onRevertItem}
+                      onToggleReviewed={onToggleReviewed}
                       headerColor={headerColor}
                       t={t}
                       activeId={activeId}
@@ -1300,6 +1326,7 @@ export default function Column({
                   getHighlightType={getItemHighlightType}
                   onKeepItem={onKeepItem}
                   onRevertItem={onRevertItem}
+                  onToggleReviewed={onToggleReviewed}
                   headerColor={headerColor}
                   t={t}
                   activeId={activeId}

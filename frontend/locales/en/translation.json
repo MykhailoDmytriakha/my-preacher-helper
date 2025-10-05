@@ -370,7 +370,11 @@
       "goToIntroduction": "Go to Introduction",
       "goToMainPart": "Go to Main Part",
       "goToConclusion": "Go to Conclusion"
-    }
+    },
+    "markAsReviewed": "Mark as reviewed",
+    "markAsUnreviewed": "Mark as unreviewed",
+    "markedAsReviewed": "Marked as reviewed",
+    "markedAsUnreviewed": "Marked as unreviewed"
   },
   "knowledge": {
     "title": "Sermon Insights",

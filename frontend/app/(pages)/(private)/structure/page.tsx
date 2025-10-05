@@ -558,19 +558,52 @@ function StructurePageContent() {
   const handleOutlineUpdate = (updatedOutline: Outline) => {
     setSermon((prevSermon: Sermon | null) => {
       if (!prevSermon) return null;
-      
+
       // Merge the updated outline sections with existing ones
       const mergedOutline: Outline = {
         introduction: updatedOutline.introduction.length > 0 ? updatedOutline.introduction : (prevSermon.outline?.introduction || []),
         main: updatedOutline.main.length > 0 ? updatedOutline.main : (prevSermon.outline?.main || []),
         conclusion: updatedOutline.conclusion.length > 0 ? updatedOutline.conclusion : (prevSermon.outline?.conclusion || [])
       };
-      
+
       return {
         ...prevSermon,
         outline: mergedOutline
       };
     });
+  };
+
+  const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+    if (!sermon) return;
+
+    try {
+      // Find and update the outline point in the outline
+      const updatedOutline: Outline = {
+        introduction: sermon.outline?.introduction?.map(point =>
+          point.id === outlinePointId ? { ...point, isReviewed } : point
+        ) || [],
+        main: sermon.outline?.main?.map(point =>
+          point.id === outlinePointId ? { ...point, isReviewed } : point
+        ) || [],
+        conclusion: sermon.outline?.conclusion?.map(point =>
+          point.id === outlinePointId ? { ...point, isReviewed } : point
+        ) || []
+      };
+
+      // Update sermon state
+      setSermon(prevSermon => prevSermon ? { ...prevSermon, outline: updatedOutline } : null);
+
+      // Save to backend
+      const { updateSermonOutline } = await import('@/services/outline.service');
+      await updateSermonOutline(sermon.id, updatedOutline);
+
+      toast.success(t(isReviewed ? 'structure.markedAsReviewed' : 'structure.markedAsUnreviewed', {
+        defaultValue: isReviewed ? 'Marked as reviewed' : 'Marked as unreviewed'
+      }));
+    } catch (error) {
+      console.error('Error updating outline point review status:', error);
+      toast.error(t('errors.savingError'));
+    }
   };
 
   const onDragEndWrapper = (event: DragEndEvent) => {
@@ -671,6 +704,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("introduction")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
+                onToggleReviewed={handleToggleReviewed}
               />
             )}
             
@@ -703,6 +737,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("main")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
+                onToggleReviewed={handleToggleReviewed}
               />
             )}
             
@@ -735,6 +770,7 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("conclusion")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
+                onToggleReviewed={handleToggleReviewed}
               />
             )}
           </div>

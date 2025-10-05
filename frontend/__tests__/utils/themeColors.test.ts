@@ -29,7 +29,7 @@ describe('themeColors', () => {
     it('should define dark mode background classes for each section', () => {
       expect(SERMON_SECTION_COLORS.introduction.darkBg).toBe('bg-amber-900/40');
       expect(SERMON_SECTION_COLORS.mainPart.darkBg).toBe('bg-blue-900/20');
-      expect(SERMON_SECTION_COLORS.conclusion.darkBg).toBe('bg-green-900/30');
+      expect(SERMON_SECTION_COLORS.conclusion.darkBg).toBe('bg-green-900/20');
     });
 
     it('should define border classes including updated mainPart values', () => {
@@ -69,7 +69,7 @@ describe('themeColors', () => {
     it('should return correct styling for conclusion section', () => {
       const styling = getSectionStyling('conclusion');
       
-      expect(styling.headerBg).toBe('bg-green-50 dark:bg-green-900/30');
+      expect(styling.headerBg).toBe('bg-green-50 dark:bg-green-900/20');
       expect(styling.headerHover).toBe('hover:bg-green-100 dark:hover:bg-green-900/40');
       expect(styling.border).toBe('border-green-200 dark:border-green-800');
       expect(styling.dragBg).toBe('bg-green-200 dark:bg-green-700');
