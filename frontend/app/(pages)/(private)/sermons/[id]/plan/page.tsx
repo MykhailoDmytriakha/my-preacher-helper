@@ -306,16 +306,16 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
         </div>
       </h3>
       
-      <div className="mb-3">        
+      <div className="mb-3">
         <ul className="mt-2 ml-4 text-base">
           {thoughts.map((thought) => (
             <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base">
-              • {thought.text}
+              • <span className="whitespace-pre-wrap break-words">{thought.text}</span>
                      {thought.keyFragments && thought.keyFragments.length > 0 && (
                 <div className="mt-1 ml-2">
                   {thought.keyFragments.map((fragment, index) => (
-                    <span 
-                      key={index} 
+                    <span
+                      key={index}
                              className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
                              style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
                     >

@@ -18,6 +18,21 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/sermons/test-sermon-id/plan',
 }));
 
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(), // deprecated
+    removeListener: jest.fn(), // deprecated
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
+
 // Mock hooks
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
@@ -205,4 +220,5 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     // This test just checks if the component can be rendered without throwing an error
     expect(() => render(<SermonPlanPage />)).not.toThrow();
   });
+
 }); 

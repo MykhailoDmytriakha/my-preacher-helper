@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { MicFilledIcon } from "@components/Icons";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
+import { getBestSupportedFormat, getAllSupportedFormats, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -161,8 +162,19 @@ export const AudioRecorder = ({
 
   // Start recording function
   const startRecording = useCallback(async () => {
-    if (disabled || isProcessing || isInitializing) return;
+    console.log('AudioRecorder: startRecording called', { disabled, isProcessing, isInitializing });
 
+    if (disabled || isProcessing || isInitializing) {
+      console.log('AudioRecorder: Start conditions not met - returning early');
+      return;
+    }
+
+    console.log('AudioRecorder: Starting new recording...');
+
+    // CRITICAL: Clear any leftover chunks from previous recording
+    chunks.current = [];
+    console.log('AudioRecorder: Cleared chunks array before starting');
+    
     setIsInitializing(true);
     setTranscriptionErrorState(null);
     
@@ -188,12 +200,22 @@ export const AudioRecorder = ({
         console.warn("Could not create audio context for level monitoring:", audioContextError);
       }
 
-      // Setup MediaRecorder
-      mediaRecorder.current = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-          ? 'audio/webm;codecs=opus' 
-          : 'audio/webm'
-      });
+      // Setup MediaRecorder with best supported format
+      const bestFormat = getBestSupportedFormat();
+      const allSupported = getAllSupportedFormats();
+      
+      console.log(`AudioRecorder: Selected format: ${bestFormat}`);
+      console.log(`AudioRecorder: Browser supports: ${allSupported.join(', ')}`);
+      console.log(`AudioRecorder: Browser: ${navigator.userAgent}`);
+      
+      // Warn if using problematic format
+      if (hasKnownIssues(bestFormat)) {
+        console.warn(`⚠️ AudioRecorder: Format ${bestFormat} has known compatibility issues with OpenAI`);
+        console.warn(`⚠️ AudioRecorder: Your browser doesn't support better formats (MP4/MP3/WAV)`);
+        console.warn(`⚠️ AudioRecorder: Consider using Chrome/Firefox latest version for better compatibility`);
+      }
+
+      mediaRecorder.current = new MediaRecorder(stream, { mimeType: bestFormat });
 
       mediaRecorder.current.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -201,13 +223,36 @@ export const AudioRecorder = ({
         }
       };
 
-      mediaRecorder.current.onstop = () => {
+      mediaRecorder.current.onstop = async () => {
         if (chunks.current.length > 0) {
-          const blob = new Blob(chunks.current, { 
-            type: mediaRecorder.current?.mimeType || "audio/webm" 
+          const mimeType = mediaRecorder.current?.mimeType || bestFormat;
+          
+          // Create blob from chunks
+          const blob = new Blob(chunks.current, {
+            type: mimeType
           });
+          
+          // Log detailed audio information for debugging (async now)
+          await logAudioInfo(blob, 'AudioRecorder Output');
+          console.log(`AudioRecorder: Chunks count: ${chunks.current.length}`);
+          
+          // Validate blob before sending
+          if (blob.size === 0) {
+            console.error('AudioRecorder: Empty blob created');
+            handleError(new Error('Recording failed - empty audio'), 'errors.audioProcessing');
+            cleanup();
+            return;
+          }
+          
+          if (blob.size < 1000) {
+            console.warn(`AudioRecorder: Very small blob (${blob.size} bytes) - recording might be too short`);
+          }
+          
           setStoredAudioBlob(blob);
           onRecordingComplete(blob);
+        } else {
+          console.error('AudioRecorder: No chunks recorded');
+          handleError(new Error('Recording failed - no data'), 'errors.audioProcessing');
         }
         cleanup();
       };
@@ -216,7 +261,10 @@ export const AudioRecorder = ({
         handleError(new Error('MediaRecorder error'), 'errors.audioProcessing');
       };
 
-      mediaRecorder.current.start(100); // Collect data every 100ms
+      // CRITICAL FIX: Don't use frequent timeslice to avoid WebM header corruption
+      // Collect entire recording in one chunk to maintain proper file structure
+      // This prevents multiple WebM headers from being concatenated incorrectly
+      mediaRecorder.current.start(); // Collect entire recording as single chunk
       setIsRecording(true);
       setIsInitializing(false);
       
@@ -244,19 +292,41 @@ export const AudioRecorder = ({
 
   // Cancel recording function
   const cancelRecording = useCallback(() => {
-    if (!isRecording || !mediaRecorder.current) return;
+    console.log('AudioRecorder: cancelRecording called', { isRecording, hasMediaRecorder: !!mediaRecorder.current, variant });
 
+    if (!isRecording || !mediaRecorder.current) {
+      console.log('AudioRecorder: Cancel conditions not met - returning early');
+      return;
+    }
+
+    console.log('AudioRecorder: Canceling recording...');
+    
     try {
-      // Prevent the onstop event from calling onRecordingComplete
+      // CRITICAL: Clear chunks BEFORE stopping to prevent contamination
+      chunks.current = [];
+      console.log('AudioRecorder: Cleared chunks array');
+      
+      // Prevent both onstop and ondataavailable from processing canceled data
+      // CRITICAL: ondataavailable can fire AFTER stop() is called (async race condition)
       mediaRecorder.current.onstop = null;
+      mediaRecorder.current.ondataavailable = null;
       mediaRecorder.current.stop();
+      
+      // Reset all state
       setIsRecording(false);
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
+      
+      // Cleanup resources
       cleanup();
+      
+      console.log('AudioRecorder: Recording canceled successfully');
     } catch (error) {
       console.error("Error canceling recording:", error);
+      
+      // Force cleanup even on error
+      chunks.current = [];
       cleanup();
       setIsRecording(false);
       setRecordingTime(0);
@@ -469,9 +539,12 @@ export const AudioRecorder = ({
           <button
             type="button"
             onClick={() => {
+              console.log('AudioRecorder: Main button clicked', { isRecording });
               if (isRecording) {
+                console.log('AudioRecorder: Calling stopRecording');
                 stopRecording();
               } else {
+                console.log('AudioRecorder: Calling startRecording');
                 startRecording();
               }
             }}
@@ -515,6 +588,7 @@ export const AudioRecorder = ({
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
+                  console.log('AudioRecorder: Mini variant Cancel button clicked');
                   cancelRecording();
                 }}
                 className="absolute right-0 top-0 h-full w-1/5 rounded-r-xl bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group focus:outline-none focus:ring-2 focus:ring-red-200"
@@ -538,7 +612,10 @@ export const AudioRecorder = ({
             // Standard separate buttons for standard variant
             <button
               type="button"
-              onClick={cancelRecording}
+              onClick={() => {
+                console.log('AudioRecorder: Cancel button clicked');
+                cancelRecording();
+              }}
               className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
               aria-label={t('audio.cancelRecording')}
               title={`${t('audio.cancelRecording')} (Esc)`}

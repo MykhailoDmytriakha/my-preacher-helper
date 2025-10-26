@@ -87,30 +87,38 @@ export async function POST(request: Request) {
       );
     }
 
-    const file = new File([audioFile], 'recording.webm', {
-      type: 'audio/webm',
-    });
-
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     const availableTags = [
       ...(await getRequiredTags()),
       ...(await getCustomTags(sermon.userId))
     ].map(t => t.name);
-    
+
     let transcriptionText: string;
     try {
-      transcriptionText = await createTranscription(file);
+      // Pass Blob directly to avoid double conversion Blob -> File -> File
+      transcriptionText = await createTranscription(audioFile as Blob);
     } catch (transcriptionError) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
       
-      // Check if it's a specific OpenAI error
+      // Check if it's a specific OpenAI or validation error
       if (transcriptionError instanceof Error) {
-        if (transcriptionError.message.includes('Audio file might be corrupted or unsupported')) {
+        const errorMessage = transcriptionError.message.toLowerCase();
+        if (errorMessage.includes('audio file might be corrupted or unsupported')) {
           return NextResponse.json(
             { error: 'Audio file might be corrupted or unsupported. Please try recording again.' },
             { status: 400 }
           );
-        } else if (transcriptionError.message.includes('400')) {
+        } else if (errorMessage.includes('audio file is empty')) {
+          return NextResponse.json(
+            { error: 'Audio recording failed - file is empty. Please try recording again.' },
+            { status: 400 }
+          );
+        } else if (errorMessage.includes('audio file is too small')) {
+          return NextResponse.json(
+            { error: 'Audio recording is too short. Please record for at least 1 second.' },
+            { status: 400 }
+          );
+        } else if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
           return NextResponse.json(
             { error: 'Audio file format not supported. Please try recording again.' },
             { status: 400 }

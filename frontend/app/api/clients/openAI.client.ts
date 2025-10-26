@@ -22,6 +22,7 @@ import {
   brainstormFunctionSchema
 } from "@/config/schemas";
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 // const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -366,32 +367,82 @@ async function withOpenAILogging<T>(
 
 // ===== API Functions =====
 
-export async function createTranscription(file: File): Promise<string> {
+export async function createTranscription(file: File | Blob): Promise<string> {
+  // Validate audio blob using utility
+  const validation = validateAudioBlob(file);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Invalid audio file');
+  }
+
+  // Log audio information for debugging (async now)
+  await logAudioInfo(file, 'Transcription Input');
+
+    // Check for known format issues and attempt conversion if needed
+    if (hasKnownIssues(file.type)) {
+      console.warn(`⚠️ Audio format ${file.type} has known compatibility issues with OpenAI`);
+      console.warn(`⚠️ Note: Automatic conversion not yet implemented. File will be sent as-is.`);
+      console.warn(`⚠️ If transcription fails, this format incompatibility may be the cause.`);
+      
+      // TODO: Implement audio conversion here
+      // For now, we proceed with the original file but log the warning
+      // Future: Convert WebM+Opus to MP3 using Web Audio API or ffmpeg.wasm
+    }
+
+    let fileToSend: File;
+
+    if (file instanceof File) {
+      fileToSend = file;
+    } else {
+      // Convert Blob to File with proper naming
+      fileToSend = createAudioFile(file);
+    }
+
+  const inputInfo = {
+    filename: fileToSend.name,
+    fileSize: fileToSend.size,
+    fileType: fileToSend.type,
+    hasKnownIssues: hasKnownIssues(fileToSend.type)
+  };
+
+  const requestData = {
+    model: audioModel,
+    file: 'Audio file content (binary data not shown in logs)'
+  };
+
   try {
-    const inputInfo = {
-      filename: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    };
-    
-    const requestData = {
-      model: audioModel,
-      file: 'Audio file content (binary data not shown in logs)'
-    };
-    
     const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
       () => openai.audio.transcriptions.create({
-        file,
+        file: fileToSend,
         model: audioModel,
-      }), 
+      }),
       'Transcription',
       requestData,
       inputInfo
     );
     
+    console.log(`✅ Transcription successful: ${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}`);
+    
     return result.text;
   } catch (error) {
-    console.error("Error transcribing file:", error);
+    console.error("❌ Error transcribing file:", error);
+    
+    // Enhanced error logging for debugging
+    if (error instanceof Error) {
+      console.error("Error details:", {
+        message: error.message,
+        name: error.name,
+        fileType: fileToSend.type,
+        fileSize: fileToSend.size,
+        fileName: fileToSend.name,
+        hasKnownIssues: hasKnownIssues(fileToSend.type)
+      });
+      
+      // Add context to error message
+      if (hasKnownIssues(fileToSend.type)) {
+        throw new Error(`${error.message} (Note: ${fileToSend.type} format may have compatibility issues)`);
+      }
+    }
+    
     throw error;
   }
 }

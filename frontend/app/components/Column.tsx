@@ -244,7 +244,9 @@ const OutlinePointPlaceholder: React.FC<{
             </span>
             {/* Focus Recorder Button (per outline point) */}
             {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
-              <FocusRecorderButton
+              <>
+                {console.log('Column: Rendering FocusRecorderButton for outline point:', containerId)}
+                <FocusRecorderButton
                 size="small"
                 onRecordingComplete={async (audioBlob) => {
                   try {
@@ -284,6 +286,7 @@ const OutlinePointPlaceholder: React.FC<{
                   setIsRecordingAudio(false);
                 }}
               />
+              </>
             )}
           </div>
         </div>
@@ -464,6 +467,11 @@ export default function Column({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Log audio popover changes
+  useEffect(() => {
+    console.log('Column: showAudioPopover changed to:', showAudioPopover);
+  }, [showAudioPopover]);
 
   // Close normal-mode recorder popover on outside click
   useEffect(() => {
@@ -1145,7 +1153,10 @@ export default function Column({
             {sermonId && onAudioThoughtCreated && (id === 'introduction' || id === 'main' || id === 'conclusion') && (
               <div className="relative" ref={normalModePopoverRef}>
                 <button
-                  onClick={() => setShowAudioPopover((v) => !v)}
+                  onClick={() => {
+                    console.log('Column: Mic button clicked, toggling audio popover');
+                    setShowAudioPopover((v) => !v);
+                  }}
                   className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
                   title={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
                   aria-label={t('structure.recordAudio', { defaultValue: 'Record voice note' })}

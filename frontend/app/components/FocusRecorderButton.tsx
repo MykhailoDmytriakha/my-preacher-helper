@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
+import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 interface FocusRecorderButtonProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -74,8 +75,14 @@ export const FocusRecorderButton = ({
 
   // Start recording function
   const startRecording = useCallback(async () => {
-    if (disabled || isProcessing || isInitializing || isRecording) return;
+    console.log('FocusRecorderButton: startRecording called', { disabled, isProcessing, isInitializing, isRecording });
 
+    if (disabled || isProcessing || isInitializing || isRecording) {
+      console.log('FocusRecorderButton: Start conditions not met - returning early');
+      return;
+    }
+
+    console.log('FocusRecorderButton: Starting recording...');
     setIsInitializing(true);
     
     try {
@@ -100,11 +107,17 @@ export const FocusRecorderButton = ({
         console.warn("Could not create audio context for level monitoring:", audioContextError);
       }
 
-      // Setup MediaRecorder
+      // Setup MediaRecorder with best supported format
+      const bestFormat = getBestSupportedFormat();
+      console.log(`FocusRecorderButton: Selected audio format: ${bestFormat}`);
+      
+      if (hasKnownIssues(bestFormat)) {
+        console.warn(`⚠️ FocusRecorderButton: Format ${bestFormat} has known compatibility issues with OpenAI`);
+        console.warn(`⚠️ FocusRecorderButton: Your browser doesn't support better formats (MP4/MP3/WAV)`);
+      }
+      
       mediaRecorder.current = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-          ? 'audio/webm;codecs=opus' 
-          : 'audio/webm'
+        mimeType: bestFormat
       });
 
       mediaRecorder.current.ondataavailable = (e) => {
@@ -115,9 +128,12 @@ export const FocusRecorderButton = ({
 
       mediaRecorder.current.onstop = () => {
         if (chunks.current.length > 0) {
-          const blob = new Blob(chunks.current, { 
-            type: mediaRecorder.current?.mimeType || "audio/webm" 
-          });
+          const mimeType = mediaRecorder.current?.mimeType || bestFormat;
+          const blob = new Blob(chunks.current, { type: mimeType });
+          
+          // Log audio information for debugging
+          logAudioInfo(blob, 'FocusRecorderButton Output');
+          
           onRecordingComplete(blob);
         }
         cleanup();
@@ -150,17 +166,31 @@ export const FocusRecorderButton = ({
 
   // Cancel recording function
   const cancelRecording = useCallback(() => {
-    if (!isRecording || !mediaRecorder.current) return;
+    console.log('FocusRecorderButton: cancelRecording called', { isRecording, hasMediaRecorder: !!mediaRecorder.current });
+
+    if (!isRecording || !mediaRecorder.current) {
+      console.log('FocusRecorderButton: Cancel conditions not met - returning early');
+      return;
+    }
+
+    console.log('FocusRecorderButton: Canceling recording...');
 
     try {
-      // Prevent the onstop event from calling onRecordingComplete
+      // CRITICAL FIX: Clear chunks BEFORE stopping to prevent race condition
+      // The issue: mediaRecorder.stop() is async and fires ondataavailable AFTER cleanup
+      // This causes old chunks to remain in array, mixing with new recording → corrupted blob
+      chunks.current = [];
+      
+      // Prevent both onstop and ondataavailable from processing canceled data
       mediaRecorder.current.onstop = null;
+      mediaRecorder.current.ondataavailable = null;
       mediaRecorder.current.stop();
       setIsRecording(false);
       setRecordingTime(0);
       cleanup();
+      console.log('FocusRecorderButton: Recording canceled successfully');
     } catch (error) {
-      console.error("Error canceling recording:", error);
+      console.error("FocusRecorderButton: Error canceling recording:", error);
       cleanup();
       setIsRecording(false);
       setRecordingTime(0);
@@ -250,10 +280,15 @@ export const FocusRecorderButton = ({
       <button
         type="button"
         onClick={() => {
+          console.log('FocusRecorderButton: Main button clicked', { isRecording, isProcessing, isInitializing });
           if (isRecording) {
+            console.log('FocusRecorderButton: Calling stopRecording');
             stopRecording();
           } else if (!isProcessing && !isInitializing) {
+            console.log('FocusRecorderButton: Calling startRecording');
             startRecording();
+          } else {
+            console.log('FocusRecorderButton: Button disabled - not calling any function');
           }
         }}
         disabled={isButtonDisabled}
@@ -331,6 +366,7 @@ export const FocusRecorderButton = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            console.log('FocusRecorderButton: Cancel button (X) clicked');
             cancelRecording();
           }}
           className={`absolute -top-1 -right-1 ${sizeConfig.cancelSize} rounded-full bg-white hover:bg-gray-100 shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-center group`}
