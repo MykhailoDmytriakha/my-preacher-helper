@@ -111,13 +111,47 @@ describe('audioFormatUtils', () => {
   });
 
   describe('detectActualFormat', () => {
+    // Mock Blob to support arrayBuffer() in tests
+    const originalBlob = global.Blob;
+    let mockBlob: jest.Mocked<Blob>;
+
+    beforeEach(() => {
+      mockBlob = {
+        slice: jest.fn(),
+        arrayBuffer: jest.fn(),
+        size: 1000,
+        type: 'audio/webm'
+      } as any;
+
+      // Mock Blob constructor
+      global.Blob = jest.fn().mockImplementation((parts, options) => {
+        const data = new Uint8Array(parts[0] || []);
+        const padding = parts[1] || new Uint8Array(0);
+        const combined = new Uint8Array(data.length + padding.length);
+        combined.set(data);
+        combined.set(padding, data.length);
+
+        return {
+          slice: jest.fn((start, end) => ({
+            arrayBuffer: jest.fn().mockResolvedValue(combined.slice(start, end || combined.length).buffer)
+          })),
+          arrayBuffer: jest.fn().mockResolvedValue(combined.buffer),
+          size: combined.length,
+          type: options?.type || 'audio/webm'
+        };
+      });
+    });
+
+    afterEach(() => {
+      global.Blob = originalBlob;
+    });
+
     it('should detect WebM format by magic bytes', async () => {
       // WebM signature: 0x1A 0x45 0xDF 0xA3
-      // Need to create a larger blob with padding for proper testing
       const header = new Uint8Array([0x1A, 0x45, 0xDF, 0xA3]);
-      const padding = new Uint8Array(100); // Add padding to make blob larger
+      const padding = new Uint8Array(100);
       const blob = new Blob([header, padding], { type: 'audio/mp4' }); // Claim MP4 but is WebM
-      
+
       const format = await detectActualFormat(blob);
       expect(format).toBe('webm');
     });
@@ -127,7 +161,7 @@ describe('audioFormatUtils', () => {
       const header = new Uint8Array([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70]);
       const padding = new Uint8Array(100);
       const blob = new Blob([header, padding], { type: 'audio/mp4' });
-      
+
       const format = await detectActualFormat(blob);
       expect(format).toBe('mp4');
     });
@@ -137,7 +171,7 @@ describe('audioFormatUtils', () => {
       const header = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45]);
       const padding = new Uint8Array(100);
       const blob = new Blob([header, padding], { type: 'audio/wav' });
-      
+
       const format = await detectActualFormat(blob);
       expect(format).toBe('wav');
     });
@@ -147,7 +181,7 @@ describe('audioFormatUtils', () => {
       const header = new Uint8Array([0x4F, 0x67, 0x67, 0x53]);
       const padding = new Uint8Array(100);
       const blob = new Blob([header, padding], { type: 'audio/ogg' });
-      
+
       const format = await detectActualFormat(blob);
       expect(format).toBe('ogg');
     });
@@ -156,7 +190,7 @@ describe('audioFormatUtils', () => {
       const header = new Uint8Array([0xFF, 0xFF, 0xFF, 0xFF]);
       const padding = new Uint8Array(100);
       const blob = new Blob([header, padding], { type: 'audio/unknown' });
-      
+
       const format = await detectActualFormat(blob);
       expect(format).toBeNull();
     });
