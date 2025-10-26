@@ -14,6 +14,7 @@ import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 import ExportButtons from "@components/ExportButtons";
 import { toast } from 'sonner';
 import { AudioRecorder } from "./AudioRecorder";
+import { FocusRecorderButton } from "./FocusRecorderButton";
 import { MicrophoneIcon } from "@/components/Icons";
 import { getSectionLabel } from "@/lib/sections";
 
@@ -169,29 +170,9 @@ const OutlinePointPlaceholder: React.FC<{
 
   const colors = getPlaceholderColors();
 
-  // Local state for mini-audio popover per outline point
-  const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
-  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const popoverContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Close mini-recorder popover on outside click
-  useEffect(() => {
-    if (!showAudioPopover) return;
-    const handleOutside = (e: MouseEvent | TouchEvent) => {
-      if (!popoverContainerRef.current) return;
-      const target = e.target as Node | null;
-      if (target && !popoverContainerRef.current.contains(target)) {
-        setShowAudioPopover(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutside, true);
-    document.addEventListener('touchstart', handleOutside, true);
-    return () => {
-      document.removeEventListener('mousedown', handleOutside, true);
-      document.removeEventListener('touchstart', handleOutside, true);
-    };
-  }, [showAudioPopover]);
+  // Local state for audio recording (per outline point)
+  const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
+  const [audioError, setAudioError] = React.useState<string | null>(null);
 
   return (
     <div 
@@ -261,67 +242,48 @@ const OutlinePointPlaceholder: React.FC<{
             <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
               {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
             </span>
-            {/* Mini recorder button (per outline point) */}
+            {/* Focus Recorder Button (per outline point) */}
             {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
-              <div className="relative" ref={popoverContainerRef}>
-                <button
-                  onClick={() => setShowAudioPopover(v => !v)}
-                  className="p-1 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
-                  title={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
-                  aria-label={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
-                >
-                  <MicrophoneIcon className={`h-3.5 w-3.5 ${headerColor ? 'text-gray-700' : 'text-white'}`} />
-                </button>
-                {showAudioPopover && (
-                  <div className="absolute right-0 mt-2 z-50">
-                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 w-[300px]">
-                      <AudioRecorder
-                        variant="mini"
-                        hideKeyboardShortcuts={true}
-                        autoStart={true}
-                        onRecordingComplete={async (audioBlob) => {
-                          try {
-                            setIsRecordingAudio(true);
-                            setAudioError(null);
-                            const forceTag =
-                              containerId === 'introduction' ? getSectionLabel(t, 'introduction') :
-                              containerId === 'main' ? getSectionLabel(t, 'main') :
-                              containerId === 'conclusion' ? getSectionLabel(t, 'conclusion') :
-                              undefined;
-                            const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
-                            const newThought = await createAudioThoughtWithForceTag(
-                              audioBlob,
-                              sermonId!,
-                              forceTag || null,
-                              0,
-                              3,
-                              point.id
-                            );
+              <FocusRecorderButton
+                size="small"
+                onRecordingComplete={async (audioBlob) => {
+                  try {
+                    setIsRecordingAudio(true);
+                    setAudioError(null);
+                    const forceTag =
+                      containerId === 'introduction' ? getSectionLabel(t, 'introduction') :
+                      containerId === 'main' ? getSectionLabel(t, 'main') :
+                      containerId === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                      undefined;
+                    const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
+                    const newThought = await createAudioThoughtWithForceTag(
+                      audioBlob,
+                      sermonId!,
+                      forceTag || null,
+                      0,
+                      3,
+                      point.id
+                    );
 
-                            // Inform parent to append to UI under current section
-                            onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
-                            setShowAudioPopover(false);
-                            toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
-                          } catch (err) {
-                            console.error('Error recording audio for outline point:', err);
-                            const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
-                            setAudioError(String(msg));
-                            toast.error(String(msg));
-                          } finally {
-                            setIsRecordingAudio(false);
-                          }
-                        }}
-                        isProcessing={isRecordingAudio}
-                        maxDuration={90}
-                        onError={(err) => {
-                          setAudioError(err);
-                          setIsRecordingAudio(false);
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+                    // Inform parent to append to UI under current section
+                    onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
+                    toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
+                  } catch (err) {
+                    console.error('Error recording audio for outline point:', err);
+                    const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
+                    setAudioError(String(msg));
+                    toast.error(String(msg));
+                  } finally {
+                    setIsRecordingAudio(false);
+                  }
+                }}
+                isProcessing={isRecordingAudio}
+                maxDuration={90}
+                onError={(err) => {
+                  setAudioError(err);
+                  setIsRecordingAudio(false);
+                }}
+              />
             )}
           </div>
         </div>

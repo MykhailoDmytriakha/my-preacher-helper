@@ -54,7 +54,7 @@ describe('Focus mode: mic icon per outline point', () => {
 
     // In focus mode the column-level recorder is rendered directly (no button),
     // so all buttons with this title belong to outline point headers.
-    const micButtons = screen.getAllByTitle('structure.recordAudio');
+    const micButtons = screen.getAllByTitle('audio.newRecording');
     expect(micButtons).toHaveLength(outlinePoints.length);
   });
 });

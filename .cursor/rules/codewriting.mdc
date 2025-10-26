@@ -1,7 +1,6 @@
 ---
 description: use for writing code
-globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 - for imports, check file [tsconfig.json](mdc:frontend/tsconfig.json)
 - locales: [i18n.ts](mdc:frontend/locales/i18n.ts) and [translation.json](mdc:frontend/locales/en/translation.json), [translation.json](mdc:frontend/locales/ru/translation.json), [translation.json](mdc:frontend/locales/uk/translation.json). Если ты делаешь изминения в одном файле, сделай соответвующие изминения в двух других

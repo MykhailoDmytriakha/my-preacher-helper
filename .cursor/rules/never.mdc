@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+- NEVER run `npm run dev`
+- NEVER run `npm run build`
+- NEVER do git commmit, push merge, user will handle it
