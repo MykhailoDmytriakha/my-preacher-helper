@@ -799,7 +799,7 @@ describe('Column Component', () => {
       );
 
       // Select the right content container by its responsive class (used elsewhere in the suite)
-      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]') as HTMLElement;
+      const rightContent = container.querySelector('.md\\:min-w-\\[500px\\]') as HTMLElement;
       expect(rightContent).toBeInTheDocument();
 
       // The outline point header should appear in the right content area even with zero items
@@ -931,7 +931,7 @@ describe('Column Component', () => {
       );
       
       // Check left sidebar has dark mode classes
-      const leftSidebar = container.querySelector('.w-72');
+      const leftSidebar = container.querySelector('.lg\\:w-72');
       expect(leftSidebar).toBeInTheDocument();
       
       const sidebarContainer = leftSidebar?.querySelector('.bg-gray-50.dark\\:bg-gray-800');
@@ -951,7 +951,7 @@ describe('Column Component', () => {
       );
       
       // Check right content area has dark mode classes
-      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]');
+      const rightContent = container.querySelector('.md\\:min-w-\\[500px\\]');
       expect(rightContent).toBeInTheDocument();
       
       // The right content area uses UI_COLORS.neutral which resolves to bg-gray-50 dark:bg-gray-800
@@ -1102,12 +1102,12 @@ describe('Column Component', () => {
       );
       
       // Check that UI_COLORS.neutral are applied to left sidebar
-      const leftSidebar = container.querySelector('.w-72');
+      const leftSidebar = container.querySelector('.lg\\:w-72');
       const sidebarContainer = leftSidebar?.querySelector('.bg-gray-50.dark\\:bg-gray-800');
       expect(sidebarContainer).toBeInTheDocument();
       
       // Check that UI_COLORS.neutral are applied to right content area
-      const rightContent = container.querySelector('.md\\:min-w-\\[700px\\]');
+      const rightContent = container.querySelector('.md\\:min-w-\\[500px\\]');
       expect(rightContent).toHaveClass('bg-gray-50');
       expect(rightContent).toHaveClass('dark:bg-gray-800');
     });

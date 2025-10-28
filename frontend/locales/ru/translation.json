@@ -375,7 +375,9 @@
     "markAsReviewed": "Отметить как проверено",
     "markAsUnreviewed": "Снять отметку проверено",
     "markedAsReviewed": "Отмечено как проверено",
-    "markedAsUnreviewed": "Снята отметка проверено"
+    "markedAsUnreviewed": "Снята отметка проверено",
+    "showSidebar": "Показать боковую панель",
+    "hideSidebar": "Скрыть боковую панель"
   },
   "knowledge": {
     "title": "Размышления над проповедью",

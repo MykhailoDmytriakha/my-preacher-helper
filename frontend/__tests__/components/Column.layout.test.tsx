@@ -39,14 +39,15 @@ describe('Column layout (focus mode)', () => {
 
     // Inner scrollable area should include responsive min-widths and not fixed 1200px widths
     const responsiveInner = Array.from(container.querySelectorAll('div')).find((el) =>
-      el.className.includes('md:min-w-[700px]')
+      el.className.includes('md:min-w-[500px]')
     );
     expect(responsiveInner).toBeTruthy();
     if (responsiveInner) {
       expect(responsiveInner.className).toMatch(/w-full/);
-      expect(responsiveInner.className).toMatch(/md:min-w-\[700px\]/);
-      expect(responsiveInner.className).toMatch(/lg:min-w-\[900px\]/);
-      expect(responsiveInner.className).toMatch(/xl:min-w-\[1100px\]/);
+      expect(responsiveInner.className).toMatch(/min-w-0/);
+      expect(responsiveInner.className).toMatch(/md:min-w-\[500px\]/);
+      expect(responsiveInner.className).toMatch(/lg:min-w-\[700px\]/);
+      expect(responsiveInner.className).toMatch(/xl:min-w-\[900px\]/);
       expect(responsiveInner.className).not.toMatch(/min-w-\[1200px\]/);
       expect(responsiveInner.className).not.toMatch(/max-w-\[1200px\]/);
     }

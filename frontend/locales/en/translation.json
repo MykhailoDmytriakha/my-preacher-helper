@@ -374,7 +374,9 @@
     "markAsReviewed": "Mark as reviewed",
     "markAsUnreviewed": "Mark as unreviewed",
     "markedAsReviewed": "Marked as reviewed",
-    "markedAsUnreviewed": "Marked as unreviewed"
+    "markedAsUnreviewed": "Marked as unreviewed",
+    "showSidebar": "Show sidebar",
+    "hideSidebar": "Hide sidebar"
   },
   "knowledge": {
     "title": "Sermon Insights",

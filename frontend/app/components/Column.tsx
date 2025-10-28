@@ -450,6 +450,9 @@ export default function Column({
   // Refs for focus management
   const editInputRef = useRef<HTMLInputElement>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
+
+  // State for responsive sidebar visibility on small screens
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   
   // Calculate counts for assigned and unassigned items
   const assignedItems = items.filter(item => item.outlinePointId).length;
@@ -704,8 +707,8 @@ export default function Column({
   if (isFocusMode) {
     return (
       <div className={`flex h-full gap-6 justify-center w-full ${className}`}>
-        {/* Left sidebar - fixed, non-scrollable, with more top spacing when scrolling */}
-        <div className="w-72 flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)]">
+        {/* Left sidebar - responsive: hidden on small screens, collapsible on medium, fixed on large */}
+        <div className={`${isSidebarVisible ? 'block' : 'hidden'} md:block md:w-64 md:flex-shrink lg:w-72 lg:flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)] z-40`}>
           <div 
             className={`h-full rounded-lg shadow-lg flex flex-col ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
             style={headerBgStyle}
@@ -1000,14 +1003,30 @@ export default function Column({
           </div>
         </div>
         
-        {/* Right side content area (scrollable) */}
+        {/* Right side content area (scrollable) - responsive width */}
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`flex-grow w-full md:min-w-[700px] lg:min-w-[900px] xl:min-w-[1100px] min-h-[600px] overflow-y-auto p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
+            className={`flex-grow w-full min-w-0 md:min-w-[500px] lg:min-w-[700px] xl:min-w-[900px] min-h-[600px] overflow-y-auto p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""} relative`}
             style={headerColor ? { borderColor: headerColor } : {}}
           >
-            <div className="space-y-6">
+            {/* Sidebar toggle button for small screens */}
+            <button
+              onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+              className="md:hidden absolute top-4 left-4 z-10 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title={isSidebarVisible ? t('structure.hideSidebar') : t('structure.showSidebar')}
+            >
+              <svg
+                className={`w-5 h-5 text-gray-600 dark:text-gray-400 transition-transform ${isSidebarVisible ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            <div className="space-y-6 md:space-y-6 space-y-8">
               {/* In focus mode, show outline points even when there are no items */}
               {localOutlinePoints && localOutlinePoints.length > 0 ? (
                 <>
