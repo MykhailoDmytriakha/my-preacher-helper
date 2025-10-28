@@ -307,10 +307,10 @@ const OutlinePointPlaceholder: React.FC<{
           <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
             <div className="space-y-4">
               {pointItems.map((item) => (
-                <SortableItem 
-                  key={item.id} 
-                  item={item} 
-                  containerId={containerId} 
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  containerId={containerId}
                   onEdit={onEdit}
                   isHighlighted={isHighlighted(item.id)}
                   highlightType={getHighlightType(item.id)}
@@ -318,6 +318,7 @@ const OutlinePointPlaceholder: React.FC<{
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
+                  disabled={point.isReviewed}
                 />
               ))}
               
@@ -379,10 +380,10 @@ const UnassignedThoughtsDropTarget: React.FC<{
         <SortableContext items={items} strategy={verticalListSortingStrategy}>
           <div className="space-y-4">
             {items.map((item) => (
-              <SortableItem 
-                key={item.id} 
-                item={item} 
-                containerId={containerId} 
+              <SortableItem
+                key={item.id}
+                item={item}
+                containerId={containerId}
                 onEdit={onEdit}
                 isHighlighted={isHighlighted(item.id)}
                 highlightType={getHighlightType(item.id)}
@@ -390,6 +391,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
                 onRevert={onRevertItem}
                 activeId={activeId}
                 onMoveToAmbiguous={onMoveToAmbiguous}
+                disabled={false}
               />
             ))}
             
@@ -1107,10 +1109,10 @@ export default function Column({
                 ) : (
                   <div className="space-y-4">
                     {items.map((item) => (
-                      <SortableItem 
-                        key={item.id} 
-                        item={item} 
-                        containerId={id} 
+                      <SortableItem
+                        key={item.id}
+                        item={item}
+                        containerId={id}
                         onEdit={onEdit}
                         isHighlighted={item.id in highlightedItems}
                         highlightType={highlightedItems[item.id]?.type}
@@ -1118,6 +1120,7 @@ export default function Column({
                         onRevert={onRevertItem}
                         activeId={activeId}
                         onMoveToAmbiguous={onMoveToAmbiguous}
+                        disabled={false}
                       />
                     ))}
                   </div>
@@ -1383,10 +1386,10 @@ export default function Column({
           ) : (
             <div className="space-y-4">
               {items.map((item) => (
-                <SortableItem 
-                  key={item.id} 
-                  item={item} 
-                  containerId={id} 
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  containerId={id}
                   onEdit={onEdit}
                   isHighlighted={item.id in highlightedItems}
                   highlightType={highlightedItems[item.id]?.type}
@@ -1394,6 +1397,7 @@ export default function Column({
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
+                  disabled={false}
                 />
               ))}
             </div>

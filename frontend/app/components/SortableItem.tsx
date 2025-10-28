@@ -4,7 +4,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { EditIcon, TrashIcon } from '@components/Icons';
-import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { Item } from "@/models/models";
 import CardContent from "./CardContent";
@@ -24,27 +24,29 @@ interface SortableItemProps {
   onRevert?: (itemId: string, containerId: string) => void;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
+  disabled?: boolean; // Whether the item is disabled for drag and drop
 }
 
-export default function SortableItem({ 
-  item, 
-  containerId, 
-  onEdit, 
-  showDeleteIcon = false, 
-  onDelete, 
+export default function SortableItem({
+  item,
+  containerId,
+  onEdit,
+  showDeleteIcon = false,
+  onDelete,
   isDeleting = false,
   isHighlighted = false,
   highlightType = 'moved',
   onKeep,
   onRevert,
   activeId,
-  onMoveToAmbiguous
+  onMoveToAmbiguous,
+  disabled = false
 }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: item.id,
       data: { container: containerId },
-      disabled: isDeleting,
+      disabled: isDeleting || disabled,
     });
   
   const { t } = useTranslation();
@@ -104,9 +106,15 @@ export default function SortableItem({
         isHighlighted ? `border-2 shadow-lg ${
           highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
         }` : 'border border-gray-200 dark:border-gray-700 shadow-md'
-      } hover:shadow-xl ${isDeleting ? 'pointer-events-none' : ''}`}
+      } hover:shadow-xl ${isDeleting ? 'pointer-events-none' : ''} ${disabled ? 'opacity-75' : ''}`}
     >
       <div className="flex-grow">
+        {disabled && (
+          <div className="flex items-center mb-2 text-gray-500 dark:text-gray-400">
+            <LockClosedIcon className="h-4 w-4 mr-1" />
+            <span className="text-xs font-medium">{t('structure.reviewed', { defaultValue: 'Reviewed' })}</span>
+          </div>
+        )}
         <CardContent item={item} />
         {isHighlighted && (
           <div className={`mt-2 py-1 px-2 text-sm font-medium rounded-md inline-flex items-center bg-white ${
