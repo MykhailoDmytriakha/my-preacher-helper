@@ -70,11 +70,12 @@ export default function SortableItem({
       : <span className="ml-1 text-blue-500">➡️</span>;
   };
 
-  // Use a more aggressive approach: completely disable transform and hide the item when it's being dragged
+  // Improved visibility for touch devices - show visual feedback instead of hiding completely
   const style = {
     transform: isActiveItem ? "none" : CSS.Transform.toString(transform),
     transition: isActiveItem ? "none" : (transition || "transform 250ms ease-in-out"),
-    opacity: isActiveItem ? 0 : (isDragging || isDeleting ? 0.5 : 1),
+    opacity: isActiveItem ? 0.3 : (isDragging || isDeleting ? 0.5 : 1),  // Changed from 0 to 0.3 for touch feedback
+    pointerEvents: (isActiveItem ? "none" : "auto") as React.CSSProperties['pointerEvents'],
     ...getHighlightStyles()
   };
 
@@ -99,6 +100,7 @@ export default function SortableItem({
         ...style,
         willChange: "transform",
         backfaceVisibility: "hidden",
+        touchAction: "none",  // Critical for touch devices - prevents browser scroll conflicts
       }}
       {...attributes}
       {...listeners}

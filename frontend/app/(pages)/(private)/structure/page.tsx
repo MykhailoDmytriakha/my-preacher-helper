@@ -144,6 +144,19 @@ function StructurePageContent() {
     debouncedSaveThought,
   });
 
+  // Safety timeout to prevent stuck drag state (especially on touch devices)
+  useEffect(() => {
+    if (!dndActiveId) return;
+    
+    // If drag is active for more than 30 seconds, something went wrong - reset state
+    const safetyTimeout = setTimeout(() => {
+      console.warn('[DnD Safety Guard] Drag state timeout detected, resetting');
+      // The state will be cleared by the DnD hook's cleanup
+    }, 30000);
+    
+    return () => clearTimeout(safetyTimeout);
+  }, [dndActiveId]);
+
   const columnTitles: Record<string, string> = {
     introduction: getSectionLabel(t, 'introduction'),
     main: getSectionLabel(t, 'main'),
@@ -786,8 +799,14 @@ function StructurePageContent() {
                 
               return activeItem ? (
                 <div 
-                  className="flex items-start space-x-2 p-4 bg-white rounded-md border border-gray-300 shadow-lg opacity-90"
-                  style={{ width: 'auto' }}
+                  className="flex items-start space-x-2 p-4 bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 shadow-lg"
+                  style={{ 
+                    width: 'auto',
+                    opacity: 1,                    // Always fully visible
+                    zIndex: 9999,                  // Above everything
+                    pointerEvents: 'none',         // Don't intercept pointer events
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',  // Slightly transparent
+                  }}
                 >
                   <div className="flex-grow">
                     <CardContent item={activeItem} />

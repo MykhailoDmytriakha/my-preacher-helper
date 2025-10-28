@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { 
   useSensors, 
   useSensor, 
-  PointerSensor, 
+  MouseSensor,
   TouchSensor,
   DragStartEvent,
   DragOverEvent,
@@ -47,16 +47,16 @@ export const useStructureDnd = ({
   const [originalContainer, setOriginalContainer] = useState<string | null>(null);
   const [isDragEnding, setIsDragEnding] = useState(false);
 
-  // Setup sensors
+  // Setup sensors - using MouseSensor + TouchSensor for better touch support
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
         distance: 8,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 200,
+        delay: 100,      // Reduced from 200ms for better UX
         tolerance: 8,
       },
     })
