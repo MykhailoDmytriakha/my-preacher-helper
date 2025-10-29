@@ -6,20 +6,6 @@ export function getPlanMarkdownStyles(): string {
         .markdown-content p {
           margin-bottom: 0.75em;
         }
-        .markdown-content ul {
-          list-style: none;
-          padding-left: 0;
-          margin-top: 0.5em;
-          margin-bottom: 0.5em;
-        }
-        .markdown-content li {
-          margin-top: 0.25em;
-          margin-bottom: 0.25em;
-        }
-        .markdown-content li > p {
-          margin-top: 0;
-          margin-bottom: 0;
-        }
         /* Remove borders from all elements */
         .markdown-content * {
           border: none !important;
@@ -33,7 +19,48 @@ export function getPlanMarkdownStyles(): string {
         .markdown-content > *:first-child {
           margin-top: 0;
         }
-        
+
+        /* Indentation for hierarchical structure */
+        .markdown-content h2 {
+          margin-left: 0;
+        }
+        .markdown-content h3 {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+          margin-left: 3rem;
+        }
+        /* Indent paragraphs and lists to align with their headings */
+        .markdown-content h2 + p, .markdown-content h2 + ul, .markdown-content h2 + ol {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h3 + p, .markdown-content h3 + ul, .markdown-content h3 + ol {
+          margin-left: 3rem;
+        }
+        .markdown-content h4 + p, .markdown-content h4 + ul, .markdown-content h4 + ol,
+        .markdown-content h5 + p, .markdown-content h5 + ul, .markdown-content h5 + ol,
+        .markdown-content h6 + p, .markdown-content h6 + ul, .markdown-content h6 + ol {
+          margin-left: 4.5rem;
+        }
+        /* Continuing indentation for paragraphs without headings */
+        .markdown-content p + p, .markdown-content ul + p, .markdown-content ol + p {
+          margin-left: inherit;
+        }
+        .markdown-content ul,
+        .markdown-content ol {
+          margin-top: 0.5em;
+          margin-bottom: 0.5em;
+          padding-left: 1.5em;
+        }
+        .markdown-content li {
+          margin-top: 0.25em;
+          margin-bottom: 0.25em;
+        }
+        .markdown-content li > p {
+          margin-top: 0;
+          margin-bottom: 0;
+        }
+
         /* Visual markers for different heading levels */
         .markdown-content h2::before {
           content: "";
