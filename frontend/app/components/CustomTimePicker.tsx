@@ -31,16 +31,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
   const closeAttemptsRef = useRef<number>(0);
 
   const renderId = React.useRef(Math.random().toString(36).substr(2, 9));
-
-  console.log('[CustomTimePicker] COMPONENT FUNCTION EXECUTED', {
-    renderId: renderId.current,
-    initialHours,
-    initialMinutes,
-    initialSeconds,
-    timestamp: Date.now(),
-    isFirstRender: !mountTimeRef.current
-  });
-  
   const [hours, setHours] = useState(initialHours);
   const [minutes, setMinutes] = useState(initialMinutes);
   const [seconds, setSeconds] = useState(initialSeconds);
@@ -135,17 +125,13 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
   };
 
   const handleConfirm = () => {
-    console.log('[CustomTimePicker] handleConfirm called - about to call onConfirm');
     onConfirm(hours, minutes, seconds);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    console.log('[CustomTimePicker] Key pressed', { key: e.key });
     if (e.key === 'Escape') {
-      console.log('[CustomTimePicker] Closing via Escape key - calling onCancel');
       onCancel();
     } else if (e.key === 'Enter') {
-      console.log('[CustomTimePicker] Enter key pressed - calling handleConfirm');
       handleConfirm();
     }
   };
@@ -182,49 +168,24 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
   // Track component mount/unmount lifecycle
   useEffect(() => {
-    console.log('[CustomTimePicker] COMPONENT MOUNTED', {
-      timestamp: Date.now(),
-      componentId: Math.random().toString(36).substr(2, 9)
-    });
-
     return () => {
-      console.log('[CustomTimePicker] COMPONENT UNMOUNTED', {
-        timestamp: Date.now(),
-        totalLifetime: Date.now() - mountTimeRef.current
-      });
+      // Component cleanup
     };
   }, []);
 
   useEffect(() => {
-    console.log('[CustomTimePicker] useEffect executed - setting up modal');
     // Record mount time to ignore events that happened before mount
     mountTimeRef.current = Date.now();
     // Reset close attempts counter for new modal session
     closeAttemptsRef.current = 0;
-    console.log('[CustomTimePicker] Mount time recorded and close attempts reset', {
-      mountTime: mountTimeRef.current,
-      closeAttemptsReset: true
-    });
 
     // Global mouse event listeners to track all mouse activity
     const handleGlobalMouseDown = (e: MouseEvent) => {
-      console.log('[CustomTimePicker] GLOBAL mousedown detected', {
-        target: e.target,
-        targetTagName: e.target instanceof Element ? e.target.tagName : 'unknown',
-        targetClassName: e.target instanceof Element ? e.target.className : 'unknown',
-        clientX: e.clientX,
-        clientY: e.clientY,
-        timeSinceMount: Date.now() - mountTimeRef.current
-      });
+      // Track global mouse activity
     };
 
     const handleGlobalMouseUp = (e: MouseEvent) => {
-      console.log('[CustomTimePicker] GLOBAL mouseup detected', {
-        target: e.target,
-        targetTagName: e.target instanceof Element ? e.target.tagName : 'unknown',
-        targetClassName: e.target instanceof Element ? e.target.className : 'unknown',
-        timeSinceMount: Date.now() - mountTimeRef.current
-      });
+      // Track global mouse activity
     };
 
     document.addEventListener('mousedown', handleGlobalMouseDown, true); // Capture phase
@@ -232,18 +193,13 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
     // Delay backdrop click handler to prevent immediate close from bubbling click event
     // Increased delay to 300ms for more reliability
-    console.log('[CustomTimePicker] Setting timeout to activate backdrop in 300ms');
     const timer = setTimeout(() => {
-      console.log('[CustomTimePicker] Activating backdrop after timeout');
       setIsBackdropActive(true);
     }, 300);
 
     // Focus the confirm button when modal opens
     if (confirmButtonRef.current) {
-      console.log('[CustomTimePicker] Focusing confirm button');
       confirmButtonRef.current.focus();
-    } else {
-      console.log('[CustomTimePicker] Confirm button ref not available for focus');
     }
 
     // Trap focus within modal
@@ -273,14 +229,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     };
 
     document.addEventListener('keydown', handleTabKey);
-    console.log('[CustomTimePicker] Focus trap and event listeners set up');
 
     return () => {
-      console.log('[CustomTimePicker] Cleanup function executing - COMPONENT WILL UNMOUNT', {
-        timeSinceMount: Date.now() - mountTimeRef.current,
-        backdropWasActive: isBackdropActive,
-        closeAttempts: closeAttemptsRef.current
-      });
       clearTimeout(timer);
       document.removeEventListener('keydown', handleTabKey);
       document.removeEventListener('mousedown', handleGlobalMouseDown, true);
@@ -288,62 +238,26 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     };
   }, []);
 
-  console.log('[CustomTimePicker] RENDER: Modal visibility check', {
-    isVisible: true,
-    backdropActive: isBackdropActive,
-    timeSinceMount: Date.now() - mountTimeRef.current,
-    closeAttempts: closeAttemptsRef.current
-  });
+  // Render modal
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onMouseDown={(e) => {
         const timeSinceMount = Date.now() - mountTimeRef.current;
-        console.log('[CustomTimePicker] Backdrop mousedown', {
-          isBackdropActive,
-          isCurrentTarget: e.target === e.currentTarget,
-          timeSinceMount,
-          target: e.target,
-          currentTarget: e.currentTarget,
-          eventType: e.type,
-          eventPhase: e.eventPhase,
-          targetTagName: e.target instanceof Element ? e.target.tagName : 'unknown',
-          targetClassName: e.target instanceof Element ? e.target.className : 'unknown',
-          path: e.nativeEvent?.composedPath?.().slice(0, 5).map(el =>
-            el instanceof Element ? `${el.tagName}.${el.className?.split(' ')[0] || 'no-class'}` : String(el)
-          ).join(' > ')
-        });
 
         // Enable backdrop click to close functionality
         // Close modal when clicking outside the content area
         if (isBackdropActive && e.target === e.currentTarget) {
-          console.log('[CustomTimePicker] Backdrop click detected, closing modal');
           onCancel();
           return;
         }
-
-        console.log('[CustomTimePicker] Backdrop click ignored - not active or not on backdrop', {
-          isBackdropActive,
-          isCurrentTarget: e.target === e.currentTarget,
-          timeSinceMount
-        });
       }}
       onMouseUp={(e) => {
-        console.log('[CustomTimePicker] Backdrop mouseup (ignored)', {
-          target: e.target,
-          currentTarget: e.currentTarget,
-          isCurrentTarget: e.target === e.currentTarget,
-          timeSinceMount: Date.now() - mountTimeRef.current
-        });
+        // Handle mouse up on backdrop
       }}
       onClick={(e) => {
-        console.log('[CustomTimePicker] Backdrop click (ignored)', {
-          target: e.target,
-          currentTarget: e.currentTarget,
-          isCurrentTarget: e.target === e.currentTarget,
-          timeSinceMount: Date.now() - mountTimeRef.current
-        });
+        // Handle click on backdrop
       }}
       role="dialog"
       aria-modal="true"
@@ -370,7 +284,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
           </h2>
           <button
             onClick={(e) => {
-              console.log('[CustomTimePicker] Header close button clicked');
               e.stopPropagation();
               onCancel();
             }}
@@ -501,7 +414,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
           {onBack && (
             <button
               onClick={(e) => {
-                console.log('[CustomTimePicker] Back button clicked');
                 e.stopPropagation();
                 onBack();
               }}
@@ -512,7 +424,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
           )}
           <button
             onClick={(e) => {
-              console.log('[CustomTimePicker] Cancel button clicked');
               e.stopPropagation();
               onCancel();
             }}

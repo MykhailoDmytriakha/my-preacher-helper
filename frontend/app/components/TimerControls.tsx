@@ -37,14 +37,6 @@ const TimerControls: React.FC<TimerControlsProps> = ({
   // Логика цвета кнопки: зеленая когда нужно выбрать время ИЛИ когда можно начать/продолжить
   const showResumeButton = status === 'idle' || isPaused;
 
-  // Логи состояния кнопки для отладки
-  console.log('[TimerControls] Button state:', {
-    color: showResumeButton ? 'GREEN' : 'BLUE',
-    active: !buttonDisabled,
-    hasTime: hasTime,
-    status: status
-  });
-
   const handlePauseResume = () => {
     if (status === 'idle') {
       onStart?.();

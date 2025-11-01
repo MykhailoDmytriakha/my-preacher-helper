@@ -74,7 +74,6 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
-        console.log('[InlineTimerPresets] Click outside detected, closing popup');
         onClose();
       }
     };
@@ -86,7 +85,6 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
   }, [onClose]);
 
   const handlePresetSelect = useCallback((minutes: number) => {
-    console.log('[InlineTimerPresets] Preset selected', { minutes });
     onSelectDuration(minutes * 60);
     onClose();
   }, [onSelectDuration, onClose]);
@@ -97,22 +95,18 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
   }, []);
 
   const handleCustomPicker = useCallback((e: React.MouseEvent) => {
-    console.log('[InlineTimerPresets] Custom picker button clicked');
     e.preventDefault(); // Prevent default action
     e.stopPropagation(); // Prevent event from bubbling up
 
     // Use setTimeout with longer delay to ensure ALL events have finished propagating
     // The mousedown event from the button click takes time to fully resolve
-    console.log('[InlineTimerPresets] Scheduling custom picker open with setTimeout (100ms delay)');
     setTimeout(() => {
-      console.log('[InlineTimerPresets] Executing scheduled custom picker open');
       onOpenCustomPicker();
     }, 100); // Increased from 0 to 100ms to allow mousedown event to fully resolve
     // Don't call onClose() - handleOpenCustomPicker already handles closing inline presets
   }, [onOpenCustomPicker]);
 
   const handleCustomPickerMouseDown = useCallback((e: React.MouseEvent) => {
-    console.log('[InlineTimerPresets] Custom picker mousedown intercepted');
     // Prevent mousedown event from bubbling up to prevent backdrop click
     e.stopPropagation();
   }, []);
@@ -121,29 +115,7 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
     <div
       ref={popupRef}
       className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 z-50 min-w-max max-w-xs"
-         onMouseDown={(e) => {
-           console.log('[InlineTimerPresets] Container mousedown', {
-             target: e.target,
-             currentTarget: e.currentTarget,
-             isCurrentTarget: e.target === e.currentTarget,
-             targetTagName: e.target instanceof Element ? e.target.tagName : 'unknown',
-             targetClassName: e.target instanceof Element ? e.target.className : 'unknown'
-           });
-         }}
-         onMouseUp={(e) => {
-           console.log('[InlineTimerPresets] Container mouseup', {
-             target: e.target,
-             currentTarget: e.currentTarget,
-             isCurrentTarget: e.target === e.currentTarget
-           });
-         }}
-         onClick={(e) => {
-           console.log('[InlineTimerPresets] Container click', {
-             target: e.target,
-             currentTarget: e.currentTarget,
-             isCurrentTarget: e.target === e.currentTarget
-           });
-         }}>
+>
       {/* Quick Presets */}
       <div className="flex gap-2 mb-3">
         {[10, 15, 20, 25, 30].map((minutes) => (
@@ -226,19 +198,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
   // Comprehensive logging for modal state debugging
   const logModalState = useCallback((action: string, details?: any) => {
-    console.log(`[PreachingTimer:${action}]`, {
-      showInlinePresets,
-      showCustomPicker,
-      pendingCustomPickerOpen,
-      timerState: {
-        status: timerState.status,
-        isRunning: timerState.isRunning,
-        isPaused: timerState.isPaused
-      },
-      initialDuration,
-      timestamp: Date.now(),
-      ...details
-    });
+    // Debug logging removed
   }, [showInlinePresets, showCustomPicker, pendingCustomPickerOpen, timerState, initialDuration]);
 
   // Periodic logging every 5 seconds
@@ -622,23 +582,11 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
     {/* Custom Time Picker Modal */}
     {(() => {
-      console.log('[PreachingTimer] RENDER: CustomTimePicker visibility check', {
-        showCustomPicker,
-        hasModal: showCustomPicker ? 'YES' : 'NO'
-      });
-
       if (showCustomPicker) {
         const totalDuration = settings.totalDuration;
         const initialHours = Math.floor(totalDuration / 3600);
         const initialMinutes = Math.floor((totalDuration % 3600) / 60);
         const initialSeconds = totalDuration % 60;
-
-        console.log('[PreachingTimer] RENDER: Creating CustomTimePicker instance', {
-          totalDuration,
-          initialHours,
-          initialMinutes,
-          initialSeconds
-        });
 
         return (
           <CustomTimePicker
