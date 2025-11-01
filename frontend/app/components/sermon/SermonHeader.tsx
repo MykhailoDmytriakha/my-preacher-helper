@@ -9,6 +9,8 @@ import { updateSermon } from '@/services/sermon.service'; // Import updateSermon
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
+import { useTranslation } from 'react-i18next';
+import { ScrollText } from 'lucide-react';
 
 export interface SermonHeaderProps {
   sermon: Sermon;
@@ -18,7 +20,12 @@ export interface SermonHeaderProps {
 }
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
+  const { t } = useTranslation();
   const formattedDate = formatDate(sermon.date);
+
+  const handleStartPreaching = () => {
+    window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
+  };
   
   
   // Removed legacy mode switch (framework/content)
@@ -94,8 +101,16 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
         </div>
       </div>
 
-      {/* Right side: Export Buttons and optional Wizard preview */}
+      {/* Right side: Preach Button and Export Buttons */}
       <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-shrink-0">
+        <button
+          onClick={handleStartPreaching}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+          title={t('plan.preachButton') || 'Preach'}
+        >
+          <ScrollText className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('plan.preachButton') || 'Preach'}</span>
+        </button>
         <ExportButtons
             sermonId={sermon.id}
             getExportContent={generateExportContent}
