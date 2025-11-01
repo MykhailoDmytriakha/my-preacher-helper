@@ -1,0 +1,120 @@
+/* Timer Visual Effects Styles */
+
+/* Screen blink overlay */
+.screen-blink-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-color: #EF4444 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
+  transition: opacity 250ms ease-in-out !important;
+}
+
+/* Timer blinking animation */
+@keyframes timer-blink {
+  0%, 50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  25%, 75% {
+    opacity: 0.3;
+    transform: scale(1.05);
+  }
+}
+
+.timer-blink {
+  animation: timer-blink 0.5s ease-in-out;
+}
+
+/* Emergency state styling */
+.time-display.emergency {
+  color: #EF4444 !important;
+  font-weight: bold !important;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.5) !important;
+  animation: emergency-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes emergency-pulse {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  }
+  100% {
+    transform: scale(1.1);
+    text-shadow: 0 0 16px rgba(239, 68, 68, 0.8);
+  }
+}
+
+/* Phase transition highlighting */
+.phase-transition-highlight {
+  background-color: rgba(252, 211, 77, 0.3) !important;
+  border-radius: 4px !important;
+  padding: 2px 4px !important;
+  transition: background-color 300ms ease-in-out !important;
+}
+
+/* Success effect overlay */
+.success-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-color: #10B981 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
+  transition: opacity 150ms ease-in-out !important;
+}
+
+/* Completion celebration */
+@keyframes completion-sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.completion-sparkle {
+  animation: completion-sparkle 0.6s ease-in-out;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .screen-blink-overlay,
+  .timer-blink,
+  .time-display.emergency,
+  .phase-transition-highlight,
+  .success-overlay,
+  .completion-sparkle {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .time-display.emergency {
+    color: #EF4444 !important;
+    font-weight: bold !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .screen-blink-overlay {
+    background-color: #000000 !important;
+  }
+
+  .time-display.emergency {
+    color: #FFFFFF !important;
+    background-color: #000000 !important;
+    padding: 2px 4px !important;
+    border-radius: 2px !important;
+  }
+}

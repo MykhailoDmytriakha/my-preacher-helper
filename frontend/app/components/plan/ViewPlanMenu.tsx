@@ -11,6 +11,7 @@ import { sanitizeMarkdown } from "../../utils/markdownUtils";
 
 interface ViewPlanMenuProps {
   sermonTitle: string;
+  sermonId: string;
   combinedPlan: {
     introduction: string;
     main: string;
@@ -20,6 +21,8 @@ interface ViewPlanMenuProps {
   showSectionMenu: boolean;
   setShowSectionMenu: (show: boolean) => void;
   onRequestPlanOverlay: () => void;
+  onRequestPreachingMode?: () => void;
+  onStartPreachingMode?: () => void;
 }
 
 interface MarkdownRendererProps {
@@ -45,11 +48,14 @@ const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
 
 const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
   sermonTitle,
+  sermonId,
   combinedPlan,
   sectionMenuRef,
   showSectionMenu,
   setShowSectionMenu,
   onRequestPlanOverlay,
+  onRequestPreachingMode,
+  onStartPreachingMode,
 }) => {
   const { t } = useTranslation();
 
@@ -132,15 +138,16 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
   };
 
   return (
-    <div className="relative" ref={sectionMenuRef}>
-      <button 
-        onClick={() => setShowSectionMenu(!showSectionMenu)}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700"
-      >
-        <BookOpen className="h-6 w-6" />
-        {t("plan.viewPlan") || "View Plan"}
-        <ChevronDown className="h-4 w-4 ml-1" />
-      </button>
+    <div className="flex gap-2" ref={sectionMenuRef}>
+      <div className="relative">
+        <button
+          onClick={() => setShowSectionMenu(!showSectionMenu)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700"
+        >
+          <BookOpen className="h-6 w-6" />
+          {t("plan.viewPlan") || "View Plan"}
+          <ChevronDown className="h-4 w-4 ml-1" />
+        </button>
       
       {showSectionMenu && (
         <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-30 min-w-[180px]">
@@ -182,6 +189,23 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
           </button>
         </div>
       )}
+      </div>
+
+      <button
+        onClick={() => {
+          if (onStartPreachingMode) {
+            onStartPreachingMode();
+          } else if (onRequestPreachingMode) {
+            onRequestPreachingMode();
+          } else {
+            window.location.href = `/sermons/${sermonId}/plan?planView=preaching`;
+          }
+        }}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700"
+      >
+        <ScrollText className="h-6 w-6" />
+        {t("plan.preachButton") || "Preach"}
+      </button>
     </div>
   );
 };

@@ -1,0 +1,440 @@
+/* Preaching Timer Components Styles */
+/* Header now uses nav element with DashboardNav styles, no custom CSS needed */
+
+/* Timer Display Section */
+.preaching-timer-display {
+  flex: 1;
+  text-align: center;
+}
+
+/* Digital Timer Display - Side by side layout */
+.preaching-timer-display,
+nav .digital-timer-display,
+.preaching-timer .digital-timer-display {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  height: auto !important;
+  width: 100% !important;
+}
+
+/* Timer Content Wrapper - Side by side elements */
+.preaching-timer-display .timer-content-wrapper {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  max-width: 300px !important;
+  width: auto !important;
+  padding: 0 20px !important;
+  gap: 16px !important;
+}
+
+/* Timer Content Wrapper Children - Center alignment */
+.preaching-timer-display .timer-content-wrapper > div:first-child {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  height: 100% !important;
+  flex: 0 0 auto !important;
+  margin-right: 20px !important;
+}
+
+.preaching-timer-display .timer-content-wrapper > div:last-child {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  height: 100% !important;
+  flex: 0 0 auto !important;
+}
+
+/* Phase Indicator */
+.phase-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
+  animation: phaseDotPulse 2s ease-in-out infinite;
+}
+
+.dark .phase-dot {
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+}
+
+@keyframes phaseDotPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.preaching-timer-display .phase-label,
+nav .digital-timer-display .phase-label,
+.preaching-timer .digital-timer-display .phase-label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: rgb(75, 85, 99) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.8px !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+
+.dark .phase-label {
+  color: rgb(209, 213, 219);
+}
+
+/* Time Display Container - Maximum Specificity */
+.preaching-timer-display .time-display-container,
+nav .digital-timer-display .time-display-container,
+.preaching-timer .digital-timer-display .time-display-container {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Main Time Display - Maximum Specificity */
+.preaching-timer-display .time-display,
+nav .digital-timer-display .time-display,
+.preaching-timer .digital-timer-display .time-display {
+  font-size: 52px !important;
+  font-weight: 800 !important;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace !important;
+  letter-spacing: 3px !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-variant-numeric: tabular-nums !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+
+.dark .time-display {
+  text-shadow: 0 2px 12px rgba(255, 255, 255, 0.08);
+}
+
+.time-display.emergency {
+  animation: emergencyGlow 0.6s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* Time Label */
+.time-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgb(107, 114, 128);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dark .time-label {
+  color: rgb(156, 163, 175);
+}
+
+/* Timer Controls Section */
+.preaching-timer-controls {
+  flex-shrink: 0;
+}
+
+/* Timer Controls */
+.timer-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Control Buttons */
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgb(249, 250, 251);
+  color: rgb(107, 114, 128);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.control-button:hover {
+  background: rgb(243, 244, 246);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.control-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.dark .control-button {
+  background: rgb(31, 41, 55);
+  color: rgb(156, 163, 175);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.dark .control-button:hover {
+  background: rgb(55, 65, 81);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Pause/Resume Button */
+.pause-resume-button {
+  background: linear-gradient(135deg, rgb(59, 130, 246), rgb(37, 99, 235));
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.pause-resume-button:hover {
+  background: linear-gradient(135deg, rgb(37, 99, 235), rgb(29, 78, 216));
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.pause-resume-button.resume {
+  background: linear-gradient(135deg, rgb(34, 197, 94), rgb(22, 163, 74));
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.pause-resume-button.resume:hover {
+  background: linear-gradient(135deg, rgb(22, 163, 74), rgb(16, 132, 60));
+  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Stop Button */
+.stop-button {
+  background: linear-gradient(135deg, rgb(239, 68, 68), rgb(220, 38, 38));
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.stop-button:hover {
+  background: linear-gradient(135deg, rgb(220, 38, 38), rgb(185, 28, 28));
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Skip Button */
+.skip-button {
+  background: linear-gradient(135deg, rgb(168, 85, 247), rgb(147, 51, 234));
+  color: white;
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.skip-button:hover {
+  background: linear-gradient(135deg, rgb(147, 51, 234), rgb(126, 34, 206));
+  box-shadow: 0 6px 16px rgba(168, 85, 247, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Control Icons */
+.control-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+/* Responsive Design for Preaching Timer Header */
+@media (max-width: 1024px) {
+  .time-display {
+    font-size: 44px;
+    letter-spacing: 2px;
+  }
+
+  .control-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .control-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .time-display {
+    font-size: 40px;
+    letter-spacing: 2px;
+  }
+
+  .preaching-timer-display,
+  nav .digital-timer-display,
+  .preaching-timer .digital-timer-display {
+    gap: 0 !important;
+    padding: 0 12px !important;
+  }
+
+  .preaching-timer-display .timer-content-wrapper {
+    padding: 0 8px !important;
+  }
+
+  .phase-label {
+    font-size: 12px;
+    letter-spacing: 0.6px;
+  }
+
+  .control-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .control-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .time-display {
+    font-size: 32px;
+    letter-spacing: 1px;
+  }
+
+  .preaching-timer-display,
+  nav .digital-timer-display,
+  .preaching-timer .digital-timer-display {
+    gap: 0 !important;
+    flex-direction: column !important;
+    padding: 0 8px !important;
+  }
+
+  .preaching-timer-display .timer-content-wrapper {
+    padding: 0 8px !important;
+  }
+
+  .phase-label {
+    font-size: 12px;
+    letter-spacing: 0.6px;
+  }
+
+  .control-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .control-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .timer-controls {
+    gap: 8px;
+  }
+}
+
+/* Animation for phase transitions */
+.phase-transition {
+  animation: phaseChange 0.5s ease-in-out;
+}
+
+@keyframes phaseChange {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Desktop layout restoration - wider screens */
+@media (min-width: 1025px) {
+  .preaching-timer-display .timer-content-wrapper {
+    justify-content: space-between !important;
+    gap: 0 !important;
+    padding: 0 20px !important;
+  }
+}
+
+/* Pulse animation for timer updates */
+.timer-pulse {
+  animation: timerPulse 0.5s ease-in-out;
+}
+
+@keyframes timerPulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pulse-animation {
+  animation: timerPulse 0.5s ease-in-out infinite alternate;
+}
+
+/* Emergency timer styling (when time is running out) */
+.timer-emergency {
+  animation: emergencyPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes emergencyPulse {
+  0% {
+    background-color: rgba(239, 68, 68, 0.1);
+  }
+  100% {
+    background-color: rgba(239, 68, 68, 0.2);
+  }
+}
+
+@keyframes emergencyGlow {
+  0% {
+    text-shadow: 0 0 8px currentColor, 0 2px 12px rgba(0, 0, 0, 0.08);
+  }
+  100% {
+    text-shadow: 0 0 16px currentColor, 0 2px 12px rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* Success state styling */
+.timer-success {
+  animation: successGlow 0.8s ease-in-out;
+}
+
+@keyframes successGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}

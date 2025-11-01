@@ -431,7 +431,9 @@
     "copiedToClipboard": "Suggestion copied to clipboard!",
     "regenerate": "Regenerate",
     "generating": "Generating...",
-    "editTitleInput": "Edit title"
+    "editTitleInput": "Edit title",
+    "minutes": "minutes",
+    "refresh": "Refresh"
   },
   "outline": {
     "introduction": "Introduction",
@@ -456,6 +458,36 @@
   },
   "plan": {
     "pageTitle": "Sermon Plan",
+    "preachButton": "Preach",
+    "customTime": "Custom Time",
+    "selectDuration": "Select Duration",
+    "setPreachingTimer": "Set Preaching Timer",
+    "startPreaching": "Start Preaching",
+    "timePicker": {
+      "title": "Set Timer",
+      "hours": "Hours",
+      "minutes": "Minutes",
+      "seconds": "Seconds",
+      "totalTime": "Total time",
+      "presets": "Quick presets",
+      "min": "min",
+      "setTimer": "Set Timer",
+      "startPreaching": "Start Preaching"
+    },
+    "timer": {
+      "remaining": "remaining",
+      "finished": "Finished",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "skip": "Skip to next phase",
+      "error": {
+        "title": "Timer Error",
+        "message": "An error occurred while setting up the timer. Please try again."
+      },
+      "regionLabel": "Region"
+    },
+    "exitPreachingMode": "Exit Preaching Mode",
     "columns": {
       "thoughts": "Thoughts",
       "plan": "Plan"
@@ -576,13 +608,15 @@
   "actions": {
     "save": "Save",
     "back": "Back",
+    "backToPlan": "Back to Plan",
     "backToSermon": "Back to sermon",
     "copyAll": "Copy All",
     "goToOutline": "Go to Outline",
     "remove": "Remove",
     "close": "Close",
     "cancel": "Cancel",
-    "clearAll": "Clear All"
+    "clearAll": "Clear All",
+    "start": "Start"
   },
   "wizard": {
     "previewButton": "Preparation Mode",

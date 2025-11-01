@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Timer Components Styles */
+@import './preaching-timer.css';
+@import './time-picker.css';
+@import './timer-effects.css';
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

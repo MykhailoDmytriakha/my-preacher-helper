@@ -432,7 +432,9 @@
     "copiedToClipboard": "Идею скопировано в буфер обмена!",
     "regenerate": "Перегенерировать",
     "generating": "Генерация...",
-    "editTitleInput": "Редактировать заголовок"
+    "editTitleInput": "Редактировать заголовок",
+    "minutes": "минут",
+    "refresh": "Обновить"
   },
   "outline": {
     "introduction": "Вступление",
@@ -457,6 +459,36 @@
   },
   "plan": {
     "pageTitle": "План проповеди",
+    "preachButton": "Проповедовать",
+    "customTime": "Пользовательское время",
+    "selectDuration": "Выберите продолжительность",
+    "setPreachingTimer": "Установить таймер проповеди",
+    "startPreaching": "Начать проповедь",
+    "timePicker": {
+      "title": "Установить таймер",
+      "hours": "Часы",
+      "minutes": "Минуты",
+      "seconds": "Секунды",
+      "totalTime": "Общее время",
+      "presets": "Быстрые настройки",
+      "min": "мин",
+      "setTimer": "Установить таймер",
+      "startPreaching": "Начать проповедовать"
+    },
+    "timer": {
+      "remaining": "осталось",
+      "finished": "Завершено",
+      "pause": "Пауза",
+      "resume": "Продолжить",
+      "stop": "Стоп",
+      "skip": "Перейти к следующей фазе",
+      "error": {
+        "title": "Ошибка таймера",
+        "message": "Произошла ошибка при настройке таймера. Пожалуйста, попробуйте еще раз."
+      },
+      "regionLabel": "Регион"
+    },
+    "exitPreachingMode": "Выйти из режима проповеди",
     "columns": {
       "thoughts": "Мысли",
       "plan": "План"
@@ -577,13 +609,15 @@
   "actions": {
     "save": "Сохранить",
     "back": "Назад",
+    "backToPlan": "Назад к плану",
     "backToSermon": "Назад к проповеди",
     "copyAll": "Копировать все",
     "goToOutline": "Перейти к плану",
     "remove": "Удалить",
     "close": "Закрыть",
     "cancel": "Отмена",
-    "clearAll": "Очистить все"
+    "clearAll": "Очистить все",
+    "start": "Старт"
   },
   "wizard": {
     "previewButton": "Режим подготовки",

@@ -432,7 +432,9 @@
     "copiedToClipboard": "Ідею скопійовано до буфера обміну!",
     "regenerate": "Перегенерувати",
     "generating": "Генерація...",
-    "editTitleInput": "Редагувати заголовок"
+    "editTitleInput": "Редагувати заголовок",
+    "minutes": "хвилин",
+    "refresh": "Оновити"
   },
   "outline": {
     "introduction": "Вступ",
@@ -457,6 +459,36 @@
   },
   "plan": {
     "pageTitle": "План проповіді",
+    "preachButton": "Проповідувати",
+    "customTime": "Користувацький час",
+    "selectDuration": "Оберіть тривалість",
+    "setPreachingTimer": "Встановити таймер проповіді",
+    "startPreaching": "Почати проповідь",
+    "timePicker": {
+      "title": "Встановити таймер",
+      "hours": "Години",
+      "minutes": "Хвилини",
+      "seconds": "Секунди",
+      "totalTime": "Загальний час",
+      "presets": "Швидкі налаштування",
+      "min": "хв",
+      "setTimer": "Встановити таймер",
+      "startPreaching": "Почати проповідувати"
+    },
+    "timer": {
+      "remaining": "залишилось",
+      "finished": "Завершено",
+      "pause": "Пауза",
+      "resume": "Продовжити",
+      "stop": "Стоп",
+      "skip": "Перейти до наступної фази",
+      "error": {
+        "title": "Помилка таймера",
+        "message": "Сталася помилка при налаштуванні таймера. Будь ласка, спробуйте ще раз."
+      },
+      "regionLabel": "Регіон"
+    },
+    "exitPreachingMode": "Вийти з режиму проповіді",
     "columns": {
       "thoughts": "Думки",
       "plan": "План"
@@ -577,13 +609,15 @@
   "actions": {
     "save": "Зберегти",
     "back": "Назад",
+    "backToPlan": "Назад до плану",
     "backToSermon": "Назад до проповіді",
     "copyAll": "Копіювати все",
     "goToOutline": "Перейти до плану",
     "remove": "Видалити",
     "close": "Закрити",
     "cancel": "Скасувати",
-    "clearAll": "Очистити все"
+    "clearAll": "Очистити все",
+    "start": "Старт"
   },
   "wizard": {
     "previewButton": "Режим підготовки",

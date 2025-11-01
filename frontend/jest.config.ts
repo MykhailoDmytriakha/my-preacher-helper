@@ -14,12 +14,13 @@ const config: Config = {
   testTimeout: 5000, // Increase global timeout to 15 seconds
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  modulePaths: ['.'],
+  modulePaths: ['.', '..'],
+  moduleDirectories: ['node_modules', '../node_modules'],
   moduleNameMapper: {
     // Handle module aliases (aligning with tsconfig.json)
     // Specific paths first
     '^@components/(.*)$': '<rootDir>/app/components/$1',
-    '^@hooks/(.*)$': '<rootDir>/hooks/$1',
+    '^@hooks/(.*)$': '<rootDir>/app/hooks/$1',
     '^@services/(.*)$': '<rootDir>/app/services/$1',
     '^@repositories/(.*)$': '<rootDir>/app/api/repositories/$1', // Corrected target path
     '^@api/(.*)$': '<rootDir>/app/api/$1',
@@ -30,12 +31,26 @@ const config: Config = {
     // Base path last
     '^@/(.*)$': '<rootDir>/app/$1', // Corrected base path target
   },
-  // Tell Jest to transform specific node_modules packages
+  // Tell Jest to transform specific node_modules packages and root app files
   transformIgnorePatterns: [
     // Ignore node_modules, but DO transform ESM modules that require transformation
     '/node_modules/(?!react-markdown|unified|remark-.*|micromark|mdast-.*|unist-.*|@?vfile.*|decode-named-character-reference|property-information|comma-separated-tokens|hast-util-.*|space-separated-tokens|bail|character-entities|trough|markdown-table|ccount|html-void-elements|trim-lines|rehype.*|is-plain-obj|hastscript|web-namespaces|zwitch|hast-.*|style-to-object)/',
     // Keep the default Next.js pattern for CSS Modules
     '^.+\\.module\\.(css|sass|scss)$',
+  ],
+  // Transform root app directory files
+  transform: {
+    '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', {
+      presets: [
+        ['next/babel'],
+      ],
+      plugins: [],
+    }],
+  },
+  // Transform files from root app directory as well
+  testPathIgnorePatterns: [
+    '<rootDir>/.next/',
+    '<rootDir>/node_modules/',
   ],
   collectCoverageFrom: [
     'app/**/*.{ts,tsx}', // Include all TS/TSX files in the app directory

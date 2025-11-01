@@ -18,9 +18,11 @@ import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
+import PreachingTimer from "@/components/PreachingTimer";
+import TimePickerPopup from "@/components/TimePickerPopup";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
-type PlanViewMode = "overlay" | "immersive";
+type PlanViewMode = "overlay" | "immersive" | "preaching";
 
 // Стиль для hover-эффекта кнопок с секционными цветами
 const sectionButtonStyles = `
@@ -356,7 +358,7 @@ export default function PlanPage() {
 
   const planViewParam = searchParams.get("planView");
   const planViewMode: PlanViewMode | null = useMemo(() => {
-    if (planViewParam === "overlay" || planViewParam === "immersive") {
+    if (planViewParam === "overlay" || planViewParam === "immersive" || planViewParam === "preaching") {
       return planViewParam;
     }
     return null;
@@ -381,6 +383,7 @@ export default function PlanPage() {
 
   const isPlanOverlay = planViewMode === "overlay";
   const isPlanImmersive = planViewMode === "immersive";
+  const isPlanPreaching = planViewMode === "preaching";
   const copyButtonClasses = "flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700";
   const copyButtonStatusClasses: Record<CopyStatus, string> = {
     idle: '',
@@ -433,6 +436,11 @@ export default function PlanPage() {
   
   const [showSectionMenu, setShowSectionMenu] = useState<boolean>(false);
   const sectionMenuRef = useRef<HTMLDivElement>(null);
+
+  // Preaching timer state
+  const [showTimePicker, setShowTimePicker] = useState<boolean>(false);
+  const [preachingDuration, setPreachingDuration] = useState<number | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<number>(1200); // Default 20 minutes
   
   // Close section menu when clicking outside
   useEffect(() => {
@@ -1146,6 +1154,34 @@ export default function PlanPage() {
   const handleOpenPlanImmersive = useCallback(() => {
     updatePlanViewMode("immersive");
   }, [updatePlanViewMode]);
+
+  const handleOpenTimePicker = useCallback(() => {
+    setShowTimePicker(true);
+  }, []); // Remove showTimePicker from deps to avoid stale closure
+
+  const handleTimePickerClose = useCallback(() => {
+    setShowTimePicker(false);
+  }, []);
+
+  const handleSetTimer = useCallback((hours: number, minutes: number, seconds: number) => {
+    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+    setPreachingDuration(totalSeconds);
+    setShowTimePicker(false);
+    // Don't switch to preaching mode yet, just set the timer
+  }, []);
+
+  const handleStartPreaching = useCallback((duration: number) => {
+    setPreachingDuration(duration);
+    setShowTimePicker(false);
+    updatePlanViewMode("preaching");
+  }, [updatePlanViewMode]);
+
+  const handleStartPreachingMode = useCallback(() => {
+    // Start preaching mode - user will choose duration first
+    setPreachingDuration(null); // Clear any existing duration to show time picker
+    setShowTimePicker(true); // Show the time picker popup
+    updatePlanViewMode("preaching");
+  }, [updatePlanViewMode]);
   
   // Generate content for export as text
   const getExportContent = async (format: 'plain' | 'markdown'): Promise<string> => {
@@ -1567,6 +1603,145 @@ export default function PlanPage() {
     );
   }
 
+  // Time Picker Popup - should render in all modes
+  const timePickerPopup = showTimePicker ? (
+    <TimePickerPopup
+      isOpen={showTimePicker}
+      onClose={handleTimePickerClose}
+      onSetTimer={(hours, minutes, seconds) => {
+        // In preaching mode, use handleStartPreaching
+        if (isPlanPreaching) {
+          const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+          handleStartPreaching(totalSeconds);
+        } else {
+          handleSetTimer(hours, minutes, seconds);
+        }
+      }}
+      onStartPreaching={(hours, minutes, seconds) => {
+        // In preaching mode, use handleStartPreaching
+        if (isPlanPreaching) {
+          const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+          handleStartPreaching(totalSeconds);
+        } else {
+          handleStartPreaching(hours * 3600 + minutes * 60 + seconds);
+        }
+      }}
+      initialDuration={preachingDuration || 1200} // Default 20 minutes
+    />
+  ) : null;
+
+  // Preaching view with timer
+  if (isPlanPreaching && sermon) {
+    return (
+      <>
+        <style jsx global>{sectionButtonStyles}</style>
+        <style jsx global>{`
+          /* Preaching mode specific styles */
+          .preaching-mode {
+            padding-top: 80px; /* Desktop: Account for sticky timer header */
+          }
+          
+          @media (max-width: 768px) {
+            .preaching-mode {
+              padding-top: 65px; /* Tablet: Slightly less padding */
+            }
+          }
+          
+          @media (max-width: 640px) {
+            .preaching-mode {
+              padding-top: 50px; /* Mobile: Less padding for compact timer */
+            }
+          }
+          
+          .preaching-content {
+            max-width: 4xl;
+            margin: 0 auto;
+          }
+        `}</style>
+
+
+        <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${preachingDuration && preachingDuration > 0 ? 'preaching-mode' : ''}`}>
+          {/* Show TimePicker if no duration set or timer stopped, otherwise show Timer */}
+          {preachingDuration && preachingDuration > 0 ? (
+            <>
+              {/* Sticky Timer Header */}
+              <div className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+                <PreachingTimer
+                  initialDuration={preachingDuration}
+                  className="border-0 shadow-none"
+                  sermonId={sermonId}
+                  onExitPreaching={() => updatePlanViewMode(null)}
+                  onTimerFinished={() => {
+                    console.log('Timer finished naturally, showing negative countdown');
+                    // Don't reset preachingDuration - let timer show negative values
+                    // User can manually exit via "Exit Preaching Mode" button
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            /* Show TimePicker to set duration */
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 text-center">
+                  {t("plan.setPreachingTimer", { defaultValue: "Set Preaching Timer" })}
+                </h2>
+
+                {/* Duration Drum Selector */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">
+                    {t("plan.selectDuration", { defaultValue: "Select Duration" })}
+                  </label>
+                  <select
+                    value={selectedDuration}
+                    onChange={(e) => setSelectedDuration(Number(e.target.value))}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {[1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(minutes => (
+                      <option key={minutes} value={minutes * 60}>
+                        {minutes} {t("common.minutes", { defaultValue: "minutes" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleStartPreaching(selectedDuration)}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    {t("plan.startPreaching", { defaultValue: "Start Preaching" })}
+                  </button>
+                  <button
+                    onClick={() => setShowTimePicker(true)}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    {t("plan.customTime", { defaultValue: "Custom Time" })}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Show plan content only when timer is running */}
+          {preachingDuration && (
+            <main className="flex-1 overflow-y-auto">
+              <div className="preaching-content px-6 py-8">
+                <FullPlanContent
+                  sermonVerse={sermon.verse}
+                  combinedPlan={combinedPlan}
+                  t={t}
+                />
+
+              </div>
+            </main>
+          )}
+        </div>
+      </>
+    );
+  }
+
   const planOverlayPortal = isPlanOverlay && typeof document !== 'undefined' && sermon
     ? createPortal(
         <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
@@ -1672,6 +1847,7 @@ export default function PlanPage() {
   return (
     <>
       {planOverlayPortal}
+      {timePickerPopup}
       <div 
         className="p-4"
         data-testid="sermon-plan-page-container"
@@ -1898,11 +2074,14 @@ export default function PlanPage() {
               <div className="flex flex-wrap gap-3 mt-6">
                 <ViewPlanMenu
                   sermonTitle={sermon.title}
+                  sermonId={sermonId}
                   combinedPlan={combinedPlan}
                   sectionMenuRef={sectionMenuRef}
                   showSectionMenu={showSectionMenu}
                   setShowSectionMenu={setShowSectionMenu}
                   onRequestPlanOverlay={handleOpenPlanOverlay}
+                  onRequestPreachingMode={handleOpenTimePicker}
+                  onStartPreachingMode={handleStartPreachingMode}
                 />
                 
                 {/* Add Export Buttons */}
