@@ -276,7 +276,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   // Update timer duration when initialDuration changes (but not on first render)
   // Only update if initialDuration > 0 to avoid resetting saved duration
   useEffect(() => {
-    if (initialDuration > 0 &&
+    if (initialDuration !== undefined && initialDuration > 0 &&
         prevInitialDurationRef.current !== undefined &&
         prevInitialDurationRef.current !== initialDuration) {
       actions.setDuration(initialDuration);

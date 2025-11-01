@@ -48,7 +48,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
   // Scroll to center selected value
   const scrollToValue = useCallback((
-    ref: React.RefObject<HTMLDivElement>,
+    ref: React.RefObject<HTMLDivElement | null>,
     value: number
   ) => {
     if (!ref.current) return;
@@ -71,7 +71,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
   // Handle scroll and update selected value
   const handleScroll = useCallback((
-    ref: React.RefObject<HTMLDivElement>,
+    ref: React.RefObject<HTMLDivElement | null>,
     setter: (value: number) => void
   ) => {
     if (!ref.current) return;
@@ -83,7 +83,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 
   // Debounced scroll handler
   const createScrollHandler = (
-    ref: React.RefObject<HTMLDivElement>,
+    ref: React.RefObject<HTMLDivElement | null>,
     setter: (value: number) => void
   ) => {
     let timeout: NodeJS.Timeout;
