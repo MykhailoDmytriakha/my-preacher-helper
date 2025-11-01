@@ -34,6 +34,7 @@ export default function DashboardNav() {
 
   // Mode toggle visibility and handlers (sermon detail only)
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
+  const isDashboard = pathname === '/dashboard';
   const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
   
   // Get current mode directly from URL params for immediate response
@@ -82,9 +83,11 @@ export default function DashboardNav() {
           {/* Left: Logo */}
           <div className="flex items-center">
             <Link href="/dashboard" className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              <span suppressHydrationWarning={true}>
-                {t('navigation.dashboard')}
-              </span>
+              {!isDashboard && (
+                <span suppressHydrationWarning={true}>
+                  {t('navigation.dashboard')}
+                </span>
+              )}
             </Link>
           </div>
 
@@ -126,9 +129,11 @@ export default function DashboardNav() {
             {/* Left: Logo */}
             <div className="flex items-center">
               <Link href="/dashboard" className="flex items-center text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                <span suppressHydrationWarning={true}>
-                  {t('navigation.dashboard')}
-                </span>
+                {!isDashboard && (
+                  <span suppressHydrationWarning={true}>
+                    {t('navigation.dashboard')}
+                  </span>
+                )}
               </Link>
             </div>
 

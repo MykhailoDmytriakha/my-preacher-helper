@@ -167,12 +167,34 @@ describe('DashboardNav Component', () => {
 
     render(<DashboardNav />);
 
-    // Now we have Dashboard text in both desktop and mobile layouts
-    const dashboardElements = screen.getAllByText('Dashboard');
-    expect(dashboardElements.length).toBeGreaterThan(0);
+    // On dashboard page, dashboard text should NOT be visible
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+
     // Use getAllByTestId instead of getByTestId to handle multiple matches
     const languageSwitchers = screen.getAllByTestId('language-switcher');
     expect(languageSwitchers.length).toBeGreaterThan(0);
+  });
+
+  test('shows dashboard text on non-dashboard pages', async () => {
+    // Set auth state with logged-in user
+    mockOldAuthState.user = {
+      email: 'test@example.com',
+      displayName: 'Test User',
+      photoURL: 'https://example.com/photo.jpg'
+    } as User;
+
+    // Mock pathname to be a different page (not dashboard)
+    const mockUsePathname = jest.spyOn(require('next/navigation'), 'usePathname');
+    mockUsePathname.mockReturnValue('/sermons');
+
+    render(<DashboardNav />);
+
+    // On non-dashboard pages, dashboard text should be visible
+    const dashboardElements = screen.getAllByText('Dashboard');
+    expect(dashboardElements.length).toBeGreaterThan(0);
+
+    // Restore original mock
+    mockUsePathname.mockRestore();
   });
 
   test('displays user email initial when user has no photo', async () => {
