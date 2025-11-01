@@ -9,6 +9,7 @@ interface TimerControlsProps {
   isPaused: boolean;
   status?: 'idle' | 'running' | 'paused' | 'finished';
   currentPhase?: 'introduction' | 'main' | 'conclusion' | 'finished';
+  hasTime?: boolean; // Whether timer has a duration set (> 0)
   onStart?: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -21,6 +22,7 @@ const TimerControls: React.FC<TimerControlsProps> = ({
   isPaused,
   status = 'idle',
   currentPhase = 'introduction',
+  hasTime = false,
   onStart,
   onPause,
   onResume,
@@ -29,9 +31,22 @@ const TimerControls: React.FC<TimerControlsProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  const showPlayButton = status === 'idle' && hasTime;
+  const buttonDisabled = status === 'finished' || (status === 'idle' && !hasTime);
+
+  // Логика цвета кнопки: зеленая когда нужно выбрать время ИЛИ когда можно начать/продолжить
+  const showResumeButton = status === 'idle' || isPaused;
+
+  // Логи состояния кнопки для отладки
+  console.log('[TimerControls] Button state:', {
+    color: showResumeButton ? 'GREEN' : 'BLUE',
+    active: !buttonDisabled,
+    hasTime: hasTime,
+    status: status
+  });
+
   const handlePauseResume = () => {
     if (status === 'idle') {
-      // Timer is completely stopped, start it
       onStart?.();
     } else if (isPaused) {
       onResume();
@@ -40,27 +55,29 @@ const TimerControls: React.FC<TimerControlsProps> = ({
     }
   };
 
-  // Determine button state: show play when idle, otherwise normal pause/resume logic
-  const showPlayButton = status === 'idle';
-  const buttonTitle = showPlayButton
-    ? (t("actions.start") || "Start")
-    : isPaused
-      ? (t("plan.timer.resume") || "Resume")
-      : (t("plan.timer.pause") || "Pause");
+  // Determine button text based on state
+  const buttonTitle = showResumeButton
+    ? (buttonDisabled
+        ? (t("plan.selectTime", { defaultValue: "Select time..." }) || "Select time...")
+        : showPlayButton
+          ? (t("actions.start") || "Start")
+          : (t("plan.timer.resume") || "Resume")
+      )
+    : (t("plan.timer.pause") || "Pause");
 
   return (
     <div className="timer-controls flex items-center gap-3 px-2 rounded-lg bg-gray-100 dark:bg-gray-800">
       {/* Pause/Resume/Start Button - Primary action */}
       <button
         onClick={handlePauseResume}
-        disabled={status === 'finished'}
+        disabled={buttonDisabled}
         className={`control-button pause-resume-button transition-all duration-200 transform hover:scale-110 active:scale-95 ${
-          showPlayButton ? 'resume' : isPaused ? 'resume' : 'pause'
-        } ${status === 'finished' ? 'opacity-50 cursor-not-allowed' : ''}`}
+          showResumeButton ? 'resume' : 'pause'
+        } ${buttonDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         title={buttonTitle}
         aria-label={buttonTitle}
       >
-        {showPlayButton || isPaused ? (
+        {showResumeButton ? (
           <Play className="control-icon fill-current" />
         ) : (
           <Pause className="control-icon" />

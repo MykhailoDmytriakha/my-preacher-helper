@@ -433,7 +433,11 @@
     "generating": "Generating...",
     "editTitleInput": "Edit title",
     "minutes": "minutes",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "back": "Back",
+    "close": "Close",
+    "hours": "Hours",
+    "seconds": "Seconds"
   },
   "outline": {
     "introduction": "Introduction",
@@ -485,7 +489,8 @@
         "title": "Timer Error",
         "message": "An error occurred while setting up the timer. Please try again."
       },
-      "regionLabel": "Region"
+      "regionLabel": "Region",
+      "readyToStart": "READY TO START"
     },
     "exitPreachingMode": "Exit Preaching Mode",
     "columns": {
@@ -552,7 +557,12 @@
     "copyError": "Failed to copy to clipboard",
     "fullscreen": "Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
-    "noContentYet": "No content yet"
+    "noContentYet": "No content yet",
+    "quickPresets": "Quick Presets",
+    "selectTime": "Select Time",
+    "setTime": "Set Time",
+    "setTimeAndStart": "Set Time and Start",
+    "totalDuration": "Total Duration"
   },
   "copy": {
     "title": "Copy Content",
@@ -624,9 +634,14 @@
     "previewTitle": "Preparation Mode Preview",
     "switchToPrepBeta": "Preparation Mode (Beta)",
     "switchToClassic": "Classic Mode",
-    "previewCTA": { "label": "Open Preparation Mode (coming soon)", "title": "Prototype preview" },
+    "previewCTA": {
+      "label": "Open Preparation Mode (coming soon)",
+      "title": "Prototype preview"
+    },
     "steps": {
-      "spiritual": { "title": "Meditation Before Preparation" },
+      "spiritual": {
+        "title": "Meditation Before Preparation"
+      },
       "textContext": {
         "title": "Text & Context",
         "actions": {
@@ -665,7 +680,7 @@
         "intro": "An exegetical plan helps see the overall flow of what the text says.",
         "simpleStudy": {
           "title": "Simple study of the text structure",
-            "note": "This section explains how to compose the exegetical plan.",
+          "note": "This section explains how to compose the exegetical plan.",
           "definition": "A passage plan is a structural expression of the development of its main idea. It must arise from the text, not be imposed on it.",
           "requirementsIntro": "Each point of the plan should meet several requirements:",
           "req1": "First, it must come from the text.",
@@ -727,7 +742,9 @@
           }
         }
       },
-      "exegesis": { "title": "Exegesis" },
+      "exegesis": {
+        "title": "Exegesis"
+      },
       "mainIdea": {
         "title": "Main Idea",
         "note": {
@@ -827,7 +844,10 @@
       },
       "thesis": {
         "title": "Thesis",
-        "instruction": { "show": "Show instruction", "hide": "Hide instruction" },
+        "instruction": {
+          "show": "Show instruction",
+          "hide": "Hide instruction"
+        },
         "note": {
           "usingTBT": "With the Timeless Biblical Truth, form your thesis",
           "mainMessage": "This is the main message to convey",
@@ -873,7 +893,10 @@
       },
       "homileticPlan": {
         "title": "Homiletic Plan",
-        "instruction": { "show": "Show instruction", "hide": "Hide instruction" },
+        "instruction": {
+          "show": "Show instruction",
+          "hide": "Hide instruction"
+        },
         "sections": {
           "homileticPlan": "Homiletic plan",
           "modernTranslation": "Modern translation",
@@ -1010,10 +1033,18 @@
           }
         }
       },
-      "structure": { "title": "Structure" },
-      "outline": { "title": "Outline" },
-      "plan": { "title": "Plan" },
-      "review": { "title": "Consistency & Review" }
+      "structure": {
+        "title": "Structure"
+      },
+      "outline": {
+        "title": "Outline"
+      },
+      "plan": {
+        "title": "Plan"
+      },
+      "review": {
+        "title": "Consistency & Review"
+      }
     }
   }
-} 
+}

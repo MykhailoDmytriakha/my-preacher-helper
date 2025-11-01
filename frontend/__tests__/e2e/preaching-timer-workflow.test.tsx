@@ -47,7 +47,11 @@ jest.mock('@/components/PreachingTimer', () => {
   // Store component instances for testing
   const instances: any[] = [];
 
-  function MockPreachingTimer({ initialDuration, className }: { initialDuration?: number; className?: string }) {
+  function MockPreachingTimer({ initialDuration, className, onSetDuration }: {
+    initialDuration?: number;
+    className?: string;
+    onSetDuration?: (duration: number) => void;
+  }) {
     const [phase, setPhase] = React.useState<'introduction' | 'main' | 'conclusion' | 'finished'>('introduction');
     const [timeRemaining, setTimeRemaining] = React.useState(initialDuration || 1200);
     const [isRunning, setIsRunning] = React.useState(true);
@@ -144,58 +148,6 @@ jest.mock('@/components/PreachingTimer', () => {
   };
 });
 
-jest.mock('@/components/TimePickerPopup', () => {
-  const React = require('react');
-  function MockTimePickerPopup({
-    isOpen,
-    onClose,
-    onStartPreaching,
-    initialDuration = 1200
-  }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onStartPreaching: (duration: number) => void;
-    initialDuration?: number;
-  }) {
-    const [selectedDuration, setSelectedDuration] = React.useState(initialDuration);
-
-    if (!isOpen) return null;
-
-    return (
-      <div data-testid="time-picker-popup" role="dialog">
-        <h2>Set Timer Duration</h2>
-        <div data-testid="duration-display">
-          Total Time: {Math.floor(selectedDuration / 60)}:{(selectedDuration % 60).toString().padStart(2, '0')}
-        </div>
-        <div data-testid="preset-buttons">
-          <button data-testid="15min-btn" onClick={() => setSelectedDuration(900)}>15 min</button>
-          <button data-testid="20min-btn" onClick={() => setSelectedDuration(1200)}>20 min</button>
-          <button data-testid="25min-btn" onClick={() => setSelectedDuration(1500)}>25 min</button>
-          <button data-testid="30min-btn" onClick={() => setSelectedDuration(1800)}>30 min</button>
-        </div>
-        <div data-testid="time-scrollers">
-          <div data-testid="hours-scroller">Hours: {Math.floor(selectedDuration / 3600)}</div>
-          <div data-testid="minutes-scroller">Minutes: {Math.floor((selectedDuration % 3600) / 60)}</div>
-          <div data-testid="seconds-scroller">Seconds: {selectedDuration % 60}</div>
-        </div>
-        <button
-          data-testid="start-preaching-btn"
-          onClick={() => onStartPreaching(selectedDuration)}
-        >
-          Start Preaching
-        </button>
-        <button data-testid="close-popup-btn" onClick={onClose}>
-          Close
-        </button>
-      </div>
-    );
-  }
-
-  return {
-    __esModule: true,
-    default: MockTimePickerPopup,
-  };
-});
 
 jest.mock('@/components/ExportButtons', () => {
   const React = require('react');
@@ -264,7 +216,6 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
   const React = require('react');
   const { useParams } = require('next/navigation');
   const { useTranslation } = require('react-i18next');
-  const MockTimePickerPopup = require('@/components/TimePickerPopup').default;
   const MockPreachingTimer = require('@/components/PreachingTimer').default;
 
   const PlanPageMock = () => {
@@ -278,7 +229,6 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
     const [loading, setLoading] = React.useState(true);
     const [sermon, setSermon] = React.useState(null);
     const [error, setError] = React.useState(null);
-    const [showTimePicker, setShowTimePicker] = React.useState(false);
     const [preachingDuration, setPreachingDuration] = React.useState<number | null>(
       initialPlanView === 'preaching' ? defaultDuration : null
     );
@@ -309,7 +259,6 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
 
     const handleStartPreaching = (duration: number) => {
       setPreachingDuration(duration);
-      setShowTimePicker(false);
       currentSearchParams = new URLSearchParams('planView=preaching');
       router.replace?.(`/sermons/${params?.id || 'sermon-1'}/plan?planView=preaching`, { scroll: false });
     };
@@ -353,7 +302,7 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
         <div className="mb-6">
           <h1>{sermon.title}</h1>
           {sermon.verse && <p>{sermon.verse}</p>}
-          <button type="button" onClick={() => setShowTimePicker(true)}>
+          <button type="button" onClick={() => setPreachingDuration(defaultDuration)}>
             {t('plan.preachButton') || 'Preach'}
           </button>
         </div>
@@ -361,15 +310,6 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
         {renderPlanSection('introduction', t('sections.introduction') || 'Introduction')}
         {renderPlanSection('main', t('sections.main') || 'Main Part')}
         {renderPlanSection('conclusion', t('sections.conclusion') || 'Conclusion')}
-
-        {showTimePicker && (
-          <MockTimePickerPopup
-            isOpen={showTimePicker}
-            onClose={() => setShowTimePicker(false)}
-            onStartPreaching={handleStartPreaching}
-            initialDuration={defaultDuration}
-          />
-        )}
 
         {preachingDuration && preachingDuration > 0 && (
           <MockPreachingTimer
@@ -558,35 +498,18 @@ describe('Preaching Timer - End-to-End Workflow', () => {
       expect(screen.getByText('Test Sermon')).toBeInTheDocument();
     });
 
-    // Click preach button to open time picker
+    // Click preach button to start preaching mode
     const preachButton = screen.getByText('Preach');
     fireEvent.click(preachButton);
 
-    // Time picker should open
-    await waitFor(() => {
-      expect(screen.getByTestId('time-picker-popup')).toBeInTheDocument();
-    });
-
-    // Select 15 minute preset
-    const fifteenMinBtn = screen.getByTestId('15min-btn');
-    fireEvent.click(fifteenMinBtn);
-
-    // Start preaching
-    const startBtn = screen.getByTestId('start-preaching-btn');
-    fireEvent.click(startBtn);
-    // Debug: ensure router.replace was invoked with preaching mode
-    await waitFor(() => {
-      expect(screen.queryByTestId('time-picker-popup')).not.toBeInTheDocument();
-    });
-
-    // Should transition to preaching mode
+    // PreachingTimer should appear
     await waitFor(() => {
       expect(screen.getByTestId('preaching-timer')).toBeInTheDocument();
     });
 
     // Check initial timer state
     expect(screen.getByTestId('phase-label')).toHaveTextContent('introduction');
-    expect(screen.getByTestId('time-display')).toHaveTextContent('15:00');
+    expect(screen.getByTestId('time-display')).toHaveTextContent('20:00');
 
     // Advance timer to trigger phase change to main (15min - 5min = 10min = 600sec)
     act(() => {
@@ -682,32 +605,6 @@ describe('Preaching Timer - End-to-End Workflow', () => {
     expect(screen.getByText('Final thoughts and call to action')).toBeInTheDocument();
   });
 
-  it('handles time picker interactions correctly', async () => {
-    render(<PlanPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-    });
-
-    // Open time picker
-    const preachButton = screen.getByText('Preach');
-    fireEvent.click(preachButton);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('time-picker-popup')).toBeInTheDocument();
-    });
-
-    // Test preset buttons
-    const twentyMinBtn = screen.getByTestId('20min-btn');
-    fireEvent.click(twentyMinBtn);
-    expect(screen.getByTestId('duration-display')).toHaveTextContent('Total Time: 20:00');
-
-    // Close popup
-    const closeBtn = screen.getByTestId('close-popup-btn');
-    fireEvent.click(closeBtn);
-
-    expect(screen.queryByTestId('time-picker-popup')).not.toBeInTheDocument();
-  });
 
   it('maintains accessibility throughout workflow', async () => {
     currentSearchParams = new URLSearchParams('planView=preaching');
@@ -745,4 +642,5 @@ describe('Preaching Timer - End-to-End Workflow', () => {
     expect(screen.getByText('Test Sermon')).toBeInTheDocument();
     expect(screen.getByText('No content available')).toBeInTheDocument();
   });
+
 });

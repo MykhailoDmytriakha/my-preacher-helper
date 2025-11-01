@@ -28,17 +28,45 @@ export const usePreachingTimer = (
     ...initialSettings
   };
 
+  // Load saved timer duration from localStorage
+  const loadSavedDuration = (): number => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('preaching-timer-duration');
+        return saved ? parseInt(saved, 10) : settings.totalDuration;
+      } catch (error) {
+        console.warn('Failed to load saved timer duration:', error);
+        return settings.totalDuration;
+      }
+    }
+    return settings.totalDuration;
+  };
+
+  // Save timer duration to localStorage
+  const saveDuration = (duration: number): void => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('preaching-timer-duration', duration.toString());
+      } catch (error) {
+        console.warn('Failed to save timer duration:', error);
+      }
+    }
+  };
+
+  // Load initial duration from localStorage or use settings
+  const initialDuration = loadSavedDuration();
+
   // Timer state
   const [timerState, setTimerState] = useState<TimerState>({
-    totalDuration: settings.totalDuration,
-    timeRemaining: settings.totalDuration,
+    totalDuration: initialDuration,
+    timeRemaining: initialDuration,
     startTime: null,
     pausedTime: null,
     currentPhase: 'introduction',
     phaseStartTime: 0,
-    introductionDuration: Math.floor(settings.totalDuration * settings.introductionRatio),
-    mainDuration: Math.floor(settings.totalDuration * settings.mainRatio),
-    conclusionDuration: Math.floor(settings.totalDuration * settings.conclusionRatio),
+    introductionDuration: Math.floor(initialDuration * settings.introductionRatio),
+    mainDuration: Math.floor(initialDuration * settings.mainRatio),
+    conclusionDuration: Math.floor(initialDuration * settings.conclusionRatio),
     status: 'idle',
     isRunning: false,
     isPaused: false,
@@ -356,6 +384,8 @@ export const usePreachingTimer = (
       mainDuration: Math.floor(seconds * settings.mainRatio),
       conclusionDuration: Math.floor(seconds * settings.conclusionRatio)
     }));
+    // Save to localStorage
+    saveDuration(seconds);
   }, [settings]);
 
   // Calculate progress information

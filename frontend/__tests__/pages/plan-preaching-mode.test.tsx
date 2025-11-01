@@ -36,6 +36,13 @@ describe('PreachingTimer - Plan Integration', () => {
       reset: jest.fn(),
       setDuration: jest.fn(),
     },
+    settings: {
+      totalDuration: 1200,
+      introductionRatio: 0.2,
+      mainRatio: 0.8,
+      conclusionRatio: 0.0,
+      updateSettings: jest.fn(),
+    },
   };
 
   beforeEach(() => {
@@ -67,6 +74,7 @@ describe('PreachingTimer - Plan Integration', () => {
       ...mockTimerData,
       timerState: { ...mockTimerData.timerState, timeRemaining: 1800 },
       visualState: { ...mockTimerData.visualState, displayTime: '30:00' },
+      settings: { ...mockTimerData.settings, totalDuration: 1800 },
     });
 
     render(<PreachingTimer initialDuration={1800} />);

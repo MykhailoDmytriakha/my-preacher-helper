@@ -54,20 +54,6 @@ export interface TimerControlButtonProps extends BaseTimerProps {
   disabled?: boolean;
 }
 
-// TimePickerPopup component props
-export interface TimePickerPopupProps extends BaseTimerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSetTimer: (hours: number, minutes: number, seconds: number) => void;
-  onStartPreaching: (hours: number, minutes: number, seconds: number) => void;
-  initialHours?: number;
-  initialMinutes?: number;
-  initialSeconds?: number;
-  showPresets?: boolean;
-  maxHours?: number;
-  maxMinutes?: number;
-  maxSeconds?: number;
-}
 
 // Time picker wheel props
 export interface TimePickerWheelProps extends BaseTimerProps {
