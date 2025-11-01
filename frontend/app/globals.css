@@ -10,6 +10,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --text-scale: 1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,4 +24,63 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Text scaling support using CSS custom properties */
+/* All font-size values should use calc() to apply the scale factor */
+.text-scale-content {
+  /* Using fluid typography with clamp() and scale factor */
+  font-size: calc(1rem * var(--text-scale));
+}
+
+/* Heading sizes with scale factor */
+.text-scale-h1 {
+  font-size: calc(2rem * var(--text-scale));
+}
+
+.text-scale-h2 {
+  font-size: calc(1.5rem * var(--text-scale));
+}
+
+.text-scale-h3 {
+  font-size: calc(1.25rem * var(--text-scale));
+}
+
+/* Utility class for markdown content - applies scaling to all descendants */
+.prose-scaled {
+  --prose-font-size: 1rem;
+}
+
+.prose-scaled p {
+  font-size: calc(1rem * var(--text-scale));
+}
+
+.prose-scaled h1 {
+  font-size: calc(2rem * var(--text-scale));
+}
+
+.prose-scaled h2 {
+  font-size: calc(1.5rem * var(--text-scale));
+}
+
+.prose-scaled h3 {
+  font-size: calc(1.25rem * var(--text-scale));
+}
+
+.prose-scaled h4 {
+  font-size: calc(1.125rem * var(--text-scale));
+}
+
+.prose-scaled li,
+.prose-scaled ul,
+.prose-scaled ol {
+  font-size: calc(1rem * var(--text-scale));
+}
+
+.prose-scaled blockquote {
+  font-size: calc(0.95rem * var(--text-scale));
+}
+
+.prose-scaled code {
+  font-size: calc(0.875rem * var(--text-scale));
 }

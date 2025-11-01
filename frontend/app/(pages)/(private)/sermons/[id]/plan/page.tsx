@@ -20,6 +20,7 @@ import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
 
 type PlanViewMode = "overlay" | "immersive" | "preaching";
 
@@ -162,7 +163,7 @@ const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: '
   const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>
+    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionClass} ${sectionDivClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {sanitizedMarkdown}
       </ReactMarkdown>
@@ -1645,6 +1646,9 @@ export default function PlanPage() {
               onSwitchToDurationSelector={handleSwitchToDurationSelector}
             />
           </div>
+
+          {/* Floating Text Scale Controls */}
+          <FloatingTextScaleControls />
 
           {/* Show plan content in preaching mode */}
           {planViewMode === "preaching" && (

@@ -42,6 +42,18 @@ const config: Config = {
     'dark:border-gray-700',
     'text-gray-800',
     'dark:text-gray-100',
+    // Floating text scale controls animations
+    'animate-in',
+    'fade-in',
+    'slide-in-from-bottom-2',
+    // Floating button styles
+    'backdrop-blur-sm',
+    'bg-violet-500/10',
+    'hover:bg-violet-600/15',
+    'dark:bg-violet-400/8',
+    'dark:hover:bg-violet-500/12',
+    'border-violet-300',
+    'dark:border-violet-300',
   ],
   theme: {
     extend: {
