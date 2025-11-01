@@ -98,19 +98,33 @@ export const usePreachingTimer = (
 
   // Calculate phase progress (0-1)
   const calculatePhaseProgress = useCallback((elapsedSeconds: number, phase: TimerPhase): number => {
+    // Calculate the correct phase start time for each phase independently
     const introDuration = timerState.introductionDuration;
     const mainDuration = timerState.mainDuration;
+    const conclusionDuration = timerState.conclusionDuration;
+
+    let phaseStartTime: number;
+    let phaseDuration: number;
 
     switch (phase) {
       case 'introduction':
-        return Math.min(elapsedSeconds / introDuration, 1);
+        phaseStartTime = 0;
+        phaseDuration = introDuration;
+        break;
       case 'main':
-        return Math.min((elapsedSeconds - introDuration) / mainDuration, 1);
+        phaseStartTime = introDuration;
+        phaseDuration = mainDuration;
+        break;
       case 'conclusion':
-        return Math.min((elapsedSeconds - introDuration - mainDuration) / timerState.conclusionDuration, 1);
+        phaseStartTime = introDuration + mainDuration;
+        phaseDuration = conclusionDuration;
+        break;
       default:
         return 0;
     }
+
+    const phaseElapsed = elapsedSeconds - phaseStartTime;
+    return Math.max(0, Math.min(phaseElapsed / phaseDuration, 1));
   }, [timerState.introductionDuration, timerState.mainDuration, timerState.conclusionDuration]);
 
   // Trigger screen blink effect for timer completion
@@ -151,6 +165,8 @@ export const usePreachingTimer = (
           const now = Date.now();
           const elapsedMs = now - prevState.startTime;
           const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+          // Calculate total time remaining (can go negative)
           const timeRemaining = prevState.totalDuration - elapsedSeconds;
 
           // Check if timer just finished (only set finished status once when reaching 0)
@@ -189,11 +205,30 @@ export const usePreachingTimer = (
             // Trigger phase transition effect
             triggerPhaseTransitionEffect(currentPhase);
 
+            // Calculate the correct phaseStartTime for the new phase
+            const introDuration = Math.floor(timerState.totalDuration * 0.2);
+            const mainDuration = Math.floor(timerState.totalDuration * 0.6);
+            let newPhaseStartTime: number;
+
+            switch (currentPhase) {
+              case 'introduction':
+                newPhaseStartTime = 0;
+                break;
+              case 'main':
+                newPhaseStartTime = introDuration;
+                break;
+              case 'conclusion':
+                newPhaseStartTime = introDuration + mainDuration;
+                break;
+              default:
+                newPhaseStartTime = 0;
+            }
+
             return {
               ...prevState,
               timeRemaining,
               currentPhase,
-              phaseStartTime: elapsedSeconds,
+              phaseStartTime: newPhaseStartTime,
               lastPhaseChange: now,
               blinkCount: 0,
               isBlinking: true
@@ -235,6 +270,7 @@ export const usePreachingTimer = (
       pausedTime: null,
       currentPhase: 'introduction',
       phaseStartTime: 0,
+      timeRemaining: prevState.totalDuration, // Total remaining time
       lastPhaseChange: now
     }));
   }, []);
@@ -311,15 +347,18 @@ export const usePreachingTimer = (
 
       let newPhase: TimerPhase;
       let newTimeRemaining: number;
+      let elapsedAtPhaseStart: number; // How much time should have elapsed when new phase starts
 
       switch (actualCurrentPhase) {
         case 'introduction':
           newPhase = 'main';
           newTimeRemaining = mainDuration; // Set to full main duration
+          elapsedAtPhaseStart = introDuration; // Main starts after introduction (20% of total)
           break;
         case 'main':
           newPhase = 'conclusion';
           newTimeRemaining = Math.floor(totalDuration * 0.2); // Set to full conclusion duration (20%)
+          elapsedAtPhaseStart = introDuration + mainDuration; // Conclusion starts after intro + main (80% of total)
           break;
         case 'conclusion':
         // Skip from conclusion immediately finishes the preaching session
@@ -337,15 +376,16 @@ export const usePreachingTimer = (
         return prevState;
       }
 
-      // Calculate new startTime to give the new phase its full allocated time
-      const newStartTime = now - ((totalDuration - newTimeRemaining) * 1000);
+      // Calculate new startTime so that elapsed time matches the start of the new phase
+      // This gives the user the full allocated time for the new phase
+      const newStartTime = now - (elapsedAtPhaseStart * 1000);
 
       return {
         ...prevState,
         startTime: newStartTime,
         currentPhase: newPhase,
-        phaseStartTime: totalDuration - newTimeRemaining,
-        timeRemaining: newTimeRemaining,
+        phaseStartTime: elapsedAtPhaseStart,
+        timeRemaining: totalDuration - elapsedAtPhaseStart, // Total remaining time after skip
         lastPhaseChange: now,
         blinkCount: 0,
         isBlinking: true
@@ -425,7 +465,8 @@ export const usePreachingTimer = (
       status: timerState.status,
       isRunning: timerState.isRunning,
       isPaused: timerState.isPaused,
-      isFinished: timerState.isFinished
+      isFinished: timerState.isFinished,
+      isBlinking: timerState.isBlinking
     },
 
     // Progress

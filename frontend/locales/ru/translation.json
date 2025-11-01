@@ -493,6 +493,11 @@
       "readyToStart": "ГОТОВО К СТАРТУ"
     },
     "exitPreachingMode": "Выйти из режима проповеди",
+    "progress": {
+      "introduction": "Вступление завершено на {progress}%",
+      "main": "Основная часть завершена на {progress}%",
+      "conclusion": "Заключение завершено на {progress}%"
+    },
     "columns": {
       "thoughts": "Мысли",
       "plan": "План"

@@ -7,6 +7,7 @@ import DigitalTimerDisplay from './DigitalTimerDisplay';
 import TimerControls from './TimerControls';
 import CustomTimePicker from './CustomTimePicker';
 import { usePreachingTimer } from '../hooks/usePreachingTimer';
+import { TimerPhase } from '../types/TimerState';
 
 // Error Boundary for Timer Components
 const TimerErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -150,6 +151,13 @@ interface PreachingTimerProps {
   onTimerFinished?: () => void; // Called when timer finishes naturally
   onSetDuration?: (durationSeconds: number) => void; // Called when user selects new duration
   onSwitchToDurationSelector?: () => void; // Called when user wants to go back to main duration selector
+  onTimerStateChange?: (timerState: {
+    currentPhase: TimerPhase;
+    phaseProgress: number;
+    totalProgress: number;
+    timeRemaining: number;
+    isBlinking?: boolean;
+  }) => void; // Called when timer state changes for progress bars
 }
 
 const PreachingTimer: React.FC<PreachingTimerProps> = ({
@@ -160,6 +168,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   onTimerFinished,
   onSetDuration,
   onSwitchToDurationSelector,
+  onTimerStateChange,
 }) => {
 
   const { t } = useTranslation();
@@ -174,10 +183,24 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
   const {
     timerState,
+    progress,
     visualState,
     actions,
     settings
   } = usePreachingTimer(initialTimerSettings);
+
+  // Notify parent component about timer state changes for progress bars
+  useEffect(() => {
+    if (onTimerStateChange && progress) {
+      onTimerStateChange({
+        currentPhase: timerState.currentPhase,
+        phaseProgress: progress.phaseProgress,
+        totalProgress: progress.totalProgress,
+        timeRemaining: progress.timeRemaining,
+        isBlinking: timerState.isBlinking,
+      });
+    }
+  }, [timerState.currentPhase, timerState.isBlinking, progress?.phaseProgress, progress?.totalProgress, progress?.timeRemaining, onTimerStateChange]);
 
   // State for duration pickers
   const [showInlinePresets, setShowInlinePresets] = useState(false);

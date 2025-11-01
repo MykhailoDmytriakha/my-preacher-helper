@@ -138,14 +138,14 @@ describe('usePreachingTimer', () => {
     });
 
     // Check initial time
-    expect(result.current.visualState.displayTime).toBe('20:00');
+    expect(result.current.visualState.displayTime).toBe('20:00'); // 1200 seconds = 20:00
 
-    // Fast-forward 65 seconds (1:05 elapsed)
+    // Fast-forward 65 seconds
     act(() => {
       jest.advanceTimersByTime(65000);
     });
 
-    expect(result.current.visualState.displayTime).toBe('18:55'); // 20:00 - 1:05
+    expect(result.current.visualState.displayTime).toBe('18:55'); // 1200 - 65 = 1135 seconds = 18:55
   });
 
   it('should calculate progress correctly', () => {
@@ -191,7 +191,7 @@ describe('usePreachingTimer', () => {
 
     // Initially in introduction phase
     expect(result.current.timerState.currentPhase).toBe('introduction');
-    expect(result.current.timerState.timeRemaining).toBe(1200);
+    expect(result.current.timerState.timeRemaining).toBe(1200); // total duration
 
     // Skip from introduction to main phase
     act(() => {
@@ -199,8 +199,8 @@ describe('usePreachingTimer', () => {
     });
 
     expect(result.current.timerState.currentPhase).toBe('main');
-    // After skipping from intro to main, should give full main duration (720 seconds for 60% of 1200)
-    expect(result.current.timerState.timeRemaining).toBe(720); // 1200 * 0.6
+    // After skipping from intro to main, should give full remaining time (main + conclusion)
+    expect(result.current.timerState.timeRemaining).toBe(960); // 1200 - 240 (elapsed)
 
     // Skip from main to conclusion phase
     act(() => {
@@ -208,8 +208,8 @@ describe('usePreachingTimer', () => {
     });
 
     expect(result.current.timerState.currentPhase).toBe('conclusion');
-    // After skipping from main to conclusion, should give full conclusion duration (240 seconds for 20% of 1200)
-    expect(result.current.timerState.timeRemaining).toBe(240); // 1200 * 0.2
+    // After skipping from main to conclusion, should give conclusion duration
+    expect(result.current.timerState.timeRemaining).toBe(240); // conclusion duration
 
     // Skip from conclusion finishes the timer immediately
     act(() => {
@@ -235,24 +235,24 @@ describe('usePreachingTimer', () => {
     });
 
     expect(result.current.timerState.currentPhase).toBe('main');
-    expect(result.current.timerState.timeRemaining).toBe(720); // full main duration
+    expect(result.current.timerState.timeRemaining).toBe(960); // total remaining after skip to main
 
     // Simulate some time passing in main phase (user sees main phase)
     act(() => {
-      jest.advanceTimersByTime(200000); // 200 seconds - now 520 seconds total elapsed
+      jest.advanceTimersByTime(200000); // 200 seconds
     });
 
     // Should still be in main phase with less time remaining
     expect(result.current.timerState.currentPhase).toBe('main');
-    expect(result.current.timerState.timeRemaining).toBe(520); // 720 - 200
+    expect(result.current.timerState.timeRemaining).toBe(760); // 960 - 200
 
-    // Now skip from main to conclusion - should give full conclusion duration regardless of how much time passed
+    // Now skip from main to conclusion - should give full conclusion duration and reset progress
     act(() => {
       result.current.actions.skip();
     });
 
     expect(result.current.timerState.currentPhase).toBe('conclusion');
-    expect(result.current.timerState.timeRemaining).toBe(240); // 1200 * 0.2
+    expect(result.current.timerState.timeRemaining).toBe(240); // total remaining after skip to conclusion (1200 - 240 - 720)
   });
 
   it('should handle skip correctly when timer has been running for extended time', () => {
@@ -268,24 +268,24 @@ describe('usePreachingTimer', () => {
     });
 
     expect(result.current.timerState.currentPhase).toBe('main');
-    expect(result.current.timerState.timeRemaining).toBe(720);
+    expect(result.current.timerState.timeRemaining).toBe(960);
 
-    // Let significant time pass (but still within main phase time limit)
+    // Let significant time pass (still within main phase time limit)
     act(() => {
-      jest.advanceTimersByTime(600000); // 600 seconds - still within main phase (720 max)
+      jest.advanceTimersByTime(600000); // 600 seconds - should still be in main phase
     });
 
-    // Should now be in conclusion phase (timer logic changed)
-    expect(result.current.timerState.currentPhase).toBe('conclusion');
-    expect(result.current.timerState.timeRemaining).toBe(120); // 720 - 600
+    // Should still be in main phase with remaining time
+    expect(result.current.timerState.currentPhase).toBe('main');
+    expect(result.current.timerState.timeRemaining).toBe(360); // 960 - 600
 
     // Skip should still work and give full conclusion duration
     act(() => {
       result.current.actions.skip();
     });
 
-    expect(result.current.timerState.currentPhase).toBe('finished');
-    expect(result.current.timerState.timeRemaining).toBe(0); // finished phase has 0 time
+    expect(result.current.timerState.currentPhase).toBe('conclusion');
+    expect(result.current.timerState.timeRemaining).toBe(240); // total remaining after skip to conclusion
   });
 
   it('should handle skip correctly even when currentPhase is auto-updated to conclusion', () => {

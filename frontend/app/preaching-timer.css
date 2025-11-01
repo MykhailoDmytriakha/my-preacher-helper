@@ -438,3 +438,78 @@ nav .digital-timer-display .time-display,
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
   }
 }
+
+/* Preaching Progress Bars - Fill from TOP to BOTTOM */
+.progress-overlay {
+  position: absolute;
+  top: 0; /* Position from top */
+  left: 0;
+  right: 0;
+  bottom: 0; /* Full height initially */
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+  /* Use clip-path to show only the top portion */
+  clip-path: inset(0 0 100% 0); /* Start with 0% visible from top */
+  /* Smooth animation for clip-path changes - disabled for completed phases */
+  transition: clip-path 0.1s linear;
+  /* 25% opacity for content readability */
+  opacity: 0.25;
+}
+
+/* Disable transition for completed phases to prevent unwanted animations */
+.progress-overlay-introduction:not(.completing),
+.progress-overlay-main:not(.completing),
+.progress-overlay-conclusion:not(.completing) {
+  transition: none;
+}
+
+/* Section-specific colors - light mode */
+.progress-overlay-introduction {
+  background-color: #f59e0b; /* Amber-500 */
+}
+
+.progress-overlay-main {
+  background-color: #3b82f6; /* Blue-500 */
+}
+
+.progress-overlay-conclusion {
+  background-color: #22c55e; /* Green-500 */
+}
+
+/* Dark mode adjustments */
+.dark .progress-overlay-introduction {
+  background-color: #d97706; /* Darker amber in dark mode */
+  opacity: 0.15; /* Lower opacity for dark mode */
+}
+
+.dark .progress-overlay-main {
+  background-color: #2563eb; /* Darker blue */
+  opacity: 0.15;
+}
+
+.dark .progress-overlay-conclusion {
+  background-color: #16a34a; /* Darker green */
+  opacity: 0.15;
+}
+
+/* Animation for phase transitions */
+@keyframes progressFill {
+  from { height: 0%; }
+  to { height: 100%; }
+}
+
+.progress-overlay.completing {
+  animation: progressFill 0.3s ease-out forwards;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .progress-overlay {
+    transition: none;
+  }
+
+  .progress-overlay.completing {
+    animation: none;
+  }
+}

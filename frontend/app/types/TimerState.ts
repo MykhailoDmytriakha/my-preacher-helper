@@ -30,8 +30,8 @@ export interface TimerState {
 export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
   totalDuration: 1200, // 20 minutes
   introductionRatio: 0.2, // 20%
-  mainRatio: 0.8, // 80%
-  conclusionRatio: 0.0 // 0% (calculated)
+  mainRatio: 0.6, // 60%
+  conclusionRatio: 0.2 // 20%
 };
 
 export const TIMER_PHASE_COLORS: Record<TimerPhase, string> = {

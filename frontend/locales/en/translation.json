@@ -493,6 +493,11 @@
       "readyToStart": "READY TO START"
     },
     "exitPreachingMode": "Exit Preaching Mode",
+    "progress": {
+      "introduction": "Introduction progress: {progress}% complete",
+      "main": "Main part progress: {progress}% complete",
+      "conclusion": "Conclusion progress: {progress}% complete"
+    },
     "columns": {
       "thoughts": "Thoughts",
       "plan": "Plan"

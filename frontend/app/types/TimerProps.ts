@@ -40,6 +40,7 @@ export interface TimerStateSummary {
   isRunning: boolean;
   isPaused: boolean;
   isFinished: boolean;
+  isBlinking?: boolean;
 }
 
 export interface TimerEvents {

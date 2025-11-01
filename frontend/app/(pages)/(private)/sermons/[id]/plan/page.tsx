@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
 import { OutlinePoint, Sermon, Thought, Plan, Structure } from "@/models/models";
+import { TimerPhase } from "@/types/TimerState";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
@@ -179,12 +180,171 @@ interface FullPlanContentProps {
     conclusion: string;
   };
   t: (key: string, options?: Record<string, unknown>) => string;
+  timerState?: {
+    currentPhase: TimerPhase;
+    phaseProgress: number;
+    totalProgress: number;
+    isBlinking?: boolean;
+  } | null;
 }
 
-const FullPlanContent = ({ sermonVerse, combinedPlan, t }: FullPlanContentProps) => (
-  <>
-    {sermonVerse && (
-      <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+const FullPlanContent = ({ sermonVerse, combinedPlan, t, timerState }: FullPlanContentProps) => {
+  const [completingPhase, setCompletingPhase] = useState<TimerPhase | null>(null);
+
+  // Track phase changes to trigger completion animation
+  const prevTimerStateRef = useRef<{ currentPhase: TimerPhase; phaseProgress: number; totalProgress: number; isBlinking?: boolean } | null>(null);
+  useEffect(() => {
+    if (timerState && prevTimerStateRef.current &&
+        timerState.currentPhase !== prevTimerStateRef.current.currentPhase &&
+        isPhaseCompleted(prevTimerStateRef.current.currentPhase, timerState.currentPhase)) {
+      // Phase changed - trigger completion animation for previous phase
+      setCompletingPhase(prevTimerStateRef.current.currentPhase);
+      const timer = setTimeout(() => {
+        setCompletingPhase(null);
+      }, 300); // Match CSS animation duration
+      return () => clearTimeout(timer);
+    }
+    prevTimerStateRef.current = timerState || null;
+  }, [timerState?.totalProgress]);
+
+  // Calculate clip-path for each section's progress overlay (fill from top to bottom)
+  const getProgressClipPath = useCallback((phase: TimerPhase): string => {
+    if (!timerState) return 'inset(0 0 100% 0)'; // Nothing visible
+
+    const totalProgress = timerState.totalProgress; // 0-1
+    const currentPhase = timerState.currentPhase;
+    const phaseProgress = timerState.phaseProgress; // Progress within current phase (0-1)
+    let progressPercent = 0;
+
+
+    // Use currentPhase to determine if a phase is completed, avoiding floating point precision issues
+    // For active phases, use phaseProgress instead of totalProgress to handle skip operations correctly
+    switch (phase) {
+      case 'introduction':
+        // Introduction is completed if currentPhase is main, conclusion, or finished
+        if (['main', 'conclusion', 'finished'].includes(currentPhase)) {
+          progressPercent = 100;
+        } else if (currentPhase === 'introduction') {
+          progressPercent = Math.min(totalProgress / 0.2, 1) * 100;
+        }
+        break;
+      case 'main':
+        // Main is completed if currentPhase is conclusion or finished
+        if (['conclusion', 'finished'].includes(currentPhase)) {
+          progressPercent = 100;
+        } else if (currentPhase === 'main') {
+          // Use phaseProgress for active phase - this handles skip correctly
+          progressPercent = phaseProgress * 100;
+        }
+        break;
+      case 'conclusion':
+        // Conclusion is current if currentPhase is conclusion, completed if finished
+        if (currentPhase === 'conclusion') {
+          // Use phaseProgress for active phase - this handles skip correctly
+          progressPercent = phaseProgress * 100;
+        } else if (currentPhase === 'finished') {
+          progressPercent = 100;
+        }
+        break;
+    }
+
+    // For top-to-bottom filling: inset(0 0 X% 0) where X is the percentage to hide from bottom
+    const hideFromBottom = 100 - progressPercent;
+    const result = `inset(0 0 ${hideFromBottom}% 0)`;
+
+    return result;
+  }, [timerState?.currentPhase, timerState?.totalProgress]);
+
+  // Helper function to check if a phase is completed
+  const isPhaseCompleted = useCallback((phase: TimerPhase, currentPhase: TimerPhase): boolean => {
+    const phaseOrder: TimerPhase[] = ['introduction', 'main', 'conclusion', 'finished'];
+    const phaseIndex = phaseOrder.indexOf(phase);
+    const currentIndex = phaseOrder.indexOf(currentPhase);
+    return phaseIndex < currentIndex;
+  }, []);
+
+  // Get CSS classes for progress overlay including animation state
+  const getProgressOverlayClasses = useCallback((phase: TimerPhase): string => {
+    const baseClasses = 'progress-overlay';
+
+    if (phase === 'introduction') {
+      return `${baseClasses} progress-overlay-introduction${completingPhase === 'introduction' ? ' completing' : ''}`;
+    } else if (phase === 'main') {
+      return `${baseClasses} progress-overlay-main${completingPhase === 'main' ? ' completing' : ''}`;
+    } else if (phase === 'conclusion') {
+      return `${baseClasses} progress-overlay-conclusion${completingPhase === 'conclusion' ? ' completing' : ''}`;
+    }
+    return baseClasses;
+  }, [completingPhase]);
+
+  // Force disable CSS transitions for completed phases using inline styles
+  const getProgressOverlayStyles = useCallback((phase: TimerPhase): React.CSSProperties => {
+    if (!timerState) return {};
+
+    const currentPhase = timerState.currentPhase;
+    const isBlinking = timerState.isBlinking; // Skip operations set this flag
+
+    // For completed phases, disable CSS transitions completely via inline styles
+    const isCompleted = (
+      (phase === 'introduction' && ['main', 'conclusion', 'finished'].includes(currentPhase)) ||
+      (phase === 'main' && ['conclusion', 'finished'].includes(currentPhase)) ||
+      (phase === 'conclusion' && currentPhase === 'finished')
+    );
+
+    if (isCompleted) {
+      // For skip operations (isBlinking=true), completely disable all animations
+      // For normal transitions, allow instant completing animation
+      const isCompleting = completingPhase === phase;
+      const isSkipOperation = isBlinking;
+
+      return {
+        transition: 'none',
+        animation: isSkipOperation ? 'none' : (isCompleting ? 'progressFill 0s ease-out forwards' : 'none')
+      };
+    }
+
+    return {};
+  }, [timerState?.currentPhase, timerState?.isBlinking, completingPhase]);
+
+  // Get accessibility attributes for progress overlay
+  const getProgressAriaAttributes = useCallback((phase: TimerPhase) => {
+    if (!timerState) return {};
+
+    let progressValue = 0;
+
+    // Calculate progress value for accessibility
+    if (phase === timerState.currentPhase) {
+      progressValue = Math.round(timerState.phaseProgress * 100);
+    } else if (isPhaseCompleted(phase, timerState.currentPhase)) {
+      progressValue = 100;
+    }
+
+    let ariaLabel = '';
+    switch (phase) {
+      case 'introduction':
+        ariaLabel = t('plan.progress.introduction', { defaultValue: 'Introduction progress: {progress}% complete' });
+        break;
+      case 'main':
+        ariaLabel = t('plan.progress.main', { defaultValue: 'Main part progress: {progress}% complete' });
+        break;
+      case 'conclusion':
+        ariaLabel = t('plan.progress.conclusion', { defaultValue: 'Conclusion progress: {progress}% complete' });
+        break;
+    }
+
+    return {
+      role: 'progressbar',
+      'aria-valuenow': progressValue,
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-label': ariaLabel.replace('{progress}', progressValue.toString()),
+    };
+  }, [timerState?.currentPhase, timerState?.phaseProgress, timerState?.totalProgress, isPhaseCompleted, t]);
+
+  return (
+    <>
+      {sermonVerse && (
+        <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
         <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
           {sermonVerse}
         </p>
@@ -194,45 +354,74 @@ const FullPlanContent = ({ sermonVerse, combinedPlan, t }: FullPlanContentProps)
       </div>
     )}
 
-    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
-      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
+      {/* Progress overlay for introduction */}
+      {timerState && (
+        <div
+          className={getProgressOverlayClasses('introduction')}
+          style={{
+            clipPath: getProgressClipPath('introduction'),
+            ...getProgressOverlayStyles('introduction')
+          }}
+          {...getProgressAriaAttributes('introduction')}
+        />
+      )}
+      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
         {t("sections.introduction")}
       </h2>
-      <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
-        <MarkdownRenderer 
-          markdown={combinedPlan.introduction || t("plan.noContent")} 
+      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
+        <MarkdownRenderer
+          markdown={combinedPlan.introduction || t("plan.noContent")}
           section="introduction"
         />
       </div>
     </div>
 
-    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
-      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
+      {/* Progress overlay for main */}
+      {timerState && (
+        <div
+          className={getProgressOverlayClasses('main')}
+          style={{
+            clipPath: getProgressClipPath('main'),
+            ...getProgressOverlayStyles('main')
+          }}
+          {...getProgressAriaAttributes('main')}
+        />
+      )}
+      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
         {t("sections.main")}
       </h2>
-      <div
-        className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}
-      >
-        <MarkdownRenderer 
-          markdown={combinedPlan.main || t("plan.noContent")} 
+      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
+        <MarkdownRenderer
+          markdown={combinedPlan.main || t("plan.noContent")}
           section="main"
         />
       </div>
     </div>
 
-    <div className="mb-4">
-      <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+    <div className={`mb-4 relative overflow-hidden rounded-lg`}>
+      {/* Progress overlay for conclusion */}
+      {timerState && (
+        <div
+          className={getProgressOverlayClasses('conclusion')}
+          style={{ clipPath: getProgressClipPath('conclusion') }}
+          {...getProgressAriaAttributes('conclusion')}
+        />
+      )}
+      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
         {t("sections.conclusion")}
       </h2>
-      <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
-        <MarkdownRenderer 
-          markdown={combinedPlan.conclusion || t("plan.noContent")} 
+      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
+        <MarkdownRenderer
+          markdown={combinedPlan.conclusion || t("plan.noContent")}
           section="conclusion"
         />
       </div>
     </div>
   </>
 );
+};
 
 interface OutlinePointCardProps {
   outlinePoint: OutlinePoint;
@@ -439,7 +628,73 @@ export default function PlanPage() {
 
   // Preaching timer state
   const [preachingDuration, setPreachingDuration] = useState<number | null>(null);
-  
+
+  const [preachingTimerState, setPreachingTimerState] = useState<{
+    currentPhase: TimerPhase;
+    phaseProgress: number;
+    totalProgress: number;
+    isBlinking?: boolean;
+  } | null>(null);
+
+  const handleTimerStateChange = useCallback((timerState: {
+    currentPhase: TimerPhase;
+    phaseProgress: number;
+    totalProgress: number;
+    timeRemaining: number;
+    isBlinking?: boolean;
+  }) => {
+    // Helper function to format time
+    const formatTime = (seconds: number): string => {
+      const mins = Math.floor(Math.abs(seconds) / 60);
+      const secs = Math.abs(seconds) % 60;
+      const sign = seconds < 0 ? '-' : '';
+      return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    // Calculate progress for all phases in one place for consolidated logging
+    const totalProgress = timerState.totalProgress;
+    const currentPhase = timerState.currentPhase;
+    const phaseProgress = timerState.phaseProgress;
+
+    // Calculate progress percentages for each phase (same logic as getProgressClipPath)
+    const getPhaseProgressPercent = (phase: TimerPhase): number => {
+      switch (phase) {
+        case 'introduction':
+          if (['main', 'conclusion', 'finished'].includes(currentPhase)) {
+            return 100;
+          } else if (currentPhase === 'introduction') {
+            return Math.min(totalProgress / 0.2, 1) * 100;
+          }
+          return 0;
+        case 'main':
+          if (['conclusion', 'finished'].includes(currentPhase)) {
+            return 100;
+          } else if (currentPhase === 'main') {
+            return phaseProgress * 100;
+          }
+          return 0;
+        case 'conclusion':
+          if (currentPhase === 'conclusion') {
+            return phaseProgress * 100;
+          } else if (currentPhase === 'finished') {
+            return 100;
+          }
+          return 0;
+        default:
+          return 0;
+      }
+    };
+
+    const introProgress = getPhaseProgressPercent('introduction');
+    const mainProgress = getPhaseProgressPercent('main');
+    const conclusionProgress = getPhaseProgressPercent('conclusion');
+
+    // Consolidated log showing all phases progress and current timer time
+    console.log(`[TIMER] Phase:${timerState.currentPhase} | Intro:${introProgress.toFixed(1)}% | Main:${mainProgress.toFixed(1)}% | Conclusion:${conclusionProgress.toFixed(1)}% | Time:${formatTime(timerState.timeRemaining)} | Total:${(totalProgress * 100).toFixed(1)}%`);
+
+    setPreachingTimerState(timerState);
+  }, []);
+
   // Close section menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -1586,10 +1841,11 @@ export default function PlanPage() {
           </div>
           <main className="flex-1 overflow-y-auto">
             <div ref={immersiveContentRef} className="max-w-5xl mx-auto px-6 py-8">
-              <FullPlanContent 
+              <FullPlanContent
                 sermonVerse={sermon.verse}
                 combinedPlan={combinedPlan}
                 t={t}
+                timerState={preachingTimerState}
               />
             </div>
           </main>
@@ -1637,6 +1893,7 @@ export default function PlanPage() {
               className="border-0 shadow-none"
               sermonId={sermonId}
               onExitPreaching={() => updatePlanViewMode(null)}
+              onTimerStateChange={handleTimerStateChange}
               onTimerFinished={() => {
                 console.log('Timer finished naturally, showing negative countdown');
                 // Don't reset preachingDuration - let timer show negative values
@@ -1658,6 +1915,7 @@ export default function PlanPage() {
                   sermonVerse={sermon.verse}
                   combinedPlan={combinedPlan}
                   t={t}
+                  timerState={preachingTimerState}
                 />
 
               </div>
@@ -1757,10 +2015,11 @@ export default function PlanPage() {
                 </div>
               </div>
               <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
-                <FullPlanContent 
+                <FullPlanContent
                   sermonVerse={sermon.verse}
                   combinedPlan={combinedPlan}
                   t={t}
+                  timerState={preachingTimerState}
                 />
               </div>
             </div>
