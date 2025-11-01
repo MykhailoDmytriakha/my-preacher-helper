@@ -255,7 +255,7 @@ jest.mock('@components/AudioRecorder', () => {
 // Import the mocked component
 import { AudioRecorder } from '@components/AudioRecorder';
 
-describe.skip('AudioRecorder - UI Tests', () => {
+describe('AudioRecorder - UI Tests', () => {
   const mockOnRecordingComplete = jest.fn();
   const mockOnError = jest.fn();
   const mockOnRetry = jest.fn();
