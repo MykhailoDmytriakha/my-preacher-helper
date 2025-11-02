@@ -184,7 +184,6 @@ interface FullPlanContentProps {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
-    isBlinking?: boolean;
   } | null;
 }
 
@@ -192,7 +191,7 @@ const FullPlanContent = ({ sermonVerse, combinedPlan, t, timerState }: FullPlanC
   const [completingPhase, setCompletingPhase] = useState<TimerPhase | null>(null);
 
   // Track phase changes to trigger completion animation
-  const prevTimerStateRef = useRef<{ currentPhase: TimerPhase; phaseProgress: number; totalProgress: number; isBlinking?: boolean } | null>(null);
+  const prevTimerStateRef = useRef<{ currentPhase: TimerPhase; phaseProgress: number; totalProgress: number } | null>(null);
   useEffect(() => {
     if (timerState && prevTimerStateRef.current &&
         timerState.currentPhase !== prevTimerStateRef.current.currentPhase &&
@@ -282,7 +281,6 @@ const FullPlanContent = ({ sermonVerse, combinedPlan, t, timerState }: FullPlanC
     if (!timerState) return {};
 
     const currentPhase = timerState.currentPhase;
-    const isBlinking = timerState.isBlinking; // Skip operations set this flag
 
     // For completed phases, disable CSS transitions completely via inline styles
     const isCompleted = (
@@ -292,19 +290,17 @@ const FullPlanContent = ({ sermonVerse, combinedPlan, t, timerState }: FullPlanC
     );
 
     if (isCompleted) {
-      // For skip operations (isBlinking=true), completely disable all animations
-      // For normal transitions, allow instant completing animation
+      // Allow instant completing animation for smooth transitions
       const isCompleting = completingPhase === phase;
-      const isSkipOperation = isBlinking;
 
       return {
         transition: 'none',
-        animation: isSkipOperation ? 'none' : (isCompleting ? 'progressFill 0s ease-out forwards' : 'none')
+        animation: isCompleting ? 'progressFill 0s ease-out forwards' : 'none'
       };
     }
 
     return {};
-  }, [timerState?.currentPhase, timerState?.isBlinking, completingPhase]);
+  }, [timerState?.currentPhase, completingPhase]);
 
   // Get accessibility attributes for progress overlay
   const getProgressAriaAttributes = useCallback((phase: TimerPhase) => {
@@ -633,7 +629,6 @@ export default function PlanPage() {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
-    isBlinking?: boolean;
   } | null>(null);
 
   const handleTimerStateChange = useCallback((timerState: {
@@ -641,7 +636,6 @@ export default function PlanPage() {
     phaseProgress: number;
     totalProgress: number;
     timeRemaining: number;
-    isBlinking?: boolean;
   }) => {
     // Helper function to format time
     const formatTime = (seconds: number): string => {

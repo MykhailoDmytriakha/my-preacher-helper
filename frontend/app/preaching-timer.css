@@ -3,8 +3,12 @@
 
 /* Timer Display Section */
 .preaching-timer-display {
-  flex: 1;
   text-align: center;
+}
+
+/* Force fixed width for center timer section */
+[data-testid="timer-center-section"] {
+  flex: 0 0 320px !important;
 }
 
 /* Digital Timer Display - Side by side layout */
@@ -17,7 +21,7 @@ nav .digital-timer-display,
   justify-content: center !important;
   gap: 0 !important;
   height: auto !important;
-  width: 100% !important;
+  width: auto !important; /* Changed from 100% to auto for proper centering */
 }
 
 /* Timer Content Wrapper - Side by side elements */

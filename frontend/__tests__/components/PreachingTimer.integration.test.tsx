@@ -54,9 +54,7 @@ describe('PreachingTimer Integration', () => {
     const timerRegion = screen.getByRole('region', { name: /plan\.timer\.regionLabel/i });
     expect(timerRegion).toBeInTheDocument();
 
-    // Check phase indicator - should be localized key (multiple elements)
-    const phaseLabels = screen.getAllByText('sections.introduction');
-    expect(phaseLabels).toHaveLength(3);
+    // Phase indicators are no longer displayed in the UI (removed for minimal design)
 
     // Check controls are rendered - since isRunning is false, we should see start button
     const startButtons = screen.getAllByRole('button', { name: /actions\.start/i });
@@ -140,8 +138,7 @@ describe('PreachingTimer Integration', () => {
     const timerRegion = screen.getByRole('region', { name: /plan\.timer\.regionLabel/i });
     expect(timerRegion).toBeInTheDocument();
 
-    const phaseLabels = screen.getAllByText('sections.introduction');
-    expect(phaseLabels).toHaveLength(3);
+    // Phase labels are no longer displayed in the UI (minimal design)
 
     // Verify buttons are present and functional
     const startButtons = screen.getAllByRole('button', { name: /actions\.start/i });

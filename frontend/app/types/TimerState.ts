@@ -24,7 +24,6 @@ export interface TimerState {
   isFinished: boolean;
   lastPhaseChange: number | null;
   blinkCount: number;
-  isBlinking: boolean;
 }
 
 export const DEFAULT_TIMER_SETTINGS: TimerSettings = {

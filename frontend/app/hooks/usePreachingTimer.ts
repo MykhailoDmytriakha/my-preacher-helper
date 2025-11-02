@@ -15,7 +15,6 @@ import {
 import {
   triggerScreenBlink,
   triggerTextHighlight,
-  triggerPhaseTransition,
   cancelVisualEffects
 } from '../utils/visualEffects';
 
@@ -73,7 +72,6 @@ export const usePreachingTimer = (
     isFinished: false,
     lastPhaseChange: null,
     blinkCount: 0,
-    isBlinking: false
   });
 
   // Refs for interval management
@@ -141,19 +139,6 @@ export const usePreachingTimer = (
     }
   }, []);
 
-  // Trigger phase transition effect
-  const triggerPhaseTransitionEffect = useCallback(async (phase: TimerPhase) => {
-    try {
-      // Highlight the timer display area
-      await triggerPhaseTransition('.preaching-timer-display', {
-        duration: 200,
-        repeat: 3,
-        color: TIMER_PHASE_COLORS[phase] || TIMER_PHASE_COLORS.introduction
-      });
-    } catch (error) {
-      console.warn('Failed to trigger phase transition effect:', error);
-    }
-  }, []);
 
   // Update timer every second
   useEffect(() => {
@@ -202,9 +187,6 @@ export const usePreachingTimer = (
           const phaseChanged = currentPhase !== prevState.currentPhase;
 
           if (phaseChanged && prevState.status !== 'finished') {
-            // Trigger phase transition effect
-            triggerPhaseTransitionEffect(currentPhase);
-
             // Calculate the correct phaseStartTime for the new phase
             const introDuration = Math.floor(timerState.totalDuration * 0.2);
             const mainDuration = Math.floor(timerState.totalDuration * 0.6);
@@ -230,8 +212,7 @@ export const usePreachingTimer = (
               currentPhase,
               phaseStartTime: newPhaseStartTime,
               lastPhaseChange: now,
-              blinkCount: 0,
-              isBlinking: true
+              blinkCount: 0
             };
           }
 
@@ -255,7 +236,7 @@ export const usePreachingTimer = (
         intervalRef.current = null;
       }
     };
-  }, [timerState.isRunning, timerState.isPaused, timerState.startTime, calculateCurrentPhase, triggerCompletionBlink, triggerPhaseTransitionEffect]);
+  }, [timerState.isRunning, timerState.isPaused, timerState.startTime, calculateCurrentPhase, triggerCompletionBlink]);
 
   // Timer actions
   const start = useCallback(() => {
@@ -319,7 +300,6 @@ export const usePreachingTimer = (
       phaseStartTime: 0,
       lastPhaseChange: null,
       blinkCount: 0,
-      isBlinking: false
     }));
   }, []);
 
@@ -387,8 +367,7 @@ export const usePreachingTimer = (
         phaseStartTime: elapsedAtPhaseStart,
         timeRemaining: totalDuration - elapsedAtPhaseStart, // Total remaining time after skip
         lastPhaseChange: now,
-        blinkCount: 0,
-        isBlinking: true
+        blinkCount: 0
       };
     });
   }, []);
@@ -411,7 +390,6 @@ export const usePreachingTimer = (
       isFinished: false,
       lastPhaseChange: null,
       blinkCount: 0,
-      isBlinking: false
     }));
   }, [settings]);
 
@@ -465,8 +443,7 @@ export const usePreachingTimer = (
       status: timerState.status,
       isRunning: timerState.isRunning,
       isPaused: timerState.isPaused,
-      isFinished: timerState.isFinished,
-      isBlinking: timerState.isBlinking
+      isFinished: timerState.isFinished
     },
 
     // Progress
@@ -483,7 +460,7 @@ export const usePreachingTimer = (
       displayColor: getDisplayColor(),
       phaseLabel: timerState.currentPhase,
       isEmergency: timerState.timeRemaining < 60 && timerState.isRunning, // Last minute warning
-      animationClass: timerState.isBlinking ? 'timer-blink' : ''
+      animationClass: ''
     },
 
     // Actions

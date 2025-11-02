@@ -197,10 +197,9 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         phaseProgress: progress.phaseProgress,
         totalProgress: progress.totalProgress,
         timeRemaining: progress.timeRemaining,
-        isBlinking: timerState.isBlinking,
       });
     }
-  }, [timerState.currentPhase, timerState.isBlinking, progress?.phaseProgress, progress?.totalProgress, progress?.timeRemaining, onTimerStateChange]);
+  }, [timerState.currentPhase, progress?.phaseProgress, progress?.totalProgress, progress?.timeRemaining, onTimerStateChange]);
 
   // State for duration pickers
   const [showInlinePresets, setShowInlinePresets] = useState(false);
@@ -418,7 +417,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           </div>
 
           {/* Center: Timer Display */}
-          <div className="flex-1 flex items-center justify-center mx-8">
+          <div className="flex items-center justify-center mx-8" data-testid="timer-center-section">
             <DigitalTimerDisplay
               time={visualState.displayTime}
               color={visualState.displayColor}
@@ -491,8 +490,8 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           </div>
 
           {/* Bottom Row: Timer Display and Controls */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex-1 flex justify-center">
+          <div className="flex items-center justify-center gap-8">
+            <div className="flex items-center justify-center" style={{ flex: '0 0 320px' }}>
               <DigitalTimerDisplay
                 time={visualState.displayTime}
                 color={visualState.displayColor}
