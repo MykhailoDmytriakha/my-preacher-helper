@@ -51,6 +51,13 @@
   cursor: pointer;
   user-select: none;
   transition: color 0.2s ease;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  position: relative;
+  z-index: 20;
 }
 
 .time-picker-item:hover {
@@ -58,15 +65,14 @@
 }
 
 .time-picker-item.selected {
-  color: rgb(59, 130, 246);
-  font-weight: 600;
+  /* Selection indicated by wheel-selector highlight only */
+}
+
+.dark .time-picker-item {
+  color: rgb(156, 163, 175);
 }
 
 .dark .time-picker-item:hover {
-  color: rgb(96, 165, 250);
-}
-
-.dark .time-picker-item.selected {
   color: rgb(96, 165, 250);
 }
 
@@ -218,16 +224,16 @@
   inset-x: 0;
   top: 50%;
   height: 32px;
-  background: white;
+  background: rgba(255, 255, 255, 0.8);
   border-top: 1px solid rgb(229, 231, 235);
   border-bottom: 1px solid rgb(229, 231, 235);
   transform: translateY(-50%);
   pointer-events: none;
-  z-index: 10;
+  z-index: 15;
 }
 
 .dark .wheel-selector {
-  background: rgb(75, 85, 99);
+  background: rgba(75, 85, 99, 0.8);
   border-color: rgb(55, 65, 81);
 }
 

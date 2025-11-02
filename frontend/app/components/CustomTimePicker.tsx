@@ -156,7 +156,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
         justifyContent: 'center',
         fontSize: '14px',
         fontWeight: isSelected ? 600 : 500,
-        color: isSelected ? 'rgb(59, 130, 246)' : 'rgb(107, 114, 128)',
+        background: 'transparent',
         transition: 'all 0.2s ease',
         cursor: 'pointer',
         userSelect: 'none'
