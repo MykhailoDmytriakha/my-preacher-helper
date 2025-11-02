@@ -100,17 +100,19 @@ export default function SermonList({ sermons, onDelete, onUpdate }: SermonListPr
                     </div>
                   </div>
 
-                  <div className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                      {formattedDate}
-                    </span>
-                    <div className="flex items-center gap-2">
+                  <div className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                        {formattedDate}
+                      </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-2">
                       <QuickPlanAccessButton sermon={sermon} t={t} />
                       <ExportButtons
                         sermonId={sermon.id}
                         orientation="horizontal"
                         getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
-                        className="scale-90 sm:scale-100 origin-top-left sm:origin-center"
+                        className="scale-100"
                       />
                     </div>
                   </div>

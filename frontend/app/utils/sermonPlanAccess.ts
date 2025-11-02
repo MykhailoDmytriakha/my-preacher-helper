@@ -60,6 +60,25 @@ export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
 }
 
 /**
+ * Checks if a sermon has a complete plan ready for preaching
+ * A plan is considered ready for preaching if it has content in all sections
+ */
+export function isSermonReadyForPreaching(sermon: Sermon): boolean {
+  if (!sermon.plan) {
+    return false;
+  }
+
+  const { introduction, main, conclusion } = sermon.plan;
+
+  // Check if all sections have meaningful content (not just empty strings)
+  const hasIntroContent = Boolean(introduction?.outline?.trim().length);
+  const hasMainContent = Boolean(main?.outline?.trim().length);
+  const hasConclusionContent = Boolean(conclusion?.outline?.trim().length);
+
+  return hasIntroContent && hasMainContent && hasConclusionContent;
+}
+
+/**
  * Gets the preferred plan access route for a sermon
  * Prioritizes plan over structure if both exist and thoughts are assigned
  * Defaults to structure page for new sermons
