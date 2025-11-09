@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import "@locales/i18n";
 import ModeToggle from './ModeToggle';
+import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
 
 export default function DashboardNav() {
   const { t } = useTranslation();
@@ -23,13 +24,21 @@ export default function DashboardNav() {
     handleSubmitFeedback 
   } = useFeedback();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [navDropdownOpen, setNavDropdownOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const navItems = useMemo(() => (
+    primaryNavItems.map((item) => ({
+      ...item,
+      label: t(item.labelKey, { defaultValue: item.defaultLabel })
+    }))
+  ), [t]);
 
-  // Function to close mobile menu when path changes
+  // Function to close mobile menu and nav dropdown when path changes
   useEffect(() => {
     setMobileMenuOpen(false);
+    setNavDropdownOpen(false);
   }, [pathname]);
 
   // Mode toggle visibility and handlers (sermon detail only)
@@ -75,31 +84,123 @@ export default function DashboardNav() {
     return handleSubmitFeedback(text, type, user?.uid || 'anonymous');
   };
 
+  // Handle clicks outside of nav dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (navDropdownOpen && !(e.target as Element).closest('.nav-dropdown-container')) {
+        setNavDropdownOpen(false);
+      }
+    };
+
+    if (navDropdownOpen) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [navDropdownOpen]);
+
   return (
     <nav className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Desktop Layout */}
-        <div className="hidden md:grid md:grid-cols-3 md:items-center md:h-16">
+        <div className="hidden md:flex h-16 items-center gap-4">
           {/* Left: Logo */}
-          <div className="flex items-center">
-            <Link href="/dashboard" className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {!isDashboard && (
-                <span suppressHydrationWarning={true}>
-                  {t('navigation.dashboard')}
-                </span>
+          <Link
+            href="/dashboard"
+            className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+            aria-label={t('navigation.dashboard') as string}
+          >
+          </Link>
+
+          {/* Navigation */}
+          {isSermonRoot ? (
+            // Navigation dropdown for sermon pages
+            <div className="nav-dropdown-container relative">
+              <button
+                onClick={() => setNavDropdownOpen(!navDropdownOpen)}
+                className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
+                aria-label="Navigation menu"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                <span suppressHydrationWarning={true}>{t('navigation.primary', { defaultValue: 'Navigation' })}</span>
+                <svg className={`h-4 w-4 transition-transform ${navDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {navDropdownOpen && (
+                <div className="absolute left-0 top-12 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 border border-gray-200 dark:border-gray-700 z-50">
+                  {navItems.map((item) => {
+                    const active = isNavItemActive(pathname, item.matchers);
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.key}
+                        href={item.href}
+                        prefetch
+                        aria-current={active ? 'page' : undefined}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm transition ${
+                          active
+                            ? 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
+                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setNavDropdownOpen(false)}
+                      >
+                        <Icon className="h-4 w-4" aria-hidden="true" />
+                        <span suppressHydrationWarning={true}>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            </Link>
-          </div>
+            </div>
+          ) : (
+            // Regular navigation for other pages
+            <ul
+              className="flex items-center gap-2 min-w-0 flex-wrap"
+              aria-label={t('navigation.primary', { defaultValue: 'Primary navigation' }) ?? 'Primary navigation'}
+            >
+              {navItems.map((item) => {
+                const active = isNavItemActive(pathname, item.matchers);
+                const Icon = item.icon;
+                return (
+                  <li key={item.key}>
+                    <Link
+                      href={item.href}
+                      prefetch
+                      aria-current={active ? 'page' : undefined}
+                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${
+                        active
+                          ? 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
+                          : 'border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      <span suppressHydrationWarning={true}>{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Spacer to push mode toggle to center */}
+          <div className="flex-1" />
 
           {/* Center: Mode toggle (desktop) */}
-          <div className="flex items-center justify-center">
-            {showWizardButton && isSermonRoot && (
-              <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
-            )}
-          </div>
+          {showWizardButton && isSermonRoot && (
+            <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
+          )}
+
+          {/* Another spacer to balance */}
+          <div className="flex-1" />
 
           {/* Right: Desktop controls */}
-          <div className="flex items-center gap-4 justify-end">
+          <div className="flex items-center gap-4">
             {/* Feedback button for desktop */}
             <button
               onClick={handleFeedbackClick}
@@ -175,7 +276,9 @@ export default function DashboardNav() {
       {/* Mobile menu */}
       <MobileMenu 
         isOpen={mobileMenuOpen} 
-        onLogout={handleLogout} 
+        onLogout={handleLogout}
+        pathname={pathname || ''}
+        onNavigate={() => setMobileMenuOpen(false)}
       />
 
       {/* Feedback Modal */}

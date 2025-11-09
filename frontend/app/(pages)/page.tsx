@@ -49,7 +49,11 @@ export default function Home() {
         <LandingHeader />
 
         {/* Main content */}
-        <main className="flex-grow flex flex-col items-center justify-center px-4 py-12">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-grow flex flex-col items-center justify-center px-4 py-12"
+        >
           <div className="w-full max-w-4xl text-center mb-12 space-y-4">
             <h2 className="text-4xl font-bold text-gray-900 dark:text-white animate-fade-in-up">
               <span suppressHydrationWarning={true}>

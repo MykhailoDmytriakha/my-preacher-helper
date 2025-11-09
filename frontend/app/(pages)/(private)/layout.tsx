@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import { GuestBanner } from '@/components/GuestBanner';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
@@ -12,7 +13,16 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
       <div className="min-h-screen bg-white dark:bg-gray-900">
         <DashboardNav />
         <GuestBanner />
-        <main className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
+          <Breadcrumbs />
+        </div>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          role="main"
+          aria-live="polite"
+          className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6"
+        >
           {children}
         </main>
         <DevQuickNav />
@@ -20,5 +30,4 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
     </ProtectedRoute>
   );
 }
-
 

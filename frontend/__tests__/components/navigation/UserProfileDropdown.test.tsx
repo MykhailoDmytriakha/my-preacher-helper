@@ -9,7 +9,6 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: { [key: string]: string } = {
-        'navigation.settings': 'Settings',
         'navigation.logout': 'Logout',
         'navigation.guest': 'Guest'
       };
@@ -67,22 +66,20 @@ describe('UserProfileDropdown Component', () => {
 
   test('toggles dropdown when avatar button is clicked', () => {
     render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
-    
+
     // Initially dropdown should not be visible
-    expect(screen.queryByText('Settings')).not.toBeInTheDocument();
-    
+    expect(screen.queryByText('Logout')).not.toBeInTheDocument();
+
     // Click avatar to show dropdown
     fireEvent.click(screen.getByTestId('avatar-button'));
-    
+
     // Now dropdown should be visible
-    expect(screen.getByText('Settings')).toBeInTheDocument();
     expect(screen.getByText('Logout')).toBeInTheDocument();
-    
+
     // Click avatar again to hide dropdown
     fireEvent.click(screen.getByTestId('avatar-button'));
-    
+
     // Dropdown should be closed
-    expect(screen.queryByText('Settings')).not.toBeInTheDocument();
     expect(screen.queryByText('Logout')).not.toBeInTheDocument();
   });
 
@@ -99,16 +96,6 @@ describe('UserProfileDropdown Component', () => {
     expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
-  test('settings link has the correct href', () => {
-    render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
-    
-    // Open dropdown
-    fireEvent.click(screen.getByTestId('avatar-button'));
-    
-    // Check settings link
-    const settingsLink = screen.getByText('Settings').closest('a');
-    expect(settingsLink).toHaveAttribute('href', '/settings');
-  });
 
   test('shows user display name and email in dropdown', () => {
     render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
@@ -135,24 +122,24 @@ describe('UserProfileDropdown Component', () => {
 
   test('closes dropdown when clicking outside', () => {
     render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
-    
+
     // Open dropdown
     fireEvent.click(screen.getByTestId('avatar-button'));
-    
+
     // Should be visible
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    
+    expect(screen.getByText('Logout')).toBeInTheDocument();
+
     // Simulate document click event (outside of dropdown)
     act(() => {
       const handleClickOutside = (document.addEventListener as jest.Mock).mock.calls.find(
         call => call[0] === 'click'
       )[1];
-      
+
       handleClickOutside({ target: document.body });
     });
-    
+
     // Dropdown should be closed
-    expect(screen.queryByText('Settings')).not.toBeInTheDocument();
+    expect(screen.queryByText('Logout')).not.toBeInTheDocument();
   });
 
   test('handles image load error', () => {

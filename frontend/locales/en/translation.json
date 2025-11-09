@@ -3,7 +3,19 @@
     "dashboard": "Dashboard",
     "guest": "Guest User",
     "settings": "Settings",
-    "logout": "Logout"
+    "logout": "Logout",
+    "library": "Library",
+    "series": "Series",
+    "studies": "Studies",
+    "groups": "Groups",
+    "primary": "Primary navigation",
+    "sermons": "Sermons",
+    "plan": "Plan",
+    "structure": "Structure",
+    "sermonDetail": "Sermon",
+    "seriesDetail": "Series",
+    "groupDetail": "Group",
+    "studyDetail": "Study"
   },
   "landing": {
     "title": "Assistant for Preaching Preparation",
@@ -1052,6 +1064,47 @@
       "review": {
         "title": "Consistency & Review"
       }
+    }
+  },
+  "workspaces": {
+    "series": {
+      "badge": "Work in progress",
+      "title": "Series workspace",
+      "description": "Organize upcoming sermon series, attach resources, and keep your team aligned while we finish the dedicated experience.",
+      "listTitle": "On the roadmap",
+      "items": {
+        "plan": "Plan and visualize multi-week arcs with themes and supporting texts.",
+        "track": "Track message readiness at a glance and jump into the related sermon.",
+        "share": "Share printable or exportable outlines with collaborators."
+      },
+      "ctaTitle": "Need this sooner?",
+      "ctaDescription": "Share your ideal series workflow via Feedback so we can prioritize the highest-impact pieces."
+    },
+    "studies": {
+      "badge": "Preview",
+      "title": "Studies workspace",
+      "description": "A focused home for word studies and research sessions, wired into the rest of your library.",
+      "listTitle": "Planned capabilities",
+      "items": {
+        "collect": "Collect lexicon notes, cross references, and insights for key terms.",
+        "send": "Send discoveries straight into a sermon, series, or small-group guide.",
+        "export": "Export clean study guides for teaching or personal use."
+      },
+      "ctaTitle": "Your input matters",
+      "ctaDescription": "Tell us which study templates or sources you use most via Feedback so we can wire them into navigation."
+    },
+    "groups": {
+      "badge": "Preview",
+      "title": "Groups workspace",
+      "description": "Prepare small-group conversations with the same clarity you expect from sermon workflows.",
+      "listTitle": "Focus areas",
+      "items": {
+        "design": "Design discussion goals and highlight scriptures for each meeting.",
+        "build": "Build question banks and reorder them quickly during prep.",
+        "export": "Export facilitator-friendly guides with clear action steps."
+      },
+      "ctaTitle": "Help steer the flow",
+      "ctaDescription": "Share your preferred agenda layouts or question patterns through Feedback so we can bake them into templates."
     }
   }
 }
