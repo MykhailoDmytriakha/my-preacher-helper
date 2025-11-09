@@ -317,3 +317,22 @@ export const LightBulbIcon = ({ className, ...props }: IconProps) => (
     <path d="M12 1.5c-4.14 0-7.5 3.36-7.5 7.5 0 2.48 1.22 4.68 3.1 6.04l1.4.94V18c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-2.02l1.4-.94c1.88-1.36 3.1-3.56 3.1-6.04 0-4.14-3.36-7.5-7.5-7.5zm-2 19h4v1.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V20.5z"/>
   </svg>
 );
+
+// Switch View Icon (diagonal arrows for switching between views)
+export const SwitchViewIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className={`w-5 h-5 ${className}`}
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="1.5"
+    stroke="currentColor"
+    {...props}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+    />
+  </svg>
+);

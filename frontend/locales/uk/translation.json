@@ -337,6 +337,7 @@
     "dropToUnassign": "Перетягніть думки сюди, щоб забрати їх з пунктів плану",
     "dropToAmbiguous": "Перетягніть думки сюди, якщо вони невизначені",
     "unassignedThoughts": "Неприв'язані думки",
+    "switchToPlan": "Перемкнутися на вид Плану",
     "acceptAll": "Прийняти все",
     "acceptAllChanges": "Прийняти всі зміни",
     "aiAssigned": "ШІ призначив",
@@ -502,6 +503,7 @@
       "thoughts": "Думки",
       "plan": "План"
     },
+    "switchToStructure": "Перемкнутися на вид Структури",
     "editor": "Редактор",
     "copyFullPlan": "Копіювати повний план",
     "showThoughts": "Показати думки",

@@ -337,6 +337,7 @@
     "dropToUnassign": "Drop thoughts here to unassign them from outline points",
     "dropToAmbiguous": "Drop thoughts here to mark as unclear",
     "unassignedThoughts": "Unassigned Thoughts",
+    "switchToPlan": "Switch to Plan view",
     "acceptAll": "Accept All",
     "acceptAllChanges": "Accept All Changes",
     "aiAssigned": "AI Assigned",
@@ -502,6 +503,7 @@
       "thoughts": "Thoughts",
       "plan": "Plan"
     },
+    "switchToStructure": "Switch to Structure view",
     "editor": "Editor",
     "copyFullPlan": "Copy Full Plan",
     "showThoughts": "Show Thoughts",

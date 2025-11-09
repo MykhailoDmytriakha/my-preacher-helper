@@ -13,6 +13,7 @@ import Link from "next/link";
 import React from "react";
 import { createPortal } from "react-dom";
 import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List, Maximize2, Copy, Minimize2, X, Check } from "lucide-react";
+import { SwitchViewIcon } from "@/components/Icons";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
@@ -124,32 +125,44 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
 };
 
 // Section header spanning both columns with clear column labels
-const SectionHeader = ({ section }: { section: 'introduction' | 'main' | 'conclusion' }) => {
+const SectionHeader = ({ section, onSwitchPage }: { section: 'introduction' | 'main' | 'conclusion'; onSwitchPage?: () => void }) => {
   const { t } = useTranslation();
   const themeSection = section === 'main' ? 'mainPart' : section; // map to theme colors
   const colors = SERMON_SECTION_COLORS[themeSection as 'introduction' | 'mainPart' | 'conclusion'];
   return (
     <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${colors.border} dark:${colors.darkBorder} ${colors.bg} dark:${colors.darkBg}`}>
       <div
-        className={`p-3 border-b border-l-4 ${colors.border} dark:${colors.darkBorder}`}
+        className={`p-3 border-b border-l-4 ${colors.border} dark:${colors.darkBorder} flex justify-between items-start`}
         style={{ borderLeftColor: colors.light }}
       >
-        <h2 className={`text-xl font-semibold ${colors.text} dark:${colors.darkText}`}>
-          {t(`sections.${section}`)}
-        </h2>
-        <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
-              <Lightbulb className="h-4 w-4" />
-              {t('plan.columns.thoughts')}
-            </span>
-          </div>
-          <div className="flex items-center justify-start lg:justify-end gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
-              <List className="h-4 w-4" />
-              {t('plan.columns.plan')}
-            </span>
-          </div>
+        <div>
+          <h2 className={`text-xl font-semibold ${colors.text} dark:${colors.darkText}`}>
+            {t(`sections.${section}`)}
+          </h2>
+        </div>
+        {onSwitchPage && (
+          <button
+            onClick={onSwitchPage}
+            className="p-1 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+            title={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
+            aria-label={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
+          >
+            <SwitchViewIcon className={`h-4 w-4 ${colors.text} dark:${colors.darkText}`} />
+          </button>
+        )}
+      </div>
+      <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3 px-3 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
+            <Lightbulb className="h-4 w-4" />
+            {t('plan.columns.thoughts')}
+          </span>
+        </div>
+        <div className="flex items-center justify-start lg:justify-end gap-2">
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 text-gray-800 dark:bg-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm">
+            <List className="h-4 w-4" />
+            {t('plan.columns.plan')}
+          </span>
         </div>
       </div>
     </div>
@@ -574,6 +587,11 @@ export default function PlanPage() {
       router.push(targetUrl, { scroll: false });
     }
   }, [pathname, router, searchParams]);
+
+  // Handle switching to structure view
+  const handleSwitchToStructure = useCallback(() => {
+    router.push(`/structure?sermonId=${encodeURIComponent(sermonId)}`);
+  }, [sermonId, router]);
 
   const isPlanOverlay = planViewMode === "overlay";
   const isPlanImmersive = planViewMode === "immersive";
@@ -2376,7 +2394,7 @@ export default function PlanPage() {
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Introduction header */}
-          <SectionHeader section="introduction" />
+          <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
           {/* Intro Left & Right */}
           <div 
             data-testid="plan-introduction-left-section"
@@ -2527,7 +2545,7 @@ export default function PlanPage() {
           </div>
           
           {/* Main header */}
-          <SectionHeader section="main" />
+          <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
           {/* Main Left & Right */}
           <div 
             data-testid="plan-main-left-section"
@@ -2678,7 +2696,7 @@ export default function PlanPage() {
           </div>
           
           {/* Conclusion header */}
-          <SectionHeader section="conclusion" />
+          <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
           {/* Conclusion Left & Right */}
           <div 
             data-testid="plan-conclusion-left-section"

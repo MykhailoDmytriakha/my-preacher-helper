@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Column from "@/components/Column";
 import { Item, Sermon, OutlinePoint, Thought, Outline, Structure } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
@@ -49,9 +49,17 @@ export default function StructurePage() {
 
 function StructurePageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const sermonId = searchParams?.get("sermonId");
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
+
+  // Handle switching to plan view
+  const handleSwitchToPlan = useCallback(() => {
+    if (sermonId) {
+      router.push(`/sermons/${encodeURIComponent(sermonId)}/plan`);
+    }
+  }, [sermonId, router]);
 
   // Use effect to mark when component is mounted on client
   useEffect(() => {
@@ -718,6 +726,7 @@ function StructurePageContent() {
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
+                onSwitchPage={handleSwitchToPlan}
               />
             )}
             
@@ -751,6 +760,7 @@ function StructurePageContent() {
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
+                onSwitchPage={handleSwitchToPlan}
               />
             )}
             
@@ -784,6 +794,7 @@ function StructurePageContent() {
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
+                onSwitchPage={handleSwitchToPlan}
               />
             )}
           </div>
