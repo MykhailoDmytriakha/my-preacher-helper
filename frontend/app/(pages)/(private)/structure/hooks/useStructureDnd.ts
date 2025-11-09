@@ -138,7 +138,7 @@ export const useStructureDnd = ({
     }
 
     const intendedOutline: string | undefined =
-      targetOutlinePointId === undefined ? dragged.outlinePointId : (targetOutlinePointId || undefined);
+      targetOutlinePointId === undefined ? (dragged.outlinePointId || undefined) : (targetOutlinePointId || undefined);
 
     // If the item is already at the intended place/group, skip updating state
     if (srcContainerKey === dstContainerKey) {

@@ -266,7 +266,7 @@ export async function PUT(request: Request) {
       if (typeof oldThought.position === "number") {
         (mergedThought as unknown as Record<string, unknown>).position = oldThought.position;
       } else {
-        delete (mergedThought as Record<string, unknown>).position;
+        delete (mergedThought as unknown as Record<string, unknown>).position;
       }
     }
 
@@ -275,7 +275,7 @@ export async function PUT(request: Request) {
         acc[key] = value;
       }
       return acc;
-    }, {}) as Thought;
+    }, {}) as unknown as Thought;
     
     if (!sanitizedMergedThought.id || !sanitizedMergedThought.text || !sanitizedMergedThought.date || !sanitizedMergedThought.tags) {
       console.error("Thoughts route: Thought is missing required fields after merge");

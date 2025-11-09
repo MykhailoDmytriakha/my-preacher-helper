@@ -833,7 +833,7 @@ function StructurePageContent() {
           <EditThoughtModal
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
-            initialOutlinePointId={editingItem.outlinePointId}
+            initialOutlinePointId={editingItem.outlinePointId || undefined}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
             containerSection={addingThoughtToSection || Object.keys(containers).find(key => 

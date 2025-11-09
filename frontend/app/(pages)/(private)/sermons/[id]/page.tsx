@@ -1598,7 +1598,7 @@ export default function SermonPage() {
         <EditThoughtModal
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
-          initialOutlinePointId={editingModalData.thought.outlinePointId}
+          initialOutlinePointId={editingModalData.thought.outlinePointId || undefined}
           allowedTags={allowedTags}
           sermonOutline={sermon.outline}
           onSave={handleSaveEditedThought}
