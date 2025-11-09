@@ -564,6 +564,16 @@ export default function Column({
     }, 200); // Используем более короткую задержку для дебаунса
   };
 
+  // Clear pending outline save timeout on unmount to avoid stray requests
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleAddPoint = () => {
     if (!newPointText.trim()) {
       setAddingNewPoint(false); // Close if empty

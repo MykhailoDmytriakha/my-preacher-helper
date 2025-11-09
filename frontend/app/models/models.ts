@@ -3,7 +3,7 @@ export interface Thought {
   text: string;
   tags: string[];
   date: string;
-  outlinePointId?: string;
+  outlinePointId?: string | null;
   position?: number;
   keyFragments?: string[]; // Store important text fragments for AI generation
   forceTag?: string; // Force tag for transcription (introduction, main, conclusion)
@@ -162,7 +162,7 @@ export interface Item {
   customTagNames?: TagInfo[];
   requiredTags?: string[];
   outlinePoint?: { text: string; section: string };
-  outlinePointId?: string;
+  outlinePointId?: string | null;
   position?: number;
 }
 

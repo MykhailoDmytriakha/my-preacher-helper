@@ -357,12 +357,12 @@ export const useStructureDnd = ({
           }
 
           // Determine final outlinePointId value to persist
-          let finalOutlinePointId: string | undefined = undefined;
+          let finalOutlinePointId: string | null | undefined = undefined;
 
           if (typeof outlinePointId === 'string') {
             finalOutlinePointId = outlinePointId;
           } else if (outlinePointId === null) {
-            finalOutlinePointId = undefined;
+            finalOutlinePointId = null;
           } else {
             // No explicit outline point change requested
             finalOutlinePointId = movedItem.outlinePointId;
@@ -376,7 +376,7 @@ export const useStructureDnd = ({
                 : [];
               const belongsToNewSection = sectionPoints?.some((p: OutlinePoint) => p.id === finalOutlinePointId);
               if (!belongsToNewSection) {
-                finalOutlinePointId = undefined;
+                finalOutlinePointId = null;
               }
             }
           }

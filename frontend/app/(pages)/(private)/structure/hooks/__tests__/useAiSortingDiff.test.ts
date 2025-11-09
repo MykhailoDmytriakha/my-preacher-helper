@@ -471,8 +471,8 @@ describe('useAiSortingDiff', () => {
   });
 
   describe('performance and optimization', () => {
-    it('should handle large datasets efficiently', async () => {
-      const largeItems = Array.from({ length: 50 }, (_, i) => ({
+    it('should handle datasets up to the AI sorting limit efficiently', async () => {
+      const largeItems = Array.from({ length: 25 }, (_, i) => ({
         id: `thought-${i}`,
         content: `Test thought ${i}`,
         requiredTags: ['introduction'],
@@ -496,6 +496,28 @@ describe('useAiSortingDiff', () => {
         'sermon-1',
         mockOutlinePoints.introduction
       );
+    });
+
+    it('should block AI sorting when dataset exceeds limit', async () => {
+      const overflowItems = Array.from({ length: 30 }, (_, i) => ({
+        id: `thought-${i}`,
+        content: `Overflow thought ${i}`,
+        requiredTags: ['introduction'],
+        customTagNames: []
+      }));
+      const mockSetContainers = jest.fn();
+      const { result } = renderHook(() => useAiSortingDiff({
+        ...defaultProps,
+        containers: { ...mockContainers, introduction: overflowItems },
+        setContainers: mockSetContainers
+      }));
+
+      await act(async () => {
+        await result.current.handleAiSort('introduction');
+      });
+
+      expect(mockToast.warning).toHaveBeenCalled();
+      expect(mockSortItemsWithAI).not.toHaveBeenCalled();
     });
 
     it('should debounce save operations correctly', async () => {

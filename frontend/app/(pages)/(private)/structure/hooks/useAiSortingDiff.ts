@@ -43,10 +43,10 @@ export const useAiSortingDiff = ({
       return;
     }
     
-    // Check maximum thoughts limit
-    if (currentColumnItems.length > 50) {
+    // Check maximum thoughts limit (keep in sync with API: 25)
+    if (currentColumnItems.length > 25) {
       toast.warning(t('structure.tooManyThoughts', {
-        defaultValue: 'Too many thoughts to sort. Please reduce to 50 or fewer.'
+        defaultValue: 'Too many thoughts to sort. Please reduce to 25 or fewer.'
       }));
       return;
     }
@@ -173,18 +173,19 @@ export const useAiSortingDiff = ({
       return newHighlighted;
     });
 
-    // Save if outline point was assigned
-    if (item.outlinePointId && sermon) {
+    // Persist outline point change if it differs (including clearing to null)
+    if (sermon) {
       const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
       if (thought) {
-        // Create updated thought with the new outline point ID
-        const updatedThought: Thought = {
-          ...thought,
-          outlinePointId: item.outlinePointId
-        };
-        
-        // Save the thought
-        debouncedSaveThought(sermonId!, updatedThought);
+        const prevOutline = (thought.outlinePointId ?? null);
+        const nextOutline = (item.outlinePointId ?? null);
+        if (prevOutline !== nextOutline) {
+          const updatedThought: Thought = {
+            ...thought,
+            outlinePointId: nextOutline
+          };
+          debouncedSaveThought(sermonId!, updatedThought);
+        }
       }
     }
 

@@ -234,46 +234,56 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Thought id is required" }, { status: 400 });
     }
     
-    // map updatedThought to the Thought type, only fields that are needed
-    const updatedThought: Thought = {
-      id: updatedThoughtNew.id,
-      text: updatedThoughtNew.text,
-      tags: updatedThoughtNew.tags || [],
-      date: updatedThoughtNew.date,
-    };
-    
-    // Only add outlinePointId if it exists and is not undefined
-    if (updatedThoughtNew.outlinePointId) {
-      updatedThought.outlinePointId = updatedThoughtNew.outlinePointId;
-    }
-    if (typeof updatedThoughtNew.position === 'number') {
-      (updatedThought as unknown as Record<string, unknown>).position = updatedThoughtNew.position;
-    }
-    
-    // Add keyFragments if it exists
-    if (updatedThoughtNew.keyFragments) {
-      updatedThought.keyFragments = updatedThoughtNew.keyFragments;
-    }
-    
-    // verify that updatedThought has everything that is needed
-    if (!updatedThought.id || !updatedThought.text || !updatedThought.tags || !updatedThought.date) {
-      console.error("Thoughts route: Thought is missing required fields");
-      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
-    }
-
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       console.error("Thoughts route: Sermon not found");
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
 
-    const oldThought = sermon.thoughts.find((th) => th.id === updatedThought.id);
+    const oldThought = sermon.thoughts.find((th) => th.id === updatedThoughtNew.id);
     if (!oldThought) {
-      console.error("Thoughts route: Thought not found in sermon. Looking for thought with ID:", updatedThought.id);
+      console.error("Thoughts route: Thought not found in sermon. Looking for thought with ID:", updatedThoughtNew.id);
       return NextResponse.json({ error: "Thought not found in sermon" }, { status: 404 });
     }
+    
+    // Merge new data with the persisted thought to avoid losing existing fields
+    const mergedThought: Thought = {
+      ...oldThought,
+      ...updatedThoughtNew,
+      id: updatedThoughtNew.id,
+      text: updatedThoughtNew.text ?? oldThought.text,
+      date: updatedThoughtNew.date ?? oldThought.date,
+      tags: Array.isArray(updatedThoughtNew.tags) ? updatedThoughtNew.tags : oldThought.tags,
+    };
+
+    // Ensure outlinePointId is explicitly updated when provided (including clearing)
+    if (Object.prototype.hasOwnProperty.call(updatedThoughtNew, "outlinePointId")) {
+      mergedThought.outlinePointId = updatedThoughtNew.outlinePointId ?? null;
+    }
+    
+    // Preserve position if new value not provided
+    if (!Object.prototype.hasOwnProperty.call(updatedThoughtNew, "position")) {
+      if (typeof oldThought.position === "number") {
+        (mergedThought as unknown as Record<string, unknown>).position = oldThought.position;
+      } else {
+        delete (mergedThought as Record<string, unknown>).position;
+      }
+    }
+
+    const sanitizedMergedThought = Object.entries(mergedThought).reduce<Record<string, unknown>>((acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {}) as Thought;
+    
+    if (!sanitizedMergedThought.id || !sanitizedMergedThought.text || !sanitizedMergedThought.date || !sanitizedMergedThought.tags) {
+      console.error("Thoughts route: Thought is missing required fields after merge");
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+    }
+    
     console.log("Thoughts route: Thought to update:", JSON.stringify(oldThought));
-    console.log("Thoughts route: Updated thought:", JSON.stringify(updatedThought));
+    console.log("Thoughts route: Updated thought:", JSON.stringify(sanitizedMergedThought));
     
     // Use Admin SDK with transaction to ensure atomic update
     try {
@@ -290,17 +300,18 @@ export async function PUT(request: Request) {
           throw new Error("Sermon data is empty");
         }
         
-        // Get current thoughts array and create updated array
+        // Get current thoughts array and replace the matching thought in-place
         const currentThoughts = sermonData.thoughts || [];
-        const updatedThoughts = currentThoughts.filter((t: Thought) => t.id !== oldThought.id);
-        updatedThoughts.push(updatedThought);
+        const updatedThoughts = currentThoughts.map((t: Thought) =>
+          t.id === sanitizedMergedThought.id ? sanitizedMergedThought : t
+        );
         
         // Update in a single transaction
         transaction.update(sermonDocRef, { thoughts: updatedThoughts });
       });
       
       console.log("Thoughts route: Successfully updated thought in transaction");
-      return NextResponse.json(updatedThought);
+      return NextResponse.json(sanitizedMergedThought);
     } catch (error) {
       console.error("Thoughts route: Error updating thought in transaction:", error);
       return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });

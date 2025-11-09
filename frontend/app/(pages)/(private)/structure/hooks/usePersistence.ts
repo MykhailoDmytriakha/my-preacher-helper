@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useEffect } from "react";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
 import { Thought, Structure, Sermon } from "@/models/models";
@@ -46,6 +46,15 @@ export const usePersistence = ({ setSermon }: UsePersistenceProps) => {
   // Create debounced versions
   const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
   const debouncedSaveThought = useMemo(() => debounce(saveThought, 500), [saveThought]);
+
+  // Prevent stray saves after unmount or navigation
+  // Cancel debounced functions on unmount to avoid writing to stale sermons
+  useEffect(() => {
+    return () => {
+      try { (debouncedSaveStructure as any)?.cancel?.(); } catch {}
+      try { (debouncedSaveThought as any)?.cancel?.(); } catch {}
+    };
+  }, [debouncedSaveStructure, debouncedSaveThought]);
 
   return {
     saveStructure,

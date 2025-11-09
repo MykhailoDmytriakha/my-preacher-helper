@@ -444,7 +444,7 @@ function StructurePageContent() {
 
     // Prepare updated containers
     const updatedSource = [...sourceItems.slice(0, itemIndex), ...sourceItems.slice(itemIndex + 1)];
-    const movedItem = { ...item, outlinePointId: undefined, requiredTags: [] as string[] };
+    const movedItem = { ...item, outlinePointId: null, requiredTags: [] as string[] };
     const updatedAmbiguous = [...containers.ambiguous, movedItem];
 
     const updatedContainers = {
@@ -466,7 +466,7 @@ function StructurePageContent() {
           ...(movedItem.requiredTags || []),
           ...(movedItem.customTagNames || []).map((tag) => tag.name),
         ],
-        outlinePointId: undefined,
+        outlinePointId: null,
       };
       debouncedSaveThought(sermon.id, updatedThought);
     }
