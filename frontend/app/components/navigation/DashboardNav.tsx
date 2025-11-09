@@ -43,6 +43,8 @@ export default function DashboardNav() {
 
   // Mode toggle visibility and handlers (sermon detail only)
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
+  // Check if we're on any sermon-related page
+  const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
   const isDashboard = pathname === '/dashboard';
   const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
   
@@ -115,7 +117,7 @@ export default function DashboardNav() {
           </Link>
 
           {/* Navigation */}
-          {isSermonRoot ? (
+          {isSermonRelated ? (
             // Navigation dropdown for sermon pages
             <div className="nav-dropdown-container relative">
               <button

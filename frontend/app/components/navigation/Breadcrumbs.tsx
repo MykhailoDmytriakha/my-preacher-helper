@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
+import useSermon from '@/hooks/useSermon';
 
 type BreadcrumbItem = {
   label: string;
@@ -81,7 +82,26 @@ const capitalizeWords = (value: string) =>
 
 export default function Breadcrumbs() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
+
+  // Get sermonId from different sources
+  const sermonId = useMemo(() => {
+    // For /structure?sermonId=XXX
+    const querySermonId = searchParams?.get('sermonId');
+    if (querySermonId) return querySermonId;
+
+    // For /sermons/XXX
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'sermons' && segments[1]) {
+      return segments[1];
+    }
+
+    return null;
+  }, [pathname, searchParams]);
+
+  // Get sermon data if we have sermonId
+  const { sermon } = useSermon(sermonId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (!pathname || pathname === '/' || pathname === '/dashboard') {
@@ -116,6 +136,24 @@ export default function Breadcrumbs() {
       const config = segmentLabels[segment];
 
       if (config) {
+        // Special handling for structure page with sermon context
+        if (segment === 'structure' && sermon) {
+          // Add sermon breadcrumb first
+          crumbs.push({
+            label: sermon.title,
+            href: `/sermons/${sermon.id}`,
+            isCurrent: false
+          });
+          // Then add structure
+          const label = t(config.labelKey, { defaultValue: config.defaultLabel });
+          crumbs.push({
+            label,
+            href: isLast ? undefined : currentPath,
+            isCurrent: isLast
+          });
+          return;
+        }
+
         const label = t(config.labelKey, { defaultValue: config.defaultLabel });
         crumbs.push({
           label,
@@ -127,6 +165,16 @@ export default function Breadcrumbs() {
 
       const parent = segments[index - 1];
       if (parent && detailParents[parent]) {
+        // Special handling for sermons/[id] with sermon context
+        if (parent === 'sermons' && sermon) {
+          crumbs.push({
+            label: sermon.title,
+            href: isLast ? undefined : currentPath,
+            isCurrent: isLast
+          });
+          return;
+        }
+
         const detailLabel = t(detailParents[parent].labelKey, {
           defaultValue: detailParents[parent].defaultLabel
         });
@@ -147,7 +195,7 @@ export default function Breadcrumbs() {
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, t]);
+  }, [pathname, t, sermon, searchParams]);
 
   if (items.length <= 1) {
     return null;

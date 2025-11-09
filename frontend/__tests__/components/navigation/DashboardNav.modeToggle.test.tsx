@@ -56,6 +56,7 @@ jest.mock('@/components/navigation/ModeToggle', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (k: string) => ({
+      'navigation.primary': 'Основная навигация',
       'navigation.dashboard': 'Dashboard',
       'wizard.switchToClassic': 'Classic Mode',
       'wizard.switchToPrepBeta': 'Preparation Mode (Beta)',
@@ -277,6 +278,53 @@ describe('DashboardNav mode toggle', () => {
     
     // Should handle special characters in parameters correctly
     expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('Navigation button visibility', () => {
+  test('shows navigation dropdown on structure page', () => {
+    pathnameMock = '/structure';
+    paramsMap = { sermonId: 'test-id' };
+
+    render(<DashboardNav />);
+
+    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+  });
+
+  test('shows navigation dropdown on sermon main page', () => {
+    pathnameMock = '/sermons/test-id';
+    paramsMap = {};
+
+    render(<DashboardNav />);
+
+    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+  });
+
+  test('shows navigation dropdown on sermon plan page', () => {
+    pathnameMock = '/sermons/test-id/plan';
+    paramsMap = {};
+
+    render(<DashboardNav />);
+
+    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+  });
+
+  test('hides navigation dropdown on dashboard', () => {
+    pathnameMock = '/dashboard';
+    paramsMap = {};
+
+    render(<DashboardNav />);
+
+    expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+  });
+
+  test('hides navigation dropdown on series page', () => {
+    pathnameMock = '/series';
+    paramsMap = {};
+
+    render(<DashboardNav />);
+
+    expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
   });
 });
 
