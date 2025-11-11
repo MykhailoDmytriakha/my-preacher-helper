@@ -47,7 +47,7 @@ interface ColumnProps {
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void; // Move-to-ambiguous action
   onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void; // New callback: append audio thought into section
   onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void; // Toggle reviewed status for outline point
-  onSwitchPage?: () => void; // Callback to switch to plan view
+  onSwitchPage?: (sectionId?: string) => void; // Callback to switch to plan view
 }
 
 // Define SectionType based on Column ID mapping
@@ -1263,7 +1263,7 @@ export default function Column({
             )}
             {onSwitchPage && (
               <button
-                onClick={onSwitchPage}
+                onClick={() => onSwitchPage?.(id)}
                 className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
                 title={t('structure.switchToPlan', { defaultValue: 'Switch to Plan view' })}
                 aria-label={t('structure.switchToPlan', { defaultValue: 'Switch to Plan view' })}

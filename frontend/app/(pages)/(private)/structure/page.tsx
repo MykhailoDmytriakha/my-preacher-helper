@@ -55,9 +55,12 @@ function StructurePageContent() {
   const [isClient, setIsClient] = useState(false);
 
   // Handle switching to plan view
-  const handleSwitchToPlan = useCallback(() => {
+  const handleSwitchToPlan = useCallback((sectionId?: string) => {
     if (sermonId) {
-      router.push(`/sermons/${encodeURIComponent(sermonId)}/plan`);
+      const url = sectionId
+        ? `/sermons/${encodeURIComponent(sermonId)}/plan?section=${sectionId}`
+        : `/sermons/${encodeURIComponent(sermonId)}/plan`;
+      router.push(url);
     }
   }, [sermonId, router]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
 import { OutlinePoint, Sermon, Thought, Plan, Structure } from "@/models/models";
@@ -143,11 +143,11 @@ const SectionHeader = ({ section, onSwitchPage }: { section: 'introduction' | 'm
         {onSwitchPage && (
           <button
             onClick={onSwitchPage}
-            className="p-1 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+            className="group p-1 bg-white/20 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
             title={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
             aria-label={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
           >
-            <SwitchViewIcon className={`h-4 w-4 ${colors.text} dark:${colors.darkText}`} />
+            <SwitchViewIcon className={`h-4 w-4 ${colors.text} dark:${colors.darkText} group-hover:text-gray-900 dark:group-hover:text-gray-100`} />
           </button>
         )}
       </div>
@@ -372,7 +372,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       </div>
     )}
 
-    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
+    <div data-section="introduction" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
       {/* Progress overlay for introduction */}
       {timerState && (
         <div
@@ -395,7 +395,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       </div>
     </div>
 
-    <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
+    <div data-section="main" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
       {/* Progress overlay for main */}
       {timerState && (
         <div
@@ -418,7 +418,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       </div>
     </div>
 
-    <div className={`mb-4 relative overflow-hidden rounded-lg`}>
+    <div data-section="conclusion" className={`mb-4 relative overflow-hidden rounded-lg`}>
       {/* Progress overlay for conclusion */}
       {timerState && (
         <div
@@ -603,7 +603,7 @@ export default function PlanPage() {
     success: 'border-2 border-green-500 bg-green-600 hover:bg-green-700',
     error: 'border-2 border-red-500 bg-red-600 hover:bg-red-700'
   };
-  
+
   const [sermon, setSermon] = useState<Sermon | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -648,6 +648,11 @@ export default function PlanPage() {
   
   const [showSectionMenu, setShowSectionMenu] = useState<boolean>(false);
   const sectionMenuRef = useRef<HTMLDivElement>(null);
+
+  // Refs for section auto-scroll - unique for main layout
+  const introductionSectionRef = useRef<HTMLDivElement>(null);
+  const mainSectionRef = useRef<HTMLDivElement>(null);
+  const conclusionSectionRef = useRef<HTMLDivElement>(null);
 
   // Preaching timer state
   const [preachingDuration, setPreachingDuration] = useState<number | null>(null);
@@ -905,7 +910,47 @@ export default function PlanPage() {
       }
     };
   }, [debouncedSyncHeights]);
-  
+
+  // Auto-scroll to section based on URL parameter
+  useLayoutEffect(() => {
+    const sectionParam = searchParams.get('section');
+
+    if (sectionParam && sermon) {
+      const scrollToSection = () => {
+        // Try refs first (for main layout)
+        let targetElement = (() => {
+          switch (sectionParam) {
+            case 'introduction':
+              return introductionSectionRef.current;
+            case 'main':
+              return mainSectionRef.current;
+            case 'conclusion':
+              return conclusionSectionRef.current;
+            default:
+              return null;
+          }
+        })();
+
+        // Fallback to data attributes (works for all layouts)
+        if (!targetElement && typeof document !== 'undefined') {
+          targetElement = document.querySelector(`[data-section="${sectionParam}"]`) as HTMLDivElement;
+        }
+
+        if (targetElement) {
+          targetElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      };
+
+      // Wait for DOM to be fully rendered
+      requestAnimationFrame(() => {
+        setTimeout(scrollToSection, 150);
+      });
+    }
+  }, [searchParams, sermon, introductionSectionRef, mainSectionRef, conclusionSectionRef]);
+
   // Load the sermon
   useEffect(() => {
     async function loadSermon() {
@@ -2394,7 +2439,9 @@ export default function PlanPage() {
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Introduction header */}
-          <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
+          <div ref={introductionSectionRef} data-section="introduction" className="lg:col-span-2">
+            <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
+          </div>
           {/* Intro Left & Right */}
           <div 
             data-testid="plan-introduction-left-section"
@@ -2545,7 +2592,9 @@ export default function PlanPage() {
           </div>
           
           {/* Main header */}
-          <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
+          <div ref={mainSectionRef} data-section="main" className="lg:col-span-2">
+            <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
+          </div>
           {/* Main Left & Right */}
           <div 
             data-testid="plan-main-left-section"
@@ -2696,7 +2745,9 @@ export default function PlanPage() {
           </div>
           
           {/* Conclusion header */}
-          <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
+          <div ref={conclusionSectionRef} data-section="conclusion" className="lg:col-span-2">
+            <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
+          </div>
           {/* Conclusion Left & Right */}
           <div 
             data-testid="plan-conclusion-left-section"
