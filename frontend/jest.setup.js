@@ -1,3 +1,4 @@
+// Performance optimization: Only load heavy mocks when needed
 import 'openai/shims/node';
 
 // Set dummy API keys for OpenAI client initialization during tests
@@ -8,6 +9,12 @@ process.env.GEMINI_API_KEY = 'test_key_gemini';
 import '@testing-library/jest-dom';
 import 'jest-environment-jsdom';
 import React from 'react';
+
+// Lazy load heavy mocks only when NODE_ENV is test
+if (process.env.NODE_ENV === 'test') {
+  // Pre-configure fetch mock for better performance
+  require('jest-fetch-mock').enableMocks();
+}
 
 // Set React to development mode for better error messages
 process.env.NODE_ENV = 'development';
@@ -303,25 +310,26 @@ jest.mock('i18next', () => {
 // Mock i18n module - REMOVED as it conflicts with react-i18next mock
 // jest.mock('@locales/i18n', () => {}, { virtual: true }); 
 
+// Optimized Firebase mocks - shared mock user for consistency and performance
+const createMockUser = (isAnonymous = false) => ({
+  uid: 'test-user-id',
+  email: 'test@example.com',
+  displayName: 'Test User',
+  metadata: {
+    creationTime: new Date().toISOString()
+  },
+  isAnonymous
+});
+
+const mockUser = createMockUser();
+const mockAnonymousUser = createMockUser(true);
+
 // Mock Firebase auth to avoid API key issues during tests
 jest.mock('firebase/auth', () => {
-  const mockUser = {
-    uid: 'test-user-id',
-    email: 'test@example.com',
-    displayName: 'Test User',
-    metadata: {
-      creationTime: new Date().toISOString()
-    },
-    isAnonymous: false
-  };
-
-  // Mock auth object that includes currentUser and properly implemented onAuthStateChanged
   const mockAuth = {
     currentUser: mockUser,
     onAuthStateChanged: jest.fn((auth, callback) => {
-      // Immediately fire the callback with the mock user
       callback(mockUser);
-      // Return mock unsubscribe function
       return jest.fn();
     })
   };
@@ -329,53 +337,37 @@ jest.mock('firebase/auth', () => {
   return {
     getAuth: jest.fn().mockReturnValue(mockAuth),
     signInWithPopup: jest.fn().mockResolvedValue({ user: mockUser }),
-    GoogleAuthProvider: jest.fn(() => ({ 
+    GoogleAuthProvider: jest.fn(() => ({
       providerId: 'google.com',
       addScope: jest.fn()
     })),
     signOut: jest.fn().mockResolvedValue(undefined),
     onAuthStateChanged: jest.fn((auth, callback) => {
-      // Immediately fire the callback with the mock user
       callback(mockUser);
-      // Return mock unsubscribe function
       return jest.fn();
     }),
     createUserWithEmailAndPassword: jest.fn().mockResolvedValue({ user: mockUser }),
     signInWithEmailAndPassword: jest.fn().mockResolvedValue({ user: mockUser }),
     setPersistence: jest.fn(),
     browserLocalPersistence: 'local',
-    signInAnonymously: jest.fn().mockResolvedValue({ user: {...mockUser, isAnonymous: true} })
+    signInAnonymously: jest.fn().mockResolvedValue({ user: mockAnonymousUser })
   };
 });
 
-// Mock Firebase auth service with a proper auth object
-jest.mock('@/services/firebaseAuth.service', () => {
-  const mockUser = {
-    uid: 'test-user-id',
-    email: 'test@example.com',
-    displayName: 'Test User',
-    metadata: {
-      creationTime: new Date().toISOString()
-    },
-    isAnonymous: false
-  };
-
-  return {
-    auth: {
-      currentUser: mockUser,
-      onAuthStateChanged: jest.fn((callback) => {
-        // Immediately fire the callback with the mock user
-        callback(mockUser);
-        // Return mock unsubscribe function
-        return jest.fn();
-      })
-    },
-    signInWithGoogle: jest.fn().mockResolvedValue(mockUser),
-    logOut: jest.fn().mockResolvedValue(undefined),
-    signInAsGuest: jest.fn().mockResolvedValue({...mockUser, isAnonymous: true}),
-    checkGuestExpiration: jest.fn().mockReturnValue(true)
-  };
-});
+// Mock Firebase auth service with shared mock user
+jest.mock('@/services/firebaseAuth.service', () => ({
+  auth: {
+    currentUser: mockUser,
+    onAuthStateChanged: jest.fn((callback) => {
+      callback(mockUser);
+      return jest.fn();
+    })
+  },
+  signInWithGoogle: jest.fn().mockResolvedValue(mockUser),
+  logOut: jest.fn().mockResolvedValue(undefined),
+  signInAsGuest: jest.fn().mockResolvedValue(mockAnonymousUser),
+  checkGuestExpiration: jest.fn().mockReturnValue(true)
+}));
 
 // Mock Firebase app
 jest.mock('firebase/app', () => {

@@ -12,6 +12,12 @@ const config: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jest-environment-jsdom',
   testTimeout: 5000, // Increase global timeout to 15 seconds
+  // Performance optimizations
+  maxWorkers: '50%', // Use 50% of available cores for better performance
+  cache: true, // Enable caching for faster subsequent runs
+  detectOpenHandles: false, // Disable open handle detection for faster tests
+  forceExit: false, // Don't force exit to allow proper cleanup
+  clearMocks: true, // Clear mocks between tests for consistency
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   modulePaths: ['.', '..'],

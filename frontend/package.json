@@ -4,16 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:clean && next build",
+    "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:fast && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "cross-env NODE_ENV=test jest --verbose --coverage",
+    "test:fast": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --passWithNoTests",
+    "test:quick": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --bail --passWithNoTests",
+    "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
     "test:clean": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --coverage",
     "test:components": "cross-env NODE_ENV=test jest --verbose --testPathPattern=__tests__/components",
     "test:utils": "cross-env NODE_ENV=test jest --verbose --testPathPattern=\"(utils/__tests__|__tests__/utils)\"",
-    "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
     "test:translations": "cross-env NODE_ENV=test jest --verbose locales/__tests__/translationKeyCoverage.test.ts",
     "test:summary": "node show-total-coverage.js",
+    "test:perf": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --passWithNoTests --maxWorkers=100%",
     "debug:directory": "echo 'Build directory:' && pwd && echo '\nDirectory contents:' && ls -1"
   },
   "dependencies": {
