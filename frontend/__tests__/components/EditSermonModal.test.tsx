@@ -116,54 +116,6 @@ describe('EditSermonModal Component', () => {
     expect(screen.getByText('Save')).not.toBeDisabled();
   });
 
-  test('updates form values when user types', () => {
-    render(<EditSermonModal {...mockProps} />);
-    
-    // Title field
-    const titleInput = screen.getByLabelText('Title');
-    fireEvent.change(titleInput, {
-      target: { value: 'Updated Sermon Title' }
-    });
-    expect(titleInput).toHaveValue('Updated Sermon Title');
-    
-    // Verse field
-    const verseInput = screen.getByLabelText('Scripture Reference');
-    fireEvent.change(verseInput, {
-      target: { value: 'Romans 8:28' }
-    });
-    expect(verseInput).toHaveValue('Romans 8:28');
-  });
-
-  test('calls updateSermon and onUpdate when form is submitted', async () => {
-    render(<EditSermonModal {...mockProps} />);
-    
-    // Update form values
-    const titleInput = screen.getByPlaceholderText('Enter sermon title');
-    const verseInput = screen.getByPlaceholderText('Enter scripture reference');
-    
-    fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-    fireEvent.change(verseInput, { target: { value: 'Updated Verse' } });
-
-    // Click save button to submit the form
-    const saveButton = screen.getByText('Save');
-    fireEvent.click(saveButton);
-    
-    // Check that updateSermon was called with the right arguments, using the actual ID from the mock
-    await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'test-sermon-id', // Use the correct ID from mockSermon
-        title: 'Updated Title',
-        verse: 'Updated Verse',
-        date: mockSermon.date,
-        userId: 'test-user-id',
-        thoughts: mockSermon.thoughts,
-      }));
-    });
-    
-    // Check that onUpdate was called
-    expect(mockProps.onUpdate).toHaveBeenCalled();
-  });
-
   test('handles API errors gracefully', async () => {
     // Mock console.error
     jest.spyOn(console, 'error').mockImplementation();

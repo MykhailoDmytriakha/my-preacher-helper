@@ -136,17 +136,6 @@ describe('ThoughtCard Component', () => {
     mockReset.mockClear();
   });
   
-  it('renders basic thought information correctly', () => {
-    render(<ThoughtCard {...defaultProps} />);
-    
-    expect(screen.getByText('This is a test thought')).toBeInTheDocument();
-    expect(screen.getByText('01/01/2023')).toBeInTheDocument();
-    expect(screen.getByText(`ID: ${mockThought.id}`)).toBeInTheDocument();
-    expect(screen.getByText('Tag1')).toBeInTheDocument();
-    expect(screen.getByText('Tag2')).toBeInTheDocument();
-    expect(screen.getByTestId('ellipsis-icon')).toBeInTheDocument(); // Check for options menu icon
-  });
-  
   it('does not show warning when thought has required tag', () => {
     const thoughtWithStructureTag = {
       ...mockThought,

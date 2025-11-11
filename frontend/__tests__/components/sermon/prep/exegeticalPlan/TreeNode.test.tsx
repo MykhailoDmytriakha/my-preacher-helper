@@ -212,73 +212,49 @@ describe('TreeNode', () => {
   });
 
   describe('Children Rendering', () => {
-    it('renders child nodes when expanded', () => {
-      const nodeWithChildren: ExegeticalPlanNode = {
-        id: 'parent',
-        title: 'Parent',
-        children: [
-          { id: 'child-1', title: 'Child 1', children: [] },
-          { id: 'child-2', title: 'Child 2', children: [] }
-        ]
-      };
+    const testCases = [
+      {
+        name: 'renders child nodes when expanded',
+        expand: { 'parent': true },
+        expectedInputs: 3
+      },
+      {
+        name: 'does not render children when collapsed',
+        expand: { 'parent': false },
+        expectedInputs: 1
+      },
+      {
+        name: 'renders children by default when expand state not provided',
+        expand: {},
+        expectedInputs: 3
+      }
+    ];
 
-      const expand = { 'parent': true };
-      render(
-        <TreeNode
-          {...defaultProps}
-          node={nodeWithChildren}
-          expand={expand}
-          draftTitles={{ 'parent': 'Parent', 'child-1': 'Child 1', 'child-2': 'Child 2' }}
-        />
-      );
+    testCases.forEach(({ name, expand, expectedInputs }) => {
+      it(name, () => {
+        const nodeWithChildren: ExegeticalPlanNode = {
+          id: 'parent',
+          title: 'Parent',
+          children: [
+            { id: 'child-1', title: 'Child 1', children: [] },
+            { id: 'child-2', title: 'Child 2', children: [] }
+          ]
+        };
 
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(3);
-    });
+        const draftTitles = { 'parent': 'Parent', 'child-1': 'Child 1', 'child-2': 'Child 2' };
 
-    it('does not render children when collapsed', () => {
-      const nodeWithChildren: ExegeticalPlanNode = {
-        id: 'parent',
-        title: 'Parent',
-        children: [
-          { id: 'child-1', title: 'Child 1', children: [] }
-        ]
-      };
+        render(
+          <TreeNode
+            {...defaultProps}
+            node={nodeWithChildren}
+            expand={expand}
+            draftTitles={draftTitles}
+          />
+        );
 
-      const expand = { 'parent': false };
-      render(
-        <TreeNode
-          {...defaultProps}
-          node={nodeWithChildren}
-          expand={expand}
-          draftTitles={{ 'parent': 'Parent', 'child-1': 'Child 1' }}
-        />
-      );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(1);
-    });
-
-    it('renders children by default when expand state not provided', () => {
-      const nodeWithChildren: ExegeticalPlanNode = {
-        id: 'parent',
-        title: 'Parent',
-        children: [
-          { id: 'child-1', title: 'Child 1', children: [] }
-        ]
-      };
-
-      render(
-        <TreeNode
-          {...defaultProps}
-          node={nodeWithChildren}
-          expand={{}}
-          draftTitles={{ 'parent': 'Parent', 'child-1': 'Child 1' }}
-        />
-      );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(2);
+        const inputs = screen.getAllByPlaceholderText('Enter point title...');
+        expect(inputs).toHaveLength(expectedInputs);
+      });
     });
   });
 

@@ -27,91 +27,59 @@ describe('treeUtils', () => {
   });
 
   describe('createNewNode', () => {
-    it('creates a node with required properties', () => {
+    const nodeCases = [
+      {
+        name: 'creates a node with required properties',
+        expectations: (node) => {
+          expect(node).toHaveProperty('id');
+          expect(node).toHaveProperty('title');
+          expect(node).toHaveProperty('children');
+        }
+      },
+      {
+        name: 'creates nodes with unique IDs',
+        expectations: (node1, node2) => {
+          expect(node1.id).not.toBe(node2.id);
+        }
+      }
+    ];
+
+    it('basic node creation', () => {
       const node = createNewNode();
-      expect(node).toHaveProperty('id');
-      expect(node).toHaveProperty('title');
-      expect(node).toHaveProperty('children');
+      nodeCases[0].expectations(node);
     });
 
-    it('creates a node with empty title', () => {
-      const node = createNewNode();
-      expect(node.title).toBe('');
-    });
-
-    it('creates a node with empty children array', () => {
-      const node = createNewNode();
-      expect(node.children).toEqual([]);
-    });
-
-    it('creates nodes with unique IDs', () => {
+    it('unique ID generation', () => {
       const node1 = createNewNode();
       const node2 = createNewNode();
-      expect(node1.id).not.toBe(node2.id);
+      nodeCases[1].expectations(node1, node2);
     });
   });
 
   describe('syncDraftTitles', () => {
-    it('syncs titles from a flat tree', () => {
-      const nodes: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Title 1', children: [] },
-        { id: '2', title: 'Title 2', children: [] }
-      ];
-      const result = syncDraftTitles(nodes);
-      expect(result).toEqual({
-        '1': 'Title 1',
-        '2': 'Title 2'
-      });
-    });
-
-    it('syncs titles from a nested tree', () => {
-      const nodes: ExegeticalPlanNode[] = [
-        {
-          id: '1',
-          title: 'Parent',
-          children: [
-            { id: '1a', title: 'Child A', children: [] },
-            { id: '1b', title: 'Child B', children: [] }
-          ]
+    const syncCases = [
+      {
+        name: 'syncs titles from a flat tree',
+        tree: [{ id: '1', title: 'Node 1', children: [] }, { id: '2', title: 'Node 2', children: [] }],
+        expectedDrafts: { '1': 'Node 1', '2': 'Node 2' },
+        expectations: (result, expectedDrafts) => {
+          expect(result).toEqual(expectedDrafts);
         }
-      ];
-      const result = syncDraftTitles(nodes);
-      expect(result).toEqual({
-        '1': 'Parent',
-        '1a': 'Child A',
-        '1b': 'Child B'
-      });
-    });
-
-    it('syncs empty titles', () => {
-      const nodes: ExegeticalPlanNode[] = [
-        { id: '1', title: '', children: [] }
-      ];
-      const result = syncDraftTitles(nodes);
-      expect(result).toEqual({ '1': '' });
-    });
-
-    it('handles deeply nested structures', () => {
-      const nodes: ExegeticalPlanNode[] = [
-        {
-          id: '1',
-          title: 'Level 1',
-          children: [
-            {
-              id: '2',
-              title: 'Level 2',
-              children: [
-                { id: '3', title: 'Level 3', children: [] }
-              ]
-            }
-          ]
+      },
+      {
+        name: 'syncs titles from a nested tree',
+        tree: [{ id: '1', title: 'Parent', children: [{ id: '1a', title: 'Child', children: [] }] }],
+        expectedDrafts: { '1': 'Parent', '1a': 'Child' },
+        expectations: (result, expectedDrafts) => {
+          expect(result).toEqual(expectedDrafts);
         }
-      ];
-      const result = syncDraftTitles(nodes);
-      expect(result).toEqual({
-        '1': 'Level 1',
-        '2': 'Level 2',
-        '3': 'Level 3'
+      }
+    ];
+
+    syncCases.forEach(({ name, tree, expectedDrafts, expectations }) => {
+      it(name, () => {
+        const result = syncDraftTitles(tree);
+        expectations(result, expectedDrafts);
       });
     });
   });

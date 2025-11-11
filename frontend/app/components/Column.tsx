@@ -301,7 +301,7 @@ const OutlinePointPlaceholder: React.FC<{
         }`}
       >
         {!hasItems ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
             {t('structure.dropThoughtsHere')}
           </div>
         ) : (
@@ -324,7 +324,7 @@ const OutlinePointPlaceholder: React.FC<{
               ))}
               
               {/* Additional drop area at the end */}
-              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
+              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
                 isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
               }`}>
                 {t('structure.dropThoughtsToAdd')}
@@ -374,7 +374,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
       }`}
     >
       {items.length === 0 ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
           {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
         </div>
       ) : (
@@ -397,7 +397,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
             ))}
             
             {/* Additional drop area at the end for consistency */}
-            <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
+            <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
               isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
             }`}>
               {t('structure.dropToUnassign')}

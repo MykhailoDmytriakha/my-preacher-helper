@@ -803,4 +803,39 @@ describe('StructureStats Component', () => {
       expect(planButton).not.toHaveAttribute('title');
     });
   });
+
+  describe('UI and Styling', () => {
+    const uiCases = [
+      {
+        name: 'displays correct progress bar with section colors',
+        props: { sermon: mockSermon, tagCounts: mockTagCounts, totalThoughts: 3 },
+        expectations: () => {
+          expect(screen.getAllByText('33%')).toHaveLength(3);
+        }
+      },
+      {
+        name: 'handles button click prevention when thoughts have inconsistencies',
+        props: { sermon: mockSermon, tagCounts: mockTagCounts, totalThoughts: 3, hasInconsistentThoughts: true },
+        expectations: () => {
+          const structureButton = screen.getByText('Work on Structure');
+          expect(structureButton).toBeDisabled();
+        }
+      },
+      {
+        name: 'applies correct gradient opacity based on state',
+        props: { sermon: mockSermon, tagCounts: mockTagCounts, totalThoughts: 3, hasInconsistentThoughts: true },
+        expectations: () => {
+          const gradient = document.querySelector('.bg-gradient-to-r') as HTMLElement;
+          expect(gradient.style.opacity).toBe('0.3');
+        }
+      }
+    ];
+
+    uiCases.forEach(({ name, props, expectations }) => {
+      it(name, () => {
+        render(<StructureStats {...props} />);
+        expectations();
+      });
+    });
+  });
 }); 

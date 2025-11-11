@@ -226,74 +226,69 @@ describe('Column Component', () => {
     { id: '2', content: 'Item 2', customTagNames: [] }
   ];
 
-  it('can be imported and rendered without crashing', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems} 
-      />
-    );
-    
-    expect(screen.getByText('Introduction')).toBeInTheDocument();
-  });
+  describe('Rendering and Props', () => {
+    const renderingCases = [
+      {
+        name: 'renders correctly in normal mode',
+        props: { id: 'intro', title: 'Introduction', items: mockItems },
+        expectations: () => {
+          expect(screen.getByText('Introduction')).toBeInTheDocument();
+          expect(screen.getByText('Item 1')).toBeInTheDocument();
+          expect(screen.getByText('Item 2')).toBeInTheDocument();
+        }
+      },
+      {
+        name: 'displays focus button when showFocusButton is true',
+        props: { id: 'intro', title: 'Introduction', items: mockItems, showFocusButton: true, onToggleFocusMode: jest.fn() },
+        expectations: () => {
+          const focusButton = screen.getByTitle('Focus Mode');
+          expect(focusButton).toBeInTheDocument();
+        }
+      },
+      {
+        name: 'does not display focus button when showFocusButton is false',
+        props: { id: 'intro', title: 'Introduction', items: mockItems, showFocusButton: false },
+        expectations: () => {
+          expect(screen.queryByText('Focus Mode')).not.toBeInTheDocument();
+        }
+      },
+      {
+        name: 'displays Normal Mode text when in focus mode',
+        props: { id: 'intro', title: 'Introduction', items: mockItems, isFocusMode: true },
+        expectations: () => {
+          expect(screen.getByText('Outline Points')).toBeInTheDocument();
+        }
+      },
+      {
+        name: 'renders custom class name when provided',
+        expectations: () => {
+          const { container } = render(<Column id="intro" title="Introduction" items={mockItems} className="custom-class" />);
+          expect(container.firstChild).toHaveClass('custom-class');
+        }
+      },
+      {
+        name: 'displays no entries message when items array is empty',
+        props: { id: 'intro', title: 'Introduction', items: [] },
+        expectations: () => {
+          expect(screen.getByText('No entries')).toBeInTheDocument();
+        }
+      },
+      {
+        name: 'shows outline points when provided',
+        props: { id: 'intro', title: 'Introduction', items: mockItems, outlinePoints: [{ id: '1', text: 'Point 1' }, { id: '2', text: 'Point 2' }] },
+        expectations: () => {
+          expect(screen.getAllByText('Point 1')).toHaveLength(2);
+          expect(screen.getAllByText('Point 2')).toHaveLength(2);
+        }
+      }
+    ];
 
-  it('renders correctly in normal mode', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems} 
-      />
-    );
-    
-    expect(screen.getByText('Introduction')).toBeInTheDocument();
-    expect(screen.getByText('Item 1')).toBeInTheDocument();
-    expect(screen.getByText('Item 2')).toBeInTheDocument();
-  });
-
-  it('displays focus button when showFocusButton is true', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems}
-        showFocusButton={true}
-        onToggleFocusMode={() => {}}
-      />
-    );
-    
-    // Find button with the Focus Mode title
-    const focusButton = screen.getByTitle('Focus Mode');
-    expect(focusButton).toBeInTheDocument();
-  });
-
-  it('does not display focus button when showFocusButton is false', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems}
-        showFocusButton={false}
-      />
-    );
-    
-    expect(screen.queryByText('Focus Mode')).not.toBeInTheDocument();
-  });
-
-  it('displays Normal Mode text when in focus mode', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems}
-        showFocusButton={true}
-        isFocusMode={true}
-        onToggleFocusMode={() => {}}
-      />
-    );
-    
-    expect(screen.getByText('Normal Mode')).toBeInTheDocument();
+    renderingCases.forEach(({ name, props, expectations }) => {
+      it(name, () => {
+        if (props) render(<Column {...props} />);
+        expectations();
+      });
+    });
   });
 
   it('calls onToggleFocusMode when focus button is clicked', () => {
@@ -329,51 +324,6 @@ describe('Column Component', () => {
     // Check that the space-y-3 class is applied for vertical spacing in focus mode
     const itemsContainer = container.querySelector('.space-y-3');
     expect(itemsContainer).toBeInTheDocument();
-  });
-
-  it('renders custom class name when provided', () => {
-    const { container } = render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems}
-        className="custom-class"
-      />
-    );
-    
-    const columnContainer = container.firstChild;
-    expect(columnContainer).toHaveClass('custom-class');
-  });
-
-  it('shows outline points when provided', () => {
-    const outlinePoints = [
-      { id: '1', text: 'Point 1' },
-      { id: '2', text: 'Point 2' }
-    ];
-    
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={mockItems}
-        outlinePoints={outlinePoints}
-      />
-    );
-    
-    expect(screen.getAllByText('Point 1')).toHaveLength(2);
-    expect(screen.getAllByText('Point 2')).toHaveLength(2);
-  });
-
-  it('displays no entries message when items array is empty', () => {
-    render(
-      <Column 
-        id="introduction" 
-        title="Introduction" 
-        items={[]}
-      />
-    );
-    
-    expect(screen.getByText('No entries')).toBeInTheDocument();
   });
 
   // New tests for outline point operations in focus mode
