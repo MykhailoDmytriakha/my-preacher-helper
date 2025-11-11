@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({
@@ -58,30 +59,35 @@ describe('TreeBuilder', () => {
   });
 
   describe('Rendering - Empty State', () => {
-    it('renders title', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      expect(screen.getByText('Exegetical Plan Builder')).toBeInTheDocument();
-    });
-
-    it('shows empty state message when tree is empty', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
-    });
-
-    it('shows add main point button in empty state', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      const button = screen.getByText('Add main point');
-      expect(button).toBeInTheDocument();
-      expect(button).toHaveAttribute('title', 'Add the first main point');
-    });
-
-    it('does not show save button when tree is empty', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      expect(screen.queryByText('Save')).not.toBeInTheDocument();
+    it('covers empty states via scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'renders header and empty message',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              expect(screen.getByText('Exegetical Plan Builder')).toBeInTheDocument();
+              expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'shows add main point button',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              const button = screen.getByText('Add main point');
+              expect(button).toHaveAttribute('title', 'Add the first main point');
+            }
+          },
+          {
+            name: 'hides save button without nodes',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              expect(screen.queryByText('Save')).not.toBeInTheDocument();
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
@@ -91,52 +97,49 @@ describe('TreeBuilder', () => {
       { id: 'node-2', title: 'Point 2', children: [] }
     ];
 
-    it('renders tree nodes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          draftTitles={{ 'node-1': 'Point 1', 'node-2': 'Point 2' }}
-        />
+    it('covers populated tree rendering', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'renders multiple top-level nodes',
+            run: () => {
+              render(
+                <TreeBuilder
+                  {...defaultProps}
+                  tree={treeWithNodes}
+                  draftTitles={{ 'node-1': 'Point 1', 'node-2': 'Point 2' }}
+                />
+              );
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(2);
+            }
+          },
+          {
+            name: 'shows save button when nodes exist',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={treeWithNodes} />);
+              expect(screen.getByText('Save')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'renders nested children when expanded',
+            run: () => {
+              const nestedTree: ExegeticalPlanNode[] = [
+                { id: 'parent', title: 'Parent', children: [{ id: 'child-1', title: 'Child 1', children: [] }] }
+              ];
+              render(
+                <TreeBuilder
+                  {...defaultProps}
+                  tree={nestedTree}
+                  expand={{ parent: true }}
+                  draftTitles={{ parent: 'Parent', 'child-1': 'Child 1' }}
+                />
+              );
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(2);
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(2);
-    });
-
-    it('shows save button when tree has nodes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-        />
-      );
-
-      expect(screen.getByText('Save')).toBeInTheDocument();
-    });
-
-    it('renders nested nodes', () => {
-      const nestedTree: ExegeticalPlanNode[] = [
-        {
-          id: 'parent',
-          title: 'Parent',
-          children: [
-            { id: 'child-1', title: 'Child 1', children: [] }
-          ]
-        }
-      ];
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={nestedTree}
-          expand={{ 'parent': true }}
-          draftTitles={{ 'parent': 'Parent', 'child-1': 'Child 1' }}
-        />
-      );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(2);
     });
   });
 
@@ -145,314 +148,242 @@ describe('TreeBuilder', () => {
       { id: 'node-1', title: 'Point 1', children: [] }
     ];
 
-    it('disables save button when no unsaved changes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={false}
-        />
+    it('summarizes save button behavior', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'disabled when no changes',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={treeWithNodes} hasUnsavedChanges={false} />);
+              const button = screen.getByText('Save');
+              expect(button).toBeDisabled();
+              expect(button).toHaveClass('cursor-not-allowed');
+            }
+          },
+          {
+            name: 'enabled when changes exist',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={treeWithNodes} hasUnsavedChanges={true} />);
+              const button = screen.getByText('Save');
+              expect(button).not.toBeDisabled();
+              expect(button).toHaveClass('bg-blue-600');
+            }
+          },
+          {
+            name: 'shows saving indicators',
+            run: () => {
+              render(
+                <TreeBuilder
+                  {...defaultProps}
+                  tree={treeWithNodes}
+                  hasUnsavedChanges={true}
+                  saving={true}
+                />
+              );
+              const button = screen.getByText('Saving...');
+              expect(button).toBeDisabled();
+            }
+          },
+          {
+            name: 'applies disabled/enabled color tokens',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={treeWithNodes} hasUnsavedChanges={false} />);
+              expect(screen.getByText('Save')).toHaveClass('bg-gray-100');
+              cleanup();
+              render(<TreeBuilder {...defaultProps} tree={treeWithNodes} hasUnsavedChanges={true} />);
+              expect(screen.getByText('Save')).toHaveClass('text-white');
+            }
+          }
+        ],
+        {
+          afterEachScenario: () => {
+            cleanup();
+            jest.clearAllMocks();
+          }
+        }
       );
-
-      const saveButton = screen.getByText('Save');
-      expect(saveButton).toBeDisabled();
-      expect(saveButton).toHaveClass('cursor-not-allowed');
-    });
-
-    it('enables save button when there are unsaved changes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={true}
-        />
-      );
-
-      const saveButton = screen.getByText('Save');
-      expect(saveButton).not.toBeDisabled();
-      expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
-    });
-
-    it('shows "Saving..." when saving is in progress', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={true}
-          saving={true}
-        />
-      );
-
-      expect(screen.getByText('Saving...')).toBeInTheDocument();
-    });
-
-    it('disables save button while saving', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={true}
-          saving={true}
-        />
-      );
-
-      const saveButton = screen.getByText('Saving...');
-      expect(saveButton).toBeDisabled();
-    });
-
-    it('applies disabled styles when no changes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={false}
-        />
-      );
-
-      const saveButton = screen.getByText('Save');
-      expect(saveButton).toHaveClass('bg-gray-100', 'dark:bg-gray-800');
-      expect(saveButton).toHaveClass('text-gray-400', 'dark:text-gray-500');
-    });
-
-    it('applies enabled styles when there are changes', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={true}
-        />
-      );
-
-      const saveButton = screen.getByText('Save');
-      expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
-      expect(saveButton).toHaveClass('text-white');
     });
   });
 
   describe('User Interactions', () => {
-    it('calls onAddMainPoint when add button is clicked in empty state', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      const addButton = screen.getByText('Add main point');
-      fireEvent.click(addButton);
-
-      expect(mockOnAddMainPoint).toHaveBeenCalledTimes(1);
-    });
-
-    it('calls onSave when save button is clicked', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] }
-      ];
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={true}
-        />
+    it('captures primary user flows', async () => {
+      jest.clearAllMocks();
+      await runScenarios(
+        [
+          {
+            name: 'adds main point from empty state',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              fireEvent.click(screen.getByText('Add main point'));
+              expect(mockOnAddMainPoint).toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'triggers save when enabled',
+            run: () => {
+              const tree: ExegeticalPlanNode[] = [{ id: 'node-1', title: 'Point 1', children: [] }];
+              render(<TreeBuilder {...defaultProps} tree={tree} hasUnsavedChanges={true} />);
+              fireEvent.click(screen.getByText('Save'));
+              expect(mockOnSave).toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'prevents save when disabled',
+            run: () => {
+              const tree: ExegeticalPlanNode[] = [{ id: 'node-1', title: 'Point 1', children: [] }];
+              render(<TreeBuilder {...defaultProps} tree={tree} hasUnsavedChanges={false} />);
+              const saveButton = screen.getByText('Save');
+              expect(saveButton).toBeDisabled();
+              expect(saveButton).toHaveClass('cursor-not-allowed');
+            }
+          },
+          {
+            name: 'passes focus and draft props downstream',
+            run: () => {
+              const tree: ExegeticalPlanNode[] = [{ id: 'node-1', title: 'Point 1', children: [] }];
+              render(
+                <TreeBuilder
+                  {...defaultProps}
+                  tree={tree}
+                  draftTitles={{ 'node-1': 'Draft Title' }}
+                  focusedId="node-1"
+                />
+              );
+              const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
+              expect(input.value).toBe('Draft Title');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const saveButton = screen.getByText('Save');
-      fireEvent.click(saveButton);
-
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
-    });
-
-    it('does not call onSave when button is disabled', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] }
-      ];
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          hasUnsavedChanges={false}
-        />
-      );
-
-      const saveButton = screen.getByText('Save');
-      fireEvent.click(saveButton);
-
-      expect(mockOnSave).not.toHaveBeenCalled();
-    });
-
-    it('passes all props to TreeNode components', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] }
-      ];
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-          draftTitles={{ 'node-1': 'Draft Title' }}
-          focusedId="node-1"
-        />
-      );
-
-      const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
-      expect(input.value).toBe('Draft Title');
-      expect(input).toHaveFocus();
     });
   });
 
   describe('Visual Indicators', () => {
-    it('renders connecting lines between root siblings', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] },
-        { id: 'node-2', title: 'Point 2', children: [] }
-      ];
-
-      const { container } = render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-        />
+    it('validates connector rendering via scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'shows connectors between siblings',
+            run: () => {
+              const treeWithNodes: ExegeticalPlanNode[] = [
+                { id: 'node-1', title: 'Point 1', children: [] },
+                { id: 'node-2', title: 'Point 2', children: [] }
+              ];
+              const { container } = render(<TreeBuilder {...defaultProps} tree={treeWithNodes} />);
+              expect(container.querySelectorAll('.bg-blue-400.dark\\:bg-blue-500').length).toBeGreaterThan(0);
+            }
+          },
+          {
+            name: 'omits connector for final sibling',
+            run: () => {
+              const treeWithNodes: ExegeticalPlanNode[] = [{ id: 'node-1', title: 'Point 1', children: [] }];
+              const { container } = render(<TreeBuilder {...defaultProps} tree={treeWithNodes} />);
+              const allDivs = container.querySelectorAll('div.relative > div');
+              const lastNodeDiv = allDivs[allDivs.length - 1];
+              const verticalLine = lastNodeDiv?.querySelector('.absolute.left-0.top-10.bottom-\\[-4px\\]');
+              expect(verticalLine).toBeFalsy();
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const verticalLines = container.querySelectorAll('.bg-blue-400.dark\\:bg-blue-500');
-      expect(verticalLines.length).toBeGreaterThan(0);
-    });
-
-    it('does not render connecting line after last sibling', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] }
-      ];
-
-      const { container } = render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-        />
-      );
-
-      const allDivs = container.querySelectorAll('div.relative > div');
-      const lastNodeDiv = allDivs[allDivs.length - 1];
-      const verticalLine = lastNodeDiv?.querySelector('.absolute.left-0.top-10.bottom-\\[-4px\\]');
-      
-      expect(verticalLine).toBeFalsy();
     });
   });
 
   describe('Edge Cases', () => {
-    it('handles null tree gracefully', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={null as any}
-        />
-      );
-
-      expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
-    });
-
-    it('handles undefined tree gracefully', () => {
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={undefined as any}
-        />
-      );
-
-      expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
-    });
-
-    it('handles large number of nodes', () => {
-      const largeTree: ExegeticalPlanNode[] = Array.from({ length: 20 }, (_, i) => ({
-        id: `node-${i}`,
-        title: `Point ${i}`,
-        children: []
-      }));
-
-      const draftTitles = largeTree.reduce((acc, node) => ({
-        ...acc,
-        [node.id]: node.title
-      }), {});
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={largeTree}
-          draftTitles={draftTitles}
-        />
-      );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(20);
-    });
-
-    it('handles deeply nested tree structure', () => {
-      const deepTree: ExegeticalPlanNode[] = [
-        {
-          id: 'level-1',
-          title: 'Level 1',
-          children: [
-            {
-              id: 'level-2',
-              title: 'Level 2',
-              children: [
-                {
-                  id: 'level-3',
-                  title: 'Level 3',
-                  children: []
-                }
-              ]
+    it('covers atypical tree data', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'null tree handled gracefully',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={null as any} />);
+              expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
             }
-          ]
-        }
-      ];
-
-      const expand = { 'level-1': true, 'level-2': true };
-      const draftTitles = {
-        'level-1': 'Level 1',
-        'level-2': 'Level 2',
-        'level-3': 'Level 3'
-      };
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={deepTree}
-          expand={expand}
-          draftTitles={draftTitles}
-        />
+          },
+          {
+            name: 'undefined tree handled gracefully',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} tree={undefined as any} />);
+              expect(screen.getByText('No points yet. Start by adding a main point.')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'large flat tree renders all nodes',
+            run: () => {
+              const largeTree: ExegeticalPlanNode[] = Array.from({ length: 20 }, (_, i) => ({
+                id: `node-${i}`,
+                title: `Point ${i}`,
+                children: []
+              }));
+              const draftTitles = Object.fromEntries(largeTree.map((node) => [node.id, node.title]));
+              render(<TreeBuilder {...defaultProps} tree={largeTree} draftTitles={draftTitles} />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(20);
+            }
+          },
+          {
+            name: 'deep nested tree respects expand map',
+            run: () => {
+              const deepTree: ExegeticalPlanNode[] = [
+                {
+                  id: 'level-1',
+                  title: 'Level 1',
+                  children: [
+                    {
+                      id: 'level-2',
+                      title: 'Level 2',
+                      children: [{ id: 'level-3', title: 'Level 3', children: [] }]
+                    }
+                  ]
+                }
+              ];
+              render(
+                <TreeBuilder
+                  {...defaultProps}
+                  tree={deepTree}
+                  expand={{ 'level-1': true, 'level-2': true }}
+                  draftTitles={{ 'level-1': 'Level 1', 'level-2': 'Level 2', 'level-3': 'Level 3' }}
+                />
+              );
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(3);
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(3);
     });
   });
 
   describe('Accessibility', () => {
-    it('has proper heading structure', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      const heading = screen.getByText('Exegetical Plan Builder').closest('h5');
-      expect(heading).toBeInTheDocument();
-    });
-
-    it('save button is rendered as button element', () => {
-      const treeWithNodes: ExegeticalPlanNode[] = [
-        { id: 'node-1', title: 'Point 1', children: [] }
-      ];
-
-      render(
-        <TreeBuilder
-          {...defaultProps}
-          tree={treeWithNodes}
-        />
+    it('meets simple accessibility expectations', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'heading rendered as h5',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              expect(screen.getByText('Exegetical Plan Builder').closest('h5')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'save button uses button element',
+            run: () => {
+              const tree: ExegeticalPlanNode[] = [{ id: 'node-1', title: 'Point 1', children: [] }];
+              render(<TreeBuilder {...defaultProps} tree={tree} />);
+              expect(screen.getByText('Save').tagName).toBe('BUTTON');
+            }
+          },
+          {
+            name: 'add main point button provides tooltip',
+            run: () => {
+              render(<TreeBuilder {...defaultProps} />);
+              expect(screen.getByText('Add main point')).toHaveAttribute('title', 'Add the first main point');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const saveButton = screen.getByText('Save');
-      expect(saveButton.tagName).toBe('BUTTON');
-    });
-
-    it('add main point button has proper attributes', () => {
-      render(<TreeBuilder {...defaultProps} />);
-
-      const addButton = screen.getByText('Add main point');
-      expect(addButton).toHaveAttribute('title', 'Add the first main point');
     });
   });
 });

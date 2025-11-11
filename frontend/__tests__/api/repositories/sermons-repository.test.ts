@@ -1,4 +1,5 @@
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
+import { runScenarios } from '../../../test-utils/scenarioRunner';
 
 // Mock Firestore admin with proper module path
 jest.mock('@/config/firebaseAdminConfig', () => ({
@@ -66,211 +67,137 @@ describe('SermonsRepository', () => {
       conclusion: { outline: 'Conclusion outline' }
     };
 
-    beforeEach(() => {
-      // Mock successful document existence check
+    const seedSuccessfulDoc = () => {
+      mockUpdate.mockReset();
+      mockGet.mockReset();
       mockDocSnap = {
         exists: true,
         data: () => ({ id: 'test-sermon', title: 'Test Sermon' })
       };
       mockGet.mockResolvedValue(mockDocSnap);
       mockUpdate.mockResolvedValue({});
-    });
+    };
 
-    it('should successfully update sermon plan with valid data', async () => {
-      const result = await sermonsRepository.updateSermonPlan('test-sermon-123', validPlan);
-
-      expect(mockUpdate).toHaveBeenCalledWith({ plan: validPlan });
-      expect(result).toEqual(validPlan);
-    });
-
-    it('should throw error when plan is null', async () => {
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', null as any))
-        .rejects.toThrow('Invalid plan data');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when plan is undefined', async () => {
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', undefined as any))
-        .rejects.toThrow('Invalid plan data');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when plan is not an object', async () => {
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', 'not an object' as any))
-        .rejects.toThrow('Invalid plan data');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when plan is missing introduction section', async () => {
-      const invalidPlan = {
-        main: { outline: 'Main outline' },
-        conclusion: { outline: 'Conclusion outline' }
-      } as any; // Type assertion to bypass TypeScript for testing invalid cases
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when plan is missing main section', async () => {
-      const invalidPlan = {
-        introduction: { outline: 'Introduction outline' },
-        conclusion: { outline: 'Conclusion outline' }
-      } as any; // Type assertion to bypass TypeScript for testing invalid cases
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when plan is missing conclusion section', async () => {
-      const invalidPlan = {
-        introduction: { outline: 'Introduction outline' },
-        main: { outline: 'Main outline' }
-      } as any; // Type assertion to bypass TypeScript for testing invalid cases
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when introduction.outline is not a string', async () => {
-      const invalidPlan = {
-        introduction: { outline: 123 as any }, // Type assertion to bypass TypeScript for testing invalid cases
-        main: { outline: 'Main outline' },
-        conclusion: { outline: 'Conclusion outline' }
-      };
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure - outline values must be strings');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when main.outline is not a string', async () => {
-      const invalidPlan = {
-        introduction: { outline: 'Introduction outline' },
-        main: { outline: true as any }, // Type assertion to bypass TypeScript for testing invalid cases
-        conclusion: { outline: 'Conclusion outline' }
-      };
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure - outline values must be strings');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when conclusion.outline is not a string', async () => {
-      const invalidPlan = {
-        introduction: { outline: 'Introduction outline' },
-        main: { outline: 'Main outline' },
-        conclusion: { outline: {} as any } // Type assertion to bypass TypeScript for testing invalid cases
-      };
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure - outline values must be strings');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when introduction.outline is undefined', async () => {
-      const invalidPlan = {
-        introduction: { outline: undefined as any }, // Type assertion to bypass TypeScript for testing invalid cases
-        main: { outline: 'Main outline' },
-        conclusion: { outline: 'Conclusion outline' }
-      };
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure - outline values must be strings');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when main.outline is null', async () => {
-      const invalidPlan = {
-        introduction: { outline: 'Introduction outline' },
-        main: { outline: null as any }, // Type assertion to bypass TypeScript for testing invalid cases
-        conclusion: { outline: 'Conclusion outline' }
-      };
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', invalidPlan))
-        .rejects.toThrow('Invalid plan structure - outline values must be strings');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should accept empty string outline values', async () => {
-      const planWithEmptyStrings = {
-        introduction: { outline: '' },
-        main: { outline: '' },
-        conclusion: { outline: '' }
-      };
-
-      const result = await sermonsRepository.updateSermonPlan('test-sermon-123', planWithEmptyStrings);
-
-      expect(mockUpdate).toHaveBeenCalledWith({ plan: planWithEmptyStrings });
-      expect(result).toEqual(planWithEmptyStrings);
-    });
-
-    it('should handle Firestore errors', async () => {
-      mockUpdate.mockRejectedValue(new Error('Firestore update failed'));
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', validPlan))
-        .rejects.toThrow('Firestore update failed');
-    });
-
-    it('should handle sermon not found', async () => {
-      mockDocSnap = {
-        exists: false
-      };
-      mockGet.mockResolvedValue(mockDocSnap);
-
-      await expect(sermonsRepository.updateSermonPlan('nonexistent-sermon', validPlan))
-        .rejects.toThrow('Sermon not found');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should handle Firestore get errors', async () => {
-      mockGet.mockRejectedValue(new Error('Firestore get failed'));
-
-      await expect(sermonsRepository.updateSermonPlan('test-sermon-123', validPlan))
-        .rejects.toThrow('Firestore get failed');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should validate plan structure with outlinePoints', async () => {
-      const planWithOutlinePoints = {
-        introduction: { 
-          outline: 'Introduction outline',
-          outlinePoints: { 'point1': 'content1' }
+    it('validates plan permutations with scenarios', async () => {
+      const invalidPlanCases = [
+        { name: 'plan is null', plan: null, error: 'Invalid plan data' },
+        { name: 'plan is undefined', plan: undefined, error: 'Invalid plan data' },
+        { name: 'plan is not object', plan: 'not an object', error: 'Invalid plan data' },
+        {
+          name: 'missing introduction',
+          plan: { main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure'
         },
-        main: { 
-          outline: 'Main outline',
-          outlinePoints: { 'point2': 'content2' }
+        {
+          name: 'missing main',
+          plan: { introduction: { outline: 'Introduction outline' }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure'
         },
-        conclusion: { 
-          outline: 'Conclusion outline',
-          outlinePoints: { 'point3': 'content3' }
+        {
+          name: 'missing conclusion',
+          plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' } },
+          error: 'Invalid plan structure'
+        },
+        {
+          name: 'non-string introduction outline',
+          plan: { introduction: { outline: 123 }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure - outline values must be strings'
+        },
+        {
+          name: 'non-string main outline',
+          plan: { introduction: { outline: 'Introduction outline' }, main: { outline: true }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure - outline values must be strings'
+        },
+        {
+          name: 'non-string conclusion outline',
+          plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' }, conclusion: { outline: {} } },
+          error: 'Invalid plan structure - outline values must be strings'
+        },
+        {
+          name: 'undefined introduction outline',
+          plan: { introduction: { outline: undefined }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure - outline values must be strings'
+        },
+        {
+          name: 'null main outline',
+          plan: { introduction: { outline: 'Introduction outline' }, main: { outline: null }, conclusion: { outline: 'Conclusion outline' } },
+          error: 'Invalid plan structure - outline values must be strings'
         }
-      };
+      ];
 
-      const result = await sermonsRepository.updateSermonPlan('test-sermon-123', planWithOutlinePoints);
-
-      expect(mockUpdate).toHaveBeenCalledWith({ plan: planWithOutlinePoints });
-      expect(result).toEqual(planWithOutlinePoints);
+      await runScenarios(
+        [
+          {
+            name: 'successfully updates valid plan',
+            run: async () => {
+              const result = await sermonsRepository.updateSermonPlan('test-sermon-123', validPlan);
+              expect(mockUpdate).toHaveBeenCalledWith({ plan: validPlan });
+              expect(result).toEqual(validPlan);
+            }
+          },
+          ...invalidPlanCases.map(({ name, plan, error }) => ({
+            name,
+            run: async () => {
+              await expect(sermonsRepository.updateSermonPlan('test-sermon-123', plan as any)).rejects.toThrow(error);
+              expect(mockUpdate).not.toHaveBeenCalled();
+            }
+          })),
+          {
+            name: 'accepts empty string outlines',
+            run: async () => {
+              const emptyPlan = {
+                introduction: { outline: '' },
+                main: { outline: '' },
+                conclusion: { outline: '' }
+              };
+              const result = await sermonsRepository.updateSermonPlan('test-sermon-123', emptyPlan);
+              expect(mockUpdate).toHaveBeenCalledWith({ plan: emptyPlan });
+              expect(result).toEqual(emptyPlan);
+            }
+          },
+          {
+            name: 'accepts outlinePoints metadata',
+            run: async () => {
+              const planWithOutlinePoints = {
+                introduction: { outline: 'Introduction outline', outlinePoints: { point1: 'content1' } },
+                main: { outline: 'Main outline', outlinePoints: { point2: 'content2' } },
+                conclusion: { outline: 'Conclusion outline', outlinePoints: { point3: 'content3' } }
+              };
+              await sermonsRepository.updateSermonPlan('test-sermon-123', planWithOutlinePoints);
+              expect(mockUpdate).toHaveBeenCalledWith({ plan: planWithOutlinePoints });
+            }
+          },
+          {
+            name: 'handles Firestore update failure',
+            run: async () => {
+              mockUpdate.mockRejectedValue(new Error('Firestore update failed'));
+              await expect(sermonsRepository.updateSermonPlan('test-sermon-123', validPlan)).rejects.toThrow('Firestore update failed');
+            }
+          },
+          {
+            name: 'handles sermon not found',
+            run: async () => {
+              mockDocSnap = { exists: false };
+              mockGet.mockResolvedValue(mockDocSnap);
+              await expect(sermonsRepository.updateSermonPlan('nonexistent-sermon', validPlan)).rejects.toThrow('Sermon not found');
+              expect(mockUpdate).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'handles Firestore get failure',
+            run: async () => {
+              mockGet.mockRejectedValue(new Error('Firestore get failed'));
+              await expect(sermonsRepository.updateSermonPlan('test-sermon-123', validPlan)).rejects.toThrow('Firestore get failed');
+            }
+          }
+        ],
+        { beforeEachScenario: seedSuccessfulDoc }
+      );
     });
   });
 
   describe('fetchSermonById', () => {
-    beforeEach(() => {
+    const seedFetchSuccess = () => {
       mockDocSnap = {
         exists: true,
         data: () => ({
@@ -282,35 +209,42 @@ describe('SermonsRepository', () => {
         })
       };
       mockGet.mockResolvedValue(mockDocSnap);
-    });
+    };
 
-    it('should successfully fetch sermon by ID', async () => {
-      const result = await sermonsRepository.fetchSermonById('test-sermon-123');
-
-      expect(result).toEqual({
-        id: 'test-sermon-123',
-        title: 'Test Sermon',
-        userId: 'user-123',
-        verse: 'John 3:16',
-        date: '2023-01-01'
-      });
-    });
-
-    it('should throw error when sermon not found', async () => {
-      mockDocSnap = {
-        exists: false
-      };
-      mockGet.mockResolvedValue(mockDocSnap);
-
-      await expect(sermonsRepository.fetchSermonById('nonexistent-sermon'))
-        .rejects.toThrow('Sermon not found');
-    });
-
-    it('should handle Firestore errors', async () => {
-      mockGet.mockRejectedValue(new Error('Firestore error'));
-
-      await expect(sermonsRepository.fetchSermonById('test-sermon-123'))
-        .rejects.toThrow('Firestore error');
+    it('covers fetch permutations', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'returns sermon data when found',
+            run: async () => {
+              const result = await sermonsRepository.fetchSermonById('test-sermon-123');
+              expect(result).toEqual({
+                id: 'test-sermon-123',
+                title: 'Test Sermon',
+                userId: 'user-123',
+                verse: 'John 3:16',
+                date: '2023-01-01'
+              });
+            }
+          },
+          {
+            name: 'throws when sermon missing',
+            run: async () => {
+              mockDocSnap = { exists: false };
+              mockGet.mockResolvedValue(mockDocSnap);
+              await expect(sermonsRepository.fetchSermonById('nonexistent-sermon')).rejects.toThrow('Sermon not found');
+            }
+          },
+          {
+            name: 'propagates Firestore errors',
+            run: async () => {
+              mockGet.mockRejectedValue(new Error('Firestore error'));
+              await expect(sermonsRepository.fetchSermonById('test-sermon-123')).rejects.toThrow('Firestore error');
+            }
+          }
+        ],
+        { beforeEachScenario: seedFetchSuccess }
+      );
     });
   });
 
@@ -319,17 +253,26 @@ describe('SermonsRepository', () => {
       mockDelete.mockResolvedValue({});
     });
 
-    it('should successfully delete sermon by ID', async () => {
-      await sermonsRepository.deleteSermonById('test-sermon-123');
-
-      expect(mockDelete).toHaveBeenCalled();
-    });
-
-    it('should handle Firestore errors', async () => {
-      mockDelete.mockRejectedValue(new Error('Firestore delete failed'));
-
-      await expect(sermonsRepository.deleteSermonById('test-sermon-123'))
-        .rejects.toThrow('Firestore delete failed');
+    it('handles delete outcomes', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'deletes existing sermon',
+            run: async () => {
+              await sermonsRepository.deleteSermonById('test-sermon-123');
+              expect(mockDelete).toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'propagates Firestore delete errors',
+            run: async () => {
+              mockDelete.mockRejectedValue(new Error('Firestore delete failed'));
+              await expect(sermonsRepository.deleteSermonById('test-sermon-123')).rejects.toThrow('Firestore delete failed');
+            }
+          }
+        ],
+        { beforeEachScenario: () => mockDelete.mockResolvedValue({}) }
+      );
     });
   });
 
@@ -340,39 +283,47 @@ describe('SermonsRepository', () => {
       conclusion: [{ id: '3', text: 'Point 3' }]
     };
 
-    beforeEach(() => {
+    const seedOutlineSuccess = () => {
       mockDocSnap = {
         exists: true,
         data: () => ({ id: 'test-sermon', title: 'Test Sermon' })
       };
       mockGet.mockResolvedValue(mockDocSnap);
       mockUpdate.mockResolvedValue({});
-    });
+    };
 
-    it('should successfully update sermon outline', async () => {
-      const result = await sermonsRepository.updateSermonOutline('test-sermon-123', validOutline);
-
-      expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline });
-      expect(result).toEqual(validOutline);
-    });
-
-    it('should throw error when sermon not found', async () => {
-      mockDocSnap = {
-        exists: false
-      };
-      mockGet.mockResolvedValue(mockDocSnap);
-
-      await expect(sermonsRepository.updateSermonOutline('nonexistent-sermon', validOutline))
-        .rejects.toThrow('Sermon not found');
-      
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should handle Firestore errors', async () => {
-      mockUpdate.mockRejectedValue(new Error('Firestore update failed'));
-
-      await expect(sermonsRepository.updateSermonOutline('test-sermon-123', validOutline))
-        .rejects.toThrow('Firestore update failed');
+    it('covers outline update paths', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'updates outline when sermon exists',
+            run: async () => {
+              const result = await sermonsRepository.updateSermonOutline('test-sermon-123', validOutline);
+              expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline });
+              expect(result).toEqual(validOutline);
+            }
+          },
+          {
+            name: 'throws when sermon missing',
+            run: async () => {
+              // Clear previous mock calls
+              mockUpdate.mockClear();
+              mockDocSnap = { exists: false };
+              mockGet.mockResolvedValue(mockDocSnap);
+              await expect(sermonsRepository.updateSermonOutline('nonexistent-sermon', validOutline)).rejects.toThrow('Sermon not found');
+              expect(mockUpdate).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'propagates Firestore update failure',
+            run: async () => {
+              mockUpdate.mockRejectedValue(new Error('Firestore update failed'));
+              await expect(sermonsRepository.updateSermonOutline('test-sermon-123', validOutline)).rejects.toThrow('Firestore update failed');
+            }
+          }
+        ],
+        { beforeEachScenario: seedOutlineSuccess }
+      );
     });
   });
-}); 
+});

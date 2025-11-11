@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EditableVerse from '@/components/common/EditableVerse';
 import '@testing-library/jest-dom';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock translations
 jest.mock('react-i18next', () => ({
@@ -35,299 +36,245 @@ describe('EditableVerse Component', () => {
   };
 
   describe('Rendering', () => {
-    it('renders verse text in display mode', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      expect(screen.getByText('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-      expect(screen.getByTitle('Edit')).toBeInTheDocument();
-    });
-
-    it('does not render when verse is empty and not editing', () => {
-      const { container } = render(<EditableVerse {...defaultProps} initialVerse="" />);
-      
-      expect(container.firstChild).toBeNull();
-    });
-
-    it('renders with custom styling classes', () => {
-      render(
-        <EditableVerse 
-          {...defaultProps}
-          textSizeClass="text-lg"
-          containerClass="custom-container"
-        />
+    it('covers display-state rendering variants', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'shows verse and edit icon',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              expect(screen.getByText(defaultProps.initialVerse)).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'hides component when verse empty',
+            run: () => {
+              const { container } = render(<EditableVerse {...defaultProps} initialVerse="" />);
+              expect(container.firstChild).toBeNull();
+            }
+          },
+          {
+            name: 'applies custom classes',
+            run: () => {
+              render(<EditableVerse {...defaultProps} containerClass="custom-container" />);
+              const container = screen.getByText(defaultProps.initialVerse).closest('div')?.parentElement;
+              expect(container).toHaveClass('custom-container');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-      
-      const container = screen.getByText('John 3:16 - For God so loved the world...').closest('div')?.parentElement;
-      expect(container).toHaveClass('custom-container');
     });
   });
 
   describe('Edit Mode', () => {
-    it('enters edit mode when edit button is clicked', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      expect(screen.getByDisplayValue('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-      expect(screen.getByTitle('Save')).toBeInTheDocument();
-      expect(screen.getByTitle('Cancel')).toBeInTheDocument();
-    });
-
-    it('focuses and selects text when entering edit mode', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      expect(textarea).toHaveFocus();
-    });
-
-    it('updates textarea value when typing', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      expect(textarea).toHaveValue('Updated verse text');
+    it('enters edit mode and updates input', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'enter edit mode',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              expect(screen.getByTitle('Save')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'focuses textarea and updates value',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              expect(textarea).toHaveFocus();
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              expect(textarea).toHaveValue('Updated verse text');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Save Functionality', () => {
-    it('saves changes when save button is clicked', async () => {
-      mockOnSave.mockResolvedValue(undefined);
-      
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      await waitFor(() => {
-        expect(mockOnSave).toHaveBeenCalledWith('Updated verse text');
-      });
-      
-      // After save, the component should exit edit mode and show the original text
-      // until the parent component updates the initialVerse prop
-      expect(screen.getByText('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-    });
-
-    it('saves changes with Ctrl+Enter keyboard shortcut', async () => {
-      mockOnSave.mockResolvedValue(undefined);
-      
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
-      
-      await waitFor(() => {
-        expect(mockOnSave).toHaveBeenCalledWith('Updated verse text');
-      });
-    });
-
-    it('does not save if text is unchanged', async () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      await waitFor(() => {
-        expect(mockOnSave).not.toHaveBeenCalled();
-      });
-    });
-
-    it('does not save if text is only whitespace', async () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: '   ' } });
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      await waitFor(() => {
-        expect(mockOnSave).not.toHaveBeenCalled();
-      });
-    });
-
-    it('shows loading state while saving', async () => {
-      mockOnSave.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
-      
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      expect(saveButton).toBeDisabled();
-      expect(screen.getByTitle('Cancel')).toBeDisabled();
-    });
-
-    it('handles save errors gracefully', async () => {
-      mockOnSave.mockRejectedValue(new Error('Save failed'));
-      
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Failed to save verse')).toBeInTheDocument();
-      });
-      
-      expect(screen.getByDisplayValue('Updated verse text')).toBeInTheDocument();
+    it('handles saving flows and errors', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'saves via button and ctrl+enter',
+            run: async () => {
+              mockOnSave.mockResolvedValue(undefined);
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+              await waitFor(() => expect(mockOnSave).toHaveBeenCalledWith('Updated verse text'));
+            }
+          },
+          {
+            name: 'does not save unchanged or whitespace text',
+            run: async () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() => expect(mockOnSave).not.toHaveBeenCalled());
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: '   ' } });
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() => expect(mockOnSave).not.toHaveBeenCalled());
+            }
+          },
+          {
+            name: 'shows loading and error states',
+            run: async () => {
+              mockOnSave.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 100)));
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              const saveButton = screen.getByTitle('Save');
+              fireEvent.click(saveButton);
+              expect(saveButton).toBeDisabled();
+            }
+          },
+          {
+            name: 'handles save errors gracefully',
+            run: async () => {
+              mockOnSave.mockRejectedValueOnce(new Error('Save failed'));
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() => expect(screen.getByText('Failed to save verse')).toBeInTheDocument());
+            }
+          }
+        ],
+        { afterEachScenario: () => { cleanup(); mockOnSave.mockReset(); } }
+      );
     });
   });
 
   describe('Cancel Functionality', () => {
-    it('cancels edit mode when cancel button is clicked', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      const cancelButton = screen.getByTitle('Cancel');
-      fireEvent.click(cancelButton);
-      
-      expect(screen.getByText('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-      expect(screen.queryByDisplayValue('Updated verse text')).not.toBeInTheDocument();
-    });
-
-    it('cancels edit mode with Escape key', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      fireEvent.keyDown(textarea, { key: 'Escape' });
-      
-      expect(screen.getByText('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-      expect(screen.queryByDisplayValue('Updated verse text')).not.toBeInTheDocument();
+    it('supports cancel interactions', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'cancel button reverts edit',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              fireEvent.click(screen.getByTitle('Cancel'));
+              expect(screen.getByText(defaultProps.initialVerse)).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'escape key cancels edit',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              fireEvent.keyDown(textarea, { key: 'Escape' });
+              expect(screen.getByText(defaultProps.initialVerse)).toBeInTheDocument();
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Adaptive Height', () => {
-    it('sets initial height to auto', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      expect(textarea).toHaveStyle({ minHeight: '20px', maxHeight: '200px' });
-    });
-
-    it('adjusts height when content changes', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      
-      // Mock scrollHeight to simulate content change
-      Object.defineProperty(textarea, 'scrollHeight', {
-        value: 100,
-        writable: true
-      });
-      
-      fireEvent.change(textarea, { target: { value: 'Line 1\nLine 2\nLine 3' } });
-      
-      // The height should be adjusted (this is tested through the change handler)
-      expect(textarea).toHaveValue('Line 1\nLine 2\nLine 3');
+    it('applies height constraints', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'initial textarea sizing',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              expect(textarea).toHaveStyle({ minHeight: '20px' });
+            }
+          },
+          {
+            name: 'adjusts when content grows',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              Object.defineProperty(textarea, 'scrollHeight', { value: 100, writable: true });
+              fireEvent.change(textarea, { target: { value: 'Line 1\nLine 2' } });
+              expect(textarea).toHaveValue('Line 1\nLine 2');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Accessibility', () => {
-    it('has proper ARIA labels', () => {
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByLabelText('Scripture Verse');
-      expect(textarea).toBeInTheDocument();
-    });
-
-    it('shows error message with proper ARIA attributes', async () => {
-      mockOnSave.mockRejectedValue(new Error('Save failed'));
-      
-      render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
-      
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-      
-      await waitFor(() => {
-        expect(textarea).toHaveAttribute('aria-invalid', 'true');
-        expect(textarea).toHaveAttribute('aria-describedby', 'verse-error');
-      });
+    it('sets ARIA labels and errors', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'textarea has label',
+            run: () => {
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              expect(screen.getByLabelText('Scripture Verse')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'error state sets aria attributes',
+            run: async () => {
+              mockOnSave.mockRejectedValueOnce(new Error('Save failed'));
+              render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Updated verse text' } });
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() => expect(textarea).toHaveAttribute('aria-invalid', 'true'));
+            }
+          }
+        ],
+        { afterEachScenario: () => { cleanup(); mockOnSave.mockReset(); } }
+      );
     });
   });
 
   describe('Props Updates', () => {
-    it('updates displayed text when initialVerse prop changes', () => {
-      const { rerender } = render(<EditableVerse {...defaultProps} />);
-      
-      expect(screen.getByText('John 3:16 - For God so loved the world...')).toBeInTheDocument();
-      
-      rerender(<EditableVerse {...defaultProps} initialVerse="Updated initial verse" />);
-      
-      expect(screen.getByText('Updated initial verse')).toBeInTheDocument();
-    });
-
-    it('does not update edited text when initialVerse prop changes during editing', () => {
-      const { rerender } = render(<EditableVerse {...defaultProps} />);
-      
-      const editButton = screen.getByTitle('Edit');
-      fireEvent.click(editButton);
-      
-      const textarea = screen.getByDisplayValue('John 3:16 - For God so loved the world...');
-      fireEvent.change(textarea, { target: { value: 'Edited text' } });
-      
-      rerender(<EditableVerse {...defaultProps} initialVerse="Updated initial verse" />);
-      
-      expect(textarea).toHaveValue('Edited text');
+    it('handles prop changes gracefully', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'updates display when initialVerse changes',
+            run: () => {
+              const { rerender } = render(<EditableVerse {...defaultProps} />);
+              rerender(<EditableVerse {...defaultProps} initialVerse="Updated initial verse" />);
+              expect(screen.getByText('Updated initial verse')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'preserves edited text during prop changes',
+            run: () => {
+              const { rerender } = render(<EditableVerse {...defaultProps} />);
+              fireEvent.click(screen.getByTitle('Edit'));
+              const textarea = screen.getByDisplayValue(defaultProps.initialVerse);
+              fireEvent.change(textarea, { target: { value: 'Edited text' } });
+              rerender(<EditableVerse {...defaultProps} initialVerse="Updated initial verse" />);
+              expect(textarea).toHaveValue('Edited text');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 });

@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
-import ExportButtons from "@components/ExportButtons";
+import ExportButtons from "./ExportButtons";
 import { toast } from 'sonner';
 import { AudioRecorder } from "./AudioRecorder";
 import { FocusRecorderButton } from "./FocusRecorderButton";

@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import ModeToggle from '@/components/navigation/ModeToggle';
+import { runScenarios } from '@test-utils/scenarioRunner';
 // Use mocked ModeToggle rendered inside DashboardNav and query by testids exposed there
 jest.mock('@locales/i18n', () => ({}));
 
@@ -13,6 +14,16 @@ const replaceMock = jest.fn();
 const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
+
+const OLD_ENV = process.env;
+const resetScenario = () => {
+  jest.clearAllMocks();
+  process.env = { ...OLD_ENV, NEXT_PUBLIC_WIZARD_DEV_MODE: 'true' };
+  replaceMock.mockReset();
+  pushMock.mockReset();
+  pathnameMock = '/sermons/abc';
+  paramsMap = {};
+};
 
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
@@ -67,265 +78,248 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('DashboardNav mode toggle', () => {
-  const OLD_ENV = process.env;
-  beforeEach(() => {
-    jest.clearAllMocks();
-    process.env = { ...OLD_ENV, NEXT_PUBLIC_WIZARD_DEV_MODE: 'true' };
-    replaceMock.mockReset();
-    pushMock.mockReset();
-    pathnameMock = '/sermons/abc';
-    paramsMap = {};
-  });
+  beforeEach(resetScenario);
   afterAll(() => { process.env = OLD_ENV; });
 
-  test('does not render toggle outside sermon path', () => {
-    pathnameMock = '/dashboard';
-    render(<DashboardNav />);
-    expect(screen.queryByText('Classic Mode')).not.toBeInTheDocument();
-    expect(screen.queryByText('Preparation Mode')).not.toBeInTheDocument();
+  it('covers toggle rendering and standalone behavior', async () => {
+    await runScenarios(
+      [
+        {
+          name: 'hidden outside sermon path',
+          run: () => {
+            pathnameMock = '/dashboard';
+            render(<DashboardNav />);
+            expect(screen.queryByText('Classic Mode')).not.toBeInTheDocument();
+          }
+        },
+        {
+          name: 'ModeToggle renders with beta badge',
+          run: () => {
+            render(
+              <ModeToggle
+                currentMode="classic"
+                onSetMode={jest.fn()}
+                tSwitchToClassic="Classic Mode"
+                tSwitchToPrep="Preparation Mode (Beta)"
+                tPrepLabel="Preparation Mode"
+              />
+            );
+            expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
+            expect(screen.getByText(/beta/i)).toBeInTheDocument();
+          }
+        },
+        {
+          name: 'prep click triggers callback',
+          run: () => {
+            const onSetMode = jest.fn();
+            render(
+              <ModeToggle
+                currentMode="classic"
+                onSetMode={onSetMode}
+                tSwitchToClassic="Classic Mode"
+                tSwitchToPrep="Preparation Mode (Beta)"
+                tPrepLabel="Preparation Mode"
+              />
+            );
+            fireEvent.click(screen.getByTestId('toggle-prep'));
+            expect(onSetMode).toHaveBeenCalledWith('prep');
+          }
+        },
+        {
+          name: 'classic click triggers callback',
+          run: () => {
+            const onSetMode = jest.fn();
+            render(
+              <ModeToggle
+                currentMode="prep"
+                onSetMode={onSetMode}
+                tSwitchToClassic="Classic Mode"
+                tSwitchToPrep="Preparation Mode (Beta)"
+                tPrepLabel="Preparation Mode"
+              />
+            );
+            fireEvent.click(screen.getByTestId('toggle-classic'));
+            expect(onSetMode).toHaveBeenCalledWith('classic');
+          }
+        }
+      ],
+      { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
+    );
   });
 
-  test('renders centered toggle on sermon page with beta badge', () => {
-    // Render mocked ModeToggle directly to assert presence
-    render(<ModeToggle currentMode="classic" onSetMode={jest.fn()} tSwitchToClassic="Classic Mode" tSwitchToPrep="Preparation Mode (Beta)" tPrepLabel="Preparation Mode" />);
-    expect(screen.getByTestId('toggle-classic')).toBeInTheDocument();
-    expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
-    expect(screen.getByText(/beta/i)).toBeInTheDocument();
+  it('detects and switches modes via URL state', async () => {
+    await runScenarios(
+      [
+        {
+          name: 'reads prep mode from query',
+          run: () => {
+            paramsMap = { mode: 'prep' };
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+          }
+        },
+        {
+          name: 'defaults to classic when no mode',
+          run: () => {
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'true');
+          }
+        },
+        {
+          name: 'switches from classic to prep',
+          run: () => {
+            render(<DashboardNav />);
+            fireEvent.click(screen.getByTestId('toggle-prep'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
+          }
+        },
+        {
+          name: 'switches from prep to classic',
+          run: () => {
+            paramsMap = { mode: 'prep' };
+            render(<DashboardNav />);
+            fireEvent.click(screen.getByTestId('toggle-classic'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc', { scroll: false });
+          }
+        },
+        {
+          name: 'preserves other query params',
+          run: () => {
+            paramsMap = { mode: 'prep', otherParam: 'value' };
+            render(<DashboardNav />);
+            fireEvent.click(screen.getByTestId('toggle-classic'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?otherParam=value', { scroll: false });
+          }
+        },
+        {
+          name: 'keeps multiple params',
+          run: () => {
+            paramsMap = { mode: 'prep', param1: 'value1', param2: 'value2' };
+            render(<DashboardNav />);
+            fireEvent.click(screen.getByTestId('toggle-classic'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?param1=value1&param2=value2', { scroll: false });
+          }
+        },
+        {
+          name: 'ignores clicks when already in mode',
+          run: () => {
+            paramsMap = { mode: 'prep' };
+            render(<DashboardNav />);
+            fireEvent.click(screen.getByTestId('toggle-prep'));
+            expect(pushMock).not.toHaveBeenCalled();
+          }
+        }
+      ],
+      { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
+    );
   });
 
-  test('clicking prep sets mode=prep in URL', () => {
-    const onSetMode = jest.fn();
-    render(<ModeToggle currentMode="classic" onSetMode={onSetMode} tSwitchToClassic="Classic Mode" tSwitchToPrep="Preparation Mode (Beta)" tPrepLabel="Preparation Mode" />);
-    fireEvent.click(screen.getByTestId('toggle-prep'));
-    expect(onSetMode).toHaveBeenCalledWith('prep');
-  });
-
-  test('clicking classic removes mode query', () => {
-    const onSetMode = jest.fn();
-    render(<ModeToggle currentMode="prep" onSetMode={onSetMode} tSwitchToClassic="Classic Mode" tSwitchToPrep="Preparation Mode (Beta)" tPrepLabel="Preparation Mode" />);
-    fireEvent.click(screen.getByTestId('toggle-classic'));
-    expect(onSetMode).toHaveBeenCalledWith('classic');
-  });
-
-  test('handles current mode detection from URL params', () => {
-    paramsMap = { mode: 'prep' };
-    render(<DashboardNav />);
-    
-    // Should detect prep mode from URL
-    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  test('handles current mode detection when no mode param', () => {
-    paramsMap = {};
-    render(<DashboardNav />);
-    
-    // Should default to classic mode
-    expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  test('handles mode switching with URL navigation', () => {
-    paramsMap = {};
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Get the onSetMode function from the ModeToggle component
-    const modeToggle = screen.getByTestId('toggle-prep').closest('div');
-    if (modeToggle) {
-      // Simulate mode switching by calling the onSetMode function
-      const prepButton = within(modeToggle).getByTestId('toggle-prep');
-      fireEvent.click(prepButton);
-      
-      // Should navigate to new URL with mode=prep
-      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
-    }
-  });
-
-  test('handles mode switching from prep to classic', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Get the onSetMode function from the ModeToggle component
-    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
-    if (modeToggle) {
-      // Simulate mode switching by calling the onSetMode function
-      const classicButton = within(modeToggle).getByTestId('toggle-classic');
-      fireEvent.click(classicButton);
-      
-      // Should navigate to new URL without mode param
-      expect(pushMock).toHaveBeenCalledWith('/sermons/abc', { scroll: false });
-    }
-  });
-
-  test('handles mode switching with existing query parameters', () => {
-    paramsMap = { mode: 'prep', otherParam: 'value' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Get the onSetMode function from the ModeToggle component
-    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
-    if (modeToggle) {
-      // Simulate mode switching by calling the onSetMode function
-      const classicButton = within(modeToggle).getByTestId('toggle-classic');
-      fireEvent.click(classicButton);
-      
-      // Should navigate to new URL without mode param but keeping other params
-      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?otherParam=value', { scroll: false });
-    }
-  });
-
-  test('handles mode switching with complex query parameters', () => {
-    paramsMap = { mode: 'prep', param1: 'value1', param2: 'value2' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Get the onSetMode function from the ModeToggle component
-    const modeToggle = screen.getByTestId('toggle-classic').closest('div');
-    if (modeToggle) {
-      // Simulate mode switching by calling the onSetMode function
-      const classicButton = within(modeToggle).getByTestId('toggle-classic');
-      fireEvent.click(classicButton);
-      
-      // Should navigate to new URL without mode param but keeping other params
-      expect(pushMock).toHaveBeenCalledWith('/sermons/abc?param1=value1&param2=value2', { scroll: false });
-    }
-  });
-
-  test('handles mode switching when already in target mode', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Get the onSetMode function from the ModeToggle component
-    const modeToggle = screen.getByTestId('toggle-prep').closest('div');
-    if (modeToggle) {
-      // Simulate mode switching by calling the onSetMode function
-      const prepButton = within(modeToggle).getByTestId('toggle-prep');
-      fireEvent.click(prepButton);
-      
-      // Should not navigate since already in prep mode
-      expect(pushMock).not.toHaveBeenCalled();
-    }
-  });
-
-  test('handles mode switching with empty pathname', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = '';
-    
-    render(<DashboardNav />);
-    
-    // Should handle empty pathname gracefully - mode toggle should not be visible
-    expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
-  });
-
-  test('handles mode switching with undefined pathname', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = undefined as any;
-    
-    render(<DashboardNav />);
-    
-    // Should handle undefined pathname gracefully - mode toggle should not be visible
-    expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
-  });
-
-  test('handles mode switching with complex pathname', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Should handle complex pathname correctly - mode toggle should be visible
-    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  test('handles error during mode switching gracefully', () => {
-    paramsMap = { mode: 'prep' };
-    pathnameMock = '/sermons/abc';
-    
-    // Mock console.error to prevent test output pollution
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    
-    render(<DashboardNav />);
-    
-    // Should not crash on error
-    expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
-    
-    consoleSpy.mockRestore();
-  });
-
-  test('handles URLSearchParams toString edge cases', () => {
-    paramsMap = { mode: 'prep', emptyParam: '' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Should handle empty parameter values correctly
-    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  test('handles URLSearchParams with special characters', () => {
-    paramsMap = { mode: 'prep', specialParam: 'value with spaces & symbols' };
-    pathnameMock = '/sermons/abc';
-    
-    render(<DashboardNav />);
-    
-    // Should handle special characters in parameters correctly
-    expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+  it('handles edge cases gracefully', async () => {
+    await runScenarios(
+      [
+        {
+          name: 'empty pathname hides toggle',
+          run: () => {
+            pathnameMock = '';
+            render(<DashboardNav />);
+            expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
+          }
+        },
+        {
+          name: 'undefined pathname hides toggle',
+          run: () => {
+            pathnameMock = undefined as any;
+            render(<DashboardNav />);
+            expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
+          }
+        },
+        {
+          name: 'complex pathname still shows toggle',
+          run: () => {
+            paramsMap = { mode: 'prep' };
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+          }
+        },
+        {
+          name: 'handles console errors without crashing',
+          run: () => {
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            paramsMap = { mode: 'prep' };
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
+            consoleSpy.mockRestore();
+          }
+        },
+        {
+          name: 'handles empty query values',
+          run: () => {
+            paramsMap = { mode: 'prep', emptyParam: '' };
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+          }
+        },
+        {
+          name: 'handles special characters in params',
+          run: () => {
+            paramsMap = { mode: 'prep', specialParam: 'value with spaces & symbols' };
+            render(<DashboardNav />);
+            expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
+          }
+        }
+      ],
+      { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
+    );
   });
 });
 
 describe('Navigation button visibility', () => {
-  test('shows navigation dropdown on structure page', () => {
-    pathnameMock = '/structure';
-    paramsMap = { sermonId: 'test-id' };
-
-    render(<DashboardNav />);
-
-    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
-  });
-
-  test('shows navigation dropdown on sermon main page', () => {
-    pathnameMock = '/sermons/test-id';
-    paramsMap = {};
-
-    render(<DashboardNav />);
-
-    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
-  });
-
-  test('shows navigation dropdown on sermon plan page', () => {
-    pathnameMock = '/sermons/test-id/plan';
-    paramsMap = {};
-
-    render(<DashboardNav />);
-
-    expect(screen.getByText('Основная навигация')).toBeInTheDocument();
-  });
-
-  test('hides navigation dropdown on dashboard', () => {
-    pathnameMock = '/dashboard';
-    paramsMap = {};
-
-    render(<DashboardNav />);
-
-    expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
-  });
-
-  test('hides navigation dropdown on series page', () => {
-    pathnameMock = '/series';
-    paramsMap = {};
-
-    render(<DashboardNav />);
-
-    expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+  it('toggles dropdown based on route', async () => {
+    await runScenarios(
+      [
+        {
+          name: 'structure page shows dropdown',
+          run: () => {
+            pathnameMock = '/structure';
+            paramsMap = { sermonId: 'test-id' };
+            render(<DashboardNav />);
+            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+          }
+        },
+        {
+          name: 'sermon main page shows dropdown',
+          run: () => {
+            pathnameMock = '/sermons/test-id';
+            render(<DashboardNav />);
+            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+          }
+        },
+        {
+          name: 'sermon plan page shows dropdown',
+          run: () => {
+            pathnameMock = '/sermons/test-id/plan';
+            render(<DashboardNav />);
+            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+          }
+        },
+        {
+          name: 'dashboard hides dropdown',
+          run: () => {
+            pathnameMock = '/dashboard';
+            render(<DashboardNav />);
+            expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+          }
+        },
+        {
+          name: 'series page hides dropdown',
+          run: () => {
+            pathnameMock = '/series';
+            render(<DashboardNav />);
+            expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+          }
+        }
+      ],
+      { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
+    );
   });
 });
-
-

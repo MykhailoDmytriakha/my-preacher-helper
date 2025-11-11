@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the AudioRecorder component completely with a more sophisticated implementation
 // that can handle state changes and simulate behavior

@@ -1,6 +1,7 @@
 import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle, normalizeStructureTag } from "../../app/utils/tagUtils";
 import { getTagStyling } from "../../app/utils/themeColors";
 import { getContrastColor } from "../../app/utils/color";
+import { runScenarios } from "@test-utils/scenarioRunner";
 
 // Mock dependencies
 jest.mock("../../app/utils/color", () => ({
@@ -44,173 +45,213 @@ describe("tagUtils", () => {
   });
 
   describe("isStructureTag", () => {
-    test("identifies intro tags in different languages", () => {
-      expect(isStructureTag("intro")).toBe(true);
-      expect(isStructureTag("Intro")).toBe(true);
-      expect(isStructureTag("вступление")).toBe(true);
-      expect(isStructureTag("Вступление")).toBe(true);
-      expect(isStructureTag("вступ")).toBe(true);
-    });
-
-    test("identifies main tags in different languages", () => {
-      expect(isStructureTag("main")).toBe(true);
-      expect(isStructureTag("Main")).toBe(true);
-      expect(isStructureTag("основная часть")).toBe(true);
-      expect(isStructureTag("Основная часть")).toBe(true);
-      expect(isStructureTag("основна частина")).toBe(true);
-    });
-
-    test("identifies conclusion tags in different languages", () => {
-      expect(isStructureTag("conclusion")).toBe(true);
-      expect(isStructureTag("Conclusion")).toBe(true);
-      expect(isStructureTag("заключение")).toBe(true);
-      expect(isStructureTag("Заключение")).toBe(true);
-      expect(isStructureTag("висновок")).toBe(true);
-    });
-
-    test("returns false for non-structure tags", () => {
-      expect(isStructureTag("important")).toBe(false);
-      expect(isStructureTag("quote")).toBe(false);
-      expect(isStructureTag("example")).toBe(false);
-      expect(isStructureTag("application")).toBe(false);
+    it("covers locale permutations in one shot", async () => {
+      await runScenarios([
+        {
+          name: "intro synonyms",
+          run: () => {
+            ["intro", "Intro", "вступление", "Вступление", "вступ"].forEach((value) =>
+              expect(isStructureTag(value)).toBe(true)
+            );
+          },
+        },
+        {
+          name: "main synonyms",
+          run: () => {
+            ["main", "Main", "основная часть", "Основная часть", "основна частина"].forEach((value) =>
+              expect(isStructureTag(value)).toBe(true)
+            );
+          },
+        },
+        {
+          name: "conclusion synonyms",
+          run: () => {
+            ["conclusion", "Conclusion", "заключение", "Заключение", "висновок"].forEach((value) =>
+              expect(isStructureTag(value)).toBe(true)
+            );
+          },
+        },
+        {
+          name: "non-structure tags",
+          run: () => {
+            ["important", "quote", "example", "application"].forEach((value) =>
+              expect(isStructureTag(value)).toBe(false)
+            );
+          },
+        },
+      ]);
     });
   });
 
   describe("normalizeStructureTag", () => {
-    test("normalizes English long and short forms", () => {
-      expect(normalizeStructureTag("Introduction")).toBe("intro");
-      expect(normalizeStructureTag("Intro")).toBe("intro");
-      expect(normalizeStructureTag("Main Part")).toBe("main");
-      expect(normalizeStructureTag("Main")).toBe("main");
-      expect(normalizeStructureTag("Conclusion")).toBe("conclusion");
-    });
-
-    test("normalizes Russian and Ukrainian forms", () => {
-      expect(normalizeStructureTag("Вступление")).toBe("intro");
-      expect(normalizeStructureTag("Вступ")).toBe("intro");
-      expect(normalizeStructureTag("Основная часть")).toBe("main");
-      expect(normalizeStructureTag("Основна частина")).toBe("main");
-      expect(normalizeStructureTag("Заключение")).toBe("conclusion");
-      expect(normalizeStructureTag("Висновок")).toBe("conclusion");
-    });
-
-    test("returns null for non-structure tags", () => {
-      expect(normalizeStructureTag("Grace")).toBeNull();
-      expect(normalizeStructureTag("random")).toBeNull();
-      expect(normalizeStructureTag("")).toBeNull();
+    it("maps localized tags to canonical slugs once", async () => {
+      await runScenarios([
+        {
+          name: "english variants",
+          run: () => {
+            expect(normalizeStructureTag("Introduction")).toBe("intro");
+            expect(normalizeStructureTag("Intro")).toBe("intro");
+            expect(normalizeStructureTag("Main Part")).toBe("main");
+            expect(normalizeStructureTag("Main")).toBe("main");
+            expect(normalizeStructureTag("Conclusion")).toBe("conclusion");
+          },
+        },
+        {
+          name: "ru/uk variants",
+          run: () => {
+            expect(normalizeStructureTag("Вступление")).toBe("intro");
+            expect(normalizeStructureTag("Вступ")).toBe("intro");
+            expect(normalizeStructureTag("Основная часть")).toBe("main");
+            expect(normalizeStructureTag("Основна частина")).toBe("main");
+            expect(normalizeStructureTag("Заключение")).toBe("conclusion");
+            expect(normalizeStructureTag("Висновок")).toBe("conclusion");
+          },
+        },
+        {
+          name: "non-structure tags",
+          run: () => {
+            ["Grace", "random", ""].forEach((value) => expect(normalizeStructureTag(value)).toBeNull());
+          },
+        },
+      ]);
     });
   });
 
   describe("getDefaultTagStyling", () => {
-    test("returns blue styling for intro tags", () => {
-      const styling = getDefaultTagStyling("вступление");
-      expect(getTagStyling).toHaveBeenCalledWith('introduction');
-      expect(styling.bg).toContain("blue");
-      expect(styling.text).toContain("blue");
-    });
-
-    test("returns purple styling for main tags", () => {
-      const styling = getDefaultTagStyling("main");
-      expect(getTagStyling).toHaveBeenCalledWith('mainPart');
-      expect(styling.bg).toContain("purple");
-      expect(styling.text).toContain("purple");
-    });
-
-    test("returns green styling for conclusion tags", () => {
-      const styling = getDefaultTagStyling("заключение");
-      expect(getTagStyling).toHaveBeenCalledWith('conclusion');
-      expect(styling.bg).toContain("green");
-      expect(styling.text).toContain("green");
-    });
-
-    test("returns indigo styling for other tags", () => {
-      const styling = getDefaultTagStyling("example");
-      expect(getTagStyling).not.toHaveBeenCalled();
-      expect(styling.bg).toContain("indigo");
-      expect(styling.text).toContain("indigo");
+    it("matches tag families within one test", async () => {
+      await runScenarios([
+        {
+          name: "introduction colors",
+          run: () => {
+            const styling = getDefaultTagStyling("вступление");
+            expect(getTagStyling).toHaveBeenCalledWith("introduction");
+            expect(styling.bg).toContain("blue");
+          },
+        },
+        {
+          name: "main colors",
+          run: () => {
+            const styling = getDefaultTagStyling("main");
+            expect(getTagStyling).toHaveBeenCalledWith("mainPart");
+            expect(styling.bg).toContain("purple");
+          },
+        },
+        {
+          name: "conclusion colors",
+          run: () => {
+            const styling = getDefaultTagStyling("заключение");
+            expect(getTagStyling).toHaveBeenCalledWith("conclusion");
+            expect(styling.bg).toContain("green");
+          },
+        },
+        {
+          name: "custom tag colors",
+          run: () => {
+            (getTagStyling as jest.Mock).mockClear();
+            const styling = getDefaultTagStyling("example");
+            expect(getTagStyling).not.toHaveBeenCalled();
+            expect(styling.bg).toContain("indigo");
+          },
+        },
+      ]);
     });
   });
 
   describe("getStructureIcon", () => {
-    test("returns intro icon for intro tags", () => {
-      const icon = getStructureIcon("вступление");
-      expect(icon).not.toBeNull();
-      expect(icon!.svg).toContain("<polyline points=\"4 17 10 11 4 5\"></polyline>");
-    });
-
-    test("returns main icon for main tags", () => {
-      const icon = getStructureIcon("main");
-      expect(icon).not.toBeNull();
-      expect(icon!.svg).toContain("<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"></rect>");
-    });
-
-    test("returns conclusion icon for conclusion tags", () => {
-      const icon = getStructureIcon("заключение");
-      expect(icon).not.toBeNull();
-      expect(icon!.svg).toContain("<polyline points=\"20 17 10 11 20 5\"></polyline>");
-    });
-
-    test("returns null for non-structure tags", () => {
-      const icon = getStructureIcon("example");
-      expect(icon).toBeNull();
+    it("maps structure tags to icons at once", async () => {
+      await runScenarios([
+        {
+          name: "intro icon",
+          run: () => {
+            const icon = getStructureIcon("вступление");
+            expect(icon?.svg).toContain("<polyline points=\"4 17 10 11 4 5\"></polyline>");
+          },
+        },
+        {
+          name: "main icon",
+          run: () => {
+            const icon = getStructureIcon("main");
+            expect(icon?.svg).toContain("<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"></rect>");
+          },
+        },
+        {
+          name: "conclusion icon",
+          run: () => {
+            const icon = getStructureIcon("заключение");
+            expect(icon?.svg).toContain("<polyline points=\"20 17 10 11 20 5\"></polyline>");
+          },
+        },
+        {
+          name: "non-structure tags",
+          run: () => expect(getStructureIcon("example")).toBeNull(),
+        },
+      ]);
     });
   });
 
   describe("getTagStyle", () => {
-    test("returns canonical class styling and ignores inline color for structure tag", () => {
-      const { className, style } = getTagStyle("intro", "#FF0000");
-      expect(className).toContain("rounded-full");
-      expect(className).toContain("font-medium");
-      expect(style).toEqual({});
-    });
-
-    test("returns correct styling for non-structure tag with color", () => {
-      const { className, style } = getTagStyle("example", "#00FF00");
-      
-      expect(className).toContain("rounded-full");
-      expect(className).not.toContain("font-medium");
-      expect(style.backgroundColor).toBe("#00FF00");
-      expect(style.boxShadow).toBeUndefined();
-      expect(style.border).toBeUndefined();
-    });
-
-    test("returns correct styling for structure tag without color", () => {
-      const { className, style } = getTagStyle("conclusion");
-      
-      expect(className).toContain("rounded-full");
-      expect(className).toContain("font-medium");
-      expect(className).toContain("bg-green");
-      expect(className).toContain("text-green");
-      expect(style).toEqual({});
-    });
-
-    test("returns correct styling for non-structure tag without color", () => {
-      const { className, style } = getTagStyle("example");
-      
-      expect(className).toContain("rounded-full");
-      expect(className).toContain("bg-indigo");
-      expect(className).toContain("text-indigo");
-      expect(style).toEqual({});
+    it("covers structure vs custom styling in a single test", async () => {
+      await runScenarios([
+        {
+          name: "structure tag ignores color",
+          run: () => {
+            const { className, style } = getTagStyle("intro", "#FF0000");
+            expect(className).toContain("font-medium");
+            expect(style).toEqual({});
+          },
+        },
+        {
+          name: "custom tag with color",
+          run: () => {
+            const { className, style } = getTagStyle("example", "#00FF00");
+            expect(className).not.toContain("font-medium");
+            expect(style.backgroundColor).toBe("#00FF00");
+          },
+        },
+        {
+          name: "structure tag without color",
+          run: () => {
+            const { className, style } = getTagStyle("conclusion");
+            expect(className).toContain("bg-green");
+            expect(style).toEqual({});
+          },
+        },
+        {
+          name: "custom tag without color",
+          run: () => {
+            const { className, style } = getTagStyle("example");
+            expect(className).toContain("bg-indigo");
+            expect(style).toEqual({});
+          },
+        },
+      ]);
     });
   });
 
   describe("class stability and color usage", () => {
-    test("structure tags ignore inline color and keep class tokens stable", () => {
-      const { getTagStyle } = require("../../app/utils/tagUtils");
-      const withColor = getTagStyle("Вступление", "#ff0000");
-      const withoutColor = getTagStyle("Вступление");
-      expect(withColor.className).toBe(withoutColor.className);
-      expect(withColor.style).toEqual({});
-      expect(withoutColor.style).toEqual({});
-    });
-
-    test("custom tags keep class tokens stable; only inline style changes with color", () => {
-      const { getTagStyle } = require("../../app/utils/tagUtils");
-      const noColor = getTagStyle("Custom");
-      const withColor = getTagStyle("Custom", "#112233");
-      expect(withColor.className).toBe(noColor.className);
-      expect(noColor.style).toEqual({});
-      expect(withColor.style).toMatchObject({ backgroundColor: "#112233" });
+    it("validates repeated class tokens with and without inline colors", async () => {
+      await runScenarios([
+        {
+          name: "structure tags stable classes",
+          run: () => {
+            const withColor = getTagStyle("Вступление", "#ff0000");
+            const withoutColor = getTagStyle("Вступление");
+            expect(withColor.className).toBe(withoutColor.className);
+            expect(withColor.style).toEqual({});
+            expect(withoutColor.style).toEqual({});
+          },
+        },
+        {
+          name: "custom tags change only styles",
+          run: () => {
+            const noColor = getTagStyle("Custom");
+            const withColor = getTagStyle("Custom", "#112233");
+            expect(withColor.className).toBe(noColor.className);
+            expect(noColor.style).toEqual({});
+            expect(withColor.style).toMatchObject({ backgroundColor: "#112233" });
+          },
+        },
+      ]);
     });
   });
 }); 

@@ -1,79 +1,76 @@
 import { getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 describe('urlUtils', () => {
   describe('getFocusModeUrl', () => {
-    it('should generate correct Focus mode URL with default base path', () => {
-      const result = getFocusModeUrl('introduction', 'sermon123');
-      
-      expect(result).toBe('/sermons/sermon123/structure?mode=focus&section=introduction');
-    });
-
-    it('should generate correct Focus mode URL with custom base path', () => {
-      const result = getFocusModeUrl('main', 'sermon456', '/custom/structure');
-      
-      expect(result).toBe('/custom/structure?mode=focus&section=main');
-    });
-
-    it('should handle different section types', () => {
-      const introUrl = getFocusModeUrl('introduction', 'sermon123');
-      const mainUrl = getFocusModeUrl('main', 'sermon123');
-      const conclusionUrl = getFocusModeUrl('conclusion', 'sermon123');
-      
-      expect(introUrl).toContain('section=introduction');
-      expect(mainUrl).toContain('section=main');
-      expect(conclusionUrl).toContain('section=conclusion');
-    });
-
-    it('should always include mode=focus parameter', () => {
-      const result = getFocusModeUrl('introduction', 'sermon123');
-      
-      expect(result).toContain('mode=focus');
-    });
-
-    it('should handle empty string sermonId', () => {
-      const result = getFocusModeUrl('introduction', '');
-      
-      expect(result).toBe('/structure?mode=focus&section=introduction');
-    });
-
-    it('should handle special characters in sermonId', () => {
-      const result = getFocusModeUrl('introduction', 'sermon-123_456');
-      
-      expect(result).toBe('/sermons/sermon-123_456/structure?mode=focus&section=introduction');
+    it('aggregates all focus URL scenarios', async () => {
+      await runScenarios([
+        {
+          name: 'default base path',
+          run: () => {
+            expect(getFocusModeUrl('introduction', 'sermon123')).toBe(
+              '/sermons/sermon123/structure?mode=focus&section=introduction',
+            );
+          },
+        },
+        {
+          name: 'custom base path',
+          run: () => {
+            expect(getFocusModeUrl('main', 'sermon456', '/custom/structure')).toBe(
+              '/custom/structure?mode=focus&section=main',
+            );
+          },
+        },
+        {
+          name: 'section variations and mode flag',
+          run: () => {
+            ['introduction', 'main', 'conclusion'].forEach((section) => {
+              const url = getFocusModeUrl(section as any, 'sermon123');
+              expect(url).toContain(`section=${section}`);
+              expect(url).toContain('mode=focus');
+            });
+          },
+        },
+        {
+          name: 'empty and special sermonIds',
+          run: () => {
+            expect(getFocusModeUrl('introduction', '')).toBe('/structure?mode=focus&section=introduction');
+            expect(getFocusModeUrl('introduction', 'sermon-123_456')).toBe(
+              '/sermons/sermon-123_456/structure?mode=focus&section=introduction',
+            );
+          },
+        },
+      ]);
     });
   });
 
   describe('getStructureUrl', () => {
-    it('should generate correct structure URL with default base path', () => {
-      const result = getStructureUrl('sermon123');
-      
-      expect(result).toBe('/sermons/sermon123/structure');
-    });
-
-    it('should generate correct structure URL with custom base path', () => {
-      const result = getStructureUrl('sermon456', '/custom/structure');
-      
-      expect(result).toBe('/custom/structure');
-    });
-
-    it('should not include mode or section parameters', () => {
-      const result = getStructureUrl('sermon123');
-      
-      expect(result).not.toContain('mode=');
-      expect(result).not.toContain('section=');
-      expect(result).toBe('/sermons/sermon123/structure');
-    });
-
-    it('should handle empty string sermonId', () => {
-      const result = getStructureUrl('');
-      
-      expect(result).toBe('/structure');
-    });
-
-    it('should handle special characters in sermonId', () => {
-      const result = getStructureUrl('sermon-123_456');
-      
-      expect(result).toBe('/sermons/sermon-123_456/structure');
+    it('covers base path and parameter rules', async () => {
+      await runScenarios([
+        {
+          name: 'default structure path',
+          run: () => expect(getStructureUrl('sermon123')).toBe('/sermons/sermon123/structure'),
+        },
+        {
+          name: 'custom path',
+          run: () => expect(getStructureUrl('sermon456', '/custom/structure')).toBe('/custom/structure'),
+        },
+        {
+          name: 'omits mode/section params',
+          run: () => {
+            const url = getStructureUrl('sermon123');
+            expect(url).not.toContain('mode=');
+            expect(url).not.toContain('section=');
+          },
+        },
+        {
+          name: 'empty and special sermonIds',
+          run: () => {
+            expect(getStructureUrl('')).toBe('/structure');
+            expect(getStructureUrl('sermon-123_456')).toBe('/sermons/sermon-123_456/structure');
+          },
+        },
+      ]);
     });
   });
 
@@ -86,114 +83,66 @@ describe('urlUtils', () => {
       });
     });
 
-    it('should parse Focus mode URL correctly for nested structure route', () => {
-      const url = 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: 'introduction',
-        sermonId: 'sermon123'
-      });
-    });
+    it('parses a wide variety of focus URLs in one consolidated test', async () => {
+      const cases = [
+        {
+          name: 'nested structure route',
+          url: 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction',
+          expected: { mode: 'focus', section: 'introduction', sermonId: 'sermon123' },
+        },
+        {
+          name: 'missing section parameter',
+          url: 'https://example.com/sermons/sermon123/structure?mode=focus',
+          expected: { mode: 'focus', section: null, sermonId: 'sermon123' },
+        },
+        {
+          name: 'no query params',
+          url: 'https://example.com/sermons/sermon123/structure',
+          expected: { mode: null, section: null, sermonId: 'sermon123' },
+        },
+        {
+          name: 'legacy query-based sermonId',
+          url: 'https://example.com/structure?mode=focus&sermonId=sermon123',
+          expected: { mode: 'focus', section: null, sermonId: 'sermon123' },
+        },
+        {
+          name: 'different parameter order',
+          url: 'https://example.com/sermons/sermon123/structure?section=main&mode=focus',
+          expected: { mode: 'focus', section: 'main', sermonId: 'sermon123' },
+        },
+        {
+          name: 'duplicate params keep first occurrence',
+          url: 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction&section=main',
+          expected: { mode: 'focus', section: 'introduction', sermonId: 'sermon123' },
+        },
+        {
+          name: 'empty parameter values',
+          url: 'https://example.com/structure?mode=&section=&sermonId=',
+          expected: { mode: '', section: '', sermonId: '' },
+        },
+        {
+          name: 'malformed URL fallback',
+          url: 'not-a-valid-url',
+          expected: { mode: null, section: null, sermonId: null },
+        },
+        {
+          name: 'special characters in sermonId',
+          url: 'https://example.com/sermons/sermon-123_456/structure?mode=focus&section=introduction',
+          expected: { mode: 'focus', section: 'introduction', sermonId: 'sermon-123_456' },
+        },
+        {
+          name: 'irrelevant query params ignored',
+          url: 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction&otherParam=value',
+          expected: { mode: 'focus', section: 'introduction', sermonId: 'sermon123' },
+        },
+      ];
 
-    it('should parse URL with only some parameters', () => {
-      const url = 'https://example.com/sermons/sermon123/structure?mode=focus';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: null,
-        sermonId: 'sermon123'
-      });
-    });
-
-    it('should parse URL with no parameters but sermon in path', () => {
-      const url = 'https://example.com/sermons/sermon123/structure';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: null,
-        section: null,
-        sermonId: 'sermon123'
-      });
-    });
-
-    it('should fall back to query-based sermonId for legacy URLs', () => {
-      const url = 'https://example.com/structure?mode=focus&sermonId=sermon123';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: null,
-        sermonId: 'sermon123'
-      });
-    });
-
-    it('should handle URL with different parameter order', () => {
-      const url = 'https://example.com/sermons/sermon123/structure?section=main&mode=focus';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: 'main',
-        sermonId: 'sermon123'
-      });
-    });
-
-    it('should handle URL with duplicate parameters (takes first occurrence)', () => {
-      const url = 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction&section=main';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: 'introduction', // First occurrence
-        sermonId: 'sermon123'
-      });
-    });
-
-    it('should handle URL with empty parameter values', () => {
-      const url = 'https://example.com/structure?mode=&section=&sermonId=';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: '',
-        section: '',
-        sermonId: ''
-      });
-    });
-
-    it('should handle malformed URL gracefully', () => {
-      const malformedUrl = 'not-a-valid-url';
-      const result = parseFocusModeFromUrl(malformedUrl);
-      
-      expect(result).toEqual({
-        mode: null,
-        section: null,
-        sermonId: null
-      });
-    });
-
-    it('should handle URL with special characters in parameters', () => {
-      const url = 'https://example.com/sermons/sermon-123_456/structure?mode=focus&section=introduction';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: 'introduction',
-        sermonId: 'sermon-123_456'
-      });
-    });
-
-    it('should handle URL with query parameters that are not mode, section, or sermonId', () => {
-      const url = 'https://example.com/sermons/sermon123/structure?mode=focus&section=introduction&otherParam=value';
-      const result = parseFocusModeFromUrl(url);
-      
-      expect(result).toEqual({
-        mode: 'focus',
-        section: 'introduction',
-        sermonId: 'sermon123'
-      });
+      await runScenarios(
+        cases.map(({ name, url, expected }) => ({
+          name,
+          run: () => expect(parseFocusModeFromUrl(url)).toEqual(expected),
+        })),
+      );
     });
   });
 });

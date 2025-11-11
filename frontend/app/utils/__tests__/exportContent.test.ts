@@ -1,5 +1,6 @@
 import { getExportContent } from '../exportContent';
 import { Sermon, Thought, Structure } from '@/models/models';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the tagUtils module
 jest.mock('../tagUtils', () => ({
@@ -82,486 +83,230 @@ describe('exportContent', () => {
   });
 
   describe('getExportContent', () => {
-    it('should export content in plain text format by default', async () => {
-      const result = await getExportContent(mockSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-      expect(result).toContain('Test Sermon');
-      expect(result).toContain('John 3:16');
+    it('handles format toggles and metadata combinations in one pass', async () => {
+      await runScenarios([
+        {
+          name: 'plain text default',
+          run: async () => {
+            const result = await getExportContent(mockSermon);
+            expect(result).toContain('Test Sermon');
+            expect(result).toContain('John 3:16');
+            expect(result).toContain('export.unassignedThoughts:');
+          },
+        },
+        {
+          name: 'markdown output',
+          run: async () => {
+            const result = await getExportContent(mockSermon, undefined, { format: 'markdown' });
+            expect(result).toContain('# export.sermonTitleTest Sermon');
+            expect(result).toContain('## tags.introduction');
+            expect(result).toContain('## tags.mainPart');
+            expect(result).toContain('## tags.conclusion');
+          },
+        },
+        {
+          name: 'include tags and omit metadata',
+          run: async () => {
+            const withTags = await getExportContent(mockSermon, undefined, { includeTags: true });
+            expect(withTags).toContain('export.tagsLabel');
+            expect(withTags).toContain('intro');
+            const noMetadata = await getExportContent(mockSermon, undefined, { includeMetadata: false });
+            expect(noMetadata).not.toContain('Test Sermon');
+            expect(noMetadata).not.toContain('John 3:16');
+            expect(noMetadata).toContain('tags.introduction:');
+          },
+        },
+        {
+          name: 'focused export',
+          run: async () => {
+            const result = await getExportContent(mockSermon, 'introduction');
+            expect(result).toContain('tags.introduction:');
+            expect(result).not.toContain('tags.mainPart:');
+            expect(result).not.toContain('tags.conclusion:');
+          },
+        },
+        {
+          name: 'empty sermon and no-thoughts fallback',
+          run: async () => {
+            const emptySermon: Sermon = { id: 'empty', title: '', thoughts: [], outline: {}, structure: {} };
+            const emptyResult = await getExportContent(emptySermon);
+            expect(typeof emptyResult).toBe('string');
+
+            const noThoughtsSermon: Sermon = { id: 'no-thoughts', title: 'No Thoughts Sermon', thoughts: [], outline: {}, structure: {} };
+            const noThoughtsResult = await getExportContent(noThoughtsSermon);
+            expect(noThoughtsResult).toContain('No Thoughts Sermon');
+          },
+        },
+      ]);
     });
 
-    it('should export content in markdown format when specified', async () => {
-      const result = await getExportContent(mockSermon, undefined, { format: 'markdown' });
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-      expect(result).toContain('# export.sermonTitleTest Sermon');
-      expect(result).toContain('## tags.introduction');
-      expect(result).toContain('## tags.mainPart');
-      expect(result).toContain('## tags.conclusion');
+    it('supports structure, outline, and verse permutations without spawning dozens of tests', async () => {
+      await runScenarios([
+        {
+          name: 'verse omissions',
+          run: async () => {
+            const noVerse = await getExportContent({ ...mockSermon, verse: undefined });
+            expect(noVerse).not.toContain('John 3:16');
+
+            const emptyVerse = await getExportContent({ ...mockSermon, verse: '   ' });
+            expect(emptyVerse).not.toContain('John 3:16');
+
+            const whitespaceVerse = await getExportContent({ ...mockSermon, verse: '  \n  \n  ' });
+            expect(whitespaceVerse).not.toContain('John 3:16');
+          },
+        },
+        {
+          name: 'complex verse content',
+          run: async () => {
+            const complexVerseSermon: Sermon = {
+              ...mockSermon,
+              verse: 'John 3:16\nFor God so loved the world\nThat he gave his only Son',
+            };
+            const result = await getExportContent(complexVerseSermon);
+            expect(result).toContain('For God so loved the world');
+          },
+        },
+        {
+          name: 'outline permutations',
+          run: async () => {
+            const baseResult = await getExportContent(mockSermon);
+            expect(baseResult).toContain('Introduction Point 1:');
+            expect(baseResult).toContain('First thought');
+            const noOutline: Sermon = {
+              ...mockSermon,
+              outline: { introduction: [], main: [], conclusion: [] },
+            };
+            const resultNoOutline = await getExportContent(noOutline);
+            expect(resultNoOutline).toContain('tags.introduction:');
+
+            const mixedOutline: Sermon = {
+              ...mockSermon,
+              outline: { introduction: [{ id: 'point1', text: 'Intro Point' }], main: [], conclusion: [] },
+            };
+            const mixedResult = await getExportContent(mixedOutline);
+            expect(mixedResult).toContain('Intro Point:');
+          },
+        },
+        {
+          name: 'structure fallbacks and empty sections',
+          run: async () => {
+            const emptyThoughts = await getExportContent({ ...mockSermon, thoughts: [] });
+            expect(typeof emptyThoughts).toBe('string');
+
+            const noStructure = await getExportContent({
+              ...mockSermon,
+              structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+            });
+            expect(typeof noStructure).toBe('string');
+
+            const emptyStructure = await getExportContent({ ...mockSermon, structure: {} });
+            expect(typeof emptyStructure).toBe('string');
+
+            const emptyOutline = await getExportContent({ ...mockSermon, outline: {} });
+            expect(typeof emptyOutline).toBe('string');
+          },
+        },
+      ]);
     });
 
-    it('should include tags when specified', async () => {
-      const result = await getExportContent(mockSermon, undefined, { includeTags: true });
-      
-      expect(result).toContain('export.tagsLabel');
-      expect(result).toContain('intro');
-      expect(result).toContain('main');
-      expect(result).toContain('conclusion');
-    });
+    it('covers thought/tag/date variations and markdown verse formatting in a single workflow', async () => {
+      await runScenarios([
+        {
+          name: 'thought tag permutations',
+          run: async () => {
+            const thoughtsBase = mockSermon.thoughts!;
+            const multiTagSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'multi', text: 'Multi-tag thought', tags: ['intro', 'main'], date: '2024-01-05' }],
+            };
+            expect(await getExportContent(multiTagSermon)).toContain('Multi-tag thought');
 
-    it('should exclude metadata when specified', async () => {
-      const result = await getExportContent(mockSermon, undefined, { includeMetadata: false });
-      
-      expect(result).not.toContain('Test Sermon');
-      expect(result).not.toContain('John 3:16');
-      expect(result).toContain('tags.introduction:');
-    });
+            const noTagSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'no-tag', text: 'No tag thought', tags: [] }],
+            };
+            expect(await getExportContent(noTagSermon)).toContain('No tag thought');
 
-    it('should handle focused section export', async () => {
-      const result = await getExportContent(mockSermon, 'introduction');
-      
-      expect(result).toContain('tags.introduction:');
-      expect(result).not.toContain('tags.mainPart:');
-      expect(result).not.toContain('tags.conclusion:');
-    });
+            const customTagSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'custom', text: 'Custom tag thought', tags: ['custom-tag'] }],
+            };
+            expect(await getExportContent(customTagSermon)).toContain('Custom tag thought');
 
-    it('should handle empty sermon gracefully', async () => {
-      const emptySermon: Sermon = {
-        id: 'empty',
-        title: '',
-        thoughts: [],
-        outline: {},
-        structure: {}
-      };
-      
-      const result = await getExportContent(emptySermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
+            const emptyTagsSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'empty-tags', text: 'Empty tags thought', tags: [] }],
+            };
+            expect(await getExportContent(emptyTagsSermon)).toContain('Empty tags thought');
 
-    it('should handle sermon with no thoughts', async () => {
-      const noThoughtsSermon: Sermon = {
-        id: 'no-thoughts',
-        title: 'No Thoughts Sermon',
-        thoughts: [],
-        outline: {},
-        structure: {}
-      };
-      
-      const result = await getExportContent(noThoughtsSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('No Thoughts Sermon');
-    });
+            const undefinedTagsSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'undefined-tags', text: 'Undefined tags thought', tags: undefined as any }],
+            };
+            expect(await getExportContent(undefinedTagsSermon)).toContain('Undefined tags thought');
 
-    it('should handle sermon with no verse', async () => {
-      const noVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: undefined
-      };
-      
-      const result = await getExportContent(noVerseSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Test Sermon');
-      expect(result).not.toContain('John 3:16');
-    });
+            const nullTagsSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...thoughtsBase, { id: 'null-tags', text: 'Null tags thought', tags: null as any }],
+            };
+            expect(await getExportContent(nullTagsSermon)).toContain('Null tags thought');
+          },
+        },
+        {
+          name: 'outline assignments and date variations',
+          run: async () => {
+            const baseResult = await getExportContent(mockSermon);
+            expect(baseResult).toContain('First thought');
+            expect(baseResult).toContain('Second thought');
 
-    it('should handle sermon with empty verse', async () => {
-      const emptyVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: '   '
-      };
-      
-      const result = await getExportContent(emptyVerseSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Test Sermon');
-      expect(result).not.toContain('John 3:16');
-    });
+            const noDateSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...mockSermon.thoughts!, { id: 'no-date', text: 'No date thought', tags: ['intro'] }],
+            };
+            const noDateResult = await getExportContent(noDateSermon);
+            expect(noDateResult).toContain('No date thought');
 
-    it('should handle sermon with whitespace-only verse', async () => {
-      const whitespaceVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: '  \n  \n  '
-      };
-      
-      const result = await getExportContent(whitespaceVerseSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Test Sermon');
-      expect(result).not.toContain('John 3:16');
-    });
+            const nullDateSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...mockSermon.thoughts!, { id: 'null-date', text: 'Null date thought', tags: ['intro'], date: null as any }],
+            };
+            expect(await getExportContent(nullDateSermon)).toContain('Null date thought');
 
-    it('should handle sermon with complex verse formatting', async () => {
-      const complexVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: 'John 3:16\nFor God so loved the world\nThat he gave his only Son'
-      };
-      
-      const result = await getExportContent(complexVerseSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('John 3:16');
-      expect(result).toContain('For God so loved the world');
-      expect(result).toContain('That he gave his only Son');
-    });
+            const invalidDateSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [...mockSermon.thoughts!, { id: 'invalid-date', text: 'Invalid date thought', tags: ['intro'], date: 'invalid-date' as any }],
+            };
+            expect(await getExportContent(invalidDateSermon)).toContain('Invalid date thought');
+          },
+        },
+        {
+          name: 'markdown verse formatting combos',
+          run: async () => {
+            const complexVerseSermon: Sermon = {
+              ...mockSermon,
+              verse: 'John 3:16\nFor God so loved the world\nThat he gave his only Son',
+            };
+            const complexMarkdown = await getExportContent(complexVerseSermon, undefined, { format: 'markdown' });
+            expect(complexMarkdown).toContain('> John 3:16');
+            expect(complexMarkdown).toContain('> For God so loved the world');
+            expect(complexMarkdown).toContain('> That he gave his only Son');
 
-    it('should handle sermon with outline points', async () => {
-      const result = await getExportContent(mockSermon);
-      
-      expect(result).toContain('Introduction Point 1:');
-      expect(result).toContain('export.unassignedThoughts:');
-      expect(result).toContain('export.unassignedThoughts:');
-      expect(result).toContain('export.unassignedThoughts:');
-    });
+            const emptyVerseMarkdown = await getExportContent({ ...mockSermon, verse: '' }, undefined, { format: 'markdown' });
+            expect(emptyVerseMarkdown).not.toContain('> ');
 
-    it('should handle sermon without outline points', async () => {
-      const noOutlineSermon: Sermon = {
-        ...mockSermon,
-        outline: {
-          introduction: [],
-          main: [],
-          conclusion: []
-        }
-      };
-      
-      const result = await getExportContent(noOutlineSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('tags.introduction:');
-      expect(result).toContain('tags.mainPart:');
-      expect(result).toContain('tags.conclusion:');
-    });
+            const whitespaceMarkdown = await getExportContent({ ...mockSermon, verse: '  \n  \n  ' }, undefined, { format: 'markdown' });
+            expect(whitespaceMarkdown).not.toContain('> ');
 
-    it('should handle sermon with mixed outline and no outline sections', async () => {
-      const mixedOutlineSermon: Sermon = {
-        ...mockSermon,
-        outline: {
-          introduction: [{ id: 'point1', text: 'Intro Point' }],
-          main: [],
-          conclusion: []
-        }
-      };
-      
-      const result = await getExportContent(mixedOutlineSermon);
-      
-      expect(result).toContain('Intro Point:');
-      expect(result).toContain('tags.mainPart:');
-      expect(result).toContain('tags.conclusion:');
-    });
-
-    it('should handle thoughts with multiple tags', async () => {
-      const multiTagThought: Thought = {
-        id: 'multi-tag',
-        text: 'Multi-tag thought',
-        tags: ['intro', 'main'],
-        date: '2024-01-05'
-      };
-      
-      const multiTagSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, multiTagThought]
-      };
-      
-      const result = await getExportContent(multiTagSermon);
-      
-      expect(result).toContain('export.unassignedThoughts:');
-      expect(result).toContain('Multi-tag thought');
-    });
-
-    it('should handle thoughts without tags', async () => {
-      const noTagThought: Thought = {
-        id: 'no-tag',
-        text: 'No tag thought',
-        tags: [],
-        date: '2024-01-06'
-      };
-      
-      const noTagSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, noTagThought]
-      };
-      
-      const result = await getExportContent(noTagSermon);
-      
-      expect(result).toBeDefined();
-    });
-
-    it('should handle thoughts with custom tags', async () => {
-      const customTagThought: Thought = {
-        id: 'custom-tag',
-        text: 'Custom tag thought',
-        tags: ['custom-tag'],
-        date: '2024-01-07'
-      };
-      
-      const customTagSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, customTagThought]
-      };
-      
-      const result = await getExportContent(customTagSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Custom tag thought');
-    });
-
-    it('should handle thoughts with empty tags array', async () => {
-      const emptyTagsThought: Thought = {
-        id: 'empty-tags',
-        text: 'Empty tags thought',
-        tags: [],
-        date: '2024-01-08'
-      };
-      
-      const emptyTagsSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, emptyTagsThought]
-      };
-      
-      const result = await getExportContent(emptyTagsSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Empty tags thought');
-    });
-
-    it('should handle thoughts with undefined tags', async () => {
-      const undefinedTagsThought: Thought = {
-        id: 'undefined-tags',
-        text: 'Undefined tags thought',
-        tags: [],
-        date: '2024-01-09'
-      };
-      
-      const undefinedTagsSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, undefinedTagsThought]
-      };
-      
-      const result = await getExportContent(undefinedTagsSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Undefined tags thought');
-    });
-
-    it('should handle thoughts with null tags', async () => {
-      const nullTagsThought: Thought = {
-        id: 'null-tags',
-        text: 'Null tags thought',
-        tags: null as any,
-        date: '2024-01-10'
-      };
-      
-      const nullTagsSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, nullTagsThought]
-      };
-      
-      const result = await getExportContent(nullTagsSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Null tags thought');
-    });
-
-    it('should handle thoughts with outline point assignments', async () => {
-      const result = await getExportContent(mockSermon);
-      
-      expect(result).toContain('Introduction Point 1:');
-      expect(result).toContain('First thought');
-    });
-
-    it('should handle thoughts without outline point assignments', async () => {
-      const result = await getExportContent(mockSermon);
-      
-      expect(result).toContain('Second thought');
-      expect(result).toContain('Third thought');
-    });
-
-    it('should handle empty sections gracefully', async () => {
-      const emptySectionSermon: Sermon = {
-        ...mockSermon,
-        thoughts: []
-      };
-      
-      const result = await getExportContent(emptySectionSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
-
-    it('should handle undefined structure gracefully', async () => {
-      const noStructureSermon: Sermon = {
-        ...mockSermon,
-        structure: {
-          introduction: [],
-          main: [],
-          conclusion: [],
-          ambiguous: []
-        }
-      };
-      
-      const result = await getExportContent(noStructureSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
-
-    it('should handle empty structure gracefully', async () => {
-      const emptyStructureSermon: Sermon = {
-        ...mockSermon,
-        structure: {}
-      };
-      
-      const result = await getExportContent(emptyStructureSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
-
-    it('should handle undefined outline gracefully', async () => {
-      const noOutlineSermon: Sermon = {
-        ...mockSermon,
-        outline: {
-          introduction: [],
-          main: [],
-          conclusion: []
-        }
-      };
-      
-      const result = await getExportContent(noOutlineSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
-
-    it('should handle empty outline gracefully', async () => {
-      const emptyOutlineSermon: Sermon = {
-        ...mockSermon,
-        outline: {}
-      };
-      
-      const result = await getExportContent(emptyOutlineSermon);
-      
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-    });
-
-    it('should handle thoughts with dates', async () => {
-      const result = await getExportContent(mockSermon);
-      
-      expect(result).toContain('First thought');
-      expect(result).toContain('Second thought');
-      expect(result).toContain('Third thought');
-    });
-
-    it('should handle thoughts without dates', async () => {
-      const noDateThought: Thought = {
-        id: 'no-date',
-        text: 'No date thought',
-        tags: ['intro']
-      };
-      
-      const noDateSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, noDateThought]
-      };
-      
-      const result = await getExportContent(noDateSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('No date thought');
-    });
-
-    it('should handle thoughts with null dates', async () => {
-      const nullDateThought: Thought = {
-        id: 'null-date',
-        text: 'Null date thought',
-        tags: ['intro'],
-        date: null as any
-      };
-      
-      const nullDateSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, nullDateThought]
-      };
-      
-      const result = await getExportContent(nullDateSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Null date thought');
-    });
-
-    it('should handle thoughts with invalid dates', async () => {
-      const invalidDateThought: Thought = {
-        id: 'invalid-date',
-        text: 'Invalid date thought',
-        tags: ['intro'],
-        date: 'invalid-date' as any
-      };
-      
-      const invalidDateSermon: Sermon = {
-        ...mockSermon,
-        thoughts: [...mockSermon.thoughts!, invalidDateThought]
-      };
-      
-      const result = await getExportContent(invalidDateSermon);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Invalid date thought');
-    });
-
-    it('should handle markdown formatting with complex verse', async () => {
-      const complexVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: 'John 3:16\nFor God so loved the world\nThat he gave his only Son'
-      };
-      
-      const result = await getExportContent(complexVerseSermon, undefined, { format: 'markdown' });
-      
-      expect(result).toContain('> John 3:16');
-      expect(result).toContain('> For God so loved the world');
-      expect(result).toContain('> That he gave his only Son');
-    });
-
-    it('should handle markdown formatting with empty verse', async () => {
-      const emptyVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: ''
-      };
-      
-      const result = await getExportContent(emptyVerseSermon, undefined, { format: 'markdown' });
-      
-      expect(result).toContain('# export.sermonTitleTest Sermon');
-      expect(result).not.toContain('> ');
-    });
-
-    it('should handle markdown formatting with whitespace-only verse', async () => {
-      const whitespaceVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: '  \n  \n  '
-      };
-      
-      const result = await getExportContent(whitespaceVerseSermon, undefined, { format: 'markdown' });
-      
-      expect(result).toContain('# export.sermonTitleTest Sermon');
-      expect(result).not.toContain('> ');
-    });
-
-    it('should handle markdown formatting with mixed content verse', async () => {
-      const mixedVerseSermon: Sermon = {
-        ...mockSermon,
-        verse: 'John 3:16\n\nFor God so loved the world\n\nThat he gave his only Son'
-      };
-      
-      const result = await getExportContent(mixedVerseSermon, undefined, { format: 'markdown' });
-      
-      expect(result).toContain('> John 3:16');
-      expect(result).toContain('> For God so loved the world');
-      expect(result).toContain('> That he gave his only Son');
+            const mixedVerseSermon: Sermon = {
+              ...mockSermon,
+              verse: 'John 3:16\n\nFor God so loved the world\n\nThat he gave his only Son',
+            };
+            const mixedMarkdown = await getExportContent(mixedVerseSermon, undefined, { format: 'markdown' });
+            expect(mixedMarkdown).toContain('> For God so loved the world');
+            expect(mixedMarkdown).toContain('> That he gave his only Son');
+          },
+        },
+      ]);
     });
   });
-}); 
+});

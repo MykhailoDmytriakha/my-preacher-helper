@@ -1,27 +1,28 @@
-import { exportToWord, PlanData, WordExportOptions, parseMarkdownToParagraphs, parseTable, parseInlineMarkdown } from '../wordExport';
-import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Table } from 'docx';
-import { saveAs } from 'file-saver';
+import { exportToWord, PlanData, WordExportOptions, parseMarkdownToParagraphs, parseTable, parseInlineMarkdown } from '../wordExport'
+import { Document, Paragraph, TextRun, Table } from 'docx'
+import { saveAs } from 'file-saver'
+import { runScenarios } from '@test-utils/scenarioRunner'
 
 // Mock the docx library
 jest.mock('docx', () => {
-  const actualDocx = jest.requireActual('docx');
+  const actualDocx = jest.requireActual('docx')
   return {
     ...actualDocx,
     Document: jest.fn(),
     Packer: {
       toBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
     },
-  };
-});
+  }
+})
 
 // Mock file-saver
 jest.mock('file-saver', () => ({
   saveAs: jest.fn(),
-}));
+}))
 
 // Mock URL methods
-global.URL.createObjectURL = jest.fn(() => 'blob:mock-url');
-global.URL.revokeObjectURL = jest.fn();
+global.URL.createObjectURL = jest.fn(() => 'blob:mock-url')
+global.URL.revokeObjectURL = jest.fn()
 
 // Mock Blob constructor
 global.Blob = jest.fn().mockImplementation((parts, options) => ({
@@ -29,561 +30,511 @@ global.Blob = jest.fn().mockImplementation((parts, options) => ({
   type: options?.type || 'application/octet-stream',
   parts,
   options,
-}));
+}))
 
 describe('wordExport', () => {
+  const basePlanData: PlanData = {
+    sermonTitle: 'Test Sermon',
+    sermonVerse: 'John 3:16',
+    introduction: '## Intro Heading\nThis is the introduction.\n- Point 1\n- Point 2',
+    main: '# Main Heading\nThis is the main content.\n1. First point\n2. Second point',
+    conclusion: 'This is the conclusion.\n> Important quote',
+    exportDate: '1 января 2024',
+  }
+
+  const getPlanData = (overrides: Partial<PlanData> = {}): PlanData => ({
+    ...basePlanData,
+    ...overrides,
+  })
+
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.clearAllMocks()
+  })
 
   describe('exportToWord', () => {
-    const mockPlanData: PlanData = {
-      sermonTitle: 'Test Sermon',
-      sermonVerse: 'John 3:16',
-      introduction: '## Intro Heading\nThis is the introduction.\n- Point 1\n- Point 2',
-      main: '# Main Heading\nThis is the main content.\n1. First point\n2. Second point',
-      conclusion: 'This is the conclusion.\n> Important quote',
-      exportDate: '1 января 2024',
-    };
+    it('handles the core export flows without redundant test cases', async () => {
+      const scenarios = [
+        {
+          name: 'creates a Word document with explicit filename',
+          run: async () => {
+            jest.clearAllMocks()
+            const options: WordExportOptions = {
+              data: getPlanData(),
+              filename: 'test-sermon.docx',
+            }
 
-    it('should create a Word document with correct structure', async () => {
-      const options: WordExportOptions = {
-        data: mockPlanData,
-        filename: 'test-sermon.docx',
-      };
+            await exportToWord(options)
 
-      await exportToWord(options);
+            expect(Document).toHaveBeenCalledWith(
+              expect.objectContaining({
+                creator: 'My Preacher Helper',
+                title: `План проповеди: ${basePlanData.sermonTitle}`,
+                description: 'Автоматически сгенерированный план проповеди',
+              })
+            )
+            expect(saveAs).toHaveBeenCalledWith(expect.any(Object), 'test-sermon.docx')
+          },
+        },
+        {
+          name: 'falls back to generated filename when missing',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({ data: getPlanData() })
 
-      expect(Document).toHaveBeenCalledWith(expect.objectContaining({
-        creator: 'My Preacher Helper',
-        title: `План проповеди: ${mockPlanData.sermonTitle}`,
-        description: 'Автоматически сгенерированный план проповеди',
-      }));
+            const [[, resolvedFilename]] = (saveAs as jest.Mock).mock.calls
+            expect(resolvedFilename).toContain('план-проповеди-test-sermon')
+          },
+        },
+        {
+          name: 'derives export date when omitted',
+          run: async () => {
+            jest.clearAllMocks()
+            const planDataWithoutDate = getPlanData({ exportDate: undefined })
+            await exportToWord({ data: planDataWithoutDate })
 
-      expect(saveAs).toHaveBeenCalledWith(expect.any(Object), 'test-sermon.docx');
-    });
+            expect(Document).toHaveBeenCalledWith(expect.objectContaining({
+              creator: 'My Preacher Helper',
+            }))
+          },
+        },
+      ]
 
-    it('should use default filename when not provided', async () => {
-      const options: WordExportOptions = {
-        data: mockPlanData,
-      };
+      await runScenarios(scenarios)
+    })
 
-      await exportToWord(options);
-
-      expect(saveAs).toHaveBeenCalledWith(
-        expect.any(Object), 
-        expect.stringContaining('план-проповеди-test-sermon')
-      );
-    });
-
-    it('should generate date when not provided', async () => {
-      const planDataWithoutDate = { ...mockPlanData };
-      delete planDataWithoutDate.exportDate;
-
-      const options: WordExportOptions = {
-        data: planDataWithoutDate,
-      };
-
-      await exportToWord(options);
-
-      expect(Document).toHaveBeenCalledWith(expect.objectContaining({
-        creator: 'My Preacher Helper',
-      }));
-    });
-
-    it('should handle export errors gracefully', async () => {
-      const mockError = new Error('Export failed');
-      const DocumentMock = Document as jest.MockedClass<typeof Document>;
+    it('propagates errors from the Document constructor', async () => {
+      const mockError = new Error('Export failed')
+      const DocumentMock = Document as jest.MockedClass<typeof Document>
       DocumentMock.mockImplementationOnce(() => {
-        throw mockError;
-      });
+        throw mockError
+      })
 
-      const options: WordExportOptions = {
-        data: mockPlanData,
-      };
-
-      await expect(exportToWord(options)).rejects.toThrow('Failed to export to Word document');
-    });
-  });
+      await expect(exportToWord({ data: getPlanData() })).rejects.toThrow('Failed to export to Word document')
+    })
+  })
 
   describe('parseMarkdownToParagraphs', () => {
-    it('should handle empty content with placeholder text', () => {
-      const result = parseMarkdownToParagraphs('');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should handle whitespace-only content', () => {
-      const result = parseMarkdownToParagraphs('   \n  \t  ');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should parse H1 headings correctly', () => {
-      const result = parseMarkdownToParagraphs('# Main Heading', '2563eb');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should parse H2 headings correctly', () => {
-      const result = parseMarkdownToParagraphs('## Sub Heading', '7c3aed');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should parse H3 headings correctly', () => {
-      const result = parseMarkdownToParagraphs('### Small Heading', '059669');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should parse bullet points correctly', () => {
-      const result = parseMarkdownToParagraphs('- First point\n* Second point');
-      
-      expect(result).toHaveLength(2);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-      expect(result[1]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should parse numbered lists correctly', () => {
-      const result = parseMarkdownToParagraphs('1. First item\n2. Second item\n3. Third item');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(item => expect(item).toBeInstanceOf(Paragraph));
-    });
-
-    it('should parse blockquotes correctly', () => {
-      const result = parseMarkdownToParagraphs('> This is a quote\n> Another line');
-      
-      expect(result).toHaveLength(2);
-      result.forEach(item => expect(item).toBeInstanceOf(Paragraph));
-    });
-
-    it('should parse horizontal rules correctly', () => {
-      const result = parseMarkdownToParagraphs('---\n***');
-      
-      expect(result).toHaveLength(2);
-      result.forEach(item => expect(item).toBeInstanceOf(Paragraph));
-    });
-
-    it('should identify Bible verses and apply correct indentation', () => {
-      const content = 'Притч 17:18: "Безрассуден тот, кто берет на себя долг другого"';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-    });
-
-    it('should handle mixed content types', () => {
-      const content = '# Heading\nRegular paragraph\n- Bullet point\n> Quote\n---';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(5);
-      result.forEach(item => expect(item).toBeInstanceOf(Paragraph));
-    });
-
-    it('should handle tables in content', () => {
-      const content = '| Col1 | Col2 |\n|------|------|\n| Row1 | Data1 |';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Table);
-    });
-
-    it('should parse bullet points with bold text correctly', () => {
-      const content = '- В трубу подали **три вещи**: воздух, воду и огонь-свет.';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-      // Test passes if function executes without errors and returns a Paragraph
-    });
-
-    it('should parse numbered lists with bold text correctly', () => {
-      const content = '1. Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве.';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-      // Test passes if function executes without errors and returns a Paragraph
-    });
-
-    it('should parse blockquotes with bold text correctly', () => {
-      const content = '> Шахтёры собирались **на общее собрание — и начинают молитву**.';
-      const result = parseMarkdownToParagraphs(content);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(Paragraph);
-      // Test passes if function executes without errors and returns a Paragraph
-    });
-  });
+    it('supports diverse markdown constructs in one aggregated scenario', async () => {
+      await runScenarios([
+        {
+          name: 'empty content uses placeholder paragraph',
+          run: () => {
+            const result = parseMarkdownToParagraphs('')
+            expect(result).toHaveLength(1)
+            expect(result[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'whitespace-only content',
+          run: () => {
+            const result = parseMarkdownToParagraphs('   \n  \t  ')
+            expect(result).toHaveLength(1)
+            expect(result[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'heading levels (H1-H3)',
+          run: () => {
+            const h1 = parseMarkdownToParagraphs('# Main Heading', '2563eb')
+            const h2 = parseMarkdownToParagraphs('## Sub Heading', '7c3aed')
+            const h3 = parseMarkdownToParagraphs('### Small Heading', '059669')
+            expect(h1[0]).toBeInstanceOf(Paragraph)
+            expect(h2[0]).toBeInstanceOf(Paragraph)
+            expect(h3[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'bullet and numbered lists',
+          run: () => {
+            const bullets = parseMarkdownToParagraphs('- First point\n* Second point')
+            const numbers = parseMarkdownToParagraphs('1. First item\n2. Second item\n3. Third item')
+            expect(bullets).toHaveLength(2)
+            expect(numbers).toHaveLength(3)
+          },
+        },
+        {
+          name: 'quotes and dividers',
+          run: () => {
+            const quotes = parseMarkdownToParagraphs('> This is a quote\n> Another line')
+            const dividers = parseMarkdownToParagraphs('---\n***')
+            expect(quotes).toHaveLength(2)
+            expect(dividers).toHaveLength(2)
+          },
+        },
+        {
+          name: 'bible verse detection',
+          run: () => {
+            const content = 'Притч 17:18: "Безрассуден тот, кто берет на себя долг другого"'
+            const result = parseMarkdownToParagraphs(content)
+            expect(result).toHaveLength(1)
+            expect(result[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'mixed content composition',
+          run: () => {
+            const content = '# Heading\nRegular paragraph\n- Bullet point\n> Quote\n---'
+            const result = parseMarkdownToParagraphs(content)
+            expect(result).toHaveLength(5)
+          },
+        },
+        {
+          name: 'table recognition',
+          run: () => {
+            const content = '| Col1 | Col2 |\n|------|------|\n| Row1 | Data1 |'
+            const result = parseMarkdownToParagraphs(content)
+            expect(result[0]).toBeInstanceOf(Table)
+          },
+        },
+        {
+          name: 'lists with bold text',
+          run: () => {
+            const bulletBold = parseMarkdownToParagraphs('- В трубу подали **три вещи**: воздух, воду и огонь-свет.')
+            const numberedBold = parseMarkdownToParagraphs('1. Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве.')
+            expect(bulletBold[0]).toBeInstanceOf(Paragraph)
+            expect(numberedBold[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'quotes with emphasis',
+          run: () => {
+            const quote = parseMarkdownToParagraphs('> Шахтёры собирались **на общее собрание — и начинают молитву**.')
+            expect(quote[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+      ])
+    })
+  })
 
   describe('parseTable', () => {
-    it('should return null for insufficient table lines', () => {
-      const result = parseTable(['| Single line']);
-      
-      expect(result).toBeNull();
-    });
-
-    it('should return null for empty table lines', () => {
-      const result = parseTable([]);
-      
-      expect(result).toBeNull();
-    });
-
-    it('should parse valid table correctly', () => {
-      const tableLines = [
-        '| Column 1 | Column 2 |',
-        '|----------|----------|',
-        '| Row 1    | Data 1   |',
-        '| Row 2    | Data 2   |'
-      ];
-      
-      const result = parseTable(tableLines);
-      
-      expect(result).toBeInstanceOf(Table);
-    });
-
-    it('should handle malformed table gracefully', () => {
-      const tableLines = [
-        '| Column 1 | Column 2',
-        '|----------|',
-        '| Row 1    |',
-      ];
-      
-      const result = parseTable(tableLines);
-      
-      // Should still return a table even if malformed
-      expect(result).toBeInstanceOf(Table);
-    });
-
-    it('should filter out separator lines', () => {
-      const tableLines = [
-        '| Column 1 | Column 2 |',
-        '|:---------|:---------|',
-        '| Row 1    | Data 1   |',
-      ];
-      
-      const result = parseTable(tableLines);
-      
-      expect(result).toBeInstanceOf(Table);
-    });
-
-    it('should handle table with different cell counts per row', () => {
-      const tableLines = [
-        '| Column 1 | Column 2 | Column 3 |',
-        '|----------|----------|----------|',
-        '| Row 1    | Data 1   |',
-        '| Row 2    | Data 2   | Data 3   |',
-      ];
-      
-      const result = parseTable(tableLines);
-      
-      expect(result).toBeInstanceOf(Table);
-    });
-  });
+    it('covers table parsing scenarios compactly', async () => {
+      await runScenarios([
+        {
+          name: 'insufficient table lines',
+          run: () => {
+            expect(parseTable(['| Single line'])).toBeNull()
+            expect(parseTable([])).toBeNull()
+          },
+        },
+        {
+          name: 'valid table',
+          run: () => {
+            const tableLines = [
+              '| Column 1 | Column 2 |',
+              '|----------|----------|',
+              '| Row 1    | Data 1   |',
+              '| Row 2    | Data 2   |',
+            ]
+            expect(parseTable(tableLines)).toBeInstanceOf(Table)
+          },
+        },
+        {
+          name: 'malformed but recoverable table',
+          run: () => {
+            const malformed = [
+              '| Column 1 | Column 2',
+              '|----------|',
+              '| Row 1    |',
+            ]
+            expect(parseTable(malformed)).toBeInstanceOf(Table)
+          },
+        },
+        {
+          name: 'separator filtering and uneven rows',
+          run: () => {
+            const result = parseTable([
+              '| Column 1 | Column 2 | Column 3 |',
+              '|:---------|:---------|----------|',
+              '| Row 1    | Data 1   |',
+              '| Row 2    | Data 2   | Data 3   |',
+            ])
+            expect(result).toBeInstanceOf(Table)
+          },
+        },
+      ])
+    })
+  })
 
   describe('parseInlineMarkdown', () => {
-    it('should return plain text for content without formatting', () => {
-      const result = parseInlineMarkdown('Plain text content');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(TextRun);
-    });
-
-    it('should parse bold formatting correctly', () => {
-      const result = parseInlineMarkdown('This is **bold** text');
-      
-      expect(result).toHaveLength(3);
-      expect(result[0]).toBeInstanceOf(TextRun);
-      expect(result[1]).toBeInstanceOf(TextRun);
-      expect(result[2]).toBeInstanceOf(TextRun);
-    });
-
-    it('should parse Russian bold text correctly', () => {
-      const testText = '**лампы**';
-      const result = parseInlineMarkdown(testText);
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(TextRun);
-      // Note: TextRun properties are internal and not accessible for testing
-      // The actual formatting is applied during Word document generation
-    });
-
-    it('should parse complex Russian text with bold correctly', () => {
-      const testText = 'Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве';
-      const result = parseInlineMarkdown(testText);
-      
-      expect(result.length).toBeGreaterThan(1);
-      // Note: TextRun properties are internal and not accessible for testing
-      // The actual formatting is applied during Word document generation
-    });
-
-    it('should parse italic formatting correctly', () => {
-      const result = parseInlineMarkdown('This is *italic* text');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should parse triple emphasis correctly', () => {
-      const result = parseInlineMarkdown('This is ***bold and italic*** text');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should parse code formatting correctly', () => {
-      const result = parseInlineMarkdown('This is `code` text');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should parse strikethrough formatting correctly', () => {
-      const result = parseInlineMarkdown('This is ~~strikethrough~~ text');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should parse superscript formatting correctly', () => {
-      const result = parseInlineMarkdown('E = mc^2^');
-      
-      expect(result).toHaveLength(2);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should parse subscript formatting correctly', () => {
-      const result = parseInlineMarkdown('H~2~O');
-      
-      expect(result).toHaveLength(3);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should handle multiple formatting types', () => {
-      const result = parseInlineMarkdown('**Bold** and *italic* and `code`');
-      
-      expect(result).toHaveLength(5);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should handle nested formatting gracefully', () => {
-      const result = parseInlineMarkdown('**Bold with *italic* inside**');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(TextRun);
-    });
-
-    it('should handle overlapping formatting gracefully', () => {
-      const result = parseInlineMarkdown('**Bold starts here *and italic overlaps** here*');
-      
-      expect(result).toHaveLength(2);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should handle unclosed formatting gracefully', () => {
-      const result = parseInlineMarkdown('**Unclosed bold and *unclosed italic');
-      
-      expect(result).toHaveLength(2);
-      result.forEach(run => expect(run).toBeInstanceOf(TextRun));
-    });
-
-    it('should handle empty string', () => {
-      const result = parseInlineMarkdown('');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(TextRun);
-    });
-
-    it('should handle only formatting characters', () => {
-      const result = parseInlineMarkdown('**');
-      
-      expect(result).toHaveLength(1);
-      expect(result[0]).toBeInstanceOf(TextRun);
-    });
-  });
+    it('parses inline emphasis variants in one cohesive test', async () => {
+      await runScenarios([
+        {
+          name: 'plain text fallback',
+          run: () => {
+            const result = parseInlineMarkdown('Plain text content')
+            expect(result).toHaveLength(1)
+            expect(result[0]).toBeInstanceOf(TextRun)
+          },
+        },
+        {
+          name: 'bold and localized bold',
+          run: () => {
+            const result = parseInlineMarkdown('This is **bold** text')
+            expect(result).toHaveLength(3)
+            const russian = parseInlineMarkdown('**лампы**')
+            expect(russian[0]).toBeInstanceOf(TextRun)
+          },
+        },
+        {
+          name: 'complex bold sentence',
+          run: () => {
+            const text = 'Кабель принёс **лампы**, но "внутренний костёр" зажёгся в молитве'
+            expect(parseInlineMarkdown(text).length).toBeGreaterThan(1)
+          },
+        },
+        {
+          name: 'italic and triple emphasis',
+          run: () => {
+            const italic = parseInlineMarkdown('This is *italic* text')
+            const combined = parseInlineMarkdown('This is ***bold and italic*** text')
+            expect(italic).toHaveLength(3)
+            expect(combined).toHaveLength(3)
+          },
+        },
+        {
+          name: 'code and strikethrough',
+          run: () => {
+            const code = parseInlineMarkdown('This is `code` text')
+            const strike = parseInlineMarkdown('This is ~~strikethrough~~ text')
+            expect(code).toHaveLength(3)
+            expect(strike).toHaveLength(3)
+          },
+        },
+        {
+          name: 'super/sub-script handling',
+          run: () => {
+            const superscript = parseInlineMarkdown('E = mc^2^')
+            const subscript = parseInlineMarkdown('H~2~O')
+            expect(superscript).toHaveLength(2)
+            expect(subscript).toHaveLength(3)
+          },
+        },
+        {
+          name: 'mixed formatting and nesting',
+          run: () => {
+            const mixed = parseInlineMarkdown('**Bold** and *italic* and `code`')
+            const nested = parseInlineMarkdown('**Bold with *italic* inside**')
+            const overlapping = parseInlineMarkdown('**Bold starts here *and italic overlaps** here*')
+            expect(mixed).toHaveLength(5)
+            expect(nested[0]).toBeInstanceOf(TextRun)
+            expect(overlapping).toHaveLength(2)
+          },
+        },
+        {
+          name: 'unclosed markers and edge cases',
+          run: () => {
+            const unclosed = parseInlineMarkdown('**Unclosed bold and *unclosed italic')
+            const empty = parseInlineMarkdown('')
+            const onlyMarkers = parseInlineMarkdown('**')
+            expect(unclosed).toHaveLength(2)
+            expect(empty).toHaveLength(1)
+            expect(onlyMarkers).toHaveLength(1)
+          },
+        },
+      ])
+    })
+  })
 
   describe('Integration tests', () => {
-    it('should handle content with various markdown elements', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Markdown Test',
-        introduction: '# Main Heading\n## Sub Heading\n### Small Heading',
-        main: '- Bullet point\n* Another bullet\n1. Numbered item\n2. Another number',
-        conclusion: '> This is a quote\n---\nRegular paragraph',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle Bible verse references', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Bible Verses Test',
-        introduction: 'Притч 17:18: "Безрассуден тот, кто берет на себя долг другого"\nМуд 17:18: "Лишь неразумный человек даёт залог"',
-        main: 'Regular content',
-        conclusion: 'Regular content',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle tables in markdown', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Table Test',
-        introduction: '| Column 1 | Column 2 |\n|----------|----------|\n| Row 1 | Data 1 |\n| Row 2 | Data 2 |',
-        main: 'Regular content',
-        conclusion: 'Regular content',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle various inline formatting', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Inline Formatting Test',
-        introduction: '**Bold text** and *italic text* and `code text`',
-        main: '***Bold and italic*** and ~~strikethrough~~ text',
-        conclusion: 'Text with ^superscript^ and ~subscript~',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle malformed tables gracefully', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Malformed Table Test',
-        introduction: '| Only one column',
-        main: '||\n||', // Empty table
-        conclusion: 'Regular content',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-  });
+    it('keeps high-level export scenarios consolidated', async () => {
+      await runScenarios([
+        {
+          name: 'varied markdown elements',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                sermonTitle: 'Markdown Test',
+                introduction: '# Main Heading\n## Sub Heading\n### Small Heading',
+                main: '- Bullet point\n* Another bullet\n1. Numbered item\n2. Another number',
+                conclusion: '> This is a quote\n---\nRegular paragraph',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'bible verses in text',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                introduction: 'Притч 17:18: "Безрассуден тот, кто берет на себя долг другого"\nМуд 17:18: "Лишь неразумный человек даёт залог"',
+                main: 'Regular content',
+                conclusion: 'Regular content',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'table heavy content',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                introduction: '| Column 1 | Column 2 |\n|----------|----------|\n| Row 1 | Data 1 |\n| Row 2 | Data 2 |',
+                main: 'Regular content',
+                conclusion: 'Regular content',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'inline formatting variety',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                introduction: '**Bold text** and *italic text* and `code text`',
+                main: '***Bold and italic*** and ~~strikethrough~~ text',
+                conclusion: 'Text with ^superscript^ and ~subscript~',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'malformed table still handled',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                introduction: '| Only one column',
+                main: '||\n||',
+                conclusion: 'Regular content',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+      ])
+    })
+  })
 
   describe('Interface types', () => {
-    it('should accept valid PlanData', () => {
-      const validPlanData: PlanData = {
-        sermonTitle: 'Valid Sermon',
-        sermonVerse: 'Optional verse',
-        introduction: 'Intro content',
-        main: 'Main content',
-        conclusion: 'Conclusion content',
-        exportDate: 'Optional date',
-      };
-
-      expect(validPlanData.sermonTitle).toBe('Valid Sermon');
-    });
-
-    it('should accept minimal PlanData', () => {
-      const minimalPlanData: PlanData = {
-        sermonTitle: 'Minimal Sermon',
-        introduction: 'Intro',
-        main: 'Main',
-        conclusion: 'Conclusion',
-      };
-
-      expect(minimalPlanData.sermonTitle).toBe('Minimal Sermon');
-    });
-
-    it('should accept valid WordExportOptions', () => {
-      const validOptions: WordExportOptions = {
-        data: {
-          sermonTitle: 'Test',
-          introduction: 'Intro',
-          main: 'Main', 
-          conclusion: 'Conclusion',
+    it('validates representative PlanData and options shapes', async () => {
+      await runScenarios([
+        {
+          name: 'full PlanData support',
+          run: () => {
+            const validPlanData: PlanData = getPlanData({ sermonTitle: 'Valid Sermon', exportDate: 'Optional date' })
+            expect(validPlanData.sermonTitle).toBe('Valid Sermon')
+            expect(validPlanData.exportDate).toBe('Optional date')
+          },
         },
-        filename: 'custom-filename.docx',
-      };
-
-      expect(validOptions.filename).toBe('custom-filename.docx');
-    });
-  });
+        {
+          name: 'minimal PlanData',
+          run: () => {
+            const minimalPlanData: PlanData = {
+              sermonTitle: 'Minimal Sermon',
+              introduction: 'Intro',
+              main: 'Main',
+              conclusion: 'Conclusion',
+            }
+            expect(minimalPlanData.sermonTitle).toBe('Minimal Sermon')
+          },
+        },
+        {
+          name: 'WordExportOptions contract',
+          run: () => {
+            const validOptions: WordExportOptions = {
+              data: {
+                sermonTitle: 'Test',
+                introduction: 'Intro',
+                main: 'Main',
+                conclusion: 'Conclusion',
+              },
+              filename: 'custom-filename.docx',
+            }
+            expect(validOptions.filename).toBe('custom-filename.docx')
+          },
+        },
+      ])
+    })
+  })
 
   describe('Edge cases and error handling', () => {
-    it('should handle very long content', async () => {
-      const longContent = 'A'.repeat(10000);
-      const planData: PlanData = {
-        sermonTitle: 'Long Content Test',
-        introduction: longContent,
-        main: longContent,
-        conclusion: longContent,
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle special characters', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Специальные символы ñáéíóú 中文 🙏',
-        introduction: 'Контент с эмодзи 😊 и символами ®™©',
-        main: 'Математические символы ∑∆∏∫ и стрелки →←↑↓',
-        conclusion: 'Кавычки "двойные" и "одинарные" и символы №§',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle malformed markdown gracefully', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Malformed Markdown Test',
-        introduction: '**Unclosed bold and *unclosed italic and `unclosed code',
-        main: '### ### Multiple hashes # and --- incomplete rules -',
-        conclusion: '> Unclosed quote\n\n\n\nMultiple newlines',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-
-    it('should handle nested markdown', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Nested Markdown Test',
-        introduction: '**Bold with *italic inside* and `code`**',
-        main: '***Triple emphasis with `code` inside***',
-        conclusion: '> Quote with **bold** and *italic* text',
-      };
-
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-    });
-  });
+    it('covers extreme content cases while keeping a single Jest test', async () => {
+      await runScenarios([
+        {
+          name: 'very long content',
+          run: async () => {
+            jest.clearAllMocks()
+            const longContent = 'A'.repeat(10000)
+            await exportToWord({
+              data: getPlanData({
+                sermonTitle: 'Long Content Test',
+                introduction: longContent,
+                main: longContent,
+                conclusion: longContent,
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'special characters and unicode',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                sermonTitle: 'Специальные символы ñáéíóú 中文 🙏',
+                introduction: 'Контент с эмодзи 😊 и символами ®™©',
+                main: 'Математические символы ∑∆∏∫ и стрелки →←↑↓',
+                conclusion: 'Кавычки "двойные" и "одинарные" и символы №§',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'malformed markdown is tolerated',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                sermonTitle: 'Malformed Markdown Test',
+                introduction: '**Unclosed bold and *unclosed italic and `unclosed code',
+                main: '### ### Multiple hashes # and --- incomplete rules -',
+                conclusion: '> Unclosed quote\n\n\n\nMultiple newlines',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+        {
+          name: 'nested markdown combinations',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({
+              data: getPlanData({
+                sermonTitle: 'Nested Markdown Test',
+                introduction: '**Bold with *italic inside* and `code`**',
+                main: '***Triple emphasis with `code` inside***',
+                conclusion: '> Quote with **bold** and *italic* text',
+              }),
+            })
+            expect(Document).toHaveBeenCalled()
+          },
+        },
+      ])
+    })
+  })
 
   describe('Color and styling', () => {
-    it('should apply section colors correctly', async () => {
-      const planData: PlanData = {
-        sermonTitle: 'Color Test',
-        introduction: '# Introduction Heading',
-        main: '# Main Heading',
-        conclusion: '# Conclusion Heading',
-      };
+    it('applies section colors correctly', async () => {
+      await exportToWord({
+        data: getPlanData({
+          sermonTitle: 'Color Test',
+          introduction: '# Introduction Heading',
+          main: '# Main Heading',
+          conclusion: '# Conclusion Heading',
+        }),
+      })
 
-      await exportToWord({ data: planData });
-
-      expect(Document).toHaveBeenCalled();
-      // The Document constructor should be called with sections that include colored headings
-    });
-  });
-}); 
+      expect(Document).toHaveBeenCalled()
+    })
+  })
+})

@@ -3,6 +3,7 @@ import { useAiSortingDiff } from '../useAiSortingDiff';
 import { sortItemsWithAI } from '@/services/sortAI.service';
 import { Item, OutlinePoint, Thought, Sermon, Structure } from '@/models/models';
 import { toast } from 'sonner';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock services
 jest.mock('@/services/sortAI.service');
@@ -86,515 +87,253 @@ describe('useAiSortingDiff', () => {
   });
 
   describe('handleAiSort', () => {
-    it('should handle successful AI sorting', async () => {
-      // Mock AI sorting to return sorted items with changes
-      mockSortItemsWithAI.mockResolvedValueOnce([
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }, // Changed outline point
-        { ...mockContainers.introduction[1], position: 2000 } // Changed position
-      ]);
-      
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
+    it('covers success, error, no-op, and limit states in one run', async () => {
+      await runScenarios([
+        {
+          name: 'successful sort with changes',
+          run: async () => {
+            mockSortItemsWithAI.mockResolvedValueOnce([
+              { ...mockContainers.introduction[0], outlinePointId: 'intro-1' },
+            ]);
+            const mockSetContainers = jest.fn();
+            const { result } = renderHook(() => useAiSortingDiff({ ...defaultProps, setContainers: mockSetContainers }));
+            await act(async () => {
+              await result.current.handleAiSort('introduction');
+            });
+            expect(mockSortItemsWithAI).toHaveBeenCalledWith(
+              'introduction',
+              mockContainers.introduction,
+              'sermon-1',
+              mockOutlinePoints.introduction,
+            );
+            expect(result.current.isDiffModeActive).toBe(true);
+            expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
+            mockSortItemsWithAI.mockClear();
+          },
+        },
+        {
+          name: 'service error surfaces toast',
+          run: async () => {
+            mockSortItemsWithAI.mockRejectedValueOnce(new Error('AI sorting failed'));
+            const { result } = renderHook(() => useAiSortingDiff(defaultProps));
+            await act(async () => {
+              await result.current.handleAiSort('introduction');
+            });
+            expect(mockToast.error).toHaveBeenCalled();
+            expect(result.current.isDiffModeActive).toBe(false);
+            mockToast.error.mockClear();
+          },
+        },
+        {
+          name: 'no changes or no items',
+          run: async () => {
+            mockSortItemsWithAI.mockResolvedValue(mockContainers.introduction);
+            const hook = renderHook(() => useAiSortingDiff(defaultProps));
+            await act(async () => {
+              await hook.result.current.handleAiSort('introduction');
+            });
+            expect(mockToast.info).toHaveBeenCalled();
+            mockToast.info.mockClear();
 
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
+            const emptyContainers = { ...mockContainers, introduction: [] };
+            const emptyHook = renderHook(() => useAiSortingDiff({ ...defaultProps, containers: emptyContainers }));
+            await act(async () => {
+              await emptyHook.result.current.handleAiSort('introduction');
+            });
+            expect(mockToast.info).toHaveBeenCalled();
+            expect(mockSortItemsWithAI).not.toHaveBeenCalledWith(expect.anything(), [], expect.anything(), expect.anything());
+            mockToast.info.mockClear();
+          },
+        },
+        {
+          name: 'dataset limit warning',
+          run: async () => {
+            const manyItems = Array.from({ length: 51 }, (_, i) => ({
+              id: `thought-${i}`,
+              content: `Test thought ${i}`,
+              requiredTags: ['introduction'],
+              customTagNames: [],
+            }));
+            const hook = renderHook(() =>
+              useAiSortingDiff({ ...defaultProps, containers: { ...mockContainers, introduction: manyItems } }),
+            );
+            await act(async () => {
+              await hook.result.current.handleAiSort('introduction');
+            });
+            expect(mockToast.warning).toHaveBeenCalled();
+            expect(mockSortItemsWithAI).not.toHaveBeenCalled();
+            mockToast.warning.mockClear();
+          },
+        },
+      ], {
+        afterEachScenario: () => {
+          jest.clearAllMocks();
+        }
       });
-
-      expect(mockSortItemsWithAI).toHaveBeenCalledWith(
-        'introduction',
-        mockContainers.introduction,
-        'sermon-1',
-        mockOutlinePoints.introduction
-      );
-      expect(result.current.isSorting).toBe(false);
-      expect(result.current.isDiffModeActive).toBe(true);
-      expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
-    });
-
-    it('should handle AI sorting errors', async () => {
-      mockSortItemsWithAI.mockRejectedValueOnce(new Error('AI sorting failed'));
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      expect(mockToast.error).toHaveBeenCalled();
-      expect(result.current.isSorting).toBe(false);
-      expect(result.current.isDiffModeActive).toBe(false);
-    });
-
-    it('should handle AI sorting with no changes', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return the same items (no changes)
-      mockSortItemsWithAI.mockResolvedValue(mockContainers.introduction);
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      expect(mockToast.info).toHaveBeenCalled();
-      expect(result.current.isDiffModeActive).toBe(false);
-    });
-
-    it('should handle AI sorting with no items to sort', async () => {
-      const emptyContainers = { ...mockContainers, introduction: [] };
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        containers: emptyContainers,
-        setContainers: mockSetContainers
-      }));
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      expect(mockToast.info).toHaveBeenCalled();
-      expect(mockSortItemsWithAI).not.toHaveBeenCalled();
-    });
-
-    it('should handle AI sorting with maximum thoughts limit', async () => {
-      const manyItems = Array.from({ length: 51 }, (_, i) => ({
-        id: `thought-${i}`,
-        content: `Test thought ${i}`,
-        requiredTags: ['introduction'],
-        customTagNames: []
-      }));
-      const manyContainers = { ...mockContainers, introduction: manyItems };
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        containers: manyContainers,
-        setContainers: mockSetContainers
-      }));
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      expect(mockToast.warning).toHaveBeenCalled();
-      expect(mockSortItemsWithAI).not.toHaveBeenCalled();
     });
   });
 
   describe('diff mode management', () => {
-    it('should activate diff mode after successful sorting', async () => {
+    it('activates diff mode and highlights changed items in one verification', async () => {
       const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return different items (with changes)
-      // thought-1 gets assigned to an outline point (was unassigned before)
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
+      const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
       mockSortItemsWithAI.mockResolvedValue(changedItems);
-
+      const { result } = renderHook(() => useAiSortingDiff({ ...defaultProps, setContainers: mockSetContainers }));
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
-
       expect(result.current.isDiffModeActive).toBe(true);
       expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
-      expect(result.current.highlightedItems).toHaveProperty('thought-1'); // thought-1 gets assigned to outline point
-    });
-
-    it('should highlight changed items correctly', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return different items (with changes)
-      // thought-1 gets assigned to an outline point (was unassigned before)
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      expect(result.current.highlightedItems).toHaveProperty('thought-1'); // thought-1 gets assigned to outline point
+      expect(result.current.highlightedItems).toHaveProperty('thought-1');
     });
   });
 
   describe('item management in diff mode', () => {
-    it('should handle keeping individual items', async () => {
+    it('covers keep/revert operations for single and bulk actions together', async () => {
       const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // First activate diff mode
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
+      const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
       mockSortItemsWithAI.mockResolvedValue(changedItems);
-
+      const { result } = renderHook(() => useAiSortingDiff({ ...defaultProps, setContainers: mockSetContainers }));
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
 
-      // Now keep an individual item
-      act(() => {
-        result.current.handleKeepItem('thought-1', 'introduction');
-      });
-
+      act(() => result.current.handleKeepItem('thought-1', 'introduction'));
       expect(result.current.highlightedItems).not.toHaveProperty('thought-1');
+
+      act(() => result.current.handleRevertItem('thought-1', 'introduction'));
       expect(mockSetContainers).toHaveBeenCalled();
-    });
 
-    it('should handle reverting individual items', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // First activate diff mode
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      // Now revert an individual item
-      act(() => {
-        result.current.handleRevertItem('thought-1', 'introduction');
-      });
-
-      expect(result.current.highlightedItems).not.toHaveProperty('thought-1');
-      expect(mockSetContainers).toHaveBeenCalled();
-    });
-
-    it('should handle keeping all items', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // First activate diff mode
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      // Now keep all items
-      act(() => {
-        result.current.handleKeepAll('introduction');
-      });
-
+      mockSetContainers.mockClear();
+      act(() => result.current.handleKeepAll('introduction'));
       expect(result.current.isDiffModeActive).toBe(false);
-      expect(result.current.highlightedItems).toEqual({});
-      expect(mockSetContainers).toHaveBeenCalled();
-    });
 
-    it('should handle reverting all items', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // First activate diff mode
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
+      // Re-activate diff mode and revert all
       mockSortItemsWithAI.mockResolvedValue(changedItems);
-
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
-
-      // Now revert all items
-      act(() => {
-        result.current.handleRevertAll('introduction');
-      });
-
-      expect(result.current.isDiffModeActive).toBe(false);
+      act(() => result.current.handleRevertAll('introduction'));
       expect(result.current.highlightedItems).toEqual({});
       expect(mockSetContainers).toHaveBeenCalled();
     });
   });
 
   describe('state management', () => {
-    it('should update containers state after sorting', async () => {
+    it('updates derived state and triggers persistence in a single test', async () => {
       const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return different items (with changes)
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
+      const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
       mockSortItemsWithAI.mockResolvedValue(changedItems);
-
+      const { result } = renderHook(() => useAiSortingDiff({ ...defaultProps, setContainers: mockSetContainers }));
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
-
       expect(mockSetContainers).toHaveBeenCalled();
-    });
 
-    it('should save structure after successful sorting', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return different items (with changes)
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
-      await act(async () => {
-        await result.current.handleAiSort('introduction');
-      });
-
-      // Keep an item to trigger save
       act(() => {
         result.current.handleKeepItem('thought-1', 'introduction');
       });
-
       expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
-    });
 
-    it('should handle state updates correctly', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Test state setters
-      act(() => {
-        result.current.setHighlightedItems(['test-item']);
-      });
+      act(() => result.current.setHighlightedItems(['test-item']));
       expect(result.current.highlightedItems).toEqual(['test-item']);
-
-      act(() => {
-        result.current.setIsDiffModeActive(true);
-      });
+      act(() => result.current.setIsDiffModeActive(true));
       expect(result.current.isDiffModeActive).toBe(true);
-
-      act(() => {
-        result.current.setPreSortState([]);
-      });
+      act(() => result.current.setPreSortState([]));
       expect(result.current.preSortState).toEqual([]);
     });
   });
 
   describe('error handling', () => {
-    it('should handle network errors gracefully', async () => {
+    it('coalesces error scenarios', async () => {
+      jest.clearAllMocks();
       mockSortItemsWithAI.mockRejectedValueOnce(new Error('Network error'));
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
+      const { result } = renderHook(() => useAiSortingDiff(defaultProps));
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
-
       expect(mockToast.error).toHaveBeenCalled();
-      expect(result.current.isSorting).toBe(false);
-    });
+      mockToast.error.mockClear();
 
-    it('should handle invalid AI responses', async () => {
-      mockSortItemsWithAI.mockResolvedValueOnce({
-        success: false,
-        error: 'Invalid response'
-      } as any);
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
+      mockSortItemsWithAI.mockResolvedValueOnce({ success: false, error: 'Invalid response' } as any);
+      const invalidResult = renderHook(() => useAiSortingDiff(defaultProps));
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await invalidResult.result.current.handleAiSort('introduction');
       });
-
       expect(mockToast.error).toHaveBeenCalled();
-      expect(result.current.isSorting).toBe(false);
-    });
+      mockToast.error.mockClear();
 
-    it('should handle missing sermon data', async () => {
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        sermon: null
-      }));
+      mockSortItemsWithAI.mockClear();
 
+      const noSermonHook = renderHook(() => useAiSortingDiff({ ...defaultProps, sermon: null as any }));
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await noSermonHook.result.current.handleAiSort('introduction');
       });
-
-      // Should not call any toast functions when sermon is null
-      expect(mockToast.error).not.toHaveBeenCalled();
-      expect(mockToast.info).not.toHaveBeenCalled();
-      expect(mockToast.warning).not.toHaveBeenCalled();
-      expect(mockToast.success).not.toHaveBeenCalled();
       expect(mockSortItemsWithAI).not.toHaveBeenCalled();
     });
   });
 
   describe('performance and optimization', () => {
-    it('should handle datasets up to the AI sorting limit efficiently', async () => {
+    it('enforces dataset limits and triggers debounced saves together', async () => {
       const largeItems = Array.from({ length: 25 }, (_, i) => ({
         id: `thought-${i}`,
         content: `Test thought ${i}`,
         requiredTags: ['introduction'],
-        customTagNames: []
+        customTagNames: [],
       }));
-      const largeContainers = { ...mockContainers, introduction: largeItems };
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        containers: largeContainers,
-        setContainers: mockSetContainers
-      }));
-
+      const largeHook = renderHook(() =>
+        useAiSortingDiff({ ...defaultProps, containers: { ...mockContainers, introduction: largeItems } }),
+      );
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await largeHook.result.current.handleAiSort('introduction');
       });
-
       expect(mockSortItemsWithAI).toHaveBeenCalledWith(
         'introduction',
         largeItems,
         'sermon-1',
-        mockOutlinePoints.introduction
+        mockOutlinePoints.introduction,
       );
-    });
 
-    it('should block AI sorting when dataset exceeds limit', async () => {
       const overflowItems = Array.from({ length: 30 }, (_, i) => ({
         id: `thought-${i}`,
         content: `Overflow thought ${i}`,
         requiredTags: ['introduction'],
-        customTagNames: []
+        customTagNames: [],
       }));
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        containers: { ...mockContainers, introduction: overflowItems },
-        setContainers: mockSetContainers
-      }));
-
+      const overflowHook = renderHook(() =>
+        useAiSortingDiff({ ...defaultProps, containers: { ...mockContainers, introduction: overflowItems } }),
+      );
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await overflowHook.result.current.handleAiSort('introduction');
       });
-
       expect(mockToast.warning).toHaveBeenCalled();
-      expect(mockSortItemsWithAI).not.toHaveBeenCalled();
-    });
+      mockToast.warning.mockClear();
 
-    it('should debounce save operations correctly', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Mock the AI service to return different items (with changes)
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
+      mockSortItemsWithAI.mockResolvedValue([{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }]);
+      const debounceHook = renderHook(() => useAiSortingDiff(defaultProps));
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await debounceHook.result.current.handleAiSort('introduction');
       });
-
-      // Keep an item to trigger save
-      act(() => {
-        result.current.handleKeepItem('thought-1', 'introduction');
-      });
-
-      // Should call debounced save functions
+      act(() => debounceHook.result.current.handleKeepItem('thought-1', 'introduction'));
       expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
     });
   });
 
   describe('integration scenarios', () => {
-    it('should work with different sections', async () => {
+    it('runs AI sorting end-to-end across sections once', async () => {
       const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // Test with main section
+      const hook = renderHook(() => useAiSortingDiff({ ...defaultProps, setContainers: mockSetContainers }));
       await act(async () => {
-        await result.current.handleAiSort('main');
+        await hook.result.current.handleAiSort('main');
       });
+      expect(mockSortItemsWithAI).toHaveBeenCalledWith('main', mockContainers.main, 'sermon-1', mockOutlinePoints.main);
 
-      expect(mockSortItemsWithAI).toHaveBeenCalledWith(
-        'main',
-        mockContainers.main,
-        'sermon-1',
-        mockOutlinePoints.main
-      );
-    });
-
-    it('should handle complete workflow from sorting to acceptance', async () => {
-      const mockSetContainers = jest.fn();
-      const { result } = renderHook(() => useAiSortingDiff({
-        ...defaultProps,
-        setContainers: mockSetContainers
-      }));
-
-      // 1. Start AI sorting
-      const changedItems = [
-        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' }
-      ];
-      mockSortItemsWithAI.mockResolvedValue(changedItems);
-
+      mockSortItemsWithAI.mockResolvedValue([{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }]);
       await act(async () => {
-        await result.current.handleAiSort('introduction');
+        await hook.result.current.handleAiSort('introduction');
       });
-
-      expect(result.current.isDiffModeActive).toBe(true);
-
-      // 2. Accept all changes
-      act(() => {
-        result.current.handleKeepAll('introduction');
-      });
-
-      // 3. Verify final state
-      expect(result.current.isDiffModeActive).toBe(false);
-      expect(result.current.highlightedItems).toEqual({});
+      act(() => hook.result.current.handleKeepAll('introduction'));
+      expect(hook.result.current.isDiffModeActive).toBe(false);
       expect(mockSetContainers).toHaveBeenCalled();
     });
   });

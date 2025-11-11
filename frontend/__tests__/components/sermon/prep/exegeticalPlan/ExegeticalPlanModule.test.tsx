@@ -1,6 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({
@@ -46,227 +48,204 @@ describe('ExegeticalPlanModule', () => {
   });
 
   describe('Initial Rendering', () => {
-    it('renders all main sections', () => {
-      render(<ExegeticalPlanModule />);
-
-      expect(screen.getByText('Block diagram')).toBeInTheDocument();
-      expect(screen.getByText('Exegetical Plan')).toBeInTheDocument();
-      expect(screen.getByText('Author\'s Intent')).toBeInTheDocument();
-    });
-
-    it('renders with default empty tree', () => {
-      render(<ExegeticalPlanModule />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(1);
-    });
-
-    it('renders with provided value', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Point 1', children: [] },
-        { id: '2', title: 'Point 2', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(2);
-    });
-
-    it('renders with author intent', () => {
-      render(<ExegeticalPlanModule authorIntent="Initial author intent" />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
-      expect(textarea.value).toBe('Initial author intent');
+    it('covers base rendering cases with scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'shows major sections',
+            run: () => {
+              render(<ExegeticalPlanModule />);
+              expect(screen.getByText('Block diagram')).toBeInTheDocument();
+              expect(screen.getByText('Exegetical Plan')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'starts with single empty node',
+            run: () => {
+              render(<ExegeticalPlanModule />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
+            }
+          },
+          {
+            name: 'renders provided tree nodes',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [
+                { id: '1', title: 'Point 1', children: [] },
+                { id: '2', title: 'Point 2', children: [] }
+              ];
+              render(<ExegeticalPlanModule value={value} />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(2);
+            }
+          },
+          {
+            name: 'pre-fills author intent textarea',
+            run: () => {
+              render(<ExegeticalPlanModule authorIntent="Initial author intent" />);
+              const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
+              expect(textarea.value).toBe('Initial author intent');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Tree Management', () => {
-    it('allows editing node titles', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Original Title', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'Modified Title' } });
-
-      expect(input.value).toBe('Modified Title');
-    });
-
-    it('enables save button when tree is modified', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Original', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...');
-      fireEvent.change(input, { target: { value: 'Modified' } });
-
-      const saveButton = screen.getByRole('button', { name: /Save/i });
-      expect(saveButton).not.toBeDisabled();
-    });
-
-    it('adds child nodes', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Parent', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const addChildButton = screen.getByLabelText('add child');
-      fireEvent.click(addChildButton);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs.length).toBeGreaterThan(1);
-    });
-
-    it('adds sibling nodes', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'First', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const addSiblingButton = screen.getByLabelText('add sibling');
-      fireEvent.click(addSiblingButton);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs.length).toBe(2);
-    });
-
-    it('removes nodes', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'First', children: [] },
-        { id: '2', title: 'Second', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const deleteButtons = screen.getAllByLabelText('delete');
-      fireEvent.click(deleteButtons[0]);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs.length).toBe(1);
+    it('covers tree operations through scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'edits node titles and enables save',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Original', children: [] }];
+              render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
+              const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
+              fireEvent.change(input, { target: { value: 'Modified' } });
+              expect(input.value).toBe('Modified');
+              expect(screen.getByRole('button', { name: /Save/i })).not.toBeDisabled();
+            }
+          },
+          {
+            name: 'adds child nodes',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Parent', children: [] }];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.click(screen.getByLabelText('add child'));
+              expect(screen.getAllByPlaceholderText('Enter point title...').length).toBeGreaterThan(1);
+            }
+          },
+          {
+            name: 'adds sibling nodes',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'First', children: [] }];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.click(screen.getByLabelText('add sibling'));
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(2);
+            }
+          },
+          {
+            name: 'removes nodes',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [
+                { id: '1', title: 'First', children: [] },
+                { id: '2', title: 'Second', children: [] }
+              ];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.click(screen.getAllByLabelText('delete')[0]);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Save Functionality', () => {
-    it('calls onSave with merged draft titles', async () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Original', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...');
-      fireEvent.change(input, { target: { value: 'Modified' } });
-
-      const saveButton = screen.getByRole('button', { name: /Save/i });
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockOnSave).toHaveBeenCalledWith(
-          expect.arrayContaining([
-            expect.objectContaining({ id: '1', title: 'Modified' })
-          ])
-        );
-      });
-    });
-
-    it('disables save button when saving', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Point', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} saving={true} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...');
-      fireEvent.change(input, { target: { value: 'Modified' } });
-
-      const saveButton = screen.getByRole('button', { name: /Saving.../i });
-      expect(saveButton).toBeDisabled();
-    });
-
-    it('syncs with external value after save', async () => {
-      const initialValue: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Initial', children: [] }
-      ];
-
-      const { rerender } = render(
-        <ExegeticalPlanModule value={initialValue} onSave={mockOnSave} saving={false} />
+    it('handles save workflow scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'calls onSave with updated tree',
+            run: async () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Original', children: [] }];
+              render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
+              fireEvent.change(screen.getByPlaceholderText('Enter point title...'), { target: { value: 'Modified' } });
+              fireEvent.click(screen.getByRole('button', { name: /Save/i }));
+              await waitFor(() =>
+                expect(mockOnSave).toHaveBeenCalledWith(
+                  expect.arrayContaining([expect.objectContaining({ id: '1', title: 'Modified' })])
+                )
+              );
+            }
+          },
+          {
+            name: 'disables controls while saving',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Point', children: [] }];
+              render(<ExegeticalPlanModule value={value} onSave={mockOnSave} saving={true} />);
+              fireEvent.change(screen.getByPlaceholderText('Enter point title...'), { target: { value: 'Modified' } });
+              expect(screen.getByRole('button', { name: /Saving.../i })).toBeDisabled();
+            }
+          },
+          {
+            name: 'resyncs draft when new value arrives',
+            run: async () => {
+              const initialValue: ExegeticalPlanNode[] = [{ id: '1', title: 'Initial', children: [] }];
+              const { rerender } = render(
+                <ExegeticalPlanModule value={initialValue} onSave={mockOnSave} saving={false} />
+              );
+              const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
+              fireEvent.change(input, { target: { value: 'Modified' } });
+              rerender(
+                <ExegeticalPlanModule
+                  value={[{ id: '1', title: 'Modified', children: [] }]}
+                  onSave={mockOnSave}
+                  saving={false}
+                />
+              );
+              await waitFor(() => expect(input.value).toBe('Modified'));
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'Modified' } });
-
-      const updatedValue: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Modified', children: [] }
-      ];
-
-      rerender(
-        <ExegeticalPlanModule value={updatedValue} onSave={mockOnSave} saving={false} />
-      );
-
-      await waitFor(() => {
-        expect(input.value).toBe('Modified');
-      });
     });
   });
 
   describe('Author Intent', () => {
-    it('updates author intent draft', () => {
-      render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...');
-      fireEvent.change(textarea, { target: { value: 'New intent' } });
-
-      const saveButton = screen.getByTitle('Save');
-      expect(saveButton).toBeInTheDocument();
-    });
-
-    it('saves author intent', async () => {
-      render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...');
-      fireEvent.change(textarea, { target: { value: 'My intent' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockOnSaveAuthorIntent).toHaveBeenCalledWith('My intent');
-      });
-    });
-
-    it('cancels author intent changes', () => {
-      render(<ExegeticalPlanModule authorIntent="Original" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
-      fireEvent.change(textarea, { target: { value: 'Modified' } });
-
-      const cancelButton = screen.getByText('Cancel');
-      fireEvent.click(cancelButton);
-
-      expect(textarea.value).toBe('');
-    });
-
-    it('syncs author intent with external prop', () => {
-      const { rerender } = render(
-        <ExegeticalPlanModule authorIntent="Initial" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
+    it('handles author intent editing scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'shows save button when draft changes',
+            run: () => {
+              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
+                target: { value: 'New intent' }
+              });
+              expect(screen.getByTitle('Save')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'persists intent via save action',
+            run: async () => {
+              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
+                target: { value: 'My intent' }
+              });
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() => expect(mockOnSaveAuthorIntent).toHaveBeenCalledWith('My intent'));
+            }
+          },
+          {
+            name: 'cancels draft edits',
+            run: () => {
+              render(<ExegeticalPlanModule authorIntent="Original" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
+              fireEvent.change(textarea, { target: { value: 'Modified' } });
+              fireEvent.click(screen.getByText('Cancel'));
+              expect(textarea.value).toBe('');
+            }
+          },
+          {
+            name: 'syncs textarea when external prop updates',
+            run: () => {
+              const { rerender } = render(
+                <ExegeticalPlanModule authorIntent="Initial" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
+              );
+              rerender(
+                <ExegeticalPlanModule authorIntent="Updated" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
+              );
+              expect(
+                screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement
+              ).toHaveValue('Updated');
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
-
-      let textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
-      expect(textarea.value).toBe('Initial');
-
-      rerender(
-        <ExegeticalPlanModule authorIntent="Updated" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
-      );
-
-      textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
-      expect(textarea.value).toBe('Updated');
     });
   });
 
@@ -289,193 +268,186 @@ describe('ExegeticalPlanModule', () => {
   });
 
   describe('Focus Management', () => {
-    it('sets focus state for newly added child node', async () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Parent', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const addChildButton = screen.getByLabelText('add child');
-      fireEvent.click(addChildButton);
-
-      await waitFor(() => {
-        const inputs = screen.getAllByPlaceholderText('Enter point title...');
-        expect(inputs.length).toBeGreaterThan(1);
-        expect(inputs[inputs.length - 1]).toHaveAttribute('autofocus');
-      });
-    });
-
-    it('sets focus state for newly added sibling node', async () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'First', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const addSiblingButton = screen.getByLabelText('add sibling');
-      fireEvent.click(addSiblingButton);
-
-      await waitFor(() => {
-        const inputs = screen.getAllByPlaceholderText('Enter point title...');
-        expect(inputs.length).toBe(2);
-        expect(inputs[inputs.length - 1]).toHaveAttribute('autofocus');
-      });
+    it('focuses new nodes consistently', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'child nodes receive focus',
+            run: async () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Parent', children: [] }];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.click(screen.getByLabelText('add child'));
+              await waitFor(() => {
+                const inputs = screen.getAllByPlaceholderText('Enter point title...');
+                expect(inputs.at(-1)).toHaveAttribute('autofocus');
+              });
+            }
+          },
+          {
+            name: 'sibling nodes receive focus',
+            run: async () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'First', children: [] }];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.click(screen.getByLabelText('add sibling'));
+              await waitFor(() => {
+                const inputs = screen.getAllByPlaceholderText('Enter point title...');
+                expect(inputs).toHaveLength(2);
+                expect(inputs.at(-1)).toHaveAttribute('autofocus');
+              });
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Draft State Management', () => {
-    it('maintains draft titles separate from saved tree', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Saved', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'Draft' } });
-
-      expect(input.value).toBe('Draft');
-      expect(mockOnSave).not.toHaveBeenCalled();
-    });
-
-    it('cleans up draft titles when node is removed', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'First', children: [] },
-        { id: '2', title: 'Second', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      fireEvent.change(inputs[0], { target: { value: 'Modified First' } });
-
-      const deleteButtons = screen.getAllByLabelText('delete');
-      fireEvent.click(deleteButtons[0]);
-
-      const saveButton = screen.getByRole('button', { name: /Save/i });
-      fireEvent.click(saveButton);
-
-      expect(mockOnSave).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ id: '2', title: 'Second' })
-        ])
+    it('keeps draft state isolated and cleaned up', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'draft edits do not trigger save immediately',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Saved', children: [] }];
+              render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
+              const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
+              fireEvent.change(input, { target: { value: 'Draft' } });
+              expect(mockOnSave).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'removing node cleans up its draft value',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [
+                { id: '1', title: 'First', children: [] },
+                { id: '2', title: 'Second', children: [] }
+              ];
+              render(<ExegeticalPlanModule value={value} onSave={mockOnSave} />);
+              fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[0], {
+                target: { value: 'Modified First' }
+              });
+              fireEvent.click(screen.getAllByLabelText('delete')[0]);
+              fireEvent.click(screen.getByRole('button', { name: /Save/i }));
+              expect(mockOnSave).toHaveBeenCalledWith(
+                expect.arrayContaining([expect.objectContaining({ id: '2', title: 'Second' })])
+              );
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
       );
     });
   });
 
   describe('Edge Cases', () => {
-    it('handles empty value prop', () => {
-      render(<ExegeticalPlanModule value={[]} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(1);
-    });
-
-    it('handles undefined value prop', () => {
-      render(<ExegeticalPlanModule value={undefined} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(1);
-    });
-
-    it('handles missing onSave callback', () => {
-      const value: ExegeticalPlanNode[] = [
-        { id: '1', title: 'Point', children: [] }
-      ];
-
-      render(<ExegeticalPlanModule value={value} />);
-
-      const input = screen.getByPlaceholderText('Enter point title...');
-      fireEvent.change(input, { target: { value: 'Modified' } });
-
-      const saveButton = screen.getByRole('button', { name: /Save/i });
-      fireEvent.click(saveButton);
-
-      expect(() => fireEvent.click(saveButton)).not.toThrow();
-    });
-
-    it('handles missing onSaveAuthorIntent callback', () => {
-      render(<ExegeticalPlanModule authorIntent="" />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...');
-      fireEvent.change(textarea, { target: { value: 'Intent' } });
-
-      const saveButton = screen.queryByTitle('Save');
-      expect(saveButton).toBeInTheDocument();
-    });
-
-    it('handles complex nested structures', () => {
-      const complexValue: ExegeticalPlanNode[] = [
-        {
-          id: '1',
-          title: 'Level 1',
-          children: [
-            {
-              id: '1a',
-              title: 'Level 2',
-              children: [
-                { id: '1a1', title: 'Level 3', children: [] }
-              ]
+    it('handles miscellaneous edge scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'supports empty array values',
+            run: () => {
+              render(<ExegeticalPlanModule value={[]} />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
             }
-          ]
-        }
-      ];
-
-      render(<ExegeticalPlanModule value={complexValue} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      expect(inputs).toHaveLength(3);
+          },
+          {
+            name: 'supports undefined value prop',
+            run: () => {
+              render(<ExegeticalPlanModule value={undefined} />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
+            }
+          },
+          {
+            name: 'safely handles missing onSave',
+            run: () => {
+              const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Point', children: [] }];
+              render(<ExegeticalPlanModule value={value} />);
+              fireEvent.change(screen.getByPlaceholderText('Enter point title...'), { target: { value: 'Modified' } });
+              expect(() => fireEvent.click(screen.getByRole('button', { name: /Save/i }))).not.toThrow();
+            }
+          },
+          {
+            name: 'handles missing onSaveAuthorIntent callback',
+            run: () => {
+              render(<ExegeticalPlanModule authorIntent="" />);
+              fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
+                target: { value: 'Intent' }
+              });
+              expect(screen.queryByTitle('Save')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'renders deep nested structures',
+            run: () => {
+              const complexValue: ExegeticalPlanNode[] = [
+                {
+                  id: '1',
+                  title: 'Level 1',
+                  children: [
+                    {
+                      id: '1a',
+                      title: 'Level 2',
+                      children: [{ id: '1a1', title: 'Level 3', children: [] }]
+                    }
+                  ]
+                }
+              ];
+              render(<ExegeticalPlanModule value={complexValue} />);
+              expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(3);
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 
   describe('Integration', () => {
-    it('complete workflow: add, edit, and save tree', async () => {
-      render(<ExegeticalPlanModule onSave={mockOnSave} />);
-
-      const inputs = screen.getAllByPlaceholderText('Enter point title...');
-      fireEvent.change(inputs[0], { target: { value: 'Main Point' } });
-
-      const addChildButton = screen.getByLabelText('add child');
-      fireEvent.click(addChildButton);
-
-      await waitFor(() => {
-        const updatedInputs = screen.getAllByPlaceholderText('Enter point title...');
-        expect(updatedInputs.length).toBe(2);
-      });
-
-      const allInputs = screen.getAllByPlaceholderText('Enter point title...');
-      fireEvent.change(allInputs[1], { target: { value: 'Sub Point' } });
-
-      const saveButton = screen.getByRole('button', { name: /Save/i });
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockOnSave).toHaveBeenCalledWith(
-          expect.arrayContaining([
-            expect.objectContaining({
-              title: 'Main Point',
-              children: expect.arrayContaining([
-                expect.objectContaining({ title: 'Sub Point' })
-              ])
-            })
-          ])
-        );
-      });
-    });
-
-    it('complete workflow: add and save author intent', async () => {
-      render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
-
-      const textarea = screen.getByPlaceholderText('Describe the author\'s intent...');
-      fireEvent.change(textarea, { target: { value: 'The author intends to...' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockOnSaveAuthorIntent).toHaveBeenCalledWith('The author intends to...');
-      });
+    it('covers complete workflows succinctly', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'builds tree and saves structure',
+            run: async () => {
+              render(<ExegeticalPlanModule onSave={mockOnSave} />);
+              fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[0], {
+                target: { value: 'Main Point' }
+              });
+              fireEvent.click(screen.getByLabelText('add child'));
+              await waitFor(() => screen.getAllByPlaceholderText('Enter point title...').length === 2);
+              fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[1], {
+                target: { value: 'Sub Point' }
+              });
+              fireEvent.click(screen.getByRole('button', { name: /Save/i }));
+              await waitFor(() =>
+                expect(mockOnSave).toHaveBeenCalledWith(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      title: 'Main Point',
+                      children: expect.arrayContaining([expect.objectContaining({ title: 'Sub Point' })])
+                    })
+                  ])
+                )
+              );
+            }
+          },
+          {
+            name: 'edits author intent and saves',
+            run: async () => {
+              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
+                target: { value: 'The author intends to...' }
+              });
+              fireEvent.click(screen.getByTitle('Save'));
+              await waitFor(() =>
+                expect(mockOnSaveAuthorIntent).toHaveBeenCalledWith('The author intends to...')
+              );
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
     });
   });
 });
