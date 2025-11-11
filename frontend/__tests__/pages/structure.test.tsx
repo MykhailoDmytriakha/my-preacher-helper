@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { renderHook } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
@@ -21,6 +20,10 @@ const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
 
 jest.mock('@/services/structure.service', () => ({
   updateStructure: jest.fn().mockResolvedValue({}),
+}));
+
+jest.mock('@/services/outline.service', () => ({
+  updateSermonOutline: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('@/services/thought.service', () => ({
@@ -79,31 +82,37 @@ describe('Structure Page', () => {
   });
 
   describe('Loading and Error States', () => {
-    it('should display loading state', () => {
-      mockedUseSermonStructureData.mockReturnValue({
-        ...createMockHookReturn(null),
-        loading: true,
-      });
+    it('covers loading, error, and empty sermon fallbacks in one pass', () => {
+      const fallbackScenarios = [
+        {
+          description: 'loading state',
+          hookState: () => ({
+            ...createMockHookReturn(null),
+            loading: true,
+          }),
+          assert: () => expect(screen.getByText(/loading/i)).toBeInTheDocument(),
+        },
+        {
+          description: 'error state',
+          hookState: () => ({
+            ...createMockHookReturn(null),
+            error: 'Error loading sermon',
+          }),
+          assert: () => expect(screen.getByText(/error/i)).toBeInTheDocument(),
+        },
+        {
+          description: 'sermon not found',
+          hookState: () => createMockHookReturn(null),
+          assert: () => expect(screen.getByText(/sermon not found/i)).toBeInTheDocument(),
+        },
+      ];
 
-      render(<StructurePage />);
-      expect(screen.getByText(/loading/i)).toBeInTheDocument();
-    });
-
-    it('should display error state', () => {
-      mockedUseSermonStructureData.mockReturnValue({
-        ...createMockHookReturn(null),
-        error: 'Error loading sermon',
-      });
-
-      render(<StructurePage />);
-      expect(screen.getByText(/error/i)).toBeInTheDocument();
-    });
-
-    it('should display sermon not found state', () => {
-      mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(null));
-
-      render(<StructurePage />);
-      expect(screen.getByText(/sermon not found/i)).toBeInTheDocument();
+      for (const scenario of fallbackScenarios) {
+        mockedUseSermonStructureData.mockReturnValue(scenario.hookState());
+        render(<StructurePage />);
+        scenario.assert();
+        cleanup();
+      }
     });
   });
 
@@ -171,9 +180,34 @@ describe('Structure Page', () => {
   });
 
   describe('handleToggleReviewed', () => {
-    let mockSermon: any;
+    const { updateSermonOutline } = require('@/services/outline.service');
+    const { toast } = require('sonner');
+
+    let mockSermon: ReturnType<typeof createMockSermon>;
     let mockSetSermon: jest.Mock;
-    let mockToast: any;
+
+    const runHandleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+      if (!mockSermon) return;
+
+      const mapSection = (section?: any[]) =>
+        section?.map((point: any) =>
+          point.id === outlinePointId ? { ...point, isReviewed } : point
+        ) || [];
+
+      try {
+        const updatedOutline = {
+          introduction: mapSection(mockSermon.outline?.introduction),
+          main: mapSection(mockSermon.outline?.main),
+          conclusion: mapSection(mockSermon.outline?.conclusion),
+        };
+
+        mockSetSermon({ ...mockSermon, outline: updatedOutline });
+        await updateSermonOutline(mockSermon.id, updatedOutline);
+        toast.success(isReviewed ? 'Marked as reviewed' : 'Marked as unreviewed');
+      } catch (error) {
+        toast.error('Error saving');
+      }
+    };
 
     beforeEach(() => {
       mockSermon = createMockSermon({
@@ -186,184 +220,86 @@ describe('Structure Page', () => {
       });
       mockSetSermon = jest.fn();
 
-      // Mock toast
-      mockToast = { success: jest.fn(), error: jest.fn() };
-      jest.mock('sonner', () => ({ toast: mockToast }));
-
-      // Mock updateSermonOutline
-      jest.mock('@/services/outline.service', () => ({
-        updateSermonOutline: jest.fn().mockResolvedValue({}),
-      }));
-    });
-
-    it('should toggle isReviewed from false to true', async () => {
-      const { updateSermonOutline } = require('@/services/outline.service');
+      updateSermonOutline.mockClear();
       updateSermonOutline.mockResolvedValue({});
-
-      const { result } = renderHook(() => useSermonStructureData('sermon-123', mockTranslations));
-
-      // Simulate the handleToggleReviewed logic
-      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
-        if (!mockSermon) return;
-
-        try {
-          const updatedOutline = {
-            introduction: mockSermon.outline?.introduction?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            main: mockSermon.outline?.main?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || []
-          };
-
-          mockSetSermon({ ...mockSermon, outline: updatedOutline });
-          await updateSermonOutline(mockSermon.id, updatedOutline);
-
-          mockToast.success('Marked as reviewed');
-        } catch (error) {
-          mockToast.error('Error saving');
-        }
-      };
-
-      await handleToggleReviewed('op1', true);
-
-      expect(mockSetSermon).toHaveBeenCalledWith({
-        ...mockSermon,
-        outline: {
-          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
-          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
-        },
-      });
-
-      expect(updateSermonOutline).toHaveBeenCalledWith('test-sermon', {
-        introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
-        main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-        conclusion: [{ id: 'op3', text: 'Conclusion point' }],
-      });
-
-      expect(mockToast.success).toHaveBeenCalledWith('Marked as reviewed');
+      toast.success.mockClear();
+      toast.error.mockClear();
     });
 
-    it('should toggle isReviewed from true to false', async () => {
-      const { updateSermonOutline } = require('@/services/outline.service');
-      updateSermonOutline.mockResolvedValue({});
-
-      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
-        if (!mockSermon) return;
-
-        try {
-          const updatedOutline = {
-            introduction: mockSermon.outline?.introduction?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            main: mockSermon.outline?.main?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || []
-          };
-
-          mockSetSermon({ ...mockSermon, outline: updatedOutline });
-          await updateSermonOutline(mockSermon.id, updatedOutline);
-
-          mockToast.success('Marked as unreviewed');
-        } catch (error) {
-          mockToast.error('Error saving');
-        }
-      };
-
-      await handleToggleReviewed('op2', false);
-
-      expect(mockSetSermon).toHaveBeenCalledWith({
-        ...mockSermon,
-        outline: {
-          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
-          main: [{ id: 'op2', text: 'Main point', isReviewed: false }],
-          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+    it('covers all toggle transitions and failures in a single table-driven test', async () => {
+      const scenarios = [
+        {
+          name: 'marks introduction point as reviewed',
+          outlinePointId: 'op1',
+          isReviewed: true,
+          expectedOutline: {
+            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
+            main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+            conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+          },
+          expectedToast: { success: 'Marked as reviewed' },
         },
-      });
-
-      expect(mockToast.success).toHaveBeenCalledWith('Marked as unreviewed');
-    });
-
-    it('should handle errors when saving outline', async () => {
-      const { updateSermonOutline } = require('@/services/outline.service');
-      updateSermonOutline.mockRejectedValue(new Error('Network error'));
-
-      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
-        if (!mockSermon) return;
-
-        try {
-          const updatedOutline = {
-            introduction: mockSermon.outline?.introduction?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            main: mockSermon.outline?.main?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || []
-          };
-
-          mockSetSermon({ ...mockSermon, outline: updatedOutline });
-          await updateSermonOutline(mockSermon.id, updatedOutline);
-
-          mockToast.success('Marked as reviewed');
-        } catch (error) {
-          mockToast.error('Error saving');
-        }
-      };
-
-      await handleToggleReviewed('op1', true);
-
-      expect(mockToast.error).toHaveBeenCalledWith('Error saving');
-    });
-
-    it('should handle points without existing isReviewed field', async () => {
-      const { updateSermonOutline } = require('@/services/outline.service');
-      updateSermonOutline.mockResolvedValue({});
-
-      const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
-        if (!mockSermon) return;
-
-        try {
-          const updatedOutline = {
-            introduction: mockSermon.outline?.introduction?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            main: mockSermon.outline?.main?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || [],
-            conclusion: mockSermon.outline?.conclusion?.map((point: any) =>
-              point.id === outlinePointId ? { ...point, isReviewed } : point
-            ) || []
-          };
-
-          mockSetSermon({ ...mockSermon, outline: updatedOutline });
-          await updateSermonOutline(mockSermon.id, updatedOutline);
-
-          mockToast.success('Marked as reviewed');
-        } catch (error) {
-          mockToast.error('Error saving');
-        }
-      };
-
-      await handleToggleReviewed('op3', true);
-
-      expect(mockSetSermon).toHaveBeenCalledWith({
-        ...mockSermon,
-        outline: {
-          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
-          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-          conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
+        {
+          name: 'marks main point as unreviewed',
+          outlinePointId: 'op2',
+          isReviewed: false,
+          expectedOutline: {
+            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
+            main: [{ id: 'op2', text: 'Main point', isReviewed: false }],
+            conclusion: [{ id: 'op3', text: 'Conclusion point' }],
+          },
+          expectedToast: { success: 'Marked as unreviewed' },
         },
-      });
+        {
+          name: 'adds isReviewed to conclusion point',
+          outlinePointId: 'op3',
+          isReviewed: true,
+          expectedOutline: {
+            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
+            main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
+            conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
+          },
+          expectedToast: { success: 'Marked as reviewed' },
+        },
+        {
+          name: 'handles persistence errors gracefully',
+          outlinePointId: 'op1',
+          isReviewed: true,
+          configureMock: () => updateSermonOutline.mockRejectedValueOnce(new Error('Network error')),
+          expectedToast: { error: 'Error saving' },
+        },
+      ];
+
+      for (const scenario of scenarios) {
+        mockSetSermon.mockClear();
+        toast.success.mockClear();
+        toast.error.mockClear();
+        updateSermonOutline.mockClear();
+
+        scenario.configureMock?.();
+
+        await runHandleToggleReviewed(scenario.outlinePointId, scenario.isReviewed);
+
+        if (scenario.expectedOutline) {
+          expect(mockSetSermon).toHaveBeenCalledWith({
+            ...mockSermon,
+            outline: scenario.expectedOutline,
+          });
+          expect(updateSermonOutline).toHaveBeenCalledWith('test-sermon', scenario.expectedOutline);
+        }
+
+        if (scenario.expectedToast?.success) {
+          expect(toast.success).toHaveBeenCalledWith(scenario.expectedToast.success);
+        } else {
+          expect(toast.success).not.toHaveBeenCalled();
+        }
+
+        if (scenario.expectedToast?.error) {
+          expect(toast.error).toHaveBeenCalledWith(scenario.expectedToast.error);
+        } else {
+          expect(toast.error).not.toHaveBeenCalled();
+        }
+      }
     });
   });
 });
