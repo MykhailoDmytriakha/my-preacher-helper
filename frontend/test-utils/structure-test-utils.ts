@@ -88,13 +88,16 @@ export const setupCommonMocks = () => {
       prefetch: jest.fn(),
       replace: jest.fn(),
     }),
+    useParams: () => ({
+      id: 'sermon-123',
+    }),
     useSearchParams: () => ({
       get: jest.fn((param: string) => {
         if (param === 'sermonId') return 'sermon-123';
         return null;
       }),
     }),
-    usePathname: jest.fn().mockReturnValue('/structure'),
+    usePathname: jest.fn().mockReturnValue('/sermons/sermon-123/structure'),
   }));
 
   jest.mock('react-i18next', () => ({

@@ -10,6 +10,9 @@ jest.mock('next/navigation', () => ({
 
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUsePathname = usePathname as jest.MockedFunction<typeof usePathname>;
+const buildStructurePath = (sermonId: string = 'sermon-1') => `/sermons/${sermonId}/structure`;
+const buildFocusUrl = (section: string, sermonId: string = 'sermon-1') =>
+  `${buildStructurePath(sermonId)}?mode=focus&section=${section}`;
 
 describe('useFocusMode', () => {
   const mockRouter = {
@@ -21,7 +24,7 @@ describe('useFocusMode', () => {
     prefetch: jest.fn()
   };
 
-  const mockPathname = '/structure';
+  const mockPathname = buildStructurePath();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -138,7 +141,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction&sermonId=sermon-1'
+        buildFocusUrl('introduction')
       );
     });
 
@@ -154,7 +157,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=main&sermonId=sermon-1'
+        buildFocusUrl('main')
       );
     });
 
@@ -170,7 +173,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=conclusion&sermonId=sermon-1'
+        buildFocusUrl('conclusion')
       );
     });
 
@@ -186,7 +189,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?sermonId=sermon-1'
+        buildStructurePath()
       );
     });
 
@@ -202,7 +205,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=main&sermonId=sermon-1'
+        buildFocusUrl('main')
       );
     });
 
@@ -218,7 +221,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction'
+        buildFocusUrl('introduction')
       );
     });
   });
@@ -236,7 +239,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction&sermonId=sermon-1'
+        buildFocusUrl('introduction')
       );
     });
 
@@ -252,7 +255,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=main&sermonId=sermon-1'
+        buildFocusUrl('main')
       );
     });
 
@@ -268,7 +271,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=conclusion&sermonId=sermon-1'
+        buildFocusUrl('conclusion')
       );
     });
 
@@ -284,7 +287,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction'
+        buildFocusUrl('introduction')
       );
     });
   });
@@ -390,6 +393,8 @@ describe('useFocusMode', () => {
 
     it('should handle special characters in sermonId', () => {
       const searchParams = new URLSearchParams();
+      mockUsePathname.mockReturnValue(buildStructurePath('sermon-123_abc'));
+
       const { result } = renderHook(() => useFocusMode({
         searchParams,
         sermonId: 'sermon-123_abc'
@@ -400,7 +405,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction&sermonId=sermon-123_abc'
+        buildFocusUrl('introduction', 'sermon-123_abc')
       );
     });
   });
@@ -419,7 +424,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=introduction&sermonId=sermon-1'
+        buildFocusUrl('introduction')
       );
 
       // 2. Navigate to main section
@@ -428,7 +433,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?mode=focus&section=main&sermonId=sermon-1'
+        buildFocusUrl('main')
       );
 
       // 3. Disable focus mode
@@ -437,7 +442,7 @@ describe('useFocusMode', () => {
       });
 
       expect(mockRouter.push).toHaveBeenCalledWith(
-        '/structure?sermonId=sermon-1'
+        buildStructurePath()
       );
     });
 

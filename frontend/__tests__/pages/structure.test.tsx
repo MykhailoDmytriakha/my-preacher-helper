@@ -2,14 +2,18 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import StructurePage from '@/(pages)/(private)/structure/page';
+import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { createMockSermon, createMockThought, createMockOutlinePoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
-  useSearchParams: () => ({ get: jest.fn((param: string) => param === 'sermonId' ? 'sermon-123' : null) }),
-  usePathname: jest.fn().mockReturnValue('/structure'),
+  useSearchParams: () => ({ get: jest.fn((param: string) => {
+    if (param === 'sermonId') return 'sermon-123';
+    return null;
+  }) }),
+  usePathname: jest.fn().mockReturnValue('/sermons/sermon-123/structure'),
+  useParams: jest.fn(() => ({ id: 'sermon-123' })),
 }));
 
 jest.mock('@/hooks/useSermonStructureData');

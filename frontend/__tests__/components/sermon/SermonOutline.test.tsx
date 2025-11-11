@@ -419,9 +419,9 @@ describe('SermonOutline Component', () => {
       expect(link).toHaveAttribute('href', expectedHref);
     };
 
-    expectFocusLink(introSection, `/structure?mode=focus&section=introduction&sermonId=${mockSermon.id}`);
+    expectFocusLink(introSection, `/sermons/${mockSermon.id}/structure?mode=focus&section=introduction`);
     // mainPart maps to section=main in URL
-    expectFocusLink(mainSection, `/structure?mode=focus&section=main&sermonId=${mockSermon.id}`);
-    expectFocusLink(conclSection, `/structure?mode=focus&section=conclusion&sermonId=${mockSermon.id}`);
+    expectFocusLink(mainSection, `/sermons/${mockSermon.id}/structure?mode=focus&section=main`);
+    expectFocusLink(conclSection, `/sermons/${mockSermon.id}/structure?mode=focus&section=conclusion`);
   });
 });

@@ -59,7 +59,7 @@ jest.mock('@/components/SortableItem', () => () => <div data-testid="item" />);
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
-import StructurePage from '@/(pages)/(private)/structure/page';
+import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import SettingsPage from '@/(pages)/(private)/settings/page';
 
 // Helper that asserts private page does not add global shell classes
@@ -85,5 +85,4 @@ describe('Private pages adhere to single-shell policy', () => {
     expectNoPageLevelShell(container);
   });
 });
-
 

@@ -10,6 +10,10 @@ export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
   const router = useRouter();
   const pathname = usePathname();
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
+  const buildUrlWithParams = useCallback((params: URLSearchParams) => {
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }, [pathname]);
 
   const focusMode = searchParams?.get("mode");
   const focusSection = searchParams?.get("section");
@@ -29,14 +33,13 @@ export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
       const newSearchParams = new URLSearchParams();
       newSearchParams.set('mode', 'focus');
       newSearchParams.set('section', focusedColumn);
-      newSearchParams.set('sermonId', sermonId);
       
-      const currentUrl = `${pathname}?${newSearchParams.toString()}`;
+      const currentUrl = buildUrlWithParams(newSearchParams);
       if (typeof window !== 'undefined' && window.location.href !== currentUrl) {
         router.replace(currentUrl);
       }
     }
-  }, [sermonId, focusedColumn, focusMode, pathname, router]);
+  }, [sermonId, focusedColumn, focusMode, buildUrlWithParams, router]);
 
   const handleToggleFocusMode = useCallback((columnId: string) => {
     if (focusedColumn === columnId) {
@@ -47,13 +50,9 @@ export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
       const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
       newSearchParams.delete('mode');
       newSearchParams.delete('section');
+      newSearchParams.delete('sermonId');
       
-      // Preserve sermonId if it exists
-      if (sermonId) {
-        newSearchParams.set('sermonId', sermonId);
-      }
-      
-      router.push(`${pathname}?${newSearchParams.toString()}`);
+      router.push(buildUrlWithParams(newSearchParams));
     } else {
       // Otherwise, enter focus mode for the clicked column
       setFocusedColumn(columnId);
@@ -62,15 +61,11 @@ export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
       const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
       newSearchParams.set('mode', 'focus');
       newSearchParams.set('section', columnId);
+      newSearchParams.delete('sermonId');
       
-      // Preserve sermonId if it exists
-      if (sermonId) {
-        newSearchParams.set('sermonId', sermonId);
-      }
-      
-      router.push(`${pathname}?${newSearchParams.toString()}`);
+      router.push(buildUrlWithParams(newSearchParams));
     }
-  }, [focusedColumn, searchParams, sermonId, pathname, router]);
+  }, [focusedColumn, searchParams, buildUrlWithParams, router]);
 
   // Function to get navigation sections for focus mode
   const getNavigationSections = useCallback((currentSection: string) => {
@@ -87,28 +82,15 @@ export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
 
   // Function to navigate to a specific section in focus mode
   const navigateToSection = useCallback((sectionId: string) => {
-    if (!sermonId) {
-      // If no sermonId, still navigate but without sermonId in URL
-      setFocusedColumn(sectionId);
-      
-      const newSearchParams = new URLSearchParams();
-      newSearchParams.set('mode', 'focus');
-      newSearchParams.set('section', sectionId);
-      
-      router.push(`${pathname}?${newSearchParams.toString()}`);
-      return;
-    }
-    
     setFocusedColumn(sectionId);
     
     // Update URL to include focus mode and section
     const newSearchParams = new URLSearchParams();
     newSearchParams.set('mode', 'focus');
     newSearchParams.set('section', sectionId);
-    newSearchParams.set('sermonId', sermonId);
     
-    router.push(`${pathname}?${newSearchParams.toString()}`);
-  }, [sermonId, pathname, router]);
+    router.push(buildUrlWithParams(newSearchParams));
+  }, [buildUrlWithParams, router]);
 
   return {
     focusedColumn,

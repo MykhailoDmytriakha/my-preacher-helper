@@ -44,7 +44,7 @@ describe('QuickPlanAccessButton Component', () => {
 
   it('renders structure button by default when sermon has no plan or structure data', () => {
     mockGetSermonAccessType.mockReturnValue('structure');
-    mockGetSermonPlanAccessRoute.mockReturnValue('/structure?sermonId=sermon-1');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/structure');
     mockIsSermonReadyForPreaching.mockReturnValue(false);
 
     const sermon: Sermon = {
@@ -96,7 +96,7 @@ describe('QuickPlanAccessButton Component', () => {
 
   it('renders structure access button when access type is structure', () => {
     mockGetSermonAccessType.mockReturnValue('structure');
-    mockGetSermonPlanAccessRoute.mockReturnValue('/structure?sermonId=sermon-1');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/structure');
     mockIsSermonReadyForPreaching.mockReturnValue(false);
 
     const sermon: Sermon = {
@@ -189,7 +189,7 @@ describe('QuickPlanAccessButton Component', () => {
 
   it('calls getSermonAccessType with correct sermon', () => {
     mockGetSermonAccessType.mockReturnValue('structure');
-    mockGetSermonPlanAccessRoute.mockReturnValue('/structure?sermonId=sermon-1');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/structure');
     mockIsSermonReadyForPreaching.mockReturnValue(false);
 
     const sermon: Sermon = {

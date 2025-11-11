@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Column from "@/components/Column";
 import { Item, Sermon, OutlinePoint, Thought, Outline, Structure } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
@@ -50,7 +50,10 @@ export default function StructurePage() {
 function StructurePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const sermonId = searchParams?.get("sermonId");
+  const params = useParams<{ id?: string }>();
+  const sermonIdFromPath = params?.id;
+  const sermonIdFromQuery = searchParams?.get("sermonId");
+  const sermonId = sermonIdFromPath ?? sermonIdFromQuery ?? null;
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
 

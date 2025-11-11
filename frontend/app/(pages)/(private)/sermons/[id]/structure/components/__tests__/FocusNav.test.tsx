@@ -16,6 +16,8 @@ jest.mock('@/utils/urlUtils', () => ({
 }));
 
 const mockGetFocusModeUrl = getFocusModeUrl as jest.MockedFunction<typeof getFocusModeUrl>;
+const buildStructurePath = (sermonId: string) => `/sermons/${sermonId}/structure`;
+const buildFocusUrl = (section: string, sermonId: string) => `${buildStructurePath(sermonId)}?mode=focus&section=${section}`;
 
 describe('FocusNav', () => {
   const defaultProps = {
@@ -28,8 +30,8 @@ describe('FocusNav', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetFocusModeUrl.mockImplementation((section, sermonId) => 
-      `/structure?mode=focus&section=${section}&sermonId=${sermonId}`
+    mockGetFocusModeUrl.mockImplementation((section, sermonId) =>
+      buildFocusUrl(section, sermonId)
     );
   });
 

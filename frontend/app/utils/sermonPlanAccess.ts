@@ -91,5 +91,5 @@ export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): stri
     return `/sermons/${sermonId}/plan`;
   }
 
-  return `/structure?sermonId=${sermonId}`;
+  return `/sermons/${sermonId}/structure`;
 }

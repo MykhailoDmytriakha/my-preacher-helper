@@ -90,7 +90,7 @@ jest.mock('@/utils/themeColors', () => ({
 
 // Mock urlUtils
 jest.mock('@/utils/urlUtils', () => ({
-  getFocusModeUrl: (section: string, sermonId: string) => `/structure?mode=focus&section=${section}&sermonId=${sermonId}`
+  getFocusModeUrl: (section: string, sermonId: string) => `/sermons/${sermonId}/structure?mode=focus&section=${section}`
 }));
 
 describe('StructureStats Component', () => {
@@ -166,7 +166,7 @@ describe('StructureStats Component', () => {
     // Check if buttons have correct links
     focusModeButtons.forEach((button, index) => {
       const sections = ['introduction', 'main', 'conclusion'];
-      const expectedHref = `/structure?mode=focus&section=${sections[index]}&sermonId=${mockSermon.id}`;
+      const expectedHref = `/sermons/${mockSermon.id}/structure?mode=focus&section=${sections[index]}`;
       expect(button.closest('a')).toHaveAttribute('href', expectedHref);
     });
   });
@@ -185,7 +185,7 @@ describe('StructureStats Component', () => {
     fireEvent.click(structureButton);
 
     // Check if navigation was triggered
-    expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
+    expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/structure`);
   });
 
   it('navigates to plan page when plan button is clicked', () => {
@@ -605,7 +605,7 @@ describe('StructureStats Component', () => {
 
       // Click structure button
       fireEvent.click(structureButton);
-      expect(mockPush).toHaveBeenCalledWith(`/structure?sermonId=${mockSermon.id}`);
+      expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/structure`);
 
       // Click plan button
       fireEvent.click(planButton);

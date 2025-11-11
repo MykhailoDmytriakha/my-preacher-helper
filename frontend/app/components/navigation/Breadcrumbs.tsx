@@ -37,7 +37,6 @@ const segmentLabels: Record<string, SegmentConfig> = {
   structure: {
     labelKey: 'navigation.structure',
     defaultLabel: 'Structure',
-    href: '/structure'
   },
   series: {
     labelKey: 'navigation.series',
@@ -87,7 +86,7 @@ export default function Breadcrumbs() {
 
   // Get sermonId from different sources
   const sermonId = useMemo(() => {
-    // For /structure?sermonId=XXX
+    // Legacy fallback: /structure?sermonId=XXX
     const querySermonId = searchParams?.get('sermonId');
     if (querySermonId) return querySermonId;
 
@@ -136,24 +135,6 @@ export default function Breadcrumbs() {
       const config = segmentLabels[segment];
 
       if (config) {
-        // Special handling for structure page with sermon context
-        if (segment === 'structure' && sermon) {
-          // Add sermon breadcrumb first
-          crumbs.push({
-            label: sermon.title,
-            href: `/sermons/${sermon.id}`,
-            isCurrent: false
-          });
-          // Then add structure
-          const label = t(config.labelKey, { defaultValue: config.defaultLabel });
-          crumbs.push({
-            label,
-            href: isLast ? undefined : currentPath,
-            isCurrent: isLast
-          });
-          return;
-        }
-
         const label = t(config.labelKey, { defaultValue: config.defaultLabel });
         crumbs.push({
           label,

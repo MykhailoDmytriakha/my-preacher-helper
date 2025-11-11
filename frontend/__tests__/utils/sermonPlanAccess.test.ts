@@ -28,7 +28,7 @@ describe('sermonPlanAccess utilities', () => {
 
     expect(isSermonReadyForPlan(sermon)).toBe(true);
     expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
   });
 
   it('prefers plan access when a complete plan exists and thoughts are assigned', () => {
@@ -63,7 +63,7 @@ describe('sermonPlanAccess utilities', () => {
     };
 
     expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
   });
 
   it('defaults to structure access when neither plan nor structure exists', () => {
@@ -71,7 +71,7 @@ describe('sermonPlanAccess utilities', () => {
 
     expect(isSermonReadyForPlan(sermon)).toBe(false);
     expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
   });
 
   it('handles partial plan and partial structure inputs consistently', () => {
@@ -96,6 +96,6 @@ describe('sermonPlanAccess utilities', () => {
 
     expect(isSermonReadyForPlan(sermon)).toBe(true);
     expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/structure?sermonId=${sermon.id}`);
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
   });
 });

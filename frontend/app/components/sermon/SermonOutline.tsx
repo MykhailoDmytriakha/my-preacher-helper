@@ -461,12 +461,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                           ) : (
                             <>
                               <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
-                               {/* Thought count badge */}
-                              {getThoughtCount(point.id) > 0 && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full mr-2">
-                                  {getThoughtCount(point.id)}
-                                </span>
-                              )}
                               {/* Action Buttons (Edit/Delete) - appear on hover */}
                               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400">
@@ -476,6 +470,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
                                   <TrashIcon className="h-4 w-4" />
                                 </button>
                               </div>
+                              {/* Thought count badge */}
+                              {getThoughtCount(point.id) > 0 && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full ml-2">
+                                  {getThoughtCount(point.id)}
+                                </span>
+                              )}
                             </>
                           )}
                         </li>

@@ -163,7 +163,7 @@ const StructurePlanToggle: React.FC<{
       {/* Structure button */}
       <button
         type="button"
-        onClick={() => !hasInconsistentThoughts && router.push(`/structure?sermonId=${sermonId}`)}
+        onClick={() => !hasInconsistentThoughts && router.push(`/sermons/${sermonId}/structure`)}
         disabled={hasInconsistentThoughts}
         className={`relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-l-full flex-1 ${
           hasInconsistentThoughts 

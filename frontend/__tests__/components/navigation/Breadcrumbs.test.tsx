@@ -46,9 +46,9 @@ describe('Breadcrumbs', () => {
 
   it('should show Library > Sermon Title > Structure for structure page with sermonId', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
-    mockUsePathname.mockReturnValue('/structure');
+    mockUsePathname.mockReturnValue('/sermons/test-id/structure');
     mockUseSearchParams.mockReturnValue({
-      get: jest.fn().mockReturnValue('test-id'),
+      get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
 

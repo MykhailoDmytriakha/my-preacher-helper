@@ -60,7 +60,7 @@ export default function DevQuickNav() {
           <Link href={sermonId ? `/sermons/${sermonId}` : '#'} className={`px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 transition ${sermonId ? '' : disabledClass}`}>Sermon</Link>
           {/* Outline page deprecated */}
           <Link href={sermonId ? `/sermons/${sermonId}/plan` : '#'} className={`px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition ${sermonId ? '' : disabledClass}`}>Plan</Link>
-          <Link href={sermonId ? `/structure?sermonId=${encodeURIComponent(sermonId)}` : '#'} className={`px-2 py-1 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 transition ${sermonId ? '' : disabledClass}`}>Structure</Link>
+          <Link href={sermonId ? `/sermons/${encodeURIComponent(sermonId)}/structure` : '#'} className={`px-2 py-1 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 transition ${sermonId ? '' : disabledClass}`}>Structure</Link>
         </div>
 
         <div className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">Set NEXT_PUBLIC_ENABLE_DEV_NAV=1 to enable.</div>
@@ -68,5 +68,4 @@ export default function DevQuickNav() {
     </div>
   );
 }
-
 

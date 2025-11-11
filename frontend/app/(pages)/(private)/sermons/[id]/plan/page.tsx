@@ -590,7 +590,7 @@ export default function PlanPage() {
 
   // Handle switching to structure view
   const handleSwitchToStructure = useCallback(() => {
-    router.push(`/structure?sermonId=${encodeURIComponent(sermonId)}`);
+    router.push(`/sermons/${encodeURIComponent(sermonId)}/structure`);
   }, [sermonId, router]);
 
   const isPlanOverlay = planViewMode === "overlay";
@@ -1636,7 +1636,7 @@ export default function PlanPage() {
             {t("plan.workOnSermon")}
           </Button>
           <Button
-            onClick={() => router.push(`/structure?sermonId=${params.id}`)}
+            onClick={() => router.push(`/sermons/${params.id}/structure`)}
             variant="structure"
             className="px-6 py-3 text-base"
           >
