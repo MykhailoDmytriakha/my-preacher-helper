@@ -1,26 +1,39 @@
-import {
-  getAllSeries,
-  getSeriesById,
-  createSeries,
-  updateSeries,
-  deleteSeries,
-  addSermonToSeries,
-  removeSermonFromSeries,
-  reorderSermons
-} from '@/services/series.service';
 import { Series } from '@/models/models';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
-describe('Series Service', () => {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+// Import service functions inside the describe block to ensure fresh module load
+let getAllSeries: any;
+let getSeriesById: any;
+let createSeries: any;
+let updateSeries: any;
+let deleteSeries: any;
+let addSermonToSeries: any;
+let removeSermonFromSeries: any;
+let reorderSermons: any;
 
+describe('Series Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockClear();
-    // Mock NEXT_PUBLIC_API_BASE to be undefined for consistent test behavior
+    // Set the environment variable before importing the service
+    process.env.NEXT_PUBLIC_API_BASE = '';
+    // Re-import the service functions for each test to get fresh API_BASE value
+    const seriesService = require('@/services/series.service');
+    getAllSeries = seriesService.getAllSeries;
+    getSeriesById = seriesService.getSeriesById;
+    createSeries = seriesService.createSeries;
+    updateSeries = seriesService.updateSeries;
+    deleteSeries = seriesService.deleteSeries;
+    addSermonToSeries = seriesService.addSermonToSeries;
+    removeSermonFromSeries = seriesService.removeSermonFromSeries;
+    reorderSermons = seriesService.reorderSermons;
+  });
+
+  afterEach(() => {
+    // Clean up environment variable after each test
     delete process.env.NEXT_PUBLIC_API_BASE;
   });
 
@@ -64,7 +77,7 @@ describe('Series Service', () => {
 
       const result = await getAllSeries('user-1');
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series?userId=user-1`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series?userId=user-1`, {
         cache: 'no-store',
       });
       expect(mockResponse.json).toHaveBeenCalled();
@@ -130,7 +143,7 @@ describe('Series Service', () => {
 
       const result = await getSeriesById('series-1');
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1`);
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`);
       expect(result).toEqual(mockSeries);
     });
 
@@ -191,7 +204,7 @@ describe('Series Service', () => {
 
       const result = await createSeries(newSeriesData);
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSeriesData),
@@ -254,7 +267,7 @@ describe('Series Service', () => {
 
       const result = await updateSeries('series-1', updates);
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -301,7 +314,7 @@ describe('Series Service', () => {
 
       await expect(deleteSeries('series-1')).resolves.toBeUndefined();
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, {
         method: 'DELETE',
       });
     });
@@ -345,7 +358,7 @@ describe('Series Service', () => {
 
       await expect(addSermonToSeries('series-1', 'sermon-1', 2)).resolves.toBeUndefined();
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1/sermons`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sermonId: 'sermon-1', position: 2 }),
@@ -360,7 +373,7 @@ describe('Series Service', () => {
 
       await expect(addSermonToSeries('series-1', 'sermon-1')).resolves.toBeUndefined();
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1/sermons`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sermonId: 'sermon-1', position: undefined }),
@@ -406,7 +419,7 @@ describe('Series Service', () => {
 
       await expect(removeSermonFromSeries('series-1', 'sermon-1')).resolves.toBeUndefined();
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1/sermons?sermonId=sermon-1`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons?sermonId=sermon-1`, {
         method: 'DELETE',
       });
     });
@@ -451,7 +464,7 @@ describe('Series Service', () => {
 
       await expect(reorderSermons('series-1', sermonIds)).resolves.toBeUndefined();
 
-      expect(mockFetch).toHaveBeenCalledWith(`undefined/api/series/series-1/sermons`, {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sermonIds }),
