@@ -186,7 +186,10 @@ describe('Dashboard Page', () => {
             run: async () => {
               render(<DashboardPage />);
               await waitFor(() => {
-                const sortSelect = screen.getByRole('combobox');
+                // Find the sort select by its role and check it has the default value
+                const sortSelects = screen.getAllByRole('combobox');
+                const sortSelect = sortSelects[0]; // First select should be the sort select
+                expect(sortSelect).toHaveValue('newest');
                 fireEvent.change(sortSelect, { target: { value: 'oldest' } });
                 expect(sortSelect).toHaveValue('oldest');
               });

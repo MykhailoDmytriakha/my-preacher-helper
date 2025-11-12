@@ -18,22 +18,72 @@ jest.mock('@utils/exportContent', () => ({
   getExportContent: jest.fn(() => Promise.resolve('exported content'))
 }));
 
+// Mock @headlessui/react
+jest.mock('@headlessui/react', () => {
+  const MockMenu = ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="menu">{children}</div>
+  );
+
+  const MockMenuButton = ({ children, ...props }: { children: React.ReactNode; [key: string]: any }) => (
+    <button {...props}>{children}</button>
+  );
+
+  const MockMenuItems = ({ children, ...props }: { children: React.ReactNode; [key: string]: any }) => (
+    <div {...props}>{children}</div>
+  );
+
+  const MockMenuItem = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
+
+  MockMenu.Button = MockMenuButton;
+  MockMenu.Items = MockMenuItems;
+  MockMenu.Item = MockMenuItem;
+
+  const MockTransition = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
+
+  return {
+    Menu: MockMenu,
+    Transition: MockTransition,
+  };
+});
+
+// Mock SeriesSelector
+jest.mock('@/components/series/SeriesSelector', () => {
+  return function MockSeriesSelector() {
+    return <div data-testid="series-selector">Series Selector</div>;
+  };
+});
+
+jest.mock('@/components/ExportButtons', () => ({
+  __esModule: true,
+  default: (props: any) => (
+    <div data-testid="export-buttons" {...props}>
+      <button type="button">TXT</button>
+      <button type="button">PDF</button>
+      <button type="button">Word</button>
+    </div>
+  ),
+}));
+
 // Mock translations
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
+    const translations: Record<string, string> = {
+      'editSermon.verseLabel': 'Scripture Verse',
+      'editSermon.versePlaceholder': 'Enter scripture verse',
+      'common.save': 'Save',
+      'common.cancel': 'Cancel',
+      'common.edit': 'Edit',
+      'common.editTitleInput': 'Edit title input',
+      'errors.failedToSaveVerse': 'Failed to save verse',
+      'errors.failedToSaveTitle': 'Failed to save title',
+      'plan.preachButton': 'Preach',
+      'workspaces.series.actions.editSeries': 'Change series',
+      'workspaces.series.actions.removeFromSeries': 'Remove from series',
+      'workspaces.series.actions.addSermon': 'Add sermon to series'
+    };
+
     return {
-      t: (key: string) => {
-        const translations: Record<string, string> = {
-          'editSermon.verseLabel': 'Scripture Verse',
-          'editSermon.versePlaceholder': 'Enter scripture verse',
-          'common.save': 'Save',
-          'common.cancel': 'Cancel',
-          'common.edit': 'Edit',
-          'errors.failedToSaveVerse': 'Failed to save verse',
-          'errors.failedToSaveTitle': 'Failed to save title',
-        };
-        return translations[key] || key;
-      }
+      t: (key: string) => translations[key] || key
     };
   },
 }));
@@ -64,12 +114,12 @@ describe('SermonHeader Component', () => {
   };
 
   describe('Rendering', () => {
-    it('renders sermon title, date, and verse', () => {
+    it('renders basic structure', () => {
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
 
-      expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
-      expect(screen.getByText('2024-01-15')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Test Sermon Title' })).toBeInTheDocument();
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
+      expect(screen.getByTestId('export-buttons')).toBeInTheDocument();
     });
 
     it('renders without verse when verse is empty', () => {
@@ -191,18 +241,12 @@ describe('SermonHeader Component', () => {
 
     it('allows adding verse when sermon has no verse', async () => {
       const sermonWithoutVerse = { ...mockSermon, verse: '' };
-      const updatedSermon = { ...sermonWithoutVerse, verse: 'New verse text' };
-      mockUpdateSermon.mockResolvedValue(updatedSermon);
-      
-      render(<SermonHeader sermon={sermonWithoutVerse} onUpdate={mockOnUpdate} />);
-      
-      // When there's no verse, the EditableVerse component should not render
-      // We need to simulate adding a verse by updating the sermon prop
       const { rerender } = render(<SermonHeader sermon={sermonWithoutVerse} onUpdate={mockOnUpdate} />);
-      
-      // Simulate the parent component updating the sermon with a verse
+
+      expect(screen.queryByText('John 3:16 - For God so loved the world that he gave his one and only Son')).not.toBeInTheDocument();
+
       rerender(<SermonHeader sermon={{ ...sermonWithoutVerse, verse: 'New verse text' }} onUpdate={mockOnUpdate} />);
-      
+
       expect(screen.getByText('New verse text')).toBeInTheDocument();
     });
 

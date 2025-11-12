@@ -419,6 +419,7 @@
     "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
+    "search": "Search",
     "comingSoon": "Coming Soon",
     "implementedSoon": "Will be implemented soon",
     "addPoint": "Add a point",
@@ -1078,7 +1079,75 @@
         "share": "Share printable or exportable outlines with collaborators."
       },
       "ctaTitle": "Need this sooner?",
-      "ctaDescription": "Share your ideal series workflow via Feedback so we can prioritize the highest-impact pieces."
+      "ctaDescription": "Share your ideal series workflow via Feedback so we can prioritize the highest-impact pieces.",
+      "newSeries": "New Series",
+      "editSeries": "Edit Series",
+      "deleteSeries": "Delete Series",
+      "deleteSeriesConfirm": "Are you sure you want to delete this series? This will not delete the sermons, only remove them from the series.",
+      "noSeries": "No sermon series yet",
+      "createFirstSeries": "Create your first sermon series",
+      "loadingSeries": "Loading series...",
+      "seriesCreated": "Series created successfully",
+      "seriesUpdated": "Series updated successfully",
+      "seriesDeleted": "Series deleted successfully",
+      "sermonAdded": "Sermon added to series",
+      "sermonRemoved": "Sermon removed from series",
+      "sermonsAdded": "Sermon{{count, plural, one {} other {s}}} added to series",
+      "sermonsReordered": "Sermons reordered successfully",
+      "form": {
+        "title": "Series Title",
+        "titlePlaceholder": "e.g., Book of Romans",
+        "theme": "Theme",
+        "themePlaceholder": "e.g., Grace and Law",
+        "description": "Description",
+        "descriptionPlaceholder": "Brief description of the series...",
+        "bookOrTopic": "Book/Topic",
+        "bookOrTopicPlaceholder": "e.g., Romans",
+        "duration": "Duration (weeks)",
+        "startDate": "Start Date",
+        "color": "Theme Color",
+        "status": "Status",
+        "statuses": {
+          "draft": "Draft",
+          "active": "Active",
+          "completed": "Completed"
+        }
+      },
+      "actions": {
+        "createSeries": "Create Series",
+        "saveChanges": "Save Changes",
+        "cancel": "Cancel",
+        "addSermon": "Add Sermon",
+        "removeFromSeries": "Remove from Series",
+        "editSeries": "Edit Series",
+        "viewSeries": "View Series",
+        "selectSermons": "Select Sermons"
+      },
+      "detail": {
+        "sermonsInSeries": "Sermons in this series",
+        "noSermons": "No sermons in this series yet",
+        "addSermons": "Add sermons to get started",
+        "dragToReorder": "Drag sermons to reorder them",
+        "sermonCount": "{{count}} sermon(s)",
+        "completedCount": "{{completed}} of {{total}} completed"
+      },
+      "filters": {
+        "allSermons": "All Sermons",
+        "inSeries": "In Series",
+        "standalone": "Standalone"
+      },
+      "badges": {
+        "partOfSeries": "Part of Series",
+        "seriesName": "Series: {{title}}"
+      },
+      "errors": {
+        "createFailed": "Failed to create series",
+        "updateFailed": "Failed to update series",
+        "deleteFailed": "Failed to delete series",
+        "addSermonFailed": "Failed to add sermon to series",
+        "removeSermonFailed": "Failed to remove sermon from series",
+        "reorderFailed": "Failed to reorder sermons"
+      }
     },
     "studies": {
       "badge": "Preview",

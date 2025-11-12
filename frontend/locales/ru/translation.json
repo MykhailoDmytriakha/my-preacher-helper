@@ -419,6 +419,7 @@
     "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
+    "search": "Поиск",
     "comingSoon": "Скоро будет доступно",
     "implementedSoon": "Скоро будет реализовано",
     "addPoint": "Добавить пункт",
@@ -1078,7 +1079,75 @@
         "share": "Делитесь печатными или цифровыми конспектами с помощниками."
       },
       "ctaTitle": "Нужно быстрее?",
-      "ctaDescription": "Расскажите через Feedback, как выглядит ваша идеальная работа с сериями, и мы поднимем её в приоритет."
+      "ctaDescription": "Расскажите через Feedback, как выглядит ваша идеальная работа с сериями, и мы поднимем её в приоритет.",
+      "newSeries": "Новая серия",
+      "editSeries": "Редактировать серию",
+      "deleteSeries": "Удалить серию",
+      "deleteSeriesConfirm": "Вы уверены, что хотите удалить эту серию? Это не удалит проповеди, только снимет их из серии.",
+      "noSeries": "Пока нет серий проповедей",
+      "createFirstSeries": "Создайте свою первую серию проповедей",
+      "loadingSeries": "Загрузка серий...",
+      "seriesCreated": "Серия создана успешно",
+      "seriesUpdated": "Серия обновлена успешно",
+      "seriesDeleted": "Серия удалена успешно",
+      "sermonAdded": "Проповедь добавлена в серию",
+      "sermonRemoved": "Проповедь удалена из серии",
+      "sermonsAdded": "Проповед{{count, plural, one {ь} few {и} other {ей}}} добавлен{{count, plural, one {а} few {о} other {о}}} в серию",
+      "sermonsReordered": "Проповеди переупорядочены успешно",
+      "form": {
+        "title": "Название серии",
+        "titlePlaceholder": "например, Книга Римлянам",
+        "theme": "Тема",
+        "themePlaceholder": "например, Благодать и Закон",
+        "description": "Описание",
+        "descriptionPlaceholder": "Краткое описание серии...",
+        "bookOrTopic": "Книга/Тема",
+        "bookOrTopicPlaceholder": "например, Римлянам",
+        "duration": "Длительность (недели)",
+        "startDate": "Дата начала",
+        "color": "Цвет темы",
+        "status": "Статус",
+        "statuses": {
+          "draft": "Черновик",
+          "active": "Активная",
+          "completed": "Завершена"
+        }
+      },
+      "actions": {
+        "createSeries": "Создать серию",
+        "saveChanges": "Сохранить изменения",
+        "cancel": "Отмена",
+        "addSermon": "Добавить проповедь",
+        "removeFromSeries": "Удалить из серии",
+        "editSeries": "Редактировать серию",
+        "viewSeries": "Просмотреть серию",
+        "selectSermons": "Выбрать проповеди"
+      },
+      "detail": {
+        "sermonsInSeries": "Проповеди в этой серии",
+        "noSermons": "Пока нет проповедей в этой серии",
+        "addSermons": "Добавьте проповеди для начала",
+        "dragToReorder": "Перетаскивайте проповеди для изменения порядка",
+        "sermonCount": "{{count}} проповедь(ей)",
+        "completedCount": "{{completed}} из {{total}} завершено"
+      },
+      "filters": {
+        "allSermons": "Все проповеди",
+        "inSeries": "В сериях",
+        "standalone": "Отдельные"
+      },
+      "badges": {
+        "partOfSeries": "Часть серии",
+        "seriesName": "Серия: {{title}}"
+      },
+      "errors": {
+        "createFailed": "Не удалось создать серию",
+        "updateFailed": "Не удалось обновить серию",
+        "deleteFailed": "Не удалось удалить серию",
+        "addSermonFailed": "Не удалось добавить проповедь в серию",
+        "removeSermonFailed": "Не удалось удалить проповедь из серии",
+        "reorderFailed": "Не удалось переупорядочить проповеди"
+      }
     },
     "studies": {
       "badge": "Превью",

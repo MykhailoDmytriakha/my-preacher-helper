@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 import useSermon from '@/hooks/useSermon';
+import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 
 type BreadcrumbItem = {
   label: string;
@@ -99,8 +100,20 @@ export default function Breadcrumbs() {
     return null;
   }, [pathname, searchParams]);
 
+  // Get seriesId from URL
+  const seriesId = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'series' && segments[1]) {
+      return segments[1];
+    }
+    return null;
+  }, [pathname]);
+
   // Get sermon data if we have sermonId
   const { sermon } = useSermon(sermonId || '');
+
+  // Get series data if we have seriesId
+  const { series } = useSeriesDetail(seriesId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (!pathname || pathname === '/' || pathname === '/dashboard') {
@@ -156,6 +169,16 @@ export default function Breadcrumbs() {
           return;
         }
 
+        // Special handling for series/[id] with series context
+        if (parent === 'series' && series) {
+          crumbs.push({
+            label: series.title || `Series ${series.id.slice(-4)}`,
+            href: isLast ? undefined : currentPath,
+            isCurrent: isLast
+          });
+          return;
+        }
+
         const detailLabel = t(detailParents[parent].labelKey, {
           defaultValue: detailParents[parent].defaultLabel
         });
@@ -176,7 +199,7 @@ export default function Breadcrumbs() {
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, t, sermon, searchParams]);
+  }, [pathname, t, sermon, series, searchParams]);
 
   if (items.length <= 1) {
     return null;

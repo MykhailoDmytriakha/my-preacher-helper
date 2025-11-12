@@ -33,6 +33,9 @@ describe('AmbiguousSection', () => {
     onToggleVisibility: jest.fn(),
     onEdit: jest.fn(),
     onDelete: jest.fn(),
+    deletingItemId: null,
+    activeId: null,
+    focusedColumn: null,
     columnTitle: 'Unassigned'
   };
 

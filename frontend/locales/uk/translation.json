@@ -419,6 +419,7 @@
     "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із {{threshold}}"
   },
   "common": {
+    "search": "Пошук",
     "comingSoon": "Скоро буде доступно",
     "implementedSoon": "Буде реалізовано найближчим часом",
     "addPoint": "Додати пункт",
@@ -1078,7 +1079,75 @@
         "share": "Діліться друкованими або цифровими конспектами з командою."
       },
       "ctaTitle": "Потрібно раніше?",
-      "ctaDescription": "Розкажіть через Feedback про свій ідеальний процес роботи з серіями, і ми підвищимо пріоритет."
+      "ctaDescription": "Розкажіть через Feedback про свій ідеальний процес роботи з серіями, і ми підвищимо пріоритет.",
+      "newSeries": "Нова серія",
+      "editSeries": "Редагувати серію",
+      "deleteSeries": "Видалити серію",
+      "deleteSeriesConfirm": "Ви впевнені, що хочете видалити цю серію? Це не видалить проповіді, тільки зніме їх із серії.",
+      "noSeries": "Поки немає серій проповідей",
+      "createFirstSeries": "Створіть свою першу серію проповідей",
+      "loadingSeries": "Завантаження серій...",
+      "seriesCreated": "Серія створена успішно",
+      "seriesUpdated": "Серія оновлена успішно",
+      "seriesDeleted": "Серія видалена успішно",
+      "sermonAdded": "Проповідь додана до серії",
+      "sermonRemoved": "Проповідь видалена із серії",
+      "sermonsAdded": "Проповід{{count, plural, one {ь} few {і} other {ей}}} дода{{count, plural, one {на} few {но} other {но}}} до серії",
+      "sermonsReordered": "Проповіді переупорядковані успішно",
+      "form": {
+        "title": "Назва серії",
+        "titlePlaceholder": "наприклад, Книга Римлян",
+        "theme": "Тема",
+        "themePlaceholder": "наприклад, Благодать і Закон",
+        "description": "Опис",
+        "descriptionPlaceholder": "Короткий опис серії...",
+        "bookOrTopic": "Книга/Тема",
+        "bookOrTopicPlaceholder": "наприклад, Римлян",
+        "duration": "Тривалість (тижні)",
+        "startDate": "Дата початку",
+        "color": "Колір теми",
+        "status": "Статус",
+        "statuses": {
+          "draft": "Чернетка",
+          "active": "Активна",
+          "completed": "Завершена"
+        }
+      },
+      "actions": {
+        "createSeries": "Створити серію",
+        "saveChanges": "Зберегти зміни",
+        "cancel": "Скасувати",
+        "addSermon": "Додати проповідь",
+        "removeFromSeries": "Видалити із серії",
+        "editSeries": "Редагувати серію",
+        "viewSeries": "Переглянути серію",
+        "selectSermons": "Вибрати проповіді"
+      },
+      "detail": {
+        "sermonsInSeries": "Проповіді в цій серії",
+        "noSermons": "Поки немає проповідей у цій серії",
+        "addSermons": "Додайте проповіді для початку",
+        "dragToReorder": "Перетягуйте проповіді для зміни порядку",
+        "sermonCount": "{{count}} проповідь(ей)",
+        "completedCount": "{{completed}} із {{total}} завершено"
+      },
+      "filters": {
+        "allSermons": "Всі проповіді",
+        "inSeries": "У серіях",
+        "standalone": "Окремі"
+      },
+      "badges": {
+        "partOfSeries": "Частина серії",
+        "seriesName": "Серія: {{title}}"
+      },
+      "errors": {
+        "createFailed": "Не вдалося створити серію",
+        "updateFailed": "Не вдалося оновити серію",
+        "deleteFailed": "Не вдалося видалити серію",
+        "addSermonFailed": "Не вдалося додати проповідь до серії",
+        "removeSermonFailed": "Не вдалося видалити проповідь із серії",
+        "reorderFailed": "Не вдалося переупорядкувати проповіді"
+      }
     },
     "studies": {
       "badge": "Прев'ю",

@@ -7,7 +7,7 @@ alwaysApply: true
 ### EXECUTION COMMANDS - STRICTLY FORBIDDEN
 **UNDER NO CIRCUMSTANCES execute these commands:**
 - **`npm run dev`** → NEVER run this command. Development server management is handled exclusively by the user.
-- **`npm run build`** → NEVER run this command. Build processes are managed exclusively by the user.
+- **`npm run build`** → NEVER run this command. Build processes are managed exclusively by the user. Or from user direct instruction.
 
 **CONSEQUENCES:** Executing these commands will cause immediate environment conflicts and break the user's development workflow.
 

@@ -76,6 +76,10 @@ export interface Sermon {
   plan?: Plan;
   isPreached?: boolean;
   preparation?: Preparation;
+
+  // Series integration
+  seriesId?: string;              // Reference to series
+  seriesPosition?: number;        // Order in series (1-indexed)
 }
 
 export interface Preparation {
@@ -133,6 +137,25 @@ export interface Preparation {
     updatedPlan?: { id: string; title: string }[];
     sermonPlan?: { id: string; title: string }[];
   };
+}
+
+export interface Series {
+  id: string;
+  userId: string;
+  title?: string;                 // e.g., "Book of Romans"
+  description?: string;
+  theme: string;                  // e.g., "Grace and Law"
+  bookOrTopic: string;            // "Romans" or "Grace"
+
+  sermonIds: string[];            // Ordered array of sermon IDs
+
+  startDate?: string;             // ISO date
+  duration?: number;              // weeks
+  color?: string;                 // Theme color
+  status: 'draft' | 'active' | 'completed';
+
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ExegeticalPlanNode {

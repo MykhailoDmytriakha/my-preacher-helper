@@ -13,7 +13,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
     title: 'Test Sermon',
     verse: 'John 3:16',
     thoughts: [],
-    structure: {},
+    structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
     userId: 'test-user',
     date: '2023-01-01',
   };
@@ -33,13 +33,13 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
-      expect(result.meaningPreserved).toBe(true);
+      expect(result.meaningSuccessfullyPreserved).toBe(true);
     });
 
     it('should handle multiple revisions in one sentence', async () => {
@@ -50,7 +50,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -68,7 +68,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Заключение'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -84,7 +84,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -102,7 +102,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -118,7 +118,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Вступление'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -136,7 +136,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Вступление'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -152,7 +152,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -170,7 +170,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -186,7 +186,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Вступление'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -204,7 +204,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -220,7 +220,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Вступление'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -238,7 +238,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Заключение'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -254,7 +254,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -272,7 +272,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Заключение'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -288,7 +288,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);
@@ -304,7 +304,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         originalText: dictatedText,
         formattedText: expectedFormatted,
         tags: ['Основная часть'],
-        meaningPreserved: true,
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought(dictatedText, mockSermon, availableTags);

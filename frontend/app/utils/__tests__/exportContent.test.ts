@@ -128,11 +128,11 @@ describe('exportContent', () => {
         {
           name: 'empty sermon and no-thoughts fallback',
           run: async () => {
-            const emptySermon: Sermon = { id: 'empty', title: '', thoughts: [], outline: {}, structure: {} };
+            const emptySermon: Sermon = { id: 'empty', title: '', thoughts: [], outline: { introduction: [], main: [], conclusion: [] }, structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
             const emptyResult = await getExportContent(emptySermon);
             expect(typeof emptyResult).toBe('string');
 
-            const noThoughtsSermon: Sermon = { id: 'no-thoughts', title: 'No Thoughts Sermon', thoughts: [], outline: {}, structure: {} };
+            const noThoughtsSermon: Sermon = { id: 'no-thoughts', title: 'No Thoughts Sermon', thoughts: [], outline: { introduction: [], main: [], conclusion: [] }, structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
             const noThoughtsResult = await getExportContent(noThoughtsSermon);
             expect(noThoughtsResult).toContain('No Thoughts Sermon');
           },
@@ -145,7 +145,7 @@ describe('exportContent', () => {
         {
           name: 'verse omissions',
           run: async () => {
-            const noVerse = await getExportContent({ ...mockSermon, verse: undefined });
+            const noVerse = await getExportContent({ ...mockSermon, verse: '' });
             expect(noVerse).not.toContain('John 3:16');
 
             const emptyVerse = await getExportContent({ ...mockSermon, verse: '   ' });
@@ -223,31 +223,31 @@ describe('exportContent', () => {
 
             const noTagSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...thoughtsBase, { id: 'no-tag', text: 'No tag thought', tags: [] }],
+              thoughts: [...thoughtsBase, { id: 'no-tag', text: 'No tag thought', tags: [], date: '2024-01-04' }],
             };
             expect(await getExportContent(noTagSermon)).toContain('No tag thought');
 
             const customTagSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...thoughtsBase, { id: 'custom', text: 'Custom tag thought', tags: ['custom-tag'] }],
+              thoughts: [...thoughtsBase, { id: 'custom', text: 'Custom tag thought', tags: ['custom-tag'], date: '2024-01-05' }],
             };
             expect(await getExportContent(customTagSermon)).toContain('Custom tag thought');
 
             const emptyTagsSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...thoughtsBase, { id: 'empty-tags', text: 'Empty tags thought', tags: [] }],
+              thoughts: [...thoughtsBase, { id: 'empty-tags', text: 'Empty tags thought', tags: [], date: '2024-01-06' }],
             };
             expect(await getExportContent(emptyTagsSermon)).toContain('Empty tags thought');
 
             const undefinedTagsSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...thoughtsBase, { id: 'undefined-tags', text: 'Undefined tags thought', tags: undefined as any }],
+              thoughts: [...thoughtsBase, { id: 'undefined-tags', text: 'Undefined tags thought', tags: undefined as any, date: '2024-01-07' }],
             };
             expect(await getExportContent(undefinedTagsSermon)).toContain('Undefined tags thought');
 
             const nullTagsSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...thoughtsBase, { id: 'null-tags', text: 'Null tags thought', tags: null as any }],
+              thoughts: [...thoughtsBase, { id: 'null-tags', text: 'Null tags thought', tags: null as any, date: '2024-01-08' }],
             };
             expect(await getExportContent(nullTagsSermon)).toContain('Null tags thought');
           },

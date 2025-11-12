@@ -1,4 +1,6 @@
-  describe('Thought model with forceTag', () => {
+import { Thought, OutlinePoint } from '@/models/models';
+
+describe('Thought model with forceTag', () => {
     it('should have forceTag as optional property', () => {
       const thought: Thought = {
         id: 'thought-1',

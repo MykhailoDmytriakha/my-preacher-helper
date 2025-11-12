@@ -36,7 +36,7 @@ describe('Column mic popover and focus button', () => {
     outlinePoints: [],
     isFocusMode: false,
     thoughtsPerOutlinePoint: {},
-  } as const;
+  };
 
   it('shows focus button for main and conclusion', () => {
     const { rerender } = render(

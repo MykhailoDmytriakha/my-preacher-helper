@@ -36,9 +36,14 @@ jest.mock('@components/ExportButtons', () => {
   };
 });
 
+jest.mock('@/components/dashboard/QuickPlanAccessButton', () => ({
+  QuickPlanAccessButton: () => <div data-testid="quick-plan-access-button">Quick Plan Access</div>,
+}));
+
 // Mock the Icons component
 jest.mock('@components/Icons', () => ({
   DocumentIcon: () => <div data-testid="document-icon" />,
+  ChevronIcon: () => <div data-testid="chevron-icon" />,
 }));
 
 // Mock utility functions

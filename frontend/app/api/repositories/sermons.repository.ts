@@ -123,6 +123,43 @@ export class SermonsRepository {
       throw error;
     }
   }
+
+  async updateSermonSeriesInfo(sermonId: string, seriesId: string | null, position: number | null): Promise<void> {
+    console.log(`Updating sermon series info for sermon ${sermonId}`);
+
+    try {
+      const docRef = adminDb.collection("sermons").doc(sermonId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        console.error(`Sermon with id ${sermonId} not found in Firestore`);
+        throw new Error("Sermon not found");
+      }
+
+      // Prepare update data
+      const updateData: { seriesId?: string | null; seriesPosition?: number | null } = {};
+
+      if (seriesId !== undefined) {
+        updateData.seriesId = seriesId;
+      }
+
+      if (position !== undefined) {
+        updateData.seriesPosition = position;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        console.log(`No series info updates needed for sermon ${sermonId}`);
+        return;
+      }
+
+      // Update the sermon document
+      await docRef.update(updateData);
+      console.log(`Sermon series info updated for sermon id ${sermonId}`);
+    } catch (error) {
+      console.error(`Error updating sermon series info for sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

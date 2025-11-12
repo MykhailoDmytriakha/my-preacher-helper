@@ -271,7 +271,7 @@ describe('SermonsRepository', () => {
             }
           }
         ],
-        { beforeEachScenario: () => mockDelete.mockResolvedValue({}) }
+        { beforeEachScenario: () => { mockDelete.mockResolvedValue({}); } }
       );
     });
   });
