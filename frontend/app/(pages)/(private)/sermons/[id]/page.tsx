@@ -9,6 +9,8 @@ import type { Sermon, Thought, Outline, Preparation, BrainstormSuggestion } from
 import Link from "next/link";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
+import { useSeries } from "@/hooks/useSeries";
+import { useAuth } from "@/providers/AuthProvider";
 
 import AddThoughtManual from "@components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
@@ -92,6 +94,8 @@ export default function SermonPage() {
   }, []);
   
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const { series } = useSeries(user?.uid || null);
   
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
@@ -1021,7 +1025,7 @@ export default function SermonPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
-        <SermonHeader sermon={sermon} onUpdate={handleSermonUpdate} />
+        <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
         {/* Mobile-first placement of Structure section between header and audio */}
         <div className="lg:hidden">
           <StructureStats 

@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
-import type { Sermon } from '@/models/models';
+import type { Sermon, Series } from '@/models/models';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
@@ -14,15 +14,17 @@ import { EllipsisVerticalIcon, PlusIcon, ArrowPathIcon, XMarkIcon } from '@heroi
 import { ScrollText } from 'lucide-react';
 import { Menu, Transition } from '@headlessui/react';
 import SeriesSelector from '@/components/series/SeriesSelector';
+import Link from 'next/link';
 
 export interface SermonHeaderProps {
   sermon: Sermon;
+  series?: Series[]; // Series data for displaying badge
   onUpdate?: (updatedSermon: Sermon) => void; // Callback for successful update
   uiMode?: 'classic' | 'prep';
   onToggleMode?: () => void;
 }
 
-const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
+const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate }) => {
   const { t } = useTranslation();
   const formattedDate = formatDate(sermon.date);
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
@@ -104,16 +106,59 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
     }
   };
 
+  // Find series for this sermon
+  const sermonSeries = (() => {
+    // First, check if sermon has seriesId
+    if (sermon.seriesId && sermon.seriesId.trim()) {
+      const found = series.find(s => s.id === sermon.seriesId);
+      if (found) return found;
+    }
+    
+    // Fallback: check if sermon is in any series' sermonIds
+    return series.find(s => s.sermonIds?.includes(sermon.id));
+  })();
+
   return (
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-      {/* Left side: Title, Date, Verse */}
+      {/* Left side: Title, Date, Series Badge, Verse */}
       <div className="flex-grow">
         <EditableTitle 
           initialTitle={sermon.title}
           onSave={handleSaveSermonTitle}
         />
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
+          
+          {/* Series Badge */}
+          {sermonSeries && (
+            <Link
+              href={`/series/${sermonSeries.id}`}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${
+                sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+              }`}
+              style={sermonSeries.color ? {
+                backgroundColor: sermonSeries.color,
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.2)'
+              } : {}}
+              title={`${t('workspaces.series.badges.partOfSeries')}: ${sermonSeries.title}`}
+            >
+              <svg 
+                className="w-3 h-3" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
+                />
+              </svg>
+              <span>{sermonSeries.title}</span>
+            </Link>
+          )}
         </div>
         <div className="mt-2">
           <EditableVerse 
