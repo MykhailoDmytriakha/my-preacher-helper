@@ -9,6 +9,9 @@ import { Sermon } from '@/models/models';
 import { PlusIcon } from "@components/Icons";
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+import { useSeries } from '@/hooks/useSeries';
+import { useAuth } from '@/providers/AuthProvider';
+import { addSermonToSeries } from '@services/series.service';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;
@@ -16,9 +19,12 @@ interface AddSermonModalProps {
 
 export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const { series } = useSeries(user?.uid || null);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>('');
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,11 +40,23 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
       verse,
       date: new Date().toISOString(),
       thoughts: [],
-      userId: user.uid
+      userId: user.uid,
+      seriesId: selectedSeriesId || undefined
     };
 
     try {
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
+
+      // If a series was selected, add the sermon to the series
+      if (selectedSeriesId) {
+        try {
+          await addSermonToSeries(selectedSeriesId, createdSermon.id);
+        } catch (seriesError) {
+          console.error('Error adding sermon to series:', seriesError);
+          // Don't fail the entire operation if series assignment fails
+        }
+      }
+
       if (onNewSermonCreated) {
         onNewSermonCreated(createdSermon);
       }
@@ -49,6 +67,7 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
     
     setTitle('');
     setVerse('');
+    setSelectedSeriesId('');
     setOpen(false);
 
   };
@@ -95,6 +114,24 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {t('addSermon.verseExample')}
             </p>
+          </div>
+          <div className="mb-6">
+            <label htmlFor="series" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+              {t('addSermon.seriesLabel')}
+            </label>
+            <select
+              id="series"
+              value={selectedSeriesId}
+              onChange={(e) => setSelectedSeriesId(e.target.value)}
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">{t('addSermon.noSeriesOption')}</option>
+              {series.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.title || s.theme}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex justify-end gap-3 mt-auto">
             <button 

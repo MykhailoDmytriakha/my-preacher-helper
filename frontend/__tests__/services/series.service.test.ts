@@ -20,6 +20,8 @@ describe('Series Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockClear();
+    // Mock NEXT_PUBLIC_API_BASE to be undefined for consistent test behavior
+    delete process.env.NEXT_PUBLIC_API_BASE;
   });
 
   describe('getAllSeries', () => {

@@ -46,12 +46,20 @@ export async function POST(request: Request) {
     const title = sermon.title;
     const verse = sermon.verse;
     const date = sermon.date;
+    const seriesId = sermon.seriesId;
+    const seriesPosition = sermon.seriesPosition;
     if (!userId || !title || !verse || !date) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
     // Use the Admin SDK to add a document to Firestore - this bypasses security rules
-    const sermonData = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
+    const sermonData: any = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
+    if (seriesId) {
+      sermonData.seriesId = seriesId;
+    }
+    if (seriesPosition) {
+      sermonData.seriesPosition = seriesPosition;
+    }
     const docRef = await adminDb.collection('sermons').add(sermonData);
     console.log("Sermon written with ID:", docRef.id);
     

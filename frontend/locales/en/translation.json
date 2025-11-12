@@ -72,6 +72,9 @@
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
     "verseExample": "Example:\nEph 1:15: \"For this reason, ever since I heard about your faith in Christ Jesus...\"",
+    "seriesLabel": "Add to Series (Optional)",
+    "seriesPlaceholder": "Select a series...",
+    "noSeriesOption": "No series",
     "cancel": "Cancel",
     "save": "Save"
   },
