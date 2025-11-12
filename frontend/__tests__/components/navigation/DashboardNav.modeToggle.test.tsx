@@ -18,7 +18,7 @@ let paramsMap: Record<string, string | undefined> = {};
 const OLD_ENV = process.env;
 const resetScenario = () => {
   jest.clearAllMocks();
-  process.env = { ...OLD_ENV, NEXT_PUBLIC_WIZARD_DEV_MODE: 'true' };
+  process.env = { ...OLD_ENV };
   replaceMock.mockReset();
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
@@ -51,6 +51,11 @@ jest.mock('@/components/navigation/LanguageSwitcher', () => ({ __esModule: true,
 jest.mock('@/components/navigation/UserProfileDropdown', () => ({ __esModule: true, default: () => <div data-testid="user-dropdown" /> }));
 jest.mock('@/components/navigation/FeedbackModal', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/navigation/MobileMenu', () => ({ __esModule: true, default: () => <div data-testid="mobile-menu" /> }));
+
+// Mock usePrepModeAccess hook
+jest.mock('@/hooks/usePrepModeAccess', () => ({
+  usePrepModeAccess: () => ({ hasAccess: true, loading: false })
+}));
 
 // Mock segmented toggle to a minimal testable version with stable testids
 jest.mock('@/components/navigation/ModeToggle', () => ({

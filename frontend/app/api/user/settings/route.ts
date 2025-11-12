@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName } = body;
+    const { userId, language, email, displayName, enablePrepMode } = body;
     
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -40,12 +40,14 @@ export async function PUT(request: NextRequest) {
     if ('language' in body) updates.language = language;
     if ('email' in body) updates.email = email;
     if ('displayName' in body) updates.displayName = displayName;
+    if ('enablePrepMode' in body) updates.enablePrepMode = enablePrepMode;
     
     await userSettingsRepository.createOrUpdate(
-      userId, 
-      updates.language as string | undefined, 
-      updates.email as string | undefined, 
-      updates.displayName as string | undefined
+      userId,
+      updates.language as string | undefined,
+      updates.email as string | undefined,
+      updates.displayName as string | undefined,
+      updates.enablePrepMode as boolean | undefined
     );
     
     return NextResponse.json({ success: true });
@@ -62,7 +64,7 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName } = body;
+    const { userId, language, email, displayName, enablePrepMode } = body;
     
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
@@ -72,10 +74,11 @@ export async function POST(request: NextRequest) {
     const langToUse = 'language' in body ? language : 'en';
     
     await userSettingsRepository.createOrUpdate(
-      userId, 
+      userId,
       langToUse,
       'email' in body ? email : undefined,
-      'displayName' in body ? displayName : undefined
+      'displayName' in body ? displayName : undefined,
+      'enablePrepMode' in body ? enablePrepMode : undefined
     );
     
     return NextResponse.json({ success: true });

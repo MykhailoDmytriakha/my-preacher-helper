@@ -10,6 +10,7 @@ import MobileMenu from "@/components/navigation/MobileMenu";
 import FeedbackModal from "@/components/navigation/FeedbackModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
+import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import "@locales/i18n";
 import ModeToggle from './ModeToggle';
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
@@ -17,12 +18,14 @@ import { primaryNavItems, isNavItemActive } from '@/components/navigation/navCon
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
-  const { 
-    showFeedbackModal, 
-    handleFeedbackClick, 
-    closeFeedbackModal, 
-    handleSubmitFeedback 
+  const {
+    showFeedbackModal,
+    handleFeedbackClick,
+    closeFeedbackModal,
+    handleSubmitFeedback
   } = useFeedback();
+  const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
+  console.log('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navDropdownOpen, setNavDropdownOpen] = useState(false);
   const pathname = usePathname();
@@ -46,7 +49,6 @@ export default function DashboardNav() {
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
   const isDashboard = pathname === '/dashboard';
-  const showWizardButton = process.env.NEXT_PUBLIC_WIZARD_DEV_MODE === 'true';
   
   // Get current mode directly from URL params for immediate response
   const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
@@ -194,7 +196,7 @@ export default function DashboardNav() {
           <div className="flex-1" />
 
           {/* Center: Mode toggle (desktop) */}
-          {showWizardButton && isSermonRoot && (
+          {showWizardButton && isSermonRelated && (
             <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
           )}
 

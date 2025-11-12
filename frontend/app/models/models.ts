@@ -194,6 +194,7 @@ export interface UserSettings {
   userId: string;
   language: string;
   isAdmin: boolean;
+  enablePrepMode?: boolean;  // NEW: Per-user prep mode access
   email?: string;
   displayName?: string;
 }

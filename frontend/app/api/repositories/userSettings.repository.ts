@@ -37,9 +37,10 @@ export class UserSettingsRepository {
    * @param language Preferred language (optional)
    * @param email User email (optional)
    * @param displayName User display name (optional)
+   * @param enablePrepMode Enable prep mode access (optional)
    * @returns ID of the created or updated document
    */
-  async createOrUpdate(userId: string, language?: string, email?: string, displayName?: string): Promise<string> {
+  async createOrUpdate(userId: string, language?: string, email?: string, displayName?: string, enablePrepMode?: boolean): Promise<string> {
     try {
       const docRef = adminDb.collection(this.collection).doc(userId);
       const doc = await docRef.get();
@@ -51,6 +52,7 @@ export class UserSettingsRepository {
       if (language !== undefined) allowedUpdates.language = language;
       if (email !== undefined) allowedUpdates.email = email;
       if (displayName !== undefined) allowedUpdates.displayName = displayName;
+      if (enablePrepMode !== undefined) allowedUpdates.enablePrepMode = enablePrepMode;
 
       // If no fields to update, return early
       if (Object.keys(allowedUpdates).length === 0) {

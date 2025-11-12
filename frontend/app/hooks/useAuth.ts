@@ -8,6 +8,7 @@ import { useAuth as useAuthProvider } from '@/providers/AuthProvider';
 
 export function useAuth() {
   const { user, loading } = useAuthProvider();
+  console.log('🔐 useAuth: user:', user?.uid, 'loading:', loading);
   const router = useRouter();
   const { i18n } = useTranslation();
 

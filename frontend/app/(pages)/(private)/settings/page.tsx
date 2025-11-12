@@ -6,6 +6,7 @@ import { auth } from "@services/firebaseAuth.service";
 import { useTranslation } from 'react-i18next';
 import UserSettingsSection from "@/components/settings/UserSettingsSection";
 import TagsSection from "@/components/settings/TagsSection";
+import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
 import SettingsNav from "@components/settings/SettingsNav";
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
@@ -38,11 +39,21 @@ export default function SettingsPage() {
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'user':
-        return <UserSettingsSection user={user} />;
+        return (
+          <div className="space-y-6">
+            <UserSettingsSection user={user} />
+            <PrepModeToggle />
+          </div>
+        );
       case 'tags':
         return <TagsSection user={user} />;
       default:
-        return <UserSettingsSection user={user} />;
+        return (
+          <div className="space-y-6">
+            <UserSettingsSection user={user} />
+            <PrepModeToggle />
+          </div>
+        );
     }
   };
 

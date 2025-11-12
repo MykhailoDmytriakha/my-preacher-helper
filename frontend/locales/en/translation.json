@@ -154,6 +154,10 @@
     "backToDashboard": "Back to Dashboard",
     "title": "Settings",
     "userSettings": "User Settings",
+    "prepMode": {
+      "title": "Preparation Mode (Beta)",
+      "description": "Enable access to the new preparation mode workflow"
+    },
     "manageTags": "Tag Management",
     "displayName": "Display Name",
     "noDisplayName": "No display name set",

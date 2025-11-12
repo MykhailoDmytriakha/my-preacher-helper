@@ -201,16 +201,70 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     if (!userId) {
       return null;
     }
-    
+
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch user settings: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     return data.settings;
   } catch (error) {
     console.error('Error getting user settings:', error);
     return null;
+  }
+}
+
+/**
+ * Update user's prep mode feature flag
+ * @param userId The user ID
+ * @param enabled Whether prep mode should be enabled
+ */
+export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
+  try {
+    if (!userId) return;
+
+    const response = await fetch('/api/user/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, enablePrepMode: enabled }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update prep mode access: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating prep mode access:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if user has access to prep mode
+ * @param userId The user ID
+ * @returns Boolean indicating if user has prep mode access
+ */
+export async function hasPrepModeAccess(userId: string): Promise<boolean> {
+  try {
+    console.log('🔍 hasPrepModeAccess: called with userId:', userId);
+    // For guest users (no userId): Always return true
+    if (!userId) {
+      console.log('👤 hasPrepModeAccess: guest user, returning true');
+      return true;
+    }
+
+    console.log('👤 hasPrepModeAccess: authenticated user, fetching settings...');
+    // For authenticated users: check settings.enablePrepMode, default to false
+    const settings = await getUserSettings(userId);
+    console.log('📊 hasPrepModeAccess: fetched settings:', settings);
+    const access = settings?.enablePrepMode || false;
+    console.log('✅ hasPrepModeAccess: access result:', access);
+    return access;
+  } catch (error) {
+    console.error('❌ hasPrepModeAccess: Error checking prep mode access:', error);
+    // On error, default to false for authenticated users
+    return false;
   }
 } 
