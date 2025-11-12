@@ -89,9 +89,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, onUpdate }) => {
         />
         <div className="flex items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
-          <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded dark:bg-gray-600 dark:text-gray-300">
-            ID: {sermon.id}
-          </span>
         </div>
         <div className="mt-2">
           <EditableVerse 

@@ -66,11 +66,10 @@ describe('SermonHeader Component', () => {
   describe('Rendering', () => {
     it('renders sermon title, date, and verse', () => {
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
       expect(screen.getByText('2024-01-15')).toBeInTheDocument();
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
-      expect(screen.getByText('ID: test-sermon-id')).toBeInTheDocument();
     });
 
     it('renders without verse when verse is empty', () => {

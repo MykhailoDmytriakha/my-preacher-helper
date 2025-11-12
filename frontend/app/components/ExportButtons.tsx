@@ -18,6 +18,7 @@ interface ExportButtonsLayoutProps {
   onWordClick: () => void;
   orientation?: "horizontal" | "vertical";
   isPdfAvailable?: boolean;
+  isPreached?: boolean;
 }
 
 export function ExportButtonsLayout({
@@ -26,6 +27,7 @@ export function ExportButtonsLayout({
   onWordClick,
   orientation = "horizontal",
   isPdfAvailable = false,
+  isPreached = false,
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
@@ -34,7 +36,11 @@ export function ExportButtonsLayout({
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       <button
         onClick={onTxtClick}
-        className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex-1 sm:flex-none text-center"
+        className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${
+          isPreached
+            ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300'
+            : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'
+        }`}
       >
         TXT
       </button>
@@ -43,7 +49,13 @@ export function ExportButtonsLayout({
         <button
           onClick={onPdfClick}
           disabled={!isPdfAvailable}
-          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 rounded-md ${!isPdfAvailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-purple-200 dark:hover:bg-purple-800'} w-full`}
+          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md w-full ${
+            isPreached
+              ? isPdfAvailable
+                ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-purple-100 hover:text-purple-600 dark:hover:bg-purple-900 dark:hover:text-purple-300'
+                : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 opacity-50 cursor-not-allowed'
+              : `bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 ${!isPdfAvailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-purple-200 dark:hover:bg-purple-800'}`
+          }`}
           aria-label={isPdfAvailable ? "PDF export" : "PDF export (coming soon)"}
         >
           PDF
@@ -59,7 +71,11 @@ export function ExportButtonsLayout({
         <button
           onClick={onWordClick}
           disabled={false}
-          className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-800 transition-colors w-full"
+          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${
+            isPreached
+              ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300'
+              : 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800'
+          }`}
           aria-label="Word export"
         >
           Word
@@ -448,6 +464,7 @@ interface ExportButtonsContainerProps {
   onTxtModalClose?: () => void;
   title?: string;
   disabledFormats?: ('txt' | 'pdf' | 'word')[];
+  isPreached?: boolean;
 }
 
 const TooltipStyles = () => (
@@ -529,6 +546,7 @@ export default function ExportButtons({
   onTxtModalClose,
   title = "Export",
   disabledFormats = [],
+  isPreached = false,
 }: ExportButtonsContainerProps) {
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -649,6 +667,7 @@ export default function ExportButtons({
         onWordClick={handleWordClick}
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
+        isPreached={isPreached}
       />
 
       <ExportTxtModal

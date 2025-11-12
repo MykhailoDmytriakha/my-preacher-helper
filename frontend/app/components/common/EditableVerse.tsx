@@ -20,8 +20,8 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   textSizeClass = 'text-sm',
   inputSizeClass = 'text-sm',
   buttonSizeClass = 'w-4 h-4',
-  buttonPaddingClass = 'p-1',
-  containerClass = 'flex items-start gap-2',
+  buttonPaddingClass = 'p-1.5',
+  containerClass = 'flex items-center gap-2 flex-grow min-w-0',
 }) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -162,13 +162,13 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
           </div>
         </div>
       ) : (
-        <div className="flex items-start gap-2 group w-full">
+        <div className="flex items-center gap-2 group min-w-0">
           <p className={`${textSizeClass} text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line break-words flex-grow`}>
             {initialVerse}
           </p>
           <button
             onClick={handleEditClick}
-            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0`}
+            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full`}
             title={t('common.edit')}
           >
             <PencilIcon className={buttonSizeClass} />

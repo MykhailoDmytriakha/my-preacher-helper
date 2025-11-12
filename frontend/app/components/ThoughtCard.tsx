@@ -263,9 +263,6 @@ const ThoughtHeader = memo(({
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {formatDate(thought.date)}
         </span>
-        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
-          ID: {thought.id}
-        </span>
         {thought.tags && thought.tags.length > 0 && (
           <div className="contents">
             <TagsDisplay tags={thought.tags} allowedTags={allowedTags} />
