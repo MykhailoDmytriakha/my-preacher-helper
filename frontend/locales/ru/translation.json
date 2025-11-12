@@ -1120,10 +1120,14 @@
         "createSeries": "Создать серию",
         "saveChanges": "Сохранить изменения",
         "cancel": "Отмена",
-        "addSermon": "Добавить проповедь",
+        "addToSeries": "Добавить в серию",
         "removeFromSeries": "Удалить из серии",
-        "editSeries": "Редактировать серию",
+        "moveToDifferentSeries": "Переместить в серию",
         "viewSeries": "Просмотреть серию",
+        "selectSeries": "Выбрать серию",
+        "selectSeriesForAdd": "Добавить в серию",
+        "selectSeriesForChange": "Изменить серию",
+        "addSermon": "Добавить проповедь",
         "selectSermons": "Выбрать проповеди"
       },
       "detail": {

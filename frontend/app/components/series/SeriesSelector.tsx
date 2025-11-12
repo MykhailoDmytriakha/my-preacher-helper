@@ -12,9 +12,10 @@ interface SeriesSelectorProps {
   onClose: () => void;
   onSelect: (seriesId: string) => void;
   currentSeriesId?: string | null;
+  mode?: 'add' | 'change';
 }
 
-export default function SeriesSelector({ onClose, onSelect, currentSeriesId }: SeriesSelectorProps) {
+export default function SeriesSelector({ onClose, onSelect, currentSeriesId, mode }: SeriesSelectorProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { series, loading } = useSeries(user?.uid || null);
@@ -45,7 +46,12 @@ export default function SeriesSelector({ onClose, onSelect, currentSeriesId }: S
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            {t('workspaces.series.actions.selectSermons')}
+            {mode === 'add'
+              ? t('workspaces.series.actions.selectSeriesForAdd')
+              : mode === 'change'
+                ? t('workspaces.series.actions.selectSeriesForChange')
+                : t('workspaces.series.actions.selectSeries')
+            }
           </h2>
           <button
             onClick={onClose}

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SermonHeader from '@/components/sermon/SermonHeader';
 import { updateSermon } from '@/services/sermon.service';
-import { Sermon } from '@/models/models';
+import { Sermon, Series } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock dependencies
@@ -79,7 +79,8 @@ jest.mock('react-i18next', () => ({
       'plan.preachButton': 'Preach',
       'workspaces.series.actions.editSeries': 'Change series',
       'workspaces.series.actions.removeFromSeries': 'Remove from series',
-      'workspaces.series.actions.addSermon': 'Add sermon to series'
+      'workspaces.series.actions.addSermon': 'Add sermon to series',
+      'workspaces.series.badges.partOfSeries': 'Part of Series'
     };
 
     return {
@@ -318,10 +319,99 @@ describe('SermonHeader Component', () => {
     });
   });
 
+  describe('Series Management', () => {
+    const mockSeries: Series[] = [
+      {
+        id: 'series-1',
+        title: 'Test Series',
+        theme: 'Test Theme',
+        bookOrTopic: 'Test Book',
+        color: '#FF6B6B',
+        userId: 'test-user-id',
+        sermonIds: ['sermon-1'],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    ];
+
+    beforeEach(() => {
+      // Mock series service functions
+      jest.mock('@/services/series.service', () => ({
+        addSermonToSeries: jest.fn(),
+        removeSermonFromSeries: jest.fn()
+      }));
+    });
+
+    it('shows series badge when sermon has seriesId', () => {
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      const seriesBadge = screen.getByText('Test Series');
+      expect(seriesBadge).toBeInTheDocument();
+      expect(seriesBadge.closest('a')).toHaveAttribute('title', 'Part of Series: Test Series');
+    });
+
+    it('does not show series badge when sermon has no seriesId', () => {
+      render(<SermonHeader sermon={mockSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      expect(screen.queryByText('Test Series')).not.toBeInTheDocument();
+      expect(screen.queryByText('Part of Series')).not.toBeInTheDocument();
+    });
+
+    it('renders series management menu when sermon belongs to series', () => {
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      // The menu component should be rendered (it has data-testid="menu" from the mock)
+      expect(screen.getByTestId('menu')).toBeInTheDocument();
+    });
+
+    it('shows series management dropdown when sermon belongs to series', () => {
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      // Should show the dropdown menu button (ellipsis icon)
+      const menuButtons = screen.getAllByRole('button');
+      const ellipsisButton = menuButtons.find(button =>
+        button.querySelector('svg') &&
+        button.querySelector('svg')?.getAttribute('class')?.includes('h-4 w-4')
+      );
+      expect(ellipsisButton).toBeInTheDocument();
+    });
+
+    it('series badge links to series page', () => {
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      const seriesLink = screen.getByRole('link', { name: /Test Series/ });
+      expect(seriesLink).toHaveAttribute('href', '/series/series-1');
+    });
+
+    it('series badge has correct styling with color', () => {
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      const seriesBadge = screen.getByText('Test Series').closest('a');
+      expect(seriesBadge).toHaveStyle({
+        backgroundColor: 'rgb(255, 107, 107)',
+        color: '#ffffff'
+      });
+    });
+
+    it('series badge has default styling when no color', () => {
+      const seriesWithoutColor = [{ ...mockSeries[0], color: undefined }];
+      const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
+      render(<SermonHeader sermon={sermonWithSeries} series={seriesWithoutColor} onUpdate={mockOnUpdate} />);
+
+      const seriesBadge = screen.getByText('Test Series').closest('a');
+      expect(seriesBadge).toHaveClass('bg-blue-100', 'dark:bg-blue-900', 'text-blue-800', 'dark:text-blue-200');
+    });
+  });
+
   describe('Component Integration', () => {
     it('works without onUpdate callback', () => {
       render(<SermonHeader sermon={mockSermon} />);
-      
+
       expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
     });
@@ -329,41 +419,41 @@ describe('SermonHeader Component', () => {
     it('handles multiple rapid edits correctly', async () => {
       const updatedSermon1 = { ...mockSermon, verse: 'First update' };
       const updatedSermon2 = { ...mockSermon, verse: 'Second update' };
-      
+
       mockUpdateSermon
         .mockResolvedValueOnce(updatedSermon1)
         .mockResolvedValueOnce(updatedSermon2);
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       // First edit
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1];
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: 'First update' } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon1);
       });
-      
+
       // Second edit - need to wait for the component to update
       await waitFor(() => {
         const editButtons2 = screen.getAllByTitle('Edit');
         const verseEditButton2 = editButtons2[1];
         fireEvent.click(verseEditButton2);
-        
+
         const verseTextarea2 = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
         fireEvent.change(verseTextarea2, { target: { value: 'Second update' } });
-        
+
         const saveButton2 = screen.getByTitle('Save');
         fireEvent.click(saveButton2);
       });
-      
+
       await waitFor(() => {
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon2);
       });

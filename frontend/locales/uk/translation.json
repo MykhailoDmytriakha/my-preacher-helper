@@ -1120,10 +1120,14 @@
         "createSeries": "Створити серію",
         "saveChanges": "Зберегти зміни",
         "cancel": "Скасувати",
-        "addSermon": "Додати проповідь",
+        "addToSeries": "Додати до серії",
         "removeFromSeries": "Видалити із серії",
-        "editSeries": "Редагувати серію",
+        "moveToDifferentSeries": "Перемістити до серії",
         "viewSeries": "Переглянути серію",
+        "selectSeries": "Вибрати серію",
+        "selectSeriesForAdd": "Додати до серії",
+        "selectSeriesForChange": "Змінити серію",
+        "addSermon": "Додати проповідь",
         "selectSermons": "Вибрати проповіді"
       },
       "detail": {

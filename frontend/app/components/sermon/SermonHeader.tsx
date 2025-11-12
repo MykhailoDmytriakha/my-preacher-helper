@@ -15,6 +15,8 @@ import { ScrollText } from 'lucide-react';
 import { Menu, Transition } from '@headlessui/react';
 import SeriesSelector from '@/components/series/SeriesSelector';
 import Link from 'next/link';
+import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
+import { toast } from 'sonner';
 
 export interface SermonHeaderProps {
   sermon: Sermon;
@@ -28,30 +30,72 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const { t } = useTranslation();
   const formattedDate = formatDate(sermon.date);
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
+  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleStartPreaching = () => {
     window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
   };
   
   const handleAddToSeries = () => {
+    setSeriesSelectorMode('add');
     setShowSeriesSelector(true);
   };
 
   const handleChangeSeries = () => {
+    setSeriesSelectorMode('change');
     setShowSeriesSelector(true);
   };
 
   const handleRemoveFromSeries = async () => {
-    if (window.confirm('Remove this sermon from its series?')) {
-      // TODO: Implement remove from series
-      console.log('Remove sermon from series:', sermon.id);
+    if (window.confirm(t('workspaces.series.actions.removeFromSeries') + '?')) {
+      setIsProcessing(true);
+      try {
+        if (sermon.seriesId) {
+          await removeSermonFromSeries(sermon.seriesId, sermon.id);
+
+          // Update sermon locally to reflect the change
+          const updatedSermon = { ...sermon, seriesId: undefined, seriesPosition: undefined };
+          if (onUpdate) {
+            onUpdate(updatedSermon);
+          }
+        }
+      } catch (error) {
+        console.error('Error removing sermon from series:', error);
+        toast.error(t('workspaces.series.errors.removeSermonFailed'));
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
   const handleSeriesSelected = async (seriesId: string) => {
-    // TODO: Implement add/change series logic
-    console.log('Selected series:', seriesId, 'for sermon:', sermon.id);
-    setShowSeriesSelector(false);
+    setIsProcessing(true);
+    try {
+      if (seriesSelectorMode === 'change' && sermon.seriesId) {
+        // For change mode: first remove from old series, then add to new
+        await removeSermonFromSeries(sermon.seriesId, sermon.id);
+      }
+
+      // Add sermon to the selected series
+      await addSermonToSeries(seriesId, sermon.id);
+
+      // Update sermon locally to reflect the change
+      const updatedSermon = { ...sermon, seriesId };
+      if (onUpdate) {
+        onUpdate(updatedSermon);
+      }
+
+      setShowSeriesSelector(false);
+    } catch (error) {
+      console.error('Error updating sermon series:', error);
+      toast.error(seriesSelectorMode === 'add'
+        ? t('workspaces.series.errors.addSermonFailed')
+        : t('workspaces.series.errors.addSermonFailed')
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   
@@ -108,14 +152,13 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
   // Find series for this sermon
   const sermonSeries = (() => {
-    // First, check if sermon has seriesId
+    // Only check if sermon has seriesId (no fallback to avoid stale data)
     if (sermon.seriesId && sermon.seriesId.trim()) {
       const found = series.find(s => s.id === sermon.seriesId);
       if (found) return found;
     }
-    
-    // Fallback: check if sermon is in any series' sermonIds
-    return series.find(s => s.sermonIds?.includes(sermon.id));
+
+    return undefined;
   })();
 
   return (
@@ -128,36 +171,106 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
-          
+
           {/* Series Badge */}
           {sermonSeries && (
-            <Link
-              href={`/series/${sermonSeries.id}`}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${
-                sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-              }`}
-              style={sermonSeries.color ? {
-                backgroundColor: sermonSeries.color,
-                color: '#ffffff',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
-              } : {}}
-              title={`${t('workspaces.series.badges.partOfSeries')}: ${sermonSeries.title}`}
-            >
-              <svg 
-                className="w-3 h-3" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
+            <div className="flex items-center gap-1">
+              <Link
+                href={`/series/${sermonSeries.id}`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${
+                  sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                }`}
+                style={sermonSeries.color ? {
+                  backgroundColor: sermonSeries.color,
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                } : {}}
+                title={`${t('workspaces.series.badges.partOfSeries')}: ${sermonSeries.title}`}
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
-                />
-              </svg>
-              <span>{sermonSeries.title}</span>
-            </Link>
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+                <span>{sermonSeries.title}</span>
+              </Link>
+
+              {/* Series Management Dropdown - moved next to badge */}
+              <Menu as="div" className="relative">
+                <Menu.Button className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ml-1">
+                  <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                </Menu.Button>
+                <Transition
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  <Menu.Items className="absolute left-0 z-10 mt-1 w-56 origin-top-left rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-gray-700">
+                    {sermon.seriesId ? (
+                      <>
+                        <Menu.Item>
+                          {({ active }) => (
+                            <button
+                              onClick={handleChangeSeries}
+                              disabled={isProcessing}
+                              title={t('workspaces.series.actions.moveToDifferentSeries')}
+                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
+                                active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              <ArrowPathIcon className="h-4 w-4" />
+                              {t('workspaces.series.actions.moveToDifferentSeries')}
+                            </button>
+                          )}
+                        </Menu.Item>
+                        <Menu.Item>
+                          {({ active }) => (
+                            <button
+                              onClick={handleRemoveFromSeries}
+                              disabled={isProcessing}
+                              title={t('workspaces.series.actions.removeFromSeries')}
+                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${
+                                active ? 'bg-red-50 dark:bg-red-950' : ''
+                              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                              {t('workspaces.series.actions.removeFromSeries')}
+                            </button>
+                          )}
+                        </Menu.Item>
+                      </>
+                    ) : (
+                      <Menu.Item>
+                        {({ active }) => (
+                          <button
+                            onClick={handleAddToSeries}
+                            disabled={isProcessing}
+                            title={t('workspaces.series.actions.addToSeries')}
+                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
+                              active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                            {t('workspaces.series.actions.addToSeries')}
+                          </button>
+                        )}
+                      </Menu.Item>
+                    )}
+                  </Menu.Items>
+                </Transition>
+              </Menu>
+            </div>
           )}
         </div>
         <div className="mt-2">
@@ -168,7 +281,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         </div>
       </div>
 
-      {/* Right side: Preach Button, Series Menu, and Export Buttons */}
+      {/* Right side: Preach Button and Export Buttons */}
       <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-shrink-0">
         <button
           onClick={handleStartPreaching}
@@ -178,68 +291,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           <ScrollText className="h-4 w-4" />
           <span className="hidden sm:inline">{t('plan.preachButton') || 'Preach'}</span>
         </button>
-
-        {/* Series Management Dropdown */}
-        <Menu as="div" className="relative">
-          <Menu.Button className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-            <EllipsisVerticalIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-          </Menu.Button>
-          <Transition
-            enter="transition ease-out duration-100"
-            enterFrom="transform opacity-0 scale-95"
-            enterTo="transform opacity-100 scale-100"
-            leave="transition ease-in duration-75"
-            leaveFrom="transform opacity-100 scale-100"
-            leaveTo="transform opacity-0 scale-95"
-          >
-            <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-gray-700">
-              {sermon.seriesId ? (
-                <>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <button
-                        onClick={handleChangeSeries}
-                        className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${
-                          active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                        }`}
-                      >
-                        <ArrowPathIcon className="h-4 w-4" />
-                        {t('workspaces.series.actions.editSeries')}
-                      </button>
-                    )}
-                  </Menu.Item>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <button
-                        onClick={handleRemoveFromSeries}
-                        className={`flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 ${
-                          active ? 'bg-red-50 dark:bg-red-950' : ''
-                        }`}
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                        {t('workspaces.series.actions.removeFromSeries')}
-                      </button>
-                    )}
-                  </Menu.Item>
-                </>
-              ) : (
-                <Menu.Item>
-                  {({ active }) => (
-                    <button
-                      onClick={handleAddToSeries}
-                      className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${
-                        active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                      }`}
-                    >
-                      <PlusIcon className="h-4 w-4" />
-                      {t('workspaces.series.actions.addSermon')}
-                    </button>
-                  )}
-                </Menu.Item>
-              )}
-            </Menu.Items>
-          </Transition>
-        </Menu>
 
         <ExportButtons
             sermonId={sermon.id}
@@ -257,6 +308,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           onClose={() => setShowSeriesSelector(false)}
           onSelect={handleSeriesSelected}
           currentSeriesId={sermon.seriesId}
+          mode={seriesSelectorMode}
         />
       )}
     </div>

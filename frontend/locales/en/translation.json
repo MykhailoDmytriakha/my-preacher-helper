@@ -1120,10 +1120,14 @@
         "createSeries": "Create Series",
         "saveChanges": "Save Changes",
         "cancel": "Cancel",
-        "addSermon": "Add Sermon",
+        "addToSeries": "Add to Series",
         "removeFromSeries": "Remove from Series",
-        "editSeries": "Edit Series",
+        "moveToDifferentSeries": "Move to Another Series",
         "viewSeries": "View Series",
+        "selectSeries": "Select Series",
+        "selectSeriesForAdd": "Add to Series",
+        "selectSeriesForChange": "Change Series",
+        "addSermon": "Add Sermon",
         "selectSermons": "Select Sermons"
       },
       "detail": {
