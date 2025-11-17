@@ -45,7 +45,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl max-w-md w-full mx-4">
         <h2 className="text-xl font-semibold mb-5 text-gray-800 dark:text-gray-100">
           {t('settings.editColorFor')} <span className="text-blue-500">{tagName}</span>

@@ -7,6 +7,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useAuth } from '@/providers/AuthProvider';
+import ColorPickerModal from '@/components/ColorPickerModal';
 
 interface CreateSeriesModalProps {
   onClose: () => void;
@@ -23,6 +24,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
   const [color, setColor] = useState('#3B82F6'); // Default blue
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +55,15 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
   };
 
   const clearError = () => setError(null);
+
+  const handleColorSelect = (newColor: string) => {
+    setColor(newColor);
+    setIsColorPickerOpen(false);
+  };
+
+  const handleCancelColorSelect = () => {
+    setIsColorPickerOpen(false);
+  };
 
   const colorOptions = [
     '#3B82F6', // Blue
@@ -165,6 +176,42 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
                   title={colorOption}
                 />
               ))}
+
+              {/* Custom Color Picker Button */}
+              <button
+                type="button"
+                onClick={() => setIsColorPickerOpen(true)}
+                className={`w-8 h-8 rounded-full border-2 transition-all cursor-pointer relative overflow-hidden ${
+                  !colorOptions.includes(color)
+                    ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-600/20 dark:ring-blue-400/20 scale-110'
+                    : 'border-gray-300 opacity-60 hover:opacity-100'
+                }`}
+                style={{
+                  background: colorOptions.includes(color)
+                    ? 'conic-gradient(from 0deg, #FF0000 0%, #FFFF00 60deg, #00FF00 120deg, #00FFFF 180deg, #0000FF 240deg, #FF00FF 300deg, #FF0000 360deg)'
+                    : color
+                }}
+                title="Custom color"
+              >
+                {/* Plus icon overlay when showing rainbow gradient */}
+                {colorOptions.includes(color) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/20 dark:bg-black/20">
+                    <svg
+                      className="w-4 h-4 text-white drop-shadow"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                  </div>
+                )}
+              </button>
             </div>
           </div>
 
@@ -199,5 +246,20 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
     </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return createPortal(
+    <>
+      {modalContent}
+
+      {/* Color Picker Modal */}
+      {isColorPickerOpen && (
+        <ColorPickerModal
+          tagName={t('workspaces.series.newSeries')}
+          initialColor={color}
+          onOk={handleColorSelect}
+          onCancel={handleCancelColorSelect}
+        />
+      )}
+    </>,
+    document.body
+  );
 }
