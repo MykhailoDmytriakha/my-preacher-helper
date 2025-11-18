@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Check } from 'lucide-react';
+import { Check, FileText, File, FileType } from 'lucide-react';
 import { exportToWord, PlanData } from '../../utils/wordExport';
 import { sanitizeMarkdown } from "../utils/markdownUtils";
 
@@ -19,6 +19,7 @@ interface ExportButtonsLayoutProps {
   orientation?: "horizontal" | "vertical";
   isPdfAvailable?: boolean;
   isPreached?: boolean;
+  variant?: 'default' | 'icon';
 }
 
 export function ExportButtonsLayout({
@@ -28,10 +29,65 @@ export function ExportButtonsLayout({
   orientation = "horizontal",
   isPdfAvailable = false,
   isPreached = false,
+  variant = 'default',
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
   const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
   
+  if (variant === 'icon') {
+    return (
+      <div className={`flex ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
+        <div className="tooltip">
+          <button
+            onClick={onTxtClick}
+            className={`p-1.5 rounded-md transition-colors ${
+              isPreached
+                ? 'text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-400'
+                : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600 dark:text-gray-500 dark:hover:bg-blue-900/30 dark:hover:text-blue-400'
+            }`}
+            aria-label={t('export.txtTitle')}
+          >
+            <FileText className="w-4 h-4" />
+          </button>
+          <span className="tooltiptext tooltiptext-top">TXT</span>
+        </div>
+
+        <div className="tooltip">
+          <button
+            onClick={onPdfClick}
+            disabled={!isPdfAvailable}
+            className={`p-1.5 rounded-md transition-colors ${
+              !isPdfAvailable
+                ? 'text-gray-300 cursor-not-allowed dark:text-gray-700'
+                : isPreached
+                  ? 'text-gray-500 hover:bg-gray-200 hover:text-purple-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-purple-400'
+                  : 'text-gray-400 hover:bg-purple-50 hover:text-purple-600 dark:text-gray-500 dark:hover:bg-purple-900/30 dark:hover:text-purple-400'
+            }`}
+            aria-label={isPdfAvailable ? "PDF export" : "PDF export (coming soon)"}
+          >
+            <File className="w-4 h-4" />
+          </button>
+          <span className="tooltiptext tooltiptext-top">{isPdfAvailable ? 'PDF' : t('export.soonAvailable')}</span>
+        </div>
+
+        <div className="tooltip">
+          <button
+            onClick={onWordClick}
+            className={`p-1.5 rounded-md transition-colors ${
+              isPreached
+                ? 'text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400'
+                : 'text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400'
+            }`}
+            aria-label="Word export"
+          >
+            <FileType className="w-4 h-4" />
+          </button>
+          <span className="tooltiptext tooltiptext-top">Word</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       <button
@@ -465,6 +521,7 @@ interface ExportButtonsContainerProps {
   title?: string;
   disabledFormats?: ('txt' | 'pdf' | 'word')[];
   isPreached?: boolean;
+  variant?: 'default' | 'icon';
 }
 
 const TooltipStyles = () => (
@@ -483,6 +540,7 @@ const TooltipStyles = () => (
       border-radius: 4px;
       padding: 4px 8px;
       font-size: 0.75rem;
+      white-space: nowrap;
       
       /* Position the tooltip */
       position: absolute;
@@ -547,6 +605,7 @@ export default function ExportButtons({
   title = "Export",
   disabledFormats = [],
   isPreached = false,
+  variant = 'default',
 }: ExportButtonsContainerProps) {
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -668,6 +727,7 @@ export default function ExportButtons({
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
         isPreached={isPreached}
+        variant={variant}
       />
 
       <ExportTxtModal

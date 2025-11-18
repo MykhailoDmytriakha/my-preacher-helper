@@ -9,6 +9,7 @@ import ExportButtons from "@components/ExportButtons";
 import { getExportContent } from "@/utils/exportContent";
 import { DocumentIcon } from "@components/Icons";
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
+import { List, MessageSquareText, CheckCircle2, Calendar } from "lucide-react";
 
 interface SermonCardProps {
   sermon: Sermon;
@@ -37,42 +38,53 @@ export default function SermonCard({
                      sermon.outline?.main?.length || 
                      sermon.outline?.conclusion?.length;
   
-  const cardClasses = `
-    group flex flex-col ${
-      sermon.isPreached
-        ? 'bg-gray-100 dark:bg-gray-800'
-        : 'bg-gray-50 dark:bg-gray-900'
+  // Find series for this sermon
+  const sermonSeries = (() => {
+    if (sermon.seriesId && sermon.seriesId.trim()) {
+      return series.find(s => s.id === sermon.seriesId);
     }
-    rounded-lg shadow hover:shadow-lg transition-all duration-300
-    border border-gray-200 dark:border-gray-700 h-full relative
+    return series.find(s => s.sermonIds?.includes(sermon.id));
+  })();
+
+  // Card base styles - clean white/dark theme without heavy backgrounds
+  const cardClasses = `
+    group flex flex-col
+    bg-white dark:bg-gray-800
+    rounded-xl shadow-sm hover:shadow-md transition-all duration-300
+    border border-gray-200 dark:border-gray-700
+    h-full relative overflow-hidden
   `;
   
   return (
     <div className={cardClasses} data-testid={`sermon-card-${sermon.id}`}>
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="p-4 sm:p-5 flex flex-col flex-grow">
-          <div className="flex items-start justify-between gap-2 mb-3">
-            {isMultiSelectMode && (
-              <div className="flex-shrink-0">
-                <input
-                  type="checkbox"
-                  checked={selectedSermonIds.has(sermon.id)}
-                  onChange={() => onToggleSermonSelection?.(sermon.id)}
-                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            )}
-            <Link href={`/sermons/${sermon.id}`} className="flex-1 min-w-0">
-              <h3 className={`text-base sm:text-lg font-bold transition-colors line-clamp-2 ${
-                sermon.isPreached
-                  ? 'text-gray-900 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300'
-                  : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300'
-              }`}>
-                {sermon.title}
-              </h3>
-            </Link>
-            <div className="z-20 flex-shrink-0">
+      {/* Selection Overlay/Checkbox */}
+      {isMultiSelectMode && (
+        <div className="absolute top-4 left-4 z-30">
+          <input
+            type="checkbox"
+            checked={selectedSermonIds.has(sermon.id)}
+            onChange={() => onToggleSermonSelection?.(sermon.id)}
+            className="w-5 h-5 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 cursor-pointer shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      <div className="flex flex-col h-full">
+        {/* Main Content Area */}
+        <div className="p-5 flex flex-col flex-grow relative">
+          {/* Header: Date & Menu */}
+          <div className="flex items-start justify-between mb-2">
+             <div className={`flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${
+               sermon.isPreached 
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+             }`}>
+              <Calendar className="w-3 h-3 mr-1.5" />
+              {formattedDate}
+            </div>
+            
+            <div className="z-20 -mr-2 -mt-1">
               <OptionMenu
                 sermon={sermon}
                 onDelete={(id: string) => onDelete(id)}
@@ -80,107 +92,84 @@ export default function SermonCard({
               />
             </div>
           </div>
-          <Link
-            href={`/sermons/${sermon.id}`}
-            className="block text-sm text-gray-600 dark:text-gray-300 mb-4 break-words whitespace-pre-line"
-          >
-            {sermon.verse}
+
+          {/* Title */}
+          <Link href={`/sermons/${sermon.id}`} className="group/title block mb-2">
+            <h3 className={`text-lg font-bold leading-tight transition-colors ${
+              sermon.isPreached
+                ? 'text-gray-800 dark:text-gray-100 group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
+                : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
+            }`}>
+              {sermon.title}
+            </h3>
           </Link>
 
-          <div className="flex flex-wrap items-center text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-auto gap-y-2">
-            <div className="flex items-center mr-4">
-              <DocumentIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" />
-              <span>{thoughtCount} {thoughtCount === 1 ? t('dashboard.thought') : t('dashboard.thoughts')}</span>
-            </div>
-            {hasOutline ? (
-              <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                sermon.isPreached
-                  ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200'
-                  : 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-              }`}>
-                {t('dashboard.hasOutline')}
-              </div>
-            ) : null}
-            {(() => {
-              // First, check if sermon has seriesId
-              if (sermon.seriesId && sermon.seriesId.trim()) {
-                const sermonSeries = series.find(s => s.id === sermon.seriesId);
-                if (sermonSeries) {
-                  const badgeStyle = sermonSeries.color ? {
-                    backgroundColor: sermonSeries.color,
-                    color: '#ffffff',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
-                  } : {};
-                  return (
-                    <Link
-                      href={`/series/${sermon.seriesId}`}
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        sermonSeries.color ? 'hover:opacity-80' : (
-                          sermon.isPreached
-                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200'
-                            : 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                        )
-                      } transition-colors`}
-                      style={sermonSeries.color ? badgeStyle : {}}
-                      onClick={(e) => e.stopPropagation()}
-                      title={sermonSeries.title}
-                    >
-                      {t('workspaces.series.badges.seriesName', { title: sermonSeries.title })}
-                    </Link>
-                  );
-                }
-              }
+          {/* Verse */}
+          {sermon.verse && (
+            <Link
+              href={`/sermons/${sermon.id}`}
+              className="block text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-2 italic hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              {sermon.verse}
+            </Link>
+          )}
 
-              // Fallback: check if sermon is in any series' sermonIds
-              const containingSeries = series.find(s => s.sermonIds?.includes(sermon.id));
-              if (containingSeries) {
-                const badgeStyle = containingSeries.color ? {
-                  backgroundColor: containingSeries.color,
+          {/* Badges & Metadata */}
+          <div className="flex flex-wrap items-center gap-2 mt-auto text-xs">
+             {/* Series Badge */}
+             {sermonSeries && (
+              <Link
+                href={`/series/${sermonSeries.id}`}
+                className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px]"
+                style={sermonSeries.color ? {
+                  backgroundColor: sermonSeries.color,
                   color: '#ffffff',
-                  border: '1px solid rgba(255, 255, 255, 0.2)'
-                } : {};
-                return (
-                  <Link
-                    href={`/series/${containingSeries.id}`}
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      containingSeries.color ? 'hover:opacity-80' : (
-                        sermon.isPreached
-                          ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200'
-                          : 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                      )
-                    } transition-colors`}
-                    style={containingSeries.color ? badgeStyle : {}}
-                    onClick={(e) => e.stopPropagation()}
-                    title={containingSeries.title}
-                  >
-                    {t('workspaces.series.badges.seriesName', { title: containingSeries.title })}
-                  </Link>
-                );
-              }
+                } : {}}
+                onClick={(e) => e.stopPropagation()}
+                title={sermonSeries.title}
+              >
+                <span className="truncate">{sermonSeries.title}</span>
+              </Link>
+            )}
 
-              return null;
-            })()}
+            {/* Thoughts Count */}
+            <div className="flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 px-2 py-0.5 rounded-md border border-gray-100 dark:border-gray-700">
+              <MessageSquareText className="w-3 h-3 mr-1.5 opacity-70" />
+              <span>{thoughtCount}</span>
+            </div>
+
+            {/* Outline Status */}
+            {hasOutline && (
+              <div className="flex items-center text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-800/30" title={t('dashboard.hasOutline')}>
+                <List className="w-3 h-3 mr-1.5" />
+                <span>{t('dashboard.hasOutline')}</span>
+              </div>
+            )}
+            
+            {/* Preached Status (Icon only) */}
+            {sermon.isPreached && (
+               <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t('dashboard.preached')}>
+                <CheckCircle2 className="w-3 h-3 mr-1.5" />
+                <span>{t('dashboard.preached')}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className={`p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3 ${
-          sermon.isPreached
-            ? 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-50 dark:group-hover:bg-gray-900'
-            : 'bg-gray-50 dark:bg-gray-900'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              {formattedDate}
-            </span>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-2">
+        {/* Footer Actions */}
+        <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
+          <div className="flex-grow">
             <QuickPlanAccessButton sermon={sermon} t={t} isPreached={sermon.isPreached} />
+          </div>
+          
+          <div className="flex-shrink-0 border-l border-gray-200 dark:border-gray-700 pl-3">
             <ExportButtons
               sermonId={sermon.id}
               orientation="horizontal"
               getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
-              className="scale-100"
+              className=""
               isPreached={sermon.isPreached}
+              variant="icon"
             />
           </div>
         </div>
@@ -188,4 +177,3 @@ export default function SermonCard({
     </div>
   );
 }
-

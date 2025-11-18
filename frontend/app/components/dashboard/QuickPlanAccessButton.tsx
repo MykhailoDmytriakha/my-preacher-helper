@@ -43,7 +43,7 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
       {/* Primary action: Plan/Structure button */}
       <button
         onClick={handlePlanClick}
-        className={`inline-flex items-center justify-center px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+        className={`inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
           isPreached
             ? isPlanAccess
               ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white'
@@ -61,7 +61,7 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
       {isReadyForPreaching && (
         <button
           onClick={handlePreachClick}
-          className={`inline-flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+          className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
             isPreached
               ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white'
               : 'bg-green-600 hover:bg-green-700 text-white'

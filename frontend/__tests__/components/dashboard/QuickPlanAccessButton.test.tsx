@@ -150,7 +150,7 @@ describe('QuickPlanAccessButton Component', () => {
     expect(buttons[0]).toHaveClass('inline-flex');
     expect(buttons[0]).toHaveClass('items-center');
     expect(buttons[0]).toHaveClass('px-3');
-    expect(buttons[0]).toHaveClass('py-1');
+    expect(buttons[0]).toHaveClass('py-1.5');
     expect(buttons[0]).toHaveClass('text-xs');
     expect(buttons[0]).toHaveClass('font-medium');
     expect(buttons[0]).toHaveClass('rounded-md');
@@ -284,5 +284,62 @@ describe('QuickPlanAccessButton Component', () => {
     const buttons = screen.getAllByRole('button');
     expect(buttons).toHaveLength(1);
     expect(buttons[0]).toHaveTextContent('To plan');
+  });
+
+  it('applies preached styling when isPreached prop is true', () => {
+    mockGetSermonAccessType.mockReturnValue('plan');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/plan');
+    mockIsSermonReadyForPreaching.mockReturnValue(false);
+
+    const sermon: Sermon = {
+      id: 'sermon-1',
+      title: 'Test Sermon',
+      verse: 'Luke 2:11',
+      date: '2023-01-01',
+      thoughts: [{ id: 'thought-1', text: 'Test thought', outlinePointId: 'point-1', date: '2023-01-01', tags: [] }],
+      plan: {
+        introduction: { outline: 'Intro plan' },
+        main: { outline: 'Main plan' },
+        conclusion: { outline: 'Conclusion plan' },
+      },
+      userId: 'user-1',
+      isPreached: true,
+    };
+
+    render(<QuickPlanAccessButton sermon={sermon} t={mockT as any} isPreached={true} />);
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]).toHaveClass('bg-gray-400');
+    expect(buttons[0]).toHaveClass('dark:bg-gray-500');
+    expect(buttons[0]).toHaveClass('text-gray-700');
+    expect(buttons[0]).toHaveClass('dark:text-gray-200');
+  });
+
+  it('applies non-preached styling when isPreached prop is false', () => {
+    mockGetSermonAccessType.mockReturnValue('plan');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/plan');
+    mockIsSermonReadyForPreaching.mockReturnValue(false);
+
+    const sermon: Sermon = {
+      id: 'sermon-1',
+      title: 'Test Sermon',
+      verse: 'Luke 2:11',
+      date: '2023-01-01',
+      thoughts: [{ id: 'thought-1', text: 'Test thought', outlinePointId: 'point-1', date: '2023-01-01', tags: [] }],
+      plan: {
+        introduction: { outline: 'Intro plan' },
+        main: { outline: 'Main plan' },
+        conclusion: { outline: 'Conclusion plan' },
+      },
+      userId: 'user-1',
+      isPreached: false,
+    };
+
+    render(<QuickPlanAccessButton sermon={sermon} t={mockT as any} isPreached={false} />);
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]).toHaveClass('bg-green-600');
+    expect(buttons[0]).toHaveClass('hover:bg-green-700');
+    expect(buttons[0]).toHaveClass('text-white');
   });
 });

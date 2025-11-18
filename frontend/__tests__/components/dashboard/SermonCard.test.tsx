@@ -1,0 +1,265 @@
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import SermonCard from '@/components/dashboard/SermonCard';
+import { Sermon } from '@/models/models';
+import '@testing-library/jest-dom';
+
+// Mock Next.js router
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
+
+// Mock react-i18next
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => {
+      const translations: { [key: string]: string } = {
+        'dashboard.thought': 'thought',
+        'dashboard.thoughts': 'thoughts',
+        'dashboard.hasOutline': 'Has outline',
+        'dashboard.preached': 'Preached',
+        'dashboard.plan': 'Plan',
+        'dashboard.toStructure': 'To structure',
+        'dashboard.goToStructure': 'Go to structure',
+        'export.txtTitle': 'TXT',
+        'export.soonAvailable': 'export.soonAvailable',
+        'optionMenu.options': 'optionMenu.options',
+      };
+      return translations[key] || key;
+    },
+  }),
+}));
+
+// Mock dateFormatter
+jest.mock('@utils/dateFormatter', () => ({
+  formatDate: jest.fn(() => '18.02.2025, 11:24'),
+}));
+
+// Mock exportContent
+jest.mock('@utils/exportContent', () => ({
+  getExportContent: jest.fn(() => Promise.resolve('Test export content')),
+}));
+
+describe('SermonCard Component', () => {
+  const mockOnDelete = jest.fn();
+  const mockOnUpdate = jest.fn();
+
+  const baseSermon: Sermon = {
+    id: 'test-sermon-id',
+    title: 'Test Sermon Title',
+    verse: 'John 3:16',
+    date: '2025-02-18',
+    thoughts: [
+      { id: 'thought-1', text: 'Test thought', date: '2025-02-18', tags: [] }
+    ],
+    userId: 'test-user-id',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('renders sermon card with basic information', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
+    expect(screen.getByText('John 3:16')).toBeInTheDocument();
+    expect(screen.getByText('18.02.2025, 11:24')).toBeInTheDocument();
+  });
+
+  it('displays thought count correctly for singular', () => {
+    const sermonWithOneThought: Sermon = {
+      ...baseSermon,
+      thoughts: [{ id: 'thought-1', text: 'Test thought', date: '2025-02-18', tags: [] }],
+    };
+
+    render(
+      <SermonCard
+        sermon={sermonWithOneThought}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('displays thought count correctly for plural', () => {
+    const sermonWithMultipleThoughts: Sermon = {
+      ...baseSermon,
+      thoughts: [
+        { id: 'thought-1', text: 'Test thought 1', date: '2025-02-18', tags: [] },
+        { id: 'thought-2', text: 'Test thought 2', date: '2025-02-18', tags: [] },
+      ],
+    };
+
+    render(
+      <SermonCard
+        sermon={sermonWithMultipleThoughts}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
+  it('displays "Has outline" badge when sermon has outline', () => {
+    const sermonWithOutline: Sermon = {
+      ...baseSermon,
+      outline: {
+        introduction: ['Intro point'],
+        main: ['Main point'],
+        conclusion: ['Conclusion point'],
+      },
+    };
+
+    render(
+      <SermonCard
+        sermon={sermonWithOutline}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('Has outline')).toBeInTheDocument();
+  });
+
+  it('displays "Preached" badge when sermon is preached', () => {
+    const preachedSermon: Sermon = {
+      ...baseSermon,
+      isPreached: true,
+    };
+
+    render(
+      <SermonCard
+        sermon={preachedSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('Preached')).toBeInTheDocument();
+  });
+
+  it('applies consistent styling for all sermons regardless of preached status', () => {
+    const preachedSermon: Sermon = {
+      ...baseSermon,
+      isPreached: true,
+    };
+
+    render(
+      <SermonCard
+        sermon={preachedSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const card = screen.getByTestId(`sermon-card-${preachedSermon.id}`);
+    expect(card).toHaveClass('bg-white', 'dark:bg-gray-800');
+  });
+
+  it('applies consistent styling for non-preached sermons', () => {
+    const nonPreachedSermon: Sermon = {
+      ...baseSermon,
+      isPreached: false,
+    };
+
+    render(
+      <SermonCard
+        sermon={nonPreachedSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const card = screen.getByTestId(`sermon-card-${nonPreachedSermon.id}`);
+    expect(card).toHaveClass('bg-white', 'dark:bg-gray-800');
+  });
+
+  it('displays series badge when sermon has seriesId', () => {
+    const sermonWithSeries: Sermon = {
+      ...baseSermon,
+      seriesId: 'test-series-id',
+    };
+
+    const series = [
+      {
+        id: 'test-series-id',
+        title: 'Test Series',
+        color: '#FF0000',
+        userId: 'test-user-id',
+      },
+    ];
+
+    render(
+      <SermonCard
+        sermon={sermonWithSeries}
+        series={series}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    expect(screen.getByText('Test Series')).toBeInTheDocument();
+  });
+
+  it('renders checkbox in multi-select mode', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        isMultiSelectMode={true}
+      />
+    );
+
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox).toBeInTheDocument();
+  });
+
+  it('calls onToggleSermonSelection when checkbox is clicked', () => {
+    const mockOnToggle = jest.fn();
+
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        isMultiSelectMode={true}
+        onToggleSermonSelection={mockOnToggle}
+      />
+    );
+
+    const checkbox = screen.getByRole('checkbox');
+    checkbox.click();
+
+    expect(mockOnToggle).toHaveBeenCalledWith(baseSermon.id);
+  });
+
+  it('renders export buttons with icon variant', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    // Check that export buttons are rendered (they should be icon variant in the footer)
+    const exportButtons = screen.getAllByRole('button').filter(button =>
+      button.querySelector('svg') && !button.textContent?.trim()
+    );
+    expect(exportButtons.length).toBeGreaterThan(0);
+  });
+});
