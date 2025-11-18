@@ -1,13 +1,10 @@
-'use client';
-
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sermon } from '@/models/models';
 import { getSermons } from '@services/sermon.service';
 import { auth } from '@services/firebaseAuth.service';
 
 interface UseDashboardSermonsResult {
   sermons: Sermon[];
-  setSermons: React.Dispatch<React.SetStateAction<Sermon[]>>;
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
@@ -38,42 +35,70 @@ function resolveUid(): string | undefined {
 }
 
 export function useDashboardSermons(): UseDashboardSermonsResult {
-  const [sermons, setSermons] = useState<Sermon[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchSermons = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // We need to wait for auth to be initialized or local storage to be checked
+  // Ideally this should come from an auth hook, but for now we resolve it here
+  // If uid is undefined, we might be loading or not logged in
+  const uid = resolveUid();
 
-    try {
-      const uid = resolveUid();
-      if (!uid) {
-        setSermons([]);
-        return;
-      }
+  const { data: sermons = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['sermons', uid],
+    queryFn: () => {
+      if (!uid) return Promise.resolve([]);
+      return getSermons(uid);
+    },
+    enabled: !!uid, // Only fetch if we have a user ID
+    staleTime: 60 * 1000, // 1 minute
+  });
 
-      const fetchedSermons = await getSermons(uid);
-      setSermons(fetchedSermons);
-    } catch (err) {
-      const normalizedError = err instanceof Error ? err : new Error(String(err));
-      setError(normalizedError);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refresh = async () => {
+    await refetch();
+  };
 
-  useEffect(() => {
-    fetchSermons();
-  }, [fetchSermons]);
+  // Compatibility wrapper to match old interface
+  // We return setSermons as a no-op or we expose mutation methods instead
+  // But the old interface had setSermons. To fully migrate, we should use
+  // queryClient.setQueryData in the components, or expose a mutation here.
+  // For now, let's stick to the interface but note that setSermons is missing.
+  // The components using this hook will need to be updated to NOT use setSermons directly
+  // or we provide a wrapper for optimistic updates.
 
   return {
     sermons,
-    setSermons,
-    loading,
-    error,
-    refresh: fetchSermons,
+    loading: isLoading,
+    error: error as Error | null,
+    refresh,
   };
+}
+
+// Helper hook for optimistic updates (if needed later)
+export function useSermonMutations() {
+  const queryClient = useQueryClient();
+  const uid = resolveUid();
+
+  const updateSermonCache = (updatedSermon: Sermon) => {
+    queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
+      if (!old) return [updatedSermon];
+      return old.map((s) => (s.id === updatedSermon.id ? updatedSermon : s));
+    });
+  };
+
+  const deleteSermonFromCache = (id: string) => {
+    queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
+      if (!old) return [];
+      return old.filter((s) => s.id !== id);
+    });
+  };
+
+  const addSermonToCache = (newSermon: Sermon) => {
+    queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
+      if (!old) return [newSermon];
+      return [newSermon, ...old];
+    });
+  };
+
+  return { updateSermonCache, deleteSermonFromCache, addSermonToCache };
 }
 
 export default useDashboardSermons;

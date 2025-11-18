@@ -33,6 +33,21 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
 }));
 
+// Mock useDashboardSermons to prevent React Query errors
+jest.mock('@/hooks/useDashboardSermons', () => ({
+  useDashboardSermons: () => ({
+    sermons: [],
+    loading: false,
+    error: null,
+    refresh: jest.fn(),
+  }),
+  useSermonMutations: () => ({
+    deleteSermonFromCache: jest.fn(),
+    updateSermonCache: jest.fn(),
+    addSermonToCache: jest.fn(),
+  }),
+}));
+
 // Mock services/hooks heavy calls
 jest.mock('@/hooks/useSermonStructureData', () => ({
   useSermonStructureData: () => ({

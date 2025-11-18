@@ -4,6 +4,7 @@ import "./globals.css";
 import dynamic from 'next/dynamic';
 import { AuthProvider } from './providers/AuthProvider';
 import { TextScaleProvider } from './providers/TextScaleProvider';
+import { QueryProvider } from './providers/QueryProvider';
 
 // Dynamically import the LanguageInitializer component to ensure it only runs on client-side
 const LanguageInitializer = dynamic(
@@ -40,10 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <TextScaleProvider>
           <AuthProvider>
-            <LanguageInitializer />
-            <div className="min-h-screen flex flex-col" id="app-shell">
-              {children}
-            </div>
+            <QueryProvider>
+              <LanguageInitializer />
+              <div className="min-h-screen flex flex-col" id="app-shell">
+                {children}
+              </div>
+            </QueryProvider>
           </AuthProvider>
         </TextScaleProvider>
       </body>
