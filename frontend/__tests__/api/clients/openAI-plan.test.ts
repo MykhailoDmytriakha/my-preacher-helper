@@ -49,7 +49,7 @@ describe('generatePlanForSection', () => {
     console.error = originalConsoleError;
   });
 
-  describe('Plan Structure Validation', () => {
+  describe('Plan ThoughtsBySection Validation', () => {
     it('should handle undefined values in plan structure', async () => {
       // Mock the actual function to test the validation logic
       const { generatePlanForSection } = require('@/api/clients/openAI.client');

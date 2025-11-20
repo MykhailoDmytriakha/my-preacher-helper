@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion, Plan, ThoughtsPlan } from '@/models/models';
+import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion, Plan, SectionHints } from '@/models/models';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import * as insightsService from '@/services/insights.service';
 import * as planService from '@/services/plan.service';
@@ -104,7 +104,7 @@ describe('KnowledgeSection Component', () => {
     }
   };
 
-  const mockThoughtsPlan: ThoughtsPlan = {
+  const mockSectionHints: SectionHints = {
     introduction: 'Welcome the congregation and introduce the topic of God\'s love',
     main: 'Explore the depths of God\'s love through scripture and personal testimonies',
     conclusion: 'Call to action: How will you respond to God\'s love today?'
@@ -121,7 +121,7 @@ describe('KnowledgeSection Component', () => {
       topics: ['Faith', 'Love', 'Redemption'],
       relatedVerses: [],
       possibleDirections: [],
-      thoughtsPlan: mockThoughtsPlan
+      sectionHints: mockSectionHints
     }
   };
 
@@ -129,7 +129,7 @@ describe('KnowledgeSection Component', () => {
     ...mockSermonWithoutInsights,
     insights: {
       ...mockInsights,
-      thoughtsPlan: mockThoughtsPlan
+      sectionHints: mockSectionHints
     },
     plan: mockPlan
   };
@@ -145,7 +145,7 @@ describe('KnowledgeSection Component', () => {
     });
     (insightsService.generateThoughtsBasedPlan as jest.Mock).mockResolvedValue({
       ...mockInsights,
-      thoughtsPlan: mockThoughtsPlan
+      sectionHints: mockSectionHints
     });
     
     (insightsService.generateRelatedVerses as jest.Mock).mockResolvedValue({

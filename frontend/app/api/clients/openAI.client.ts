@@ -1,6 +1,6 @@
 import 'openai/shims/node';
 import OpenAI from "openai";
-import { Insights, Item, OutlinePoint, Sermon, VerseWithRelevance, DirectionSuggestion, Plan, BrainstormSuggestion } from "@/models/models";
+import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonDraft, BrainstormSuggestion, SectionHints } from "@/models/models";
 import { 
   thoughtSystemPrompt, createThoughtUserMessage,
   insightsSystemPrompt, createInsightsUserMessage,
@@ -8,7 +8,7 @@ import {
   topicsSystemPrompt, createTopicsUserMessage,
   versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
-  planSystemPrompt, createPlanUserMessage, createThoughtsPlanUserMessage,
+  planSystemPrompt, createPlanUserMessage, createSectionHintsUserMessage,
   brainstormSystemPrompt, createBrainstormUserMessage
 } from "@/config/prompts";
 import {
@@ -674,11 +674,11 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
 /**
  * Generate a plan by organizing sermon thoughts into introduction, main, and conclusion
  * @param sermon The sermon to analyze
- * @returns ThoughtsPlan object with structured plan
+ * @returns SectionHints object with structured plan
  */
-export async function generateThoughtsPlan(sermon: Sermon): Promise<{ introduction: string; main: string; conclusion: string } | null> {
+export async function generateSectionHints(sermon: Sermon): Promise<SectionHints | null> {
   const sermonContent = extractSermonContent(sermon);
-  const userMessage = createThoughtsPlanUserMessage(sermon, sermonContent);
+  const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
   
   if (isDebugMode) {
     console.log("DEBUG: Generating thoughts plan for sermon:", sermon.id);
@@ -706,7 +706,7 @@ export async function generateThoughtsPlan(sermon: Sermon): Promise<{ introducti
       inputInfo
     );
     
-    const result = extractFunctionResponse<{ introduction: string; main: string; conclusion: string }>(response);
+    const result = extractFunctionResponse<SectionHints>(response);
     return result || null;
   } catch (error) {
     console.error("ERROR: Failed to generate thoughts plan:", error);
@@ -765,11 +765,11 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
  * @param outlinePoints - Optional outline points to guide the sorting.
  * @returns A promise that resolves to the sorted list of items.
  */
-export async function sortItemsWithAI(columnId: string, items: Item[], sermon: Sermon, outlinePoints: OutlinePoint[] = []): Promise<Item[]> {
+export async function sortItemsWithAI(columnId: string, items: ThoughtInStructure[], sermon: Sermon, outlinePoints: SermonPoint[] = []): Promise<ThoughtInStructure[]> {
   try {
     // Create a map for quick lookup by ID
-    const itemsMapByKey: Record<string, Item> = {};
-    const itemsWithExistingOutlinePoints: Record<string, string> = {}; // Store items that already have outlinePointId
+    const itemsMapByKey: Record<string, ThoughtInStructure> = {};
+    const itemsWithExistingSermonPoints: Record<string, string> = {}; // Store items that already have outlinePointId
 
     items.forEach(item => {
       // Add the item to lookup maps, using just the first 4 chars of the ID as key
@@ -778,7 +778,7 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
       
       // Remember which items already have an outline point assigned
       if (item.outlinePointId) {
-        itemsWithExistingOutlinePoints[shortKey] = item.outlinePointId;
+        itemsWithExistingSermonPoints[shortKey] = item.outlinePointId;
       }
     });
 
@@ -878,11 +878,11 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
       .filter((key: string | null): key is string => key !== null);
     
     // Create a new array with the sorted items
-    const sortedItems: Item[] = aiSortedKeys.map((key: string) => {
+    const sortedItems: ThoughtInStructure[] = aiSortedKeys.map((key: string) => {
       const item = itemsMapByKey[key];
       
       // Check if this item already had an outline point assigned
-      if (itemsWithExistingOutlinePoints[key]) {
+      if (itemsWithExistingSermonPoints[key]) {
         // Keep the existing outline point
         if (isDebugMode) {
           console.log(`DEBUG: Preserving existing outline point for item ${key}`);
@@ -895,25 +895,25 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
         const aiAssignedOutlineText = outlinePointAssignments[key];
         
         // First try exact match
-        let matchingOutlinePoint = outlinePoints.find(op => 
+        let matchingSermonPoint = outlinePoints.find(op => 
           op.text.toLowerCase() === aiAssignedOutlineText.toLowerCase()
         );
         
         // If no exact match, try substring matching
-        if (!matchingOutlinePoint) {
-          matchingOutlinePoint = outlinePoints.find(op => 
+        if (!matchingSermonPoint) {
+          matchingSermonPoint = outlinePoints.find(op => 
             op.text.toLowerCase().includes(aiAssignedOutlineText.toLowerCase()) ||
             aiAssignedOutlineText.toLowerCase().includes(op.text.toLowerCase())
           );
         }
         
         // If still no match, try fuzzy matching
-        if (!matchingOutlinePoint && outlinePoints.length > 0) {
+        if (!matchingSermonPoint && outlinePoints.length > 0) {
           // Find the closest match based on word overlap
           const aiWords = new Set(aiAssignedOutlineText.toLowerCase().split(/\s+/).filter(w => w.length > 3));
           
           let bestMatchScore = 0;
-          let bestMatch: OutlinePoint | undefined;
+          let bestMatch: SermonPoint | undefined;
           
           for (const op of outlinePoints) {
             const opWords = new Set(op.text.toLowerCase().split(/\s+/).filter(w => w.length > 3));
@@ -932,22 +932,22 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
           
           // Only use if we have some word overlap
           if (bestMatchScore > 0) {
-            matchingOutlinePoint = bestMatch;
+            matchingSermonPoint = bestMatch;
           }
         }
         
-        if (matchingOutlinePoint) {
+        if (matchingSermonPoint) {
           // Create a new item with the assigned outline point
           if (isDebugMode) {
-            console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingOutlinePoint.text}" (${matchingOutlinePoint.id})`);
+            console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
           }
           
           // No need for section mapping since we don't want to show the section name
           return {
             ...item,
-            outlinePointId: matchingOutlinePoint.id,
+            outlinePointId: matchingSermonPoint.id,
             outlinePoint: {
-              text: matchingOutlinePoint.text,
+              text: matchingSermonPoint.text,
               section: ''  // Empty string instead of section name
             }
           };
@@ -980,9 +980,9 @@ export async function sortItemsWithAI(columnId: string, items: Item[], sermon: S
 /**
  * Generate a plan for a sermon
  * @param sermon The sermon to analyze
- * @returns Plan object with introduction, main, and conclusion, plus success flag
+ * @returns SermonDraft object with introduction, main, and conclusion, plus success flag
  */
-export async function generatePlanForSection(sermon: Sermon, section: string): Promise<{ plan: Plan, success: boolean }> {
+export async function generatePlanForSection(sermon: Sermon, section: string): Promise<{ plan: SermonDraft, success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
   
@@ -1043,8 +1043,8 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
     // Debug: Log the extracted result
     console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result, null, 2));
     
-    // Format response to match Plan interface - ensure all values are strings
-    const plan: Plan = {
+    // Format response to match SermonDraft interface - ensure all values are strings
+    const plan: SermonDraft = {
       introduction: { outline: result?.introduction || '' },
       main: { outline: result?.main || '' },
       conclusion: { outline: result?.conclusion || '' }
@@ -1058,7 +1058,7 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
         typeof plan.main.outline !== 'string' || 
         typeof plan.conclusion.outline !== 'string') {
       console.error('ERROR: Invalid plan structure - outline values must be strings');
-      const emptyPlan: Plan = {
+      const emptyPlan: SermonDraft = {
         introduction: { outline: '' },
         main: { outline: '' },
         conclusion: { outline: '' }
@@ -1070,7 +1070,7 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for ${section} section:`, error);
     // Return empty plan structure on error, but indicate failure
-    const emptyPlan: Plan = {
+    const emptyPlan: SermonDraft = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' }
@@ -1223,7 +1223,7 @@ Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can
 CRITICAL PRINCIPLES:
 1. **INSTANT RECOGNITION**: Each point should be immediately recognizable and trigger memory recall
 2. **MINIMAL WORDS, MAXIMUM MEANING**: Use concise, powerful phrases that capture the essence
-3. **VISUAL SCANNING**: Structure for quick visual scanning during preaching
+3. **VISUAL SCANNING**: ThoughtsBySection for quick visual scanning during preaching
 4. **MEMORY TRIGGERS**: Use keywords and phrases that instantly recall the full context
 5. **ACTIONABLE FORMAT**: Each point should guide the preacher on what to say next
 
@@ -1233,7 +1233,7 @@ FORMAT REQUIREMENTS:
 - Use bullet points (*) for quick scanning
 - Keep main points to 3-6 words maximum
 - Use clear, memorable phrases that capture the essence
-- Structure for logical flow that's easy to follow during preaching
+- ThoughtsBySection for logical flow that's easy to follow during preaching
 
 MANDATORY BIBLE VERSE REQUIREMENT: 
 CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
@@ -1299,7 +1299,7 @@ CRITICAL REQUIREMENTS FOR PREACHING:
    - Use bullet points (*) for easy visual scanning
    - Keep subpoints to 1-2 words maximum
    - Use clear transitions between ideas
-   - Structure for logical preaching flow
+   - ThoughtsBySection for logical preaching flow
 
 4. **PREACHING OPTIMIZATION**:
    - Focus on what the preacher needs to SAY
@@ -1359,7 +1359,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
     // Make API call
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Plan Point Structure',
+      'Generate Plan Point ThoughtsBySection',
       requestOptions,
       inputInfo
     );
@@ -1408,7 +1408,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
  * @param section The section to generate outline points for (introduction, main, conclusion)
  * @returns Array of generated outline points and success status
  */
-export async function generateOutlinePoints(sermon: Sermon, section: string): Promise<{ outlinePoints: OutlinePoint[]; success: boolean }> {
+export async function generateSermonPoints(sermon: Sermon, section: string): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
   
@@ -1471,7 +1471,7 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
     // Make API call
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Outline Points',
+      'Generate SermonOutline Points',
       requestOptions,
       inputInfo
     );
@@ -1485,7 +1485,7 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
     
     // Convert the content into outline points (one per line)
     const lines = content.split('\n').filter(line => line.trim().length > 0);
-    const outlinePoints: OutlinePoint[] = lines.map(line => ({
+    const outlinePoints: SermonPoint[] = lines.map(line => ({
       id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       text: line.trim()
     }));

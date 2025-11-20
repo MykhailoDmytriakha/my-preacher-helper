@@ -248,19 +248,19 @@ describe('ThoughtCard Component', () => {
     };
     const sermonOutline = {
       id: 'outline-1',
-      title: 'Test Outline',
+      title: 'Test SermonOutline',
       introduction: [outlinePoint],
       main: [],
       conclusion: []
     };
-    const thoughtWithOutlinePoint = {
+    const thoughtWithSermonPoint = {
       ...mockThought,
       outlinePointId: 'point-1'
     };
     render(
       <ThoughtCard 
         {...defaultProps} 
-        thought={thoughtWithOutlinePoint} 
+        thought={thoughtWithSermonPoint} 
         sermonOutline={sermonOutline} 
       />
     );
@@ -270,7 +270,7 @@ describe('ThoughtCard Component', () => {
   it('does not display outline point when thought has no outlinePointId', () => {
     const sermonOutline = {
       id: 'outline-1',
-      title: 'Test Outline',
+      title: 'Test SermonOutline',
       introduction: [{
         id: 'point-1',
         text: 'Test outline point',
@@ -296,7 +296,7 @@ describe('ThoughtCard Component', () => {
     };
     const sermonOutline = {
       id: 'outline-1',
-      title: 'Test Outline',
+      title: 'Test SermonOutline',
       introduction: [outlinePoint],
       main: [],
       conclusion: []
@@ -345,7 +345,7 @@ describe('ThoughtCard Component', () => {
   it('keeps structure tag classes stable between first render and after allowedTags load', () => {
     const thoughtWithStructureOnly: Thought = {
       id: 't2',
-      text: 'Structure tag flicker check',
+      text: 'ThoughtsBySection tag flicker check',
       tags: ['Вступление'],
       date: '2023-01-02',
     };

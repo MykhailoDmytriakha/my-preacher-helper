@@ -1,5 +1,5 @@
 import { adminDb } from 'app/config/firebaseAdminConfig';
-import { Sermon, Outline, Plan } from '@/models/models';
+import { Sermon, SermonOutline, SermonDraft } from '@/models/models';
 
 /**
  * Repository for user settings database operations
@@ -18,9 +18,26 @@ export class SermonsRepository {
         console.error(`Sermon with id ${id} not found in Firestore`);
         throw new Error("Sermon not found");
       }
-      const sermon = { id: docSnap.id, ...docSnap.data() } as Sermon;
-      console.log(`Sermon retrieved: with id ${sermon.id} and title ${sermon.title}`);
-      return sermon;
+      const rawData = docSnap.data() as Sermon;
+      const normalized: Sermon = {
+        ...rawData,
+        id: docSnap.id,
+      };
+
+      const hydratedStructure = rawData.thoughtsBySection || rawData.structure;
+      if (hydratedStructure) {
+        normalized.thoughtsBySection = hydratedStructure;
+        normalized.structure = rawData.structure || hydratedStructure;
+      }
+
+      const hydratedDraft = (rawData as any).draft || (rawData as any).plan;
+      if (hydratedDraft) {
+        normalized.draft = hydratedDraft;
+        normalized.plan = (rawData as any).plan || hydratedDraft;
+      }
+
+      console.log(`Sermon retrieved: with id ${normalized.id} and title ${normalized.title}`);
+      return normalized;
     } catch (error) {
       console.error(`Error fetching sermon with id ${id}:`, error);
       throw error;
@@ -60,7 +77,7 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonOutline(sermonId: string, outline: Outline): Promise<Outline> {
+  async updateSermonOutline(sermonId: string, outline: SermonOutline): Promise<SermonOutline> {
     console.log(`Updating sermon outline for sermon ${sermonId}`);
     try {
       const docRef = adminDb.collection("sermons").doc(sermonId);
@@ -82,26 +99,26 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonPlan(sermonId: string, plan: Plan): Promise<Plan> {
-    console.log(`Updating sermon plan for sermon ${sermonId}`);
-    console.log(`Plan data to update:`, JSON.stringify(plan, null, 2));
+  async updateSermonPlan(sermonId: string, draft: SermonDraft): Promise<SermonDraft> {
+    console.log(`Updating sermon draft for sermon ${sermonId}`);
+    console.log(`Draft data to update:`, JSON.stringify(draft, null, 2));
     
     // Validate plan structure before updating
-    if (!plan || typeof plan !== 'object') {
-      console.error('ERROR: Invalid plan data - plan is not an object');
-      throw new Error('Invalid plan data');
+    if (!draft || typeof draft !== 'object') {
+      console.error('ERROR: Invalid draft data - draft is not an object');
+      throw new Error('Invalid draft data');
     }
     
-    if (!plan.introduction || !plan.main || !plan.conclusion) {
-      console.error('ERROR: Invalid plan structure - missing required sections');
-      throw new Error('Invalid plan structure');
+    if (!draft.introduction || !draft.main || !draft.conclusion) {
+      console.error('ERROR: Invalid draft structure - missing required sections');
+      throw new Error('Invalid draft structure');
     }
     
-    if (typeof plan.introduction.outline !== 'string' || 
-        typeof plan.main.outline !== 'string' || 
-        typeof plan.conclusion.outline !== 'string') {
-      console.error('ERROR: Invalid plan structure - outline values must be strings');
-      throw new Error('Invalid plan structure - outline values must be strings');
+    if (typeof draft.introduction.outline !== 'string' || 
+        typeof draft.main.outline !== 'string' || 
+        typeof draft.conclusion.outline !== 'string') {
+      console.error('ERROR: Invalid draft structure - outline values must be strings');
+      throw new Error('Invalid draft structure - outline values must be strings');
     }
     
     try {
@@ -113,11 +130,11 @@ export class SermonsRepository {
         throw new Error("Sermon not found");
       }
 
-      // Update the plan field in the sermon document
-      await docRef.update({ plan });
-      console.log(`Sermon plan updated for sermon id ${sermonId}`);
+      // Update both the new draft field and legacy plan for backward compatibility
+      await docRef.update({ draft, plan: draft });
+      console.log(`Sermon draft updated for sermon id ${sermonId}`);
       
-      return plan;
+      return draft;
     } catch (error) {
       console.error(`Error updating sermon plan for sermon ${sermonId}:`, error);
       throw error;

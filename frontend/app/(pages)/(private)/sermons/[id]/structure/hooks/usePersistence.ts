@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useEffect } from "react";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
-import { Thought, Structure, Sermon } from "@/models/models";
+import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import debounce from 'lodash/debounce';
@@ -15,7 +15,7 @@ export const usePersistence = ({ setSermon }: UsePersistenceProps) => {
 
   // Save functions for structure and thoughts
   const saveStructure = useCallback(
-    async (sermonId: string, structure: Structure) => {
+    async (sermonId: string, structure: ThoughtsBySection) => {
       try {
         await updateStructure(sermonId, structure);
       } catch {

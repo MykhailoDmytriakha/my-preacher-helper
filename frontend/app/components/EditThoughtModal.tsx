@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
-import { OutlinePoint, Outline } from '@/models/models';
+import { SermonPoint, SermonOutline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -11,9 +11,9 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 interface EditThoughtModalProps {
   initialText: string;
   initialTags: string[];
-  initialOutlinePointId?: string;
+  initialSermonPointId?: string;
   allowedTags: { name: string; color: string; translationKey?: string }[];
-  sermonOutline?: Outline;
+  sermonOutline?: SermonOutline;
   containerSection?: string;
   onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
   onClose: () => void;
@@ -22,7 +22,7 @@ interface EditThoughtModalProps {
 export default function EditThoughtModal({ 
   initialText, 
   initialTags, 
-  initialOutlinePointId,
+  initialSermonPointId,
   allowedTags, 
   sermonOutline,
   containerSection,
@@ -31,11 +31,11 @@ export default function EditThoughtModal({
 }: EditThoughtModalProps) {
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
-  const [selectedOutlinePointId, setSelectedOutlinePointId] = useState<string | undefined>(initialOutlinePointId);
+  const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
   const isChanged = text !== initialText || 
                     tags.length !== initialTags.length || 
                     tags.some((tag, index) => tag !== initialTags[index]) ||
-                    selectedOutlinePointId !== initialOutlinePointId;
+                    selectedSermonPointId !== initialSermonPointId;
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,15 +49,15 @@ export default function EditThoughtModal({
     setTags(tags.filter((_, i) => i !== index));
   };
 
-  const handleOutlinePointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setSelectedOutlinePointId(value === "" ? undefined : value);
+    setSelectedSermonPointId(value === "" ? undefined : value);
   };
 
   const handleSave = () => {
     setIsSubmitting(true);
     try {
-      onSave(text, tags, selectedOutlinePointId);
+      onSave(text, tags, selectedSermonPointId);
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);
@@ -67,47 +67,47 @@ export default function EditThoughtModal({
   };
 
   // Create a flat array of all outline points with section information
-  const allOutlinePoints: { id: string; text: string; section: string }[] = [];
+  const allSermonPoints: { id: string; text: string; section: string }[] = [];
   
   if (sermonOutline) {
     // Add null checks for each section before using forEach
     if (sermonOutline.introduction && Array.isArray(sermonOutline.introduction)) {
       sermonOutline.introduction.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.introduction') });
+        allSermonPoints.push({ ...point, section: t('outline.introduction') });
       });
     }
     
     if (sermonOutline.main && Array.isArray(sermonOutline.main)) {
       sermonOutline.main.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
+        allSermonPoints.push({ ...point, section: t('outline.mainPoints') });
       });
     }
     
     if (sermonOutline.conclusion && Array.isArray(sermonOutline.conclusion)) {
       sermonOutline.conclusion.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
+        allSermonPoints.push({ ...point, section: t('outline.conclusion') });
       });
     }
   }
 
   // Find the selected outline point text for display
-  const selectedPointInfo = allOutlinePoints.find(point => point.id === selectedOutlinePointId);
+  const selectedPointInfo = allSermonPoints.find(point => point.id === selectedSermonPointId);
 
   // Determine which outline points to show based on containerSection
-  let filteredOutlinePoints: Record<string, OutlinePoint[]> = {};
+  let filteredSermonPoints: Record<string, SermonPoint[]> = {};
   
   if (sermonOutline) {
     if (containerSection === 'introduction' || containerSection === 'main' || containerSection === 'conclusion') {
       // Only show points from current section
-      const sectionPoints = sermonOutline[containerSection as keyof Outline];
+      const sectionPoints = sermonOutline[containerSection as keyof SermonOutline];
       if (sectionPoints && Array.isArray(sectionPoints)) {
-        filteredOutlinePoints = {
+        filteredSermonPoints = {
           [containerSection]: sectionPoints
         };
       }
     } else {
       // If in ambiguous section or containerSection is unknown, show all points
-      filteredOutlinePoints = {
+      filteredSermonPoints = {
         introduction: Array.isArray(sermonOutline.introduction) ? sermonOutline.introduction : [],
         main: Array.isArray(sermonOutline.main) ? sermonOutline.main : [],
         conclusion: Array.isArray(sermonOutline.conclusion) ? sermonOutline.conclusion : []
@@ -134,16 +134,16 @@ export default function EditThoughtModal({
 
         {sermonOutline && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'Outline Point'}</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'SermonOutline Point'}</label>
             <select
-              value={selectedOutlinePointId || ""}
-              onChange={handleOutlinePointChange}
+              value={selectedSermonPointId || ""}
+              onChange={handleSermonPointChange}
               className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
             >
-              <option value="">{t('editThought.noOutlinePoint') || 'No outline point selected'}</option>
+              <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
               
               {/* Group outline points by section */}
-              {Object.entries(filteredOutlinePoints).map(([section, points]) => 
+              {Object.entries(filteredSermonPoints).map(([section, points]) => 
                 points.length > 0 ? (
                   <optgroup key={section} label={t(`outline.${section === 'main' ? 'mainPoints' : section}`) || section}>
                     {points.map(point => (
@@ -156,7 +156,7 @@ export default function EditThoughtModal({
             
             {selectedPointInfo && (
               <p className="mt-1 text-sm text-gray-500">
-                {t('editThought.selectedOutlinePoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
+                {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
               </p>
             )}
           </div>

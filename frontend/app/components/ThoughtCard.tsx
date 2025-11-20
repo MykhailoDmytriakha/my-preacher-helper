@@ -10,11 +10,11 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 
 // Components
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
-import OutlinePointSelector from './OutlinePointSelector';
+import SermonPointSelector from './SermonPointSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Type imports
-import type { Thought, Outline } from "@/models/models";
+import type { Thought, SermonOutline } from "@/models/models";
 
 // Icons imports
 
@@ -37,7 +37,7 @@ interface ThoughtCardProps {
   thought: Thought;
   index: number;
   allowedTags: TagInfo[];
-  sermonOutline?: Outline;
+  sermonOutline?: SermonOutline;
   sermonId?: string;
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
@@ -80,7 +80,7 @@ const ThoughtCard = ({
   }, [t]);
 
   // Helper Functions
-  const findOutlinePoint = useCallback((): { text: string; section: string } | undefined => {
+  const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
     
     const introPoint = sermonOutline.introduction.find(p => p.id === thought.outlinePointId);
@@ -110,7 +110,7 @@ const ThoughtCard = ({
   }, []);
 
   // Memoize computed values
-  const outlinePoint = useMemo(() => findOutlinePoint(), [findOutlinePoint]);
+  const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
   const structureTags = useMemo(() => Object.values(STRUCTURE_SECTIONS), []);
   const hasRequiredTag = useMemo(() => thought.tags.some(tag => structureTags.includes(tag)), [thought.tags, structureTags]);
   const hasInconsistentSection = useMemo(() => 
@@ -134,7 +134,7 @@ const ThoughtCard = ({
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag]);
 
-  const handleOutlinePointChange = useCallback(async (outlinePointId: string | undefined) => {
+  const handleSermonPointChange = useCallback(async (outlinePointId: string | undefined) => {
     if (!sermonId || !onThoughtUpdate) return;
     
     const updatedThought: Thought = {
@@ -238,10 +238,10 @@ const ThoughtCard = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <OutlinePointSelector
+        <SermonPointSelector
           thought={thought}
           sermonOutline={sermonOutline}
-          onOutlinePointChange={handleOutlinePointChange}
+          onSermonPointChange={handleSermonPointChange}
           disabled={!sermonId || !onThoughtUpdate}
         />
       </motion.div>

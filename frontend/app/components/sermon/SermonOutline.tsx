@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 
 // Path alias imports
-import type { Sermon, Outline, OutlinePoint } from '@/models/models';
+import type { Sermon, SermonOutline, SermonPoint } from '@/models/models';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
@@ -15,21 +15,21 @@ import { getFocusModeUrl } from '@/utils/urlUtils';
 
 interface SermonOutlineProps {
   sermon: Sermon;
-  thoughtsPerOutlinePoint?: Record<string, number>;
-  onOutlineUpdate?: (updatedOutline: Outline) => void;
+  thoughtsPerSermonPoint?: Record<string, number>;
+  onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
 }
 
 // Define valid section types
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
-const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlinePoint = {}, onOutlineUpdate }) => {
+const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermonPoint = {}, onOutlineUpdate }) => {
   const { t } = useTranslation();
   
   // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [sectionPoints, setSectionPoints] = useState<Record<SectionType, OutlinePoint[]>>({
+  const [sectionPoints, setSectionPoints] = useState<Record<SectionType, SermonPoint[]>>({
     introduction: [],
     mainPart: [],
     conclusion: [],
@@ -165,7 +165,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   };
   
   // Direct save function that takes the updated points to save
-  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, OutlinePoint[]>) => {
+  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
     // Clear any existing timeout to debounce saves
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -191,7 +191,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
       try {
         // Convert our component state structure to the API expected format
         // Important: Using the explicitly passed data, not relying on state
-        const outlineToSave: Outline = {
+        const outlineToSave: SermonOutline = {
           introduction: pointsToSave.introduction,
           main: pointsToSave.mainPart, // Map mainPart to main for API
           conclusion: pointsToSave.conclusion,
@@ -234,7 +234,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
     }
   }, [addingNewToSection]);
   
-  const handleStartEdit = (point: OutlinePoint) => {
+  const handleStartEdit = (point: SermonPoint) => {
     setEditingPointId(point.id);
     setEditingText(point.text); // Set initial text for editing
     setAddingNewToSection(null); // Ensure add mode is off
@@ -256,19 +256,19 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
         p.id === editingPointId ? { ...p, text: editingText.trim() } : p
       );
       return acc;
-    }, {} as Record<SectionType, OutlinePoint[]>);
+    }, {} as Record<SectionType, SermonPoint[]>);
 
     setSectionPoints(updatedPoints);
     handleCancelEdit(); // Exit edit mode
     directlySaveOutlineChanges(updatedPoints);
   };
 
-  const handleDeletePoint = (pointToDelete: OutlinePoint) => {
+  const handleDeletePoint = (pointToDelete: SermonPoint) => {
     if (window.confirm(t('structure.deletePointConfirm', { text: pointToDelete.text }))) {
       const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
         acc[section as SectionType] = points.filter(p => p.id !== pointToDelete.id);
         return acc;
-      }, {} as Record<SectionType, OutlinePoint[]>);
+      }, {} as Record<SectionType, SermonPoint[]>);
       
       setSectionPoints(updatedPoints);
       directlySaveOutlineChanges(updatedPoints);
@@ -326,7 +326,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   }
 
   // Function to get count of thoughts for a point
-  const getThoughtCount = (pointId: string) => thoughtsPerOutlinePoint[pointId] || 0;
+  const getThoughtCount = (pointId: string) => thoughtsPerSermonPoint[pointId] || 0;
 
   // Mapping for section titles
   const sectionTitles: Record<SectionType, string> = {
@@ -338,7 +338,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
   // Get total thoughts count per section
   const getTotalThoughtsForSection = (sectionType: SectionType) => {
     return sectionPoints[sectionType].reduce((total, point) => {
-      return total + (thoughtsPerOutlinePoint[point.id] || 0);
+      return total + (thoughtsPerSermonPoint[point.id] || 0);
     }, 0);
   };
 
@@ -379,7 +379,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerOutlin
             <ChevronDownIcon className={`ml-2 h-5 w-5 text-gray-500 dark:text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Actions: Focus mode link (same icon as Structure columns) */}
+          {/* Actions: Focus mode link (same icon as ThoughtsBySection columns) */}
           <div className="flex items-center gap-2">
             <Link
               href={getFocusModeUrl(sectionType === 'mainPart' ? 'main' : sectionType, sermon.id)}

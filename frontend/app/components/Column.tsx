@@ -4,9 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { updateSermonOutline, getSermonOutline, generateOutlinePointsForSection } from "@/services/outline.service";
+import { updateSermonOutline, getSermonOutline, generateSermonPointsForSection } from "@/services/outline.service";
 import SortableItem from "./SortableItem";
-import { Item, OutlinePoint, Outline, Thought } from "@/models/models";
+import { Item, SermonPoint, SermonOutline, Thought } from "@/models/models";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
@@ -24,7 +24,7 @@ interface ColumnProps {
   items: Item[];
   headerColor?: string; // optional color for header and border
   onEdit?: (item: Item) => void;
-  outlinePoints?: OutlinePoint[]; // New prop for outline points
+  outlinePoints?: SermonPoint[]; // New prop for outline points
   showFocusButton?: boolean; // Whether to show the focus button
   isFocusMode?: boolean; // Whether this column is in focus mode
   onToggleFocusMode?: (columnId: string) => void; // Callback for toggling focus mode
@@ -34,8 +34,8 @@ interface ColumnProps {
   getExportContent?: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>; // Function to get export content
   sermonId?: string; // Add sermonId prop for export functionality
   onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
-  onOutlineUpdate?: (updatedOutline: Outline) => void; // Add callback for outline updates propagating back to parent
-  thoughtsPerOutlinePoint?: Record<string, number>; // Add this prop for non-focus mode display
+  onOutlineUpdate?: (updatedOutline: SermonOutline) => void; // Add callback for outline updates propagating back to parent
+  thoughtsPerSermonPoint?: Record<string, number>; // Add this prop for non-focus mode display
   // New props for AI sort with interactive confirmation
   isDiffModeActive?: boolean;
   highlightedItems?: Record<string, { type: 'assigned' | 'moved' }>;
@@ -53,7 +53,7 @@ interface ColumnProps {
 // Define SectionType based on Column ID mapping
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
-// Helper to map column ID to SectionType used in Outline model
+// Helper to map column ID to SectionType used in SermonOutline model
 const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
   switch (columnId) {
     case 'introduction': return 'introduction';
@@ -64,8 +64,8 @@ const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
 };
 
 // Component for rendering outline point placeholder with thoughts
-const OutlinePointPlaceholder: React.FC<{
-  point: OutlinePoint;
+const SermonPointPlaceholder: React.FC<{
+  point: SermonPoint;
   items: Item[];
   containerId: string;
   onEdit?: (item: Item) => void;
@@ -182,7 +182,7 @@ const OutlinePointPlaceholder: React.FC<{
       }`}
       style={headerColor ? { borderColor: headerColor } : {}}
     >
-      {/* Outline point header */}
+      {/* SermonOutline point header */}
       <div 
         className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? 'bg-gray-100 dark:bg-gray-700' : colors.header}`}
         style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
@@ -415,7 +415,7 @@ export default function Column({
   items, 
   headerColor, 
   onEdit, 
-  outlinePoints: initialOutlinePoints = [], // Rename prop for clarity
+  outlinePoints: initialSermonPoints = [], // Rename prop for clarity
   showFocusButton = false,
   isFocusMode = false,
   onToggleFocusMode,
@@ -426,7 +426,7 @@ export default function Column({
   sermonId,
   onAddThought,
   onOutlineUpdate, // Destructure the new callback
-  thoughtsPerOutlinePoint = {}, // Destructure the new prop with a default value
+  thoughtsPerSermonPoint = {}, // Destructure the new prop with a default value
   // New props for AI sort with interactive confirmation
   isDiffModeActive = false,
   highlightedItems = {},
@@ -449,7 +449,7 @@ export default function Column({
   const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
   const [newPointText, setNewPointText] = useState<string>('');
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
-  const [isGeneratingOutlinePoints, setIsGeneratingOutlinePoints] = useState<boolean>(false);
+  const [isGeneratingSermonPoints, setIsGeneratingSermonPoints] = useState<boolean>(false);
   
   // Refs for focus management
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -465,8 +465,8 @@ export default function Column({
   // Calculate if this column has any highlighted items
   const hasHighlightedItems = items.some(item => item.id in highlightedItems);
   
-  // --- State for Outline Point Editing (only relevant in focus mode) ---
-  const [localOutlinePoints, setLocalOutlinePoints] = useState<OutlinePoint[]>(initialOutlinePoints);
+  // --- State for SermonOutline Point Editing (only relevant in focus mode) ---
+  const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // --- State for Audio Recording ---
@@ -500,8 +500,8 @@ export default function Column({
 
   // Update local state if the prop changes (e.g., after initial load or external update)
   useEffect(() => {
-    setLocalOutlinePoints(initialOutlinePoints);
-  }, [initialOutlinePoints]);
+    setLocalSermonPoints(initialSermonPoints);
+  }, [initialSermonPoints]);
 
   // Focus input when starting to add/edit
   useEffect(() => {
@@ -517,7 +517,7 @@ export default function Column({
   }, [editingPointId]);
 
   // Debounced save function - упрощенная версия по аналогии с SermonOutline.tsx
-  const triggerSaveOutline = (updatedPoints: OutlinePoint[]) => {
+  const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId || !isFocusMode) return; // Only save in focus mode with sermonId
 
     if (saveTimeoutRef.current) {
@@ -539,7 +539,7 @@ export default function Column({
         const currentOutline = await getSermonOutline(sermonId);
         
         // Create a merged outline that preserves other sections
-        const outlineToSave: Outline = {
+        const outlineToSave: SermonOutline = {
           introduction: sectionType === 'introduction' ? updatedPoints : (currentOutline?.introduction || []),
           main: sectionType === 'mainPart' ? updatedPoints : (currentOutline?.main || []),
           conclusion: sectionType === 'conclusion' ? updatedPoints : (currentOutline?.conclusion || [])
@@ -551,7 +551,7 @@ export default function Column({
         // Propagate the change UP using the callback
         onOutlineUpdate?.(outlineToSave);
 
-        toast.success(t('structure.outlineSavedSuccess', { defaultValue: 'Outline saved' }));
+        toast.success(t('structure.outlineSavedSuccess', { defaultValue: 'SermonOutline saved' }));
       } catch (error) {
         console.error("Error saving sermon outline:", error);
         toast.error(t('errors.saveOutlineError', { defaultValue: 'Failed to save outline' }));
@@ -579,18 +579,18 @@ export default function Column({
       setAddingNewPoint(false); // Close if empty
       return;
     }
-    const newPoint: OutlinePoint = {
+    const newPoint: SermonPoint = {
       id: `new-${Date.now().toString()}`, // Temporary ID
       text: newPointText.trim(),
     };
-    const updatedPoints = [...localOutlinePoints, newPoint];
-    setLocalOutlinePoints(updatedPoints);
+    const updatedPoints = [...localSermonPoints, newPoint];
+    setLocalSermonPoints(updatedPoints);
     setNewPointText("");
     setAddingNewPoint(false);
     triggerSaveOutline(updatedPoints);
   };
   
-  const handleStartEdit = (point: OutlinePoint) => {
+  const handleStartEdit = (point: SermonPoint) => {
     setEditingPointId(point.id);
     setEditingText(point.text);
     setAddingNewPoint(false); // Ensure add mode is off
@@ -606,17 +606,17 @@ export default function Column({
       handleCancelEdit(); // Cancel if text is empty
       return;
     }
-    const updatedPoints = localOutlinePoints.map(p => 
+    const updatedPoints = localSermonPoints.map(p => 
       p.id === editingPointId ? { ...p, text: editingText.trim() } : p
     );
-    setLocalOutlinePoints(updatedPoints);
+    setLocalSermonPoints(updatedPoints);
     handleCancelEdit(); // Reset editing state
     triggerSaveOutline(updatedPoints);
   };
 
   const handleDeletePoint = (pointId: string) => {
     // Find the point to get its text for the confirmation message
-    const pointToDelete = localOutlinePoints.find(p => p.id === pointId);
+    const pointToDelete = localSermonPoints.find(p => p.id === pointId);
     const pointText = pointToDelete ? pointToDelete.text : ''; // Get text or empty string
 
     // Construct the confirmation message using translation and interpolation
@@ -626,8 +626,8 @@ export default function Column({
     });
 
     if (window.confirm(confirmMessage)) {
-      const updatedPoints = localOutlinePoints.filter(p => p.id !== pointId);
-      setLocalOutlinePoints(updatedPoints);
+      const updatedPoints = localSermonPoints.filter(p => p.id !== pointId);
+      setLocalSermonPoints(updatedPoints);
       if (editingPointId === pointId) handleCancelEdit(); // Cancel edit if deleting the item being edited
       triggerSaveOutline(updatedPoints);
     }
@@ -643,12 +643,12 @@ export default function Column({
     }
 
     // Create a shallow copy of the outline points array
-    const updatedPoints = Array.from(localOutlinePoints);
+    const updatedPoints = Array.from(localSermonPoints);
     const [removed] = updatedPoints.splice(source.index, 1);
     updatedPoints.splice(destination.index, 0, removed);
     
     // Update state
-    setLocalOutlinePoints(updatedPoints);
+    setLocalSermonPoints(updatedPoints);
     
     // Save changes
     triggerSaveOutline(updatedPoints);
@@ -678,35 +678,35 @@ export default function Column({
     : "";
 
   // Add a new function to handle generating outline points
-  const handleGenerateOutlinePoints = async () => {
+  const handleGenerateSermonPoints = async () => {
     if (!sermonId || !isFocusMode) return;
     
     // Map id to the section name expected by API
     const sectionName = id === 'main' ? 'main' : id;
     
     try {
-      setIsGeneratingOutlinePoints(true);
+      setIsGeneratingSermonPoints(true);
       
-      const newPoints = await generateOutlinePointsForSection(sermonId, sectionName as 'introduction' | 'main' | 'conclusion');
+      const newPoints = await generateSermonPointsForSection(sermonId, sectionName as 'introduction' | 'main' | 'conclusion');
       
       if (newPoints.length === 0) {
-        toast.error(t('structure.generateOutlinePointsError', { defaultValue: 'Failed to generate outline points' }));
+        toast.error(t('structure.generateSermonPointsError', { defaultValue: 'Failed to generate outline points' }));
         return;
       }
       
       // Add new points to existing ones (if there are any)
-      const updatedPoints = [...localOutlinePoints, ...newPoints];
+      const updatedPoints = [...localSermonPoints, ...newPoints];
       
       // Update state and save
-      setLocalOutlinePoints(updatedPoints);
+      setLocalSermonPoints(updatedPoints);
       triggerSaveOutline(updatedPoints);
       
-      toast.success(t('structure.outlinePointsGenerated', { defaultValue: 'Outline points generated successfully', count: newPoints.length }));
+      toast.success(t('structure.outlinePointsGenerated', { defaultValue: 'SermonOutline points generated successfully', count: newPoints.length }));
     } catch (error) {
       console.error('Error generating outline points:', error);
-      toast.error(t('structure.generateOutlinePointsError', { defaultValue: 'Failed to generate outline points' }));
+      toast.error(t('structure.generateSermonPointsError', { defaultValue: 'Failed to generate outline points' }));
     } finally {
-      setIsGeneratingOutlinePoints(false);
+      setIsGeneratingSermonPoints(false);
     }
   };
 
@@ -886,7 +886,7 @@ export default function Column({
               </div>
             </div>
             
-            {/* Outline points - Now includes editing capabilities */}
+            {/* SermonOutline points - Now includes editing capabilities */}
             {isFocusMode && (
               <div className="p-5 flex-grow overflow-y-auto flex flex-col">
                 <div className="flex justify-between items-center mb-3">
@@ -895,14 +895,14 @@ export default function Column({
                   {/* Generate outline points button */}
                   {sermonId && (
                     <button
-                      onClick={handleGenerateOutlinePoints}
-                      disabled={isGeneratingOutlinePoints || localOutlinePoints.length > 0}
-                      className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localOutlinePoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
-                      title={localOutlinePoints.length > 0 
-                        ? t('structure.outlinePointsExist', { defaultValue: 'Outline points already exist' }) 
-                        : t('structure.generateOutlinePoints', { defaultValue: 'Generate outline points' })}
+                      onClick={handleGenerateSermonPoints}
+                      disabled={isGeneratingSermonPoints || localSermonPoints.length > 0}
+                      className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localSermonPoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
+                      title={localSermonPoints.length > 0 
+                        ? t('structure.outlinePointsExist', { defaultValue: 'SermonOutline points already exist' }) 
+                        : t('structure.generateSermonPoints', { defaultValue: 'Generate outline points' })}
                     >
-                      {isGeneratingOutlinePoints ? (
+                      {isGeneratingSermonPoints ? (
                         <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -910,7 +910,7 @@ export default function Column({
                       ) : (
                         <SparklesIcon className="h-3 w-3 mr-1" />
                       )}
-                      {isGeneratingOutlinePoints ? t('common.generating', { defaultValue: 'Generating...' }) : t('structure.generate', { defaultValue: 'Generate' })}
+                      {isGeneratingSermonPoints ? t('common.generating', { defaultValue: 'Generating...' }) : t('structure.generate', { defaultValue: 'Generate' })}
                     </button>
                   )}
                 </div>
@@ -922,7 +922,7 @@ export default function Column({
                         ref={provided.innerRef}
                         className="space-y-2 flex-grow"
                       >
-                        {localOutlinePoints.map((point, index) => (
+                        {localSermonPoints.map((point, index) => (
                           <Draggable key={point.id} draggableId={point.id} index={index}>
                             {(providedDraggable, snapshot) => (
                               <li
@@ -959,9 +959,9 @@ export default function Column({
                                   <>
                                     <span className="text-sm text-white dark:text-gray-100 flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
                                       {point.text}
-                                      {thoughtsPerOutlinePoint[point.id] > 0 && (
+                                      {thoughtsPerSermonPoint[point.id] > 0 && (
                                         <span className="ml-2 px-1.5 py-0.5 text-xs bg-white dark:bg-gray-200 text-gray-700 dark:text-gray-700 rounded-full">
-                                          {thoughtsPerOutlinePoint[point.id]}
+                                          {thoughtsPerSermonPoint[point.id]}
                                         </span>
                                       )}
                                     </span>
@@ -1042,11 +1042,11 @@ export default function Column({
 
             <div className="space-y-6 md:space-y-6 space-y-8">
               {/* In focus mode, show outline points even when there are no items */}
-              {localOutlinePoints && localOutlinePoints.length > 0 ? (
+              {localSermonPoints && localSermonPoints.length > 0 ? (
                 <>
                   {/* Render placeholders for each outline point with their thoughts */}
-                  {localOutlinePoints.map((point) => (
-                    <OutlinePointPlaceholder
+                  {localSermonPoints.map((point) => (
+                    <SermonPointPlaceholder
                       key={point.id}
                       point={point}
                       items={items}
@@ -1302,17 +1302,17 @@ export default function Column({
           </div>
         )}
         
-        {/* Outline points display */}
-        {localOutlinePoints && localOutlinePoints.length > 0 && (
+        {/* SermonOutline points display */}
+        {localSermonPoints && localSermonPoints.length > 0 && (
           <div className={`bg-opacity-80 p-2 text-sm font-normal text-white border-t border-white`}
                style={headerBgStyle ? { ...headerBgStyle, opacity: 0.8 } : {}}>
             <ul className="list-disc pl-4 space-y-1">
-              {localOutlinePoints.map((point: OutlinePoint) => (
+              {localSermonPoints.map((point: SermonPoint) => (
                 <li key={point.id} className="flex items-center">
                   <span>{point.text}</span>
-                  {thoughtsPerOutlinePoint[point.id] > 0 && (
+                  {thoughtsPerSermonPoint[point.id] > 0 && (
                     <span className="ml-2 px-1.5 py-0.5 text-xs bg-white text-gray-700 rounded-full">
-                      {thoughtsPerOutlinePoint[point.id]}
+                      {thoughtsPerSermonPoint[point.id]}
                     </span>
                   )}
                 </li>
@@ -1329,11 +1329,11 @@ export default function Column({
           style={headerColor ? { borderColor: headerColor } : {}}
         >
           {/* Show outline points with grouped thoughts */}
-          {localOutlinePoints && localOutlinePoints.length > 0 ? (
+          {localSermonPoints && localSermonPoints.length > 0 ? (
             <div className="space-y-6">
               {/* Render placeholders for each outline point with their thoughts */}
-              {localOutlinePoints.map((point) => (
-                <OutlinePointPlaceholder
+              {localSermonPoints.map((point) => (
+                <SermonPointPlaceholder
                   key={point.id}
                   point={point}
                   items={items}
@@ -1377,7 +1377,7 @@ export default function Column({
               )}
               
               {/* Always show drop target for unassigned thoughts, even if empty */}
-              {unassignedItemsForDisplay.length === 0 && localOutlinePoints.length > 0 && (
+              {unassignedItemsForDisplay.length === 0 && localSermonPoints.length > 0 && (
                 <div className="mt-8">
                                   <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
                   <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>

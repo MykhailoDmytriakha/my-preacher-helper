@@ -159,7 +159,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
           </div>
         </div>
         
-        {/* Structure filter */}
+        {/* ThoughtsBySection filter */}
         <div className="px-4 py-2">
           <h3 className="text-sm font-medium">
             {t('filters.byStructure')}
@@ -226,7 +226,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
                 disabled={!hasStructureTags}
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                {t('filters.sortByStructure') || 'By Structure (Intro → Main → Conclusion)'}
+                {t('filters.sortByStructure') || 'By ThoughtsBySection (Intro → Main → Conclusion)'}
                 {!hasStructureTags && (
                   <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
                     ({t('filters.requiresStructureTags') || 'Requires structure tags'})

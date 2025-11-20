@@ -1,11 +1,11 @@
-import { Structure, Item } from "@/models/models";
+import { ThoughtsBySection, Item } from "@/models/models";
 
 /**
  * Check if structure has changed between two states
  */
 export const isStructureChanged = (
-  structurePrev: string | Structure | Record<string, unknown> | null | undefined,
-  structureNew: string | Structure | Record<string, unknown> | null | undefined
+  structurePrev: string | ThoughtsBySection | Record<string, unknown> | null | undefined,
+  structureNew: string | ThoughtsBySection | Record<string, unknown> | null | undefined
 ): boolean => {
   // Handle null/undefined cases gracefully
   if (structurePrev === null || structurePrev === undefined) {

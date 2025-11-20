@@ -37,7 +37,7 @@ const segmentLabels: Record<string, SegmentConfig> = {
   },
   structure: {
     labelKey: 'navigation.structure',
-    defaultLabel: 'Structure',
+    defaultLabel: 'ThoughtsBySection',
   },
   series: {
     labelKey: 'navigation.series',

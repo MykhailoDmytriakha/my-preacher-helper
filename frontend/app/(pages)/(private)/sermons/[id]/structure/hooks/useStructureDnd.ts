@@ -9,7 +9,7 @@ import {
   DragEndEvent 
 } from "@dnd-kit/core";
 import { updateStructure } from "@/services/structure.service";
-import { Item, Sermon, OutlinePoint, Thought, Outline } from "@/models/models";
+import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import debounce from 'lodash/debounce';
@@ -27,7 +27,7 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  outlinePoints: { introduction: OutlinePoint[]; main: OutlinePoint[]; conclusion: OutlinePoint[] };
+  outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   columnTitles: Record<string, string>;
   debouncedSaveThought: (sermonId: string, thought: Thought) => void;
 }
@@ -88,14 +88,14 @@ export const useStructureDnd = ({
     if (!srcContainerKey) return;
 
     let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
-    let targetOutlinePointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
+    let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
 
     if (overId.startsWith('outline-point-')) {
       dstContainerKey = over.data?.current?.container as string | undefined;
-      targetOutlinePointId = (over.data?.current?.outlinePointId as string) || undefined;
+      targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
     } else if (overId.startsWith('unassigned-')) {
       dstContainerKey = over.data?.current?.container as string | undefined;
-      targetOutlinePointId = null;
+      targetSermonPointId = null;
     } else if (!dstContainerKey) {
       // over on item or container id
       dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
@@ -107,7 +107,7 @@ export const useStructureDnd = ({
       if (overId !== dstContainerKey) {
         const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
         if (overIdx !== -1) {
-          targetOutlinePointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
+          targetSermonPointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
         }
       }
     }
@@ -124,9 +124,9 @@ export const useStructureDnd = ({
     if (overId !== dstContainerKey && !overId.startsWith('outline-point-') && !overId.startsWith('unassigned-')) {
       const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
       if (overIdx !== -1) insertIndex = overIdx; // insert before target item
-    } else if (targetOutlinePointId !== undefined) {
+    } else if (targetSermonPointId !== undefined) {
       // Append to end of that group
-      const groupKey = targetOutlinePointId || null;
+      const groupKey = targetSermonPointId || null;
       // find last index of items in that group
       let lastGroupIndex = -1;
       for (let i = 0; i < state[dstContainerKey].length; i++) {
@@ -138,7 +138,7 @@ export const useStructureDnd = ({
     }
 
     const intendedOutline: string | undefined =
-      targetOutlinePointId === undefined ? (dragged.outlinePointId || undefined) : (targetOutlinePointId || undefined);
+      targetSermonPointId === undefined ? (dragged.outlinePointId || undefined) : (targetSermonPointId || undefined);
 
     // If the item is already at the intended place/group, skip updating state
     if (srcContainerKey === dstContainerKey) {
@@ -223,7 +223,7 @@ export const useStructureDnd = ({
     // Find the index of the target item in the destination container
     let targetItemIndex = -1;
     let droppedOnItem = false;
-    let targetItemOutlinePointId: string | null = null;
+    let targetItemSermonPointId: string | null = null;
 
     if (
       over.id !== overContainer &&
@@ -235,7 +235,7 @@ export const useStructureDnd = ({
       if (targetItemIndex !== -1) {
         const targetItem = containers[overContainer][targetItemIndex];
         // If target item is unassigned, explicitly use null to signal clearing assignment
-        targetItemOutlinePointId = targetItem?.outlinePointId ?? null;
+        targetItemSermonPointId = targetItem?.outlinePointId ?? null;
       }
     }
     
@@ -295,7 +295,7 @@ export const useStructureDnd = ({
     // If dropped on a specific item and no explicit outline point target was set,
     // inherit the target item's outline point assignment
     if (typeof outlinePointId === 'undefined' && droppedOnItem) {
-      outlinePointId = targetItemOutlinePointId;
+      outlinePointId = targetItemSermonPointId;
     }
     // If dropped on container area (not a specific item or special placeholder),
     // default to unassigned in the current/target section
@@ -357,39 +357,39 @@ export const useStructureDnd = ({
           }
 
           // Determine final outlinePointId value to persist
-          let finalOutlinePointId: string | null | undefined = undefined;
+          let finalSermonPointId: string | null | undefined = undefined;
 
           if (typeof outlinePointId === 'string') {
-            finalOutlinePointId = outlinePointId;
+            finalSermonPointId = outlinePointId;
           } else if (outlinePointId === null) {
-            finalOutlinePointId = null;
+            finalSermonPointId = null;
           } else {
             // No explicit outline point change requested
-            finalOutlinePointId = movedItem.outlinePointId;
+            finalSermonPointId = movedItem.outlinePointId;
 
             // If container changed and previous outline point belongs to a different section, clear it
-            if (activeContainer !== overContainer && finalOutlinePointId && sermon.outline) {
+            if (activeContainer !== overContainer && finalSermonPointId && sermon.outline) {
               const sectionPoints =
                 overContainer === 'introduction' ? sermon.outline.introduction
                 : overContainer === 'main' ? sermon.outline.main
                 : overContainer === 'conclusion' ? sermon.outline.conclusion
                 : [];
-              const belongsToNewSection = sectionPoints?.some((p: OutlinePoint) => p.id === finalOutlinePointId);
+              const belongsToNewSection = sectionPoints?.some((p: SermonPoint) => p.id === finalSermonPointId);
               if (!belongsToNewSection) {
-                finalOutlinePointId = null;
+                finalSermonPointId = null;
               }
             }
           }
 
           // Compute new positional rank within the destination group
-          const groupKey = finalOutlinePointId || '__unassigned__';
+          const groupKey = finalSermonPointId || '__unassigned__';
           const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
 
           // Reflect these updates in local containers immediately to keep UI and persistence consistent
           updatedContainers[overContainer][movedIndex] = {
             ...movedItem,
             requiredTags: updatedRequiredTags,
-            outlinePointId: finalOutlinePointId,
+            outlinePointId: finalSermonPointId,
             position: newPos,
           };
           setContainers(updatedContainers);
@@ -404,7 +404,7 @@ export const useStructureDnd = ({
                 ...updatedRequiredTags,
                 ...(movedItem.customTagNames || []).map((tag) => tag.name),
               ],
-              outlinePointId: finalOutlinePointId,
+              outlinePointId: finalSermonPointId,
               position: newPos,
             };
             debouncedSaveThought(sermon.id, updatedThought);

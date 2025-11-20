@@ -1,4 +1,4 @@
-import { Sermon, OutlinePoint, Thought, Item } from '@/models/models';
+import { Sermon, SermonPoint, Thought, Item } from '@/models/models';
 
 // This is a utility file for test helpers, not a test suite
 // It should not be run as tests
@@ -10,7 +10,7 @@ export const createMockThought = (overrides: Partial<Thought> = {}): Thought => 
   ...overrides,
 });
 
-export const createMockOutlinePoint = (overrides: Partial<OutlinePoint> = {}): OutlinePoint => ({
+export const createMockSermonPoint = (overrides: Partial<SermonPoint> = {}): SermonPoint => ({
   id: `op-${Math.random()}`,
   text: 'Test outline point',
   ...overrides,
@@ -50,7 +50,7 @@ export const mockTranslations: Record<string, string> = {
   'structure.mainPart': 'Main Part',
   'structure.conclusion': 'Conclusion',
   'structure.underConsideration': 'Under Consideration',
-  'structure.title': 'Structure',
+  'structure.title': 'ThoughtsBySection',
   'structure.backToSermon': 'Back to Sermon',
   'structure.noEntries': 'No entries',
   'structure.dropThoughtsHere': 'Drop thoughts here',
@@ -67,7 +67,7 @@ export const mockTranslations: Record<string, string> = {
   'structure.focusMode': 'Focus Mode',
   'structure.normalMode': 'Normal Mode',
   'structure.sortButton': 'Sort',
-  'structure.outlinePoints': 'Outline Points',
+  'structure.outlinePoints': 'SermonOutline Points',
   'structure.addPointButton': 'Add Point',
   'structure.sermonNotFound': 'Sermon not found',
   'common.loading': 'Loading',

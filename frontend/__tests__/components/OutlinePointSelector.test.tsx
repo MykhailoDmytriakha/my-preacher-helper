@@ -1,8 +1,8 @@
 import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import OutlinePointSelector from '@components/OutlinePointSelector';
-import type { Thought, Outline } from '@/models/models';
+import SermonPointSelector from '@components/SermonPointSelector';
+import type { Thought, SermonOutline } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the translation hook
@@ -13,9 +13,9 @@ jest.mock('react-i18next', () => ({
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
         'tags.conclusion': 'Conclusion',
-        'editThought.noOutlinePoint': 'No outline point selected',
-        'editThought.noOutlinePointAssigned': 'Outline point not assigned',
-        'editThought.selectOutlinePoint': 'Select outline point',
+        'editThought.noSermonPoint': 'No outline point selected',
+        'editThought.noSermonPointAssigned': 'SermonOutline point not assigned',
+        'editThought.selectSermonPoint': 'Select outline point',
         'outline.introduction': 'Introduction',
         'outline.mainPoints': 'Main Points',
         'outline.conclusion': 'Conclusion',
@@ -25,8 +25,8 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-describe('OutlinePointSelector', () => {
-  const mockOutline: Outline = {
+describe('SermonPointSelector', () => {
+  const mockOutline: SermonOutline = {
     introduction: [
       { id: 'intro-1', text: 'Opening statement' },
       { id: 'intro-2', text: 'Context setting' },
@@ -57,7 +57,7 @@ describe('OutlinePointSelector', () => {
     outlinePointId: 'main-1',
   };
 
-  const mockOnOutlinePointChange = jest.fn();
+  const mockOnSermonPointChange = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,10 +71,10 @@ describe('OutlinePointSelector', () => {
             name: 'hidden without outline data',
             run: () => {
               const { container } = render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={undefined}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(container.firstChild).toBeNull();
@@ -83,12 +83,12 @@ describe('OutlinePointSelector', () => {
           {
             name: 'hidden when outline arrays empty',
             run: () => {
-              const emptyOutline: Outline = { introduction: [], main: [], conclusion: [] };
+              const emptyOutline: SermonOutline = { introduction: [], main: [], conclusion: [] };
               const { container } = render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={emptyOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(container.firstChild).toBeNull();
@@ -98,23 +98,23 @@ describe('OutlinePointSelector', () => {
             name: 'shows unassigned label when no outline point',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              expect(screen.getByText('Outline point not assigned')).toBeInTheDocument();
+              expect(screen.getByText('SermonOutline point not assigned')).toBeInTheDocument();
             }
           },
           {
             name: 'renders assigned outline data',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(screen.getByText(/Main Part:/)).toBeInTheDocument();
@@ -130,10 +130,10 @@ describe('OutlinePointSelector', () => {
                 tags: ['Вступление']
               };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={thoughtWithIntro}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(screen.getByText(/Introduction:/)).toBeInTheDocument();
@@ -148,10 +148,10 @@ describe('OutlinePointSelector', () => {
                 tags: ['Заключение']
               };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={thoughtWithConclusion}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(screen.getByText(/Conclusion:/)).toBeInTheDocument();
@@ -171,13 +171,13 @@ describe('OutlinePointSelector', () => {
             name: 'opens list when trigger clicked',
             run: async () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => expect(screen.getByText('Select outline point')).toBeInTheDocument());
             }
           },
@@ -186,15 +186,15 @@ describe('OutlinePointSelector', () => {
             run: async () => {
               render(
                 <div>
-                  <OutlinePointSelector
+                  <SermonPointSelector
                     thought={mockThoughtWithoutOutline}
                     sermonOutline={mockOutline}
-                    onOutlinePointChange={mockOnOutlinePointChange}
+                    onSermonPointChange={mockOnSermonPointChange}
                   />
                   <div data-testid="outside">Outside element</div>
                 </div>
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => expect(screen.getByText('Select outline point')).toBeInTheDocument());
               fireEvent.mouseDown(screen.getByTestId('outside'));
               await waitFor(() => expect(screen.queryByText('Select outline point')).toBeNull());
@@ -204,13 +204,13 @@ describe('OutlinePointSelector', () => {
             name: 'rotates chevron to indicate open state',
             run: async () => {
               const { container } = render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              const button = screen.getByText('Outline point not assigned').closest('button');
+              const button = screen.getByText('SermonOutline point not assigned').closest('button');
               const chevron = container.querySelector('svg');
               fireEvent.click(button!);
               await waitFor(() => expect(chevron).toHaveClass('rotate-180'));
@@ -222,56 +222,56 @@ describe('OutlinePointSelector', () => {
     });
   });
 
-  describe('Outline Point Selection', () => {
+  describe('SermonOutline Point Selection', () => {
     it('covers selection flows without multiple tests', async () => {
       await runScenarios(
         [
           {
             name: 'selecting an outline triggers callback',
             run: async () => {
-              mockOnOutlinePointChange.mockResolvedValue(undefined);
+              mockOnSermonPointChange.mockResolvedValue(undefined);
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('First main point'));
               fireEvent.click(screen.getByText('First main point'));
-              await waitFor(() => expect(mockOnOutlinePointChange).toHaveBeenCalledWith('main-1'));
+              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith('main-1'));
             }
           },
           {
             name: 'removing outline resets value',
             run: async () => {
-              mockOnOutlinePointChange.mockResolvedValue(undefined);
+              mockOnSermonPointChange.mockResolvedValue(undefined);
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               fireEvent.click(screen.getByText(/First main point/));
               await waitFor(() => screen.getByText('No outline point selected'));
               fireEvent.click(screen.getByText('No outline point selected'));
-              await waitFor(() => expect(mockOnOutlinePointChange).toHaveBeenCalledWith(undefined));
+              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith(undefined));
             }
           },
           {
             name: 'dropdown closes after selection',
             run: async () => {
-              mockOnOutlinePointChange.mockResolvedValue(undefined);
+              mockOnSermonPointChange.mockResolvedValue(undefined);
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('First main point'));
               fireEvent.click(screen.getByText('First main point'));
               await waitFor(() => expect(screen.queryByText('Select outline point')).toBeNull());
@@ -281,15 +281,15 @@ describe('OutlinePointSelector', () => {
             name: 'logs errors when update fails',
             run: async () => {
               const consoleError = jest.spyOn(console, 'error').mockImplementation();
-              mockOnOutlinePointChange.mockRejectedValue(new Error('Update failed'));
+              mockOnSermonPointChange.mockRejectedValue(new Error('Update failed'));
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('First main point'));
               fireEvent.click(screen.getByText('First main point'));
               await waitFor(() =>
@@ -320,13 +320,13 @@ describe('OutlinePointSelector', () => {
             name: 'main-tag thoughts only see main points',
             run: async () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('Main Points'));
               expect(screen.queryByText('Opening statement')).toBeNull();
             }
@@ -336,13 +336,13 @@ describe('OutlinePointSelector', () => {
             run: async () => {
               const introThought: Thought = { ...mockThoughtWithoutOutline, tags: ['Вступление'] };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={introThought}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('Introduction'));
               expect(screen.queryByText('First main point')).toBeNull();
             }
@@ -352,13 +352,13 @@ describe('OutlinePointSelector', () => {
             run: async () => {
               const conclusionThought: Thought = { ...mockThoughtWithoutOutline, tags: ['Заключение'] };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={conclusionThought}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('Conclusion'));
               expect(screen.queryByText('First main point')).toBeNull();
             }
@@ -368,13 +368,13 @@ describe('OutlinePointSelector', () => {
             run: async () => {
               const noSectionThought: Thought = { ...mockThoughtWithoutOutline, tags: ['custom-tag'] };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={noSectionThought}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('Conclusion'));
             }
           },
@@ -386,13 +386,13 @@ describe('OutlinePointSelector', () => {
                 tags: ['Вступление', 'Основная часть']
               };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={multiSectionThought}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('Conclusion'));
             }
           }
@@ -410,28 +410,28 @@ describe('OutlinePointSelector', () => {
             name: 'button element becomes disabled',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                   disabled={true}
                 />
               );
-              expect(screen.getByText('Outline point not assigned').closest('button')).toBeDisabled();
+              expect(screen.getByText('SermonOutline point not assigned').closest('button')).toBeDisabled();
             }
           },
           {
             name: 'dropdown cannot be opened',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                   disabled={true}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               expect(screen.queryByText('Select outline point')).toBeNull();
             }
           },
@@ -439,14 +439,14 @@ describe('OutlinePointSelector', () => {
             name: 'disabled styling cues rendered',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                   disabled={true}
                 />
               );
-              const button = screen.getByText('Outline point not assigned').closest('button');
+              const button = screen.getByText('SermonOutline point not assigned').closest('button');
               expect(button).toHaveClass('disabled:opacity-50');
               expect(button).toHaveClass('disabled:cursor-not-allowed');
             }
@@ -465,10 +465,10 @@ describe('OutlinePointSelector', () => {
             name: 'selected outline point gets highlight classes',
             run: async () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               fireEvent.click(screen.getByText(/First main point/));
@@ -481,10 +481,10 @@ describe('OutlinePointSelector', () => {
             name: 'non-selected options expose hover styling',
             run: async () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               fireEvent.click(screen.getByText(/First main point/));
@@ -497,23 +497,23 @@ describe('OutlinePointSelector', () => {
             name: 'unassigned state shows dashed border',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              expect(screen.getByText('Outline point not assigned').closest('button')).toHaveClass('border-dashed');
+              expect(screen.getByText('SermonOutline point not assigned').closest('button')).toHaveClass('border-dashed');
             }
           },
           {
             name: 'assigned state uses solid border',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               const button = screen.getByText(/First main point/).closest('button');
@@ -535,10 +535,10 @@ describe('OutlinePointSelector', () => {
             name: 'button element exposed to assistive tech',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
               expect(screen.getByRole('button')).toBeInTheDocument();
@@ -548,13 +548,13 @@ describe('OutlinePointSelector', () => {
             name: 'keyboard focus works on trigger',
             run: () => {
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              const button = screen.getByText('Outline point not assigned').closest('button');
+              const button = screen.getByText('SermonOutline point not assigned').closest('button');
               button?.focus();
               expect(document.activeElement).toBe(button);
             }
@@ -572,19 +572,19 @@ describe('OutlinePointSelector', () => {
           {
             name: 'renders gracefully with partial outline',
             run: () => {
-              const partialOutline: Outline = {
+              const partialOutline: SermonOutline = {
                 introduction: [],
                 main: [{ id: 'main-1', text: 'Only main point' }],
                 conclusion: []
               };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={partialOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              expect(screen.getByText('Outline point not assigned')).toBeInTheDocument();
+              expect(screen.getByText('SermonOutline point not assigned')).toBeInTheDocument();
             }
           },
           {
@@ -592,13 +592,13 @@ describe('OutlinePointSelector', () => {
             run: () => {
               const thoughtWithInvalidId: Thought = { ...mockThoughtWithoutOutline, outlinePointId: 'invalid-id' };
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={thoughtWithInvalidId}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              expect(screen.getByText('Outline point not assigned')).toBeInTheDocument();
+              expect(screen.getByText('SermonOutline point not assigned')).toBeInTheDocument();
             }
           },
           {
@@ -608,15 +608,15 @@ describe('OutlinePointSelector', () => {
               const updatePromise = new Promise<void>((resolve) => {
                 resolveUpdate = resolve;
               });
-              mockOnOutlinePointChange.mockReturnValue(updatePromise);
+              mockOnSermonPointChange.mockReturnValue(updatePromise);
               render(
-                <OutlinePointSelector
+                <SermonPointSelector
                   thought={mockThoughtWithoutOutline}
                   sermonOutline={mockOutline}
-                  onOutlinePointChange={mockOnOutlinePointChange}
+                  onSermonPointChange={mockOnSermonPointChange}
                 />
               );
-              fireEvent.click(screen.getByText('Outline point not assigned'));
+              fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('First main point'));
               fireEvent.click(screen.getByText('First main point'));
               await waitFor(() => {

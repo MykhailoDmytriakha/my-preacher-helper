@@ -36,7 +36,7 @@ describe('Breadcrumbs', () => {
     jest.clearAllMocks();
   });
 
-  it('should show Library > Structure for structure page without sermonId', () => {
+  it('should show Library > ThoughtsBySection for structure page without sermonId', () => {
     mockUsePathname.mockReturnValue('/structure');
     mockUseSearchParams.mockReturnValue({
       get: jest.fn().mockReturnValue(null),
@@ -47,10 +47,10 @@ describe('Breadcrumbs', () => {
     render(<Breadcrumbs />);
 
     expect(screen.getByText('Library')).toBeInTheDocument();
-    expect(screen.getByText('Structure')).toBeInTheDocument();
+    expect(screen.getByText('ThoughtsBySection')).toBeInTheDocument();
   });
 
-  it('should show Library > Sermon Title > Structure for structure page with sermonId', () => {
+  it('should show Library > Sermon Title > ThoughtsBySection for structure page with sermonId', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
     mockUsePathname.mockReturnValue('/sermons/test-id/structure');
     mockUseSearchParams.mockReturnValue({
@@ -63,7 +63,7 @@ describe('Breadcrumbs', () => {
 
     expect(screen.getByText('Library')).toBeInTheDocument();
     expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-    expect(screen.getByText('Structure')).toBeInTheDocument();
+    expect(screen.getByText('ThoughtsBySection')).toBeInTheDocument();
   });
 
   it('should show Library > Sermon Title for sermons page', () => {

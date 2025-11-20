@@ -307,7 +307,11 @@
     "noOutlinePoint": "No outline point selected",
     "noOutlinePointAssigned": "Outline point not assigned",
     "selectOutlinePoint": "Select outline point",
-    "selectedOutlinePoint": "Selected outline point from {{section}}"
+    "selectedOutlinePoint": "Selected outline point from {{section}}",
+    "noSermonPoint": "No outline point selected",
+    "noSermonPointAssigned": "Outline point not assigned",
+    "selectSermonPoint": "Select outline point",
+    "selectedSermonPoint": "Selected outline point from {{section}}"
   },
   "structure": {
     "title": "Sermon Composition:",
@@ -347,6 +351,8 @@
     "generate": "Generate",
     "generateOutlinePoints": "Generate outline points",
     "generateOutlinePointsError": "Failed to generate outline points",
+    "generateSermonPoints": "Generate outline points",
+    "generateSermonPointsError": "Failed to generate outline points",
     "outlinePointsGenerated": "Successfully generated {{count}} outline points",
     "outlinePointsExist": "Outline points already exist",
     "thought": "thought",
@@ -574,6 +580,7 @@
     "selectTextTip3": "Click the button to save the selected text as a key fragment",
     "noThoughtsAssigned": "No thoughts assigned to this outline point",
     "viewPlan": "View Plan",
+    "noSermonPoints": "No outline points",
     "expand": "Expand",
     "collapse": "Collapse",
     "savePlan": "Save Plan",

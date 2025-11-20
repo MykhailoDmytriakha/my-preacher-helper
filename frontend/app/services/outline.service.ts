@@ -1,4 +1,4 @@
-import { Outline, OutlinePoint } from '@/models/models';
+import { SermonOutline, SermonPoint } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 /**
@@ -6,7 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
  * @param sermonId The ID of the sermon to fetch the outline for
  * @returns The sermon outline or undefined if not found
  */
-export const getSermonOutline = async (sermonId: string): Promise<Outline | undefined> => {
+export const getSermonOutline = async (sermonId: string): Promise<SermonOutline | undefined> => {
   try {
     const response = await fetch(`${API_BASE}/api/sermons/outline?sermonId=${sermonId}`, {
       cache: "no-store",
@@ -37,7 +37,7 @@ export const getSermonOutline = async (sermonId: string): Promise<Outline | unde
  * @param outline The updated outline data
  * @returns The updated outline or null if the update failed
  */
-export const updateSermonOutline = async (sermonId: string, outline: Outline): Promise<Outline | null> => {
+export const updateSermonOutline = async (sermonId: string, outline: SermonOutline): Promise<SermonOutline | null> => {
   // Validate outline data
   if (!outline.main) {
     outline.main = [];
@@ -72,10 +72,10 @@ export const updateSermonOutline = async (sermonId: string, outline: Outline): P
  * @param section The section to generate points for ('introduction', 'main', 'conclusion')
  * @returns Array of generated outline points or empty array if generation failed
  */
-export const generateOutlinePointsForSection = async (
+export const generateSermonPointsForSection = async (
   sermonId: string, 
   section: 'introduction' | 'main' | 'conclusion'
-): Promise<OutlinePoint[]> => {
+): Promise<SermonPoint[]> => {
   try {
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
       method: 'POST',

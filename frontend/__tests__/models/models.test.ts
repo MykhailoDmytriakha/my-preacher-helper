@@ -1,4 +1,4 @@
-import { Thought, OutlinePoint } from '@/models/models';
+import { Thought, SermonPoint } from '@/models/models';
 
 describe('Thought model with forceTag', () => {
     it('should have forceTag as optional property', () => {
@@ -60,10 +60,10 @@ describe('Thought model with forceTag', () => {
     });
   });
 
-  describe('OutlinePoint Model', () => {
+  describe('SermonPoint Model', () => {
     describe('isReviewed field', () => {
       it('should allow undefined isReviewed field', () => {
-        const outlinePoint: OutlinePoint = {
+        const outlinePoint: SermonPoint = {
           id: 'op1',
           text: 'Test outline point',
         };
@@ -74,7 +74,7 @@ describe('Thought model with forceTag', () => {
       });
 
       it('should allow false isReviewed field', () => {
-        const outlinePoint: OutlinePoint = {
+        const outlinePoint: SermonPoint = {
           id: 'op1',
           text: 'Test outline point',
           isReviewed: false,
@@ -84,7 +84,7 @@ describe('Thought model with forceTag', () => {
       });
 
       it('should allow true isReviewed field', () => {
-        const outlinePoint: OutlinePoint = {
+        const outlinePoint: SermonPoint = {
           id: 'op1',
           text: 'Test outline point',
           isReviewed: true,
@@ -93,8 +93,8 @@ describe('Thought model with forceTag', () => {
         expect(outlinePoint.isReviewed).toBe(true);
       });
 
-      it('should be compatible with existing OutlinePoint structure', () => {
-        const outlinePoints: OutlinePoint[] = [
+      it('should be compatible with existing SermonPoint structure', () => {
+        const outlinePoints: SermonPoint[] = [
           { id: 'op1', text: 'Point 1' },
           { id: 'op2', text: 'Point 2', isReviewed: false },
           { id: 'op3', text: 'Point 3', isReviewed: true },

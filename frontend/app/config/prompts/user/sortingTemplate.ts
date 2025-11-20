@@ -1,4 +1,4 @@
-import { Item, OutlinePoint, Sermon } from "@/models/models";
+import { Item, SermonPoint, Sermon } from "@/models/models";
 
 /**
  * Creates a user message for the AI sorting function
@@ -12,7 +12,7 @@ export function createSortingUserMessage(
   columnId: string,
   items: Item[],
   sermon: Sermon,
-  outlinePoints?: OutlinePoint[]
+  outlinePoints?: SermonPoint[]
 ): string {
   // Create a mapping for section names
   const sectionNames: Record<string, string> = {
@@ -34,7 +34,7 @@ export function createSortingUserMessage(
   // Add outline points information if available
   let outlinePointsText = "";
   if (outlinePoints && outlinePoints.length > 0) {
-    outlinePointsText = "Outline Points for this section (follow this exact order when sorting):\n";
+    outlinePointsText = "SermonOutline Points for this section (follow this exact order when sorting):\n";
     for (let i = 0; i < outlinePoints.length; i++) {
       outlinePointsText += `${i+1}. ${outlinePoints[i].text}\n`;
     }

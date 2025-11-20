@@ -205,7 +205,7 @@ export default function SortableItem({
               onDelete(item.id, containerId); 
             }}
             className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
-            title={t('structure.removeFromStructure', { defaultValue: 'Remove from Structure' })}
+            title={t('structure.removeFromStructure', { defaultValue: 'Remove from ThoughtsBySection' })}
             disabled={isDeleting}
           >
             <TrashIcon className="h-5 w-5 text-red-500 hover:text-red-600" />

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { OutlinePoint, Thought } from "@/models/models";
+import { SermonPoint, Thought } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { Key, Sparkles, Save, FileText, Pencil } from "lucide-react";
@@ -10,8 +10,8 @@ import { Button } from "../ui/Button";
 import { LoadingSpinner } from "../ui/LoadingSpinner";
 import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 
-interface OutlinePointCardProps {
-  outlinePoint: OutlinePoint;
+interface SermonPointCardProps {
+  outlinePoint: SermonPoint;
   thoughts: Thought[];
   sectionName: string;
   onGenerate: (outlinePointId: string) => Promise<void>;
@@ -26,7 +26,7 @@ interface OutlinePointCardProps {
   savedContent: boolean;
 }
 
-export const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>(({
+export const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>(({
   outlinePoint,
   thoughts,
   sectionName,
@@ -178,6 +178,6 @@ export const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCar
   );
 });
 
-OutlinePointCard.displayName = "OutlinePointCard";
+SermonPointCard.displayName = "SermonPointCard";
 
-export default OutlinePointCard; 
+export default SermonPointCard; 

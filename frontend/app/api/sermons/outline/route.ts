@@ -34,10 +34,10 @@ export async function PUT(request: Request) {
     
     const { outline } = await request.json();
     console.log(`Updating sermon outline for sermon ${sermonId}`);
-    console.log(`Outline data:`, outline);
+    console.log(`SermonOutline data:`, outline);
     
     if (!outline) {
-      return NextResponse.json({ error: "Outline data is required" }, { status: 400 });
+      return NextResponse.json({ error: "SermonOutline data is required" }, { status: 400 });
     }
     
     // Use repository to update the sermon outline

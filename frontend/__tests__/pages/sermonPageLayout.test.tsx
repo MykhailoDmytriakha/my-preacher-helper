@@ -10,7 +10,7 @@ interface Thought {
   date: string;
 }
 
-interface Structure {
+interface ThoughtsBySection {
   introduction: string[];
   main: string[];
   conclusion: string[];
@@ -24,7 +24,7 @@ interface Sermon {
   date: string;
   thoughts: Thought[];
   userId: string;
-  structure?: Structure;
+  structure?: ThoughtsBySection;
 }
 
 const mockSermon: Sermon = {
@@ -77,7 +77,7 @@ jest.mock('@/components/sermon/StructureStats', () => {
   return {
     __esModule: true,
     default: ({ sermon }: { sermon: Sermon }) => (
-      <div data-testid="structure-stats">Structure Stats Mock</div>
+      <div data-testid="structure-stats">ThoughtsBySection Stats Mock</div>
     ),
   };
 });
@@ -86,7 +86,7 @@ jest.mock('@/components/sermon/StructurePreview', () => {
   return {
     __esModule: true,
     default: ({ sermon }: { sermon: Sermon }) => (
-      sermon.structure ? <div data-testid="structure-preview">Structure Preview Mock</div> : null
+      sermon.structure ? <div data-testid="structure-preview">ThoughtsBySection Preview Mock</div> : null
     ),
   };
 });
@@ -101,7 +101,7 @@ jest.mock('@/components/sermon/KnowledgeSection', () => {
 jest.mock('@/components/sermon/SermonOutline', () => {
   return {
     __esModule: true,
-    default: () => <div data-testid="sermon-outline">Sermon Outline Mock</div>,
+    default: () => <div data-testid="sermon-outline">Sermon SermonOutline Mock</div>,
   };
 });
 

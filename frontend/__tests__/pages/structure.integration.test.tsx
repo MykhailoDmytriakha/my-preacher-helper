@@ -5,7 +5,7 @@ import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { updateStructure } from '@/services/structure.service';
 import { sortItemsWithAI } from '@/services/sortAI.service';
-import { createMockSermon, createMockThought, createMockOutlinePoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
@@ -61,7 +61,7 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
-describe('Structure Page - Integration Tests', () => {
+describe('ThoughtsBySection Page - Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (updateStructure as jest.Mock).mockResolvedValue({});
@@ -77,8 +77,8 @@ describe('Structure Page - Integration Tests', () => {
         ],
         structure: { introduction: ['t1'], main: ['t2'], conclusion: [], ambiguous: [] },
         outline: {
-          introduction: [createMockOutlinePoint({ id: 'op1', text: 'Intro Point' })],
-          main: [createMockOutlinePoint({ id: 'op2', text: 'Main Point' })],
+          introduction: [createMockSermonPoint({ id: 'op1', text: 'Intro Point' })],
+          main: [createMockSermonPoint({ id: 'op2', text: 'Main Point' })],
           conclusion: [],
         },
       });
@@ -115,8 +115,8 @@ describe('Structure Page - Integration Tests', () => {
         structure: { introduction: ['t1', 't2'], main: [], conclusion: [], ambiguous: [] },
         outline: {
           introduction: [
-            createMockOutlinePoint({ id: 'op1', text: 'Point 1' }),
-            createMockOutlinePoint({ id: 'op2', text: 'Point 2' }),
+            createMockSermonPoint({ id: 'op1', text: 'Point 1' }),
+            createMockSermonPoint({ id: 'op2', text: 'Point 2' }),
           ],
           main: [],
           conclusion: [],
@@ -147,7 +147,7 @@ describe('Structure Page - Integration Tests', () => {
     });
   });
 
-  describe('Outline Management', () => {
+  describe('SermonOutline Management', () => {
     it('should display thoughts grouped by outline points', async () => {
       const mockSermon = createMockSermon({
         thoughts: [
@@ -155,7 +155,7 @@ describe('Structure Page - Integration Tests', () => {
         ],
         structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
         outline: {
-          introduction: [createMockOutlinePoint({ id: 'op1', text: 'Point 1' })],
+          introduction: [createMockSermonPoint({ id: 'op1', text: 'Point 1' })],
           main: [],
           conclusion: [],
         },

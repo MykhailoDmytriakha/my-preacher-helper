@@ -9,19 +9,19 @@ export interface Thought {
   forceTag?: string; // Force tag for transcription (introduction, main, conclusion)
 }
 
-export interface OutlinePoint {
+export interface SermonPoint {
   id: string;
   text: string;
   isReviewed?: boolean;
 }
 
-export interface Outline {
-  introduction: OutlinePoint[];
-  main: OutlinePoint[];
-  conclusion: OutlinePoint[];
+export interface SermonOutline {
+  introduction: SermonPoint[];
+  main: SermonPoint[];
+  conclusion: SermonPoint[];
 }
 
-export interface Structure {
+export interface ThoughtsBySection {
   introduction: string[];
   main: string[];
   conclusion: string[];
@@ -45,7 +45,7 @@ export interface BrainstormSuggestion {
   dimensions?: string[];
 }
 
-export interface ThoughtsPlan {
+export interface SectionHints {
   introduction: string;
   main: string; 
   conclusion: string;
@@ -55,7 +55,7 @@ export interface Insights {
   topics: string[];
   relatedVerses: VerseWithRelevance[];
   possibleDirections: DirectionSuggestion[];
-  thoughtsPlan?: ThoughtsPlan;
+  sectionHints?: SectionHints;
 }
 
 export interface VerseWithRelevance {
@@ -69,11 +69,15 @@ export interface Sermon {
   verse: string;
   date: string;
   thoughts: Thought[];
-  outline?: Outline;
-  structure?: Structure;
+  outline?: SermonOutline;
+  thoughtsBySection?: ThoughtsBySection;
+  /** Legacy alias kept for backward compatibility with stored documents */
+  structure?: ThoughtsBySection;
   userId: string;
   insights?: Insights;
-  plan?: Plan;
+  draft?: SermonDraft;
+  /** Legacy alias kept for backward compatibility with stored documents */
+  plan?: SermonDraft;
   isPreached?: boolean;
   preparation?: Preparation;
 
@@ -179,7 +183,7 @@ export interface TagInfo {
   translationKey?: string;
 }
 
-export interface Item {
+export interface ThoughtInStructure {
   id: string;
   content: string;
   customTagNames?: TagInfo[];
@@ -217,7 +221,7 @@ export interface User {
   }
 }
 
-export interface Plan {
+export interface SermonDraft {
   introduction: {
     outline: string;
     outlinePoints?: Record<string, string>;
@@ -231,3 +235,11 @@ export interface Plan {
     outlinePoints?: Record<string, string>;
   }
 }
+
+// Legacy aliases kept for backward compatibility during refactor
+export type OutlinePoint = SermonPoint;
+export type Outline = SermonOutline;
+export type Structure = ThoughtsBySection;
+export type Item = ThoughtInStructure;
+export type ThoughtsPlan = SectionHints;
+export type Plan = SermonDraft;

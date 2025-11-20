@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Item, OutlinePoint, Thought, Sermon, Structure } from "@/models/models";
+import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -8,11 +8,11 @@ import { dedupeIds } from "../utils/structure";
 interface UseAiSortingDiffProps {
   containers: Record<string, Item[]>;
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
-  outlinePoints: { introduction: OutlinePoint[]; main: OutlinePoint[]; conclusion: OutlinePoint[] };
+  outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   sermon: Sermon | null;
   sermonId: string | null;
   debouncedSaveThought: (sermonId: string, thought: Thought) => void;
-  debouncedSaveStructure: (sermonId: string, structure: Structure) => void;
+  debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
 }
 
 export const useAiSortingDiff = ({
@@ -190,7 +190,7 @@ export const useAiSortingDiff = ({
     }
 
     // Save the current structure
-    const newStructure: Structure = {
+    const newStructure: ThoughtsBySection = {
       introduction: containers.introduction.map((item) => item.id),
       main: containers.main.map((item) => item.id),
       conclusion: containers.conclusion.map((item) => item.id),
@@ -278,7 +278,7 @@ export const useAiSortingDiff = ({
     }
     
     // Save the updated structure
-    const newStructure: Structure = {
+    const newStructure: ThoughtsBySection = {
       introduction: containers.introduction.map((item) => item.id),
       main: containers.main.map((item) => item.id),
       conclusion: containers.conclusion.map((item) => item.id),
@@ -341,7 +341,7 @@ export const useAiSortingDiff = ({
     }
     
     // Save the current structure
-    const newStructure: Structure = {
+    const newStructure: ThoughtsBySection = {
       introduction: containers.introduction.map((item) => item.id),
       main: containers.main.map((item) => item.id),
       conclusion: containers.conclusion.map((item) => item.id),

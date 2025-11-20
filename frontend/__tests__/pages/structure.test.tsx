@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
-import { createMockSermon, createMockThought, createMockOutlinePoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
@@ -76,7 +76,7 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
-describe('Structure Page', () => {
+describe('ThoughtsBySection Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -139,7 +139,7 @@ describe('Structure Page', () => {
       render(<StructurePage />);
 
       await waitFor(() => {
-        // Sermon title appears in the header as "Structure Test Sermon"
+        // Sermon title appears in the header as "ThoughtsBySection Test Sermon"
         expect(screen.getByText(/Test Sermon/)).toBeInTheDocument();
         // Find column headers by their specific styling
         const introHeaders = screen.getAllByText('Introduction');
@@ -157,7 +157,7 @@ describe('Structure Page', () => {
       const mockSermon = createMockSermon({
         thoughts: [createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'], outlinePointId: 'op1' })],
         structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
-        outline: { introduction: [createMockOutlinePoint({ id: 'op1', text: 'Point 1' })], main: [], conclusion: [] },
+        outline: { introduction: [createMockSermonPoint({ id: 'op1', text: 'Point 1' })], main: [], conclusion: [] },
       });
 
       const containers = {

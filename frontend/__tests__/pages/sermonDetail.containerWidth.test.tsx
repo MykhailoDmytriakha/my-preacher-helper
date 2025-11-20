@@ -40,7 +40,7 @@ jest.mock('@components/sermon/BrainstormModule', () => () => <div>Brainstorm</di
 jest.mock('@components/sermon/ThoughtList', () => () => <div>ThoughtList</div>);
 jest.mock('@components/sermon/KnowledgeSection', () => () => <div>Knowledge</div>);
 jest.mock('@components/sermon/StructureStats', () => () => <div>Stats</div>);
-jest.mock('@components/sermon/SermonOutline', () => () => <div>Outline</div>);
+jest.mock('@components/sermon/SermonOutline', () => () => <div>SermonOutline</div>);
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 

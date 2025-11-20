@@ -35,7 +35,7 @@ describe('Column mic popover and focus button', () => {
     onEdit: jest.fn(),
     outlinePoints: [],
     isFocusMode: false,
-    thoughtsPerOutlinePoint: {},
+    thoughtsPerSermonPoint: {},
   };
 
   it('shows focus button for main and conclusion', () => {

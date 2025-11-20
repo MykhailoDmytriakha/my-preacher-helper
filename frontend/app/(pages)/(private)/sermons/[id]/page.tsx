@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import type { Sermon, Thought, Outline, Preparation, BrainstormSuggestion } from "@/models/models";
+import type { Sermon, Thought, SermonOutline, Preparation, BrainstormSuggestion } from "@/models/models";
 import Link from "next/link";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
@@ -304,7 +304,7 @@ export default function SermonPage() {
               )}
               {sortOrder === 'structure' && (
                 <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-                  {t('filters.sortByStructure') || 'Sorted by Structure'}
+                  {t('filters.sortByStructure') || 'Sorted by ThoughtsBySection'}
                 </span>
               )}
               {tagFilters.map((tag: string) => {
@@ -706,7 +706,7 @@ export default function SermonPage() {
   }, [sermon]);
 
   // Calculate the number of thoughts for each outline point
-  const calculateThoughtsPerOutlinePoint = () => {
+  const calculateThoughtsPerSermonPoint = () => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return {};
     
     const counts: Record<string, number> = {};
@@ -721,7 +721,7 @@ export default function SermonPage() {
     return counts;
   };
 
-  const thoughtsPerOutlinePoint = calculateThoughtsPerOutlinePoint();
+  const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint();
   // Completion status helpers
   const isTextContextDone = Boolean(
     prepDraft?.textContext?.readWholeBookOnceConfirmed &&
@@ -824,7 +824,7 @@ export default function SermonPage() {
   const hasInconsistentThoughts = checkForInconsistentThoughts();
 
   // Function to update only the outline part of the sermon state
-  const handleOutlineUpdate = (updatedOutline: Outline) => {
+  const handleOutlineUpdate = (updatedOutline: SermonOutline) => {
     setSermon(prevSermon => {
       if (!prevSermon) return null;
       return {
@@ -1026,7 +1026,7 @@ export default function SermonPage() {
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
         <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
-        {/* Mobile-first placement of Structure section between header and audio */}
+        {/* Mobile-first placement of ThoughtsBySection section between header and audio */}
         <div className="lg:hidden">
           <StructureStats 
             sermon={sermon!} 
@@ -1147,7 +1147,7 @@ export default function SermonPage() {
                             )}
                             {sortOrder === 'structure' && (
                               <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-                                {t('filters.sortByStructure') || 'Sorted by Structure'}
+                                {t('filters.sortByStructure') || 'Sorted by ThoughtsBySection'}
                               </span>
                             )}
                             {tagFilters.map((tag: string) => {
@@ -1516,7 +1516,7 @@ export default function SermonPage() {
                   exit={{ opacity: 0, x: 40 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                  {/* Hide duplicate Structure section on mobile, show on lg+ */}
+                  {/* Hide duplicate ThoughtsBySection section on mobile, show on lg+ */}
                   <div className="hidden lg:block">
                     <StructureStats 
                       sermon={sermon!} 
@@ -1528,7 +1528,7 @@ export default function SermonPage() {
                   <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
                   <SermonOutline 
                     sermon={sermon!} 
-                    thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
+                    thoughtsPerSermonPoint={thoughtsPerSermonPoint} 
                     onOutlineUpdate={handleOutlineUpdate}
                   />
                   {sermon!.structure && <StructurePreview sermon={sermon!} />}
@@ -1589,7 +1589,7 @@ export default function SermonPage() {
                   <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
                   <SermonOutline 
                     sermon={sermon!} 
-                    thoughtsPerOutlinePoint={thoughtsPerOutlinePoint} 
+                    thoughtsPerSermonPoint={thoughtsPerSermonPoint} 
                     onOutlineUpdate={handleOutlineUpdate}
                   />
                   {sermon!.structure && <StructurePreview sermon={sermon!} />}
@@ -1602,7 +1602,7 @@ export default function SermonPage() {
         <EditThoughtModal
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
-          initialOutlinePointId={editingModalData.thought.outlinePointId || undefined}
+          initialSermonPointId={editingModalData.thought.outlinePointId || undefined}
           allowedTags={allowedTags}
           sermonOutline={sermon.outline}
           onSave={handleSaveEditedThought}

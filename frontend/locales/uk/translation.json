@@ -307,7 +307,11 @@
     "noOutlinePoint": "Пункт плану не вибрано",
     "noOutlinePointAssigned": "Пункт плану не призначено",
     "selectOutlinePoint": "Оберіть пункт плану",
-    "selectedOutlinePoint": "Вибрано пункт плану з розділу «{{section}}»"
+    "selectedOutlinePoint": "Вибрано пункт плану з розділу «{{section}}»",
+    "noSermonPoint": "Пункт плану не вибрано",
+    "noSermonPointAssigned": "Пункт плану не призначено",
+    "selectSermonPoint": "Оберіть пункт плану",
+    "selectedSermonPoint": "Вибрано пункт плану з розділу «{{section}}»"
   },
   "structure": {
     "title": "Композиція проповіді:",
@@ -347,6 +351,8 @@
     "generate": "Створити",
     "generateOutlinePoints": "Згенерувати пункти плану",
     "generateOutlinePointsError": "Не вдалося згенерувати пункти плану",
+    "generateSermonPoints": "Згенерувати пункти плану",
+    "generateSermonPointsError": "Не вдалося згенерувати пункти плану",
     "outlinePointsGenerated": "Успішно згенеровано {{count}} пунктів плану",
     "outlinePointsExist": "Пункти плану вже існують",
     "thought": "думка",
@@ -574,6 +580,7 @@
     "selectTextTip3": "Натисніть кнопку, щоб зберегти виділений текст як ключовий фрагмент",
     "noThoughtsAssigned": "Немає думок, прив'язаних до цієї точки плану",
     "viewPlan": "Перегляд плану",
+    "noSermonPoints": "Немає пунктів плану",
     "expand": "Розгорнути",
     "collapse": "Згорнути",
     "savePlan": "Зберегти план",

@@ -1,4 +1,4 @@
-import type { Sermon, Structure, Thought, OutlinePoint } from "@/models/models";
+import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { i18n } from '@locales/i18n';
 
@@ -21,7 +21,7 @@ interface ProcessedSection {
   organizedBlocks: OrganizedBlock[];
 }
 
-// Structure to hold all organized data before formatting
+// ThoughtsBySection to hold all organized data before formatting
 interface ExportData {
   sermon: Sermon; // Keep original sermon for header info
   processedSections: ProcessedSection[];
@@ -301,7 +301,7 @@ function extractMultiTagThoughts(thoughts: Thought[]) {
 /**
  * Helper to separate thoughts based on outline assignment.
  */
-function separateThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, OutlinePoint>) {
+function separateThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, SermonPoint>) {
     const assignedThoughts: Thought[] = [];
     const unassignedThoughts: Thought[] = [];
     thoughts.forEach(thought => {
@@ -319,7 +319,7 @@ function separateThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, 
 /**
  * Process thoughts assigned to specific outline points.
  */
-function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, OutlinePoint>): OrganizedBlock[] {
+function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, SermonPoint>): OrganizedBlock[] {
   // Group thoughts by outline point ID
   const thoughtsByOutline = new Map<string, Thought[]>();
   thoughts.forEach(thought => {
@@ -352,8 +352,8 @@ function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, O
  * Process thoughts based on the defined structure for a section.
  * Returns only the thoughts that match the structure definition for that section.
  */
-function processThoughtsByStructure(thoughts: Thought[], structure: Structure, sectionKey: string): Thought[] {
-  const structuredIds = structure[sectionKey as keyof Structure] || [];
+function processThoughtsByStructure(thoughts: Thought[], structure: ThoughtsBySection, sectionKey: string): Thought[] {
+  const structuredIds = structure[sectionKey as keyof ThoughtsBySection] || [];
   if (!structuredIds || structuredIds.length === 0) {
     debugLog(`processThoughtsByStructure - No structure defined for section ${sectionKey}`);
     return []; // Return empty if no structure defined for this section
@@ -394,12 +394,12 @@ function processThoughtsByTags(thoughts: Thought[]): Thought[] {
 }
 
 /**
- * Apply the organization waterfall logic (Structure -> Tags -> Date) 
+ * Apply the organization waterfall logic (ThoughtsBySection -> Tags -> Date) 
  * to a list of thoughts within a specific section context.
  */
 function organizeThoughtsWithinSection(
   thoughts: Thought[],
-  structure: Structure | undefined,
+  structure: ThoughtsBySection | undefined,
   sectionKey: string // Key of the section these thoughts belong to ('introduction', 'main', etc.)
 ): Thought[] { // Returns thoughts ordered according to the first applicable logic
 
@@ -407,8 +407,8 @@ function organizeThoughtsWithinSection(
   
   debugLog(`organizeThoughtsWithinSection - Start for ${sectionKey}`, { count: thoughts.length });
 
-  // 1. Try Structure
-  // Structure only applies to specific sections, not 'ambiguous'
+  // 1. Try ThoughtsBySection
+  // ThoughtsBySection only applies to specific sections, not 'ambiguous'
   if (sectionKey !== 'ambiguous' && structure && isValidStructure(structure)) {
       const structuredThoughts = processThoughtsByStructure(thoughts, structure, sectionKey);
       // If structure ordering produced a result for this section, use it.
@@ -439,8 +439,8 @@ function organizeThoughtsWithinSection(
  */
 function processSection(
   sectionThoughts: Thought[], // Thoughts already filtered for this section
-  outlinePoints: OutlinePoint[] = [],
-  structure?: Structure,
+  outlinePoints: SermonPoint[] = [],
+  structure?: ThoughtsBySection,
   sectionKey?: string // The key ('introduction', 'main', etc.)
 ): OrganizedBlock[] {
   const organizedBlocks: OrganizedBlock[] = [];
@@ -463,10 +463,10 @@ function processSection(
   }
   thoughtsToProcess = thoughtsWithoutMultiTag; // Work with the remainder
 
-  // Step 1: Check for Outline Points specific to this section
+  // Step 1: Check for SermonOutline Points specific to this section
   if (outlinePoints.length > 0) {
     debugLog(`processSection - Processing with outline points for ${sectionKey}`);
-    const outlineMap = new Map<string, OutlinePoint>(outlinePoints.map(p => [p.id, p]));
+    const outlineMap = new Map<string, SermonPoint>(outlinePoints.map(p => [p.id, p]));
 
     // Separate thoughts based on assignment to *these* outline points
     const { assignedThoughts, unassignedThoughts } = separateThoughtsByOutline(thoughtsToProcess, outlineMap);
@@ -557,7 +557,7 @@ function getSectionTitle(sectionKey: string): string {
 }
 
 /** Check if structure object is valid */
-function isValidStructure(structure: Structure | undefined): boolean {
+function isValidStructure(structure: ThoughtsBySection | undefined): boolean {
   // Ensure structure is not null/undefined before checking keys
   return !!structure && typeof structure === 'object' && Object.keys(structure).length > 0;
 }

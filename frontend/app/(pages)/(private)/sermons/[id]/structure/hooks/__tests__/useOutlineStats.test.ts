@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { useOutlineStats } from '../useOutlineStats';
-import { Item, Sermon, OutlinePoint } from '@/models/models';
+import { Item, Sermon, SermonPoint } from '@/models/models';
 
 describe('useOutlineStats', () => {
   const mockSermon: Sermon = {
@@ -17,15 +17,15 @@ describe('useOutlineStats', () => {
       introduction: [
         { id: 'intro-1', text: 'Introduction point 1' },
         { id: 'intro-2', text: 'Introduction point 2' }
-      ] as OutlinePoint[],
+      ] as SermonPoint[],
       main: [
         { id: 'main-1', text: 'Main point 1' },
         { id: 'main-2', text: 'Main point 2' },
         { id: 'main-3', text: 'Main point 3' }
-      ] as OutlinePoint[],
+      ] as SermonPoint[],
       conclusion: [
         { id: 'conclusion-1', text: 'Conclusion point 1' }
-      ] as OutlinePoint[]
+      ] as SermonPoint[]
     }
   } as Sermon;
 
@@ -53,38 +53,38 @@ describe('useOutlineStats', () => {
     it('should initialize with default values', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
-      expect(result.current.thoughtsPerOutlinePoint).toBeDefined();
-      expect(typeof result.current.thoughtsPerOutlinePoint).toBe('object');
+      expect(result.current.thoughtsPerSermonPoint).toBeDefined();
+      expect(typeof result.current.thoughtsPerSermonPoint).toBe('object');
     });
   });
 
-  describe('thoughtsPerOutlinePoint calculation', () => {
+  describe('thoughtsPerSermonPoint calculation', () => {
     it('should calculate correct counts for introduction section', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(1);
     });
 
     it('should calculate correct counts for main section', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
-      expect(result.current.thoughtsPerOutlinePoint['main-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-2']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-3']).toBe(0); // No thoughts assigned
+      expect(result.current.thoughtsPerSermonPoint['main-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-2']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-3']).toBe(0); // No thoughts assigned
     });
 
     it('should calculate correct counts for conclusion section', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
-      expect(result.current.thoughtsPerOutlinePoint['conclusion-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['conclusion-1']).toBe(1);
     });
 
     it('should handle outline points with no thoughts', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
       // main-3 has no thoughts assigned
-      expect(result.current.thoughtsPerOutlinePoint['main-3']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['main-3']).toBe(0);
     });
 
     it('should handle multiple thoughts per outline point', () => {
@@ -102,8 +102,8 @@ describe('useOutlineStats', () => {
         containers: containersWithMultipleThoughts
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(2);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(2);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(1);
     });
   });
 
@@ -114,7 +114,7 @@ describe('useOutlineStats', () => {
         sermon: null
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint).toEqual({});
+      expect(result.current.thoughtsPerSermonPoint).toEqual({});
     });
 
     it('should handle sermon without outline gracefully', () => {
@@ -124,7 +124,7 @@ describe('useOutlineStats', () => {
         sermon: sermonWithoutOutline
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint).toEqual({});
+      expect(result.current.thoughtsPerSermonPoint).toEqual({});
     });
 
     it('should handle sermon with empty outline gracefully', () => {
@@ -141,7 +141,7 @@ describe('useOutlineStats', () => {
         sermon: sermonWithEmptyOutline
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint).toEqual({});
+      expect(result.current.thoughtsPerSermonPoint).toEqual({});
     });
 
     it('should handle empty containers gracefully', () => {
@@ -156,9 +156,9 @@ describe('useOutlineStats', () => {
         containers: emptyContainers
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['main-1']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['conclusion-1']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['main-1']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['conclusion-1']).toBe(0);
     });
 
     it('should handle containers with missing sections gracefully', () => {
@@ -171,9 +171,9 @@ describe('useOutlineStats', () => {
         containers: incompleteContainers
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-1']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['conclusion-1']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-1']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['conclusion-1']).toBe(0);
     });
   });
 
@@ -192,12 +192,12 @@ describe('useOutlineStats', () => {
         containers: containersWithUnassignedThoughts
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(0);
     });
 
     it('should handle thoughts with undefined outlinePointId', () => {
-      const containersWithUndefinedOutlinePoints = {
+      const containersWithUndefinedSermonPoints = {
         ...mockContainers,
         introduction: [
           { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
@@ -207,11 +207,11 @@ describe('useOutlineStats', () => {
 
       const { result } = renderHook(() => useOutlineStats({
         ...defaultProps,
-        containers: containersWithUndefinedOutlinePoints
+        containers: containersWithUndefinedSermonPoints
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(0);
     });
   });
 
@@ -235,7 +235,7 @@ describe('useOutlineStats', () => {
         containers: mockContainers
       });
 
-      const secondResult = result.current.thoughtsPerOutlinePoint;
+      const secondResult = result.current.thoughtsPerSermonPoint;
 
       // Should have the expected values
       expect(secondResult['intro-1']).toBe(1);
@@ -257,7 +257,7 @@ describe('useOutlineStats', () => {
         containers: newContainers
       });
 
-      const secondResult = result.current.thoughtsPerOutlinePoint;
+      const secondResult = result.current.thoughtsPerSermonPoint;
 
       // Should have the expected values
       expect(secondResult['intro-1']).toBe(1);
@@ -270,15 +270,15 @@ describe('useOutlineStats', () => {
         introduction: Array.from({ length: 100 }, (_, i) => ({
           id: `intro-${i}`,
           text: `Introduction point ${i}`
-        })) as OutlinePoint[],
+        })) as SermonPoint[],
         main: Array.from({ length: 50 }, (_, i) => ({
           id: `main-${i}`,
           text: `Main point ${i}`
-        })) as OutlinePoint[],
+        })) as SermonPoint[],
         conclusion: Array.from({ length: 25 }, (_, i) => ({
           id: `conclusion-${i}`,
           text: `Conclusion point ${i}`
-        })) as OutlinePoint[]
+        })) as SermonPoint[]
       };
 
       const largeSermon = { ...mockSermon, outline: largeOutline };
@@ -288,10 +288,10 @@ describe('useOutlineStats', () => {
       }));
 
       // Should handle large numbers without performance issues
-      expect(Object.keys(result.current.thoughtsPerOutlinePoint)).toHaveLength(175);
-      expect(result.current.thoughtsPerOutlinePoint['intro-0']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['main-0']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['conclusion-0']).toBe(0);
+      expect(Object.keys(result.current.thoughtsPerSermonPoint)).toHaveLength(175);
+      expect(result.current.thoughtsPerSermonPoint['intro-0']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['main-0']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['conclusion-0']).toBe(0);
     });
 
     it('should handle thoughts with multiple outline point assignments', () => {
@@ -311,8 +311,8 @@ describe('useOutlineStats', () => {
         containers: containersWithMultipleAssignments
       }));
 
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(3);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(3);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(0);
     });
   });
 
@@ -321,24 +321,24 @@ describe('useOutlineStats', () => {
       const { result } = renderHook(() => useOutlineStats(defaultProps));
 
       // Verify that all outline points from sermon are represented
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('intro-1');
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('intro-2');
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('main-1');
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('main-2');
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('main-3');
-      expect(result.current.thoughtsPerOutlinePoint).toHaveProperty('conclusion-1');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('intro-1');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('intro-2');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('main-1');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('main-2');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('main-3');
+      expect(result.current.thoughtsPerSermonPoint).toHaveProperty('conclusion-1');
 
       // Verify that counts match actual assignments
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-2']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['main-3']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['conclusion-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-2']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['main-3']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['conclusion-1']).toBe(1);
     });
 
     it('should handle missing outline points gracefully', () => {
-      const containersWithMissingOutlinePoints = {
+      const containersWithMissingSermonPoints = {
         ...mockContainers,
         introduction: [
           { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
@@ -348,13 +348,13 @@ describe('useOutlineStats', () => {
 
       const { result } = renderHook(() => useOutlineStats({
         ...defaultProps,
-        containers: containersWithMissingOutlinePoints
+        containers: containersWithMissingSermonPoints
       }));
 
       // Should only count valid outline points
-      expect(result.current.thoughtsPerOutlinePoint['intro-1']).toBe(1);
-      expect(result.current.thoughtsPerOutlinePoint['intro-2']).toBe(0);
-      expect(result.current.thoughtsPerOutlinePoint['non-existent-point']).toBeUndefined();
+      expect(result.current.thoughtsPerSermonPoint['intro-1']).toBe(1);
+      expect(result.current.thoughtsPerSermonPoint['intro-2']).toBe(0);
+      expect(result.current.thoughtsPerSermonPoint['non-existent-point']).toBeUndefined();
     });
   });
 });

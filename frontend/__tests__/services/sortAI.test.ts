@@ -28,7 +28,7 @@ describe('sortItemsWithAI', () => {
     { id: 'item3', content: 'Third item content', customTagNames: [] },
   ];
 
-  const mockOutlinePoints = [
+  const mockSermonPoints = [
     { id: 'outline1', text: 'Introduction point' },
     { id: 'outline2', text: 'Main point' },
   ];
@@ -53,7 +53,7 @@ describe('sortItemsWithAI', () => {
       mockColumnId,
       mockItems,
       mockSermonId,
-      mockOutlinePoints
+      mockSermonPoints
     );
 
     // Assert
@@ -72,7 +72,7 @@ describe('sortItemsWithAI', () => {
       columnId: mockColumnId,
       items: mockItems,
       sermonId: mockSermonId,
-      outlinePoints: mockOutlinePoints,
+      outlinePoints: mockSermonPoints,
     });
     
     expect(result).toEqual(sortedItemsResponse.sortedItems);
@@ -86,7 +86,7 @@ describe('sortItemsWithAI', () => {
     fetchMock.mockResponseOnce(JSON.stringify({ error: 'Failed to sort items' }), { status: 500 });
 
     // Act & Assert
-    await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockOutlinePoints))
+    await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockSermonPoints))
       .rejects.toThrow('Sorting failed with status 500');
     
     expect(toast.error).toHaveBeenCalledWith('Error sorting items with AI. Please try again.');
@@ -100,7 +100,7 @@ describe('sortItemsWithAI', () => {
     fetchMock.mockRejectOnce(new Error('Network error'));
 
     // Act & Assert
-    await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockOutlinePoints))
+    await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockSermonPoints))
       .rejects.toThrow('Network error');
     
     expect(toast.error).toHaveBeenCalledWith('Error sorting items with AI. Please try again.');
@@ -119,7 +119,7 @@ describe('sortItemsWithAI', () => {
     fetchMock.mockResponseOnce(JSON.stringify({ sortedItems }));
 
     // Act
-    const result = await sortItemsWithAI(columnId, mockItems, sermonId, mockOutlinePoints);
+    const result = await sortItemsWithAI(columnId, mockItems, sermonId, mockSermonPoints);
 
     // Assert
     expect(result.length).toBe(mockItems.length);
@@ -137,7 +137,7 @@ describe('sortItemsWithAI', () => {
     fetchMock.mockResponseOnce(JSON.stringify({ sortedItems: [] }));
 
     // Act
-    const result = await sortItemsWithAI(columnId, emptyItems, sermonId, mockOutlinePoints);
+    const result = await sortItemsWithAI(columnId, emptyItems, sermonId, mockSermonPoints);
 
     // Assert
     expect(result).toEqual([]);

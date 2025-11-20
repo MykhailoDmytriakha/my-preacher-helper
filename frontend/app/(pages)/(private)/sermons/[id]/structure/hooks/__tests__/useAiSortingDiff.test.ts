@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { useAiSortingDiff } from '../useAiSortingDiff';
 import { sortItemsWithAI } from '@/services/sortAI.service';
-import { Item, OutlinePoint, Thought, Sermon, Structure } from '@/models/models';
+import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from '@/models/models';
 import { toast } from 'sonner';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -42,16 +42,16 @@ describe('useAiSortingDiff', () => {
     ambiguous: []
   };
 
-  const mockOutlinePoints = {
-    introduction: [{ id: 'intro-1', text: 'Introduction point' }] as OutlinePoint[],
-    main: [{ id: 'main-1', text: 'Main point' }] as OutlinePoint[],
-    conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }] as OutlinePoint[]
+  const mockSermonPoints = {
+    introduction: [{ id: 'intro-1', text: 'Introduction point' }] as SermonPoint[],
+    main: [{ id: 'main-1', text: 'Main point' }] as SermonPoint[],
+    conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }] as SermonPoint[]
   };
 
   const defaultProps = {
     containers: mockContainers,
     setContainers: jest.fn(),
-    outlinePoints: mockOutlinePoints,
+    outlinePoints: mockSermonPoints,
     sermon: mockSermon,
     sermonId: 'sermon-1',
     debouncedSaveThought: jest.fn(),
@@ -104,7 +104,7 @@ describe('useAiSortingDiff', () => {
               'introduction',
               mockContainers.introduction,
               'sermon-1',
-              mockOutlinePoints.introduction,
+              mockSermonPoints.introduction,
             );
             expect(result.current.isDiffModeActive).toBe(true);
             expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
@@ -291,7 +291,7 @@ describe('useAiSortingDiff', () => {
         'introduction',
         largeItems,
         'sermon-1',
-        mockOutlinePoints.introduction,
+        mockSermonPoints.introduction,
       );
 
       const overflowItems = Array.from({ length: 30 }, (_, i) => ({
@@ -326,7 +326,7 @@ describe('useAiSortingDiff', () => {
       await act(async () => {
         await hook.result.current.handleAiSort('main');
       });
-      expect(mockSortItemsWithAI).toHaveBeenCalledWith('main', mockContainers.main, 'sermon-1', mockOutlinePoints.main);
+      expect(mockSortItemsWithAI).toHaveBeenCalledWith('main', mockContainers.main, 'sermon-1', mockSermonPoints.main);
 
       mockSortItemsWithAI.mockResolvedValue([{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }]);
       await act(async () => {

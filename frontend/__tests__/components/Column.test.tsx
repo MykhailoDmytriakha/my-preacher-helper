@@ -29,11 +29,11 @@ jest.mock('react-i18next', () => ({
           'structure.focusMode': 'Focus Mode',
           'structure.normalMode': 'Normal Mode',
           'structure.noEntries': 'No entries',
-          'structure.outlinePoints': 'Outline Points',
+          'structure.outlinePoints': 'SermonOutline Points',
           'structure.addPointButton': 'Add outline point',
           'structure.addPointPlaceholder': 'Enter new outline point',
           'structure.editPointPlaceholder': 'Edit outline point',
-          'structure.outlineSavedSuccess': 'Outline saved',
+          'structure.outlineSavedSuccess': 'SermonOutline saved',
           'structure.deletePointConfirm': options?.text ? `Are you sure you want to delete this outline point: "${options.text}"?` : 'Are you sure?',
           'structure.addThoughtToSection': options?.section ? `Add thought to ${options.section}` : 'Add thought',
           'structure.sortButton': 'Сортировать',
@@ -45,8 +45,8 @@ jest.mock('react-i18next', () => ({
           'structure.acceptAllChanges': 'Accept all remaining',
           'structure.rejectAll': 'Reject All',
           'structure.rejectAllChanges': 'Reject all suggestions',
-          'structure.outlinePointsExist': 'Outline points already exist',
-        'structure.generateOutlinePoints': 'Generate outline points',
+          'structure.outlinePointsExist': 'SermonOutline points already exist',
+        'structure.generateSermonPoints': 'Generate outline points',
         'structure.generate': 'Generate',
         'structure.markAsReviewed': 'Mark as reviewed',
         'structure.markAsUnreviewed': 'Mark as unreviewed',
@@ -77,14 +77,14 @@ jest.mock('sonner', () => ({
 jest.mock('@/services/outline.service', () => ({
   updateSermonOutline: jest.fn(() => Promise.resolve({ success: true })),
   getSermonOutline: jest.fn(() => Promise.resolve({ introduction: [], main: [], conclusion: [] })),
-  generateOutlinePointsForSection: jest.fn(() => Promise.resolve([]))
+  generateSermonPointsForSection: jest.fn(() => Promise.resolve([]))
 }));
 
 // Mock models
 jest.mock('@/models/models', () => ({
   Item: jest.fn(),
-  OutlinePoint: jest.fn(),
-  Outline: jest.fn()
+  SermonPoint: jest.fn(),
+  SermonOutline: jest.fn()
 }));
 
 // Mock theme colors
@@ -294,7 +294,7 @@ describe('Column Component', () => {
             name: 'indicates focus mode label when active',
             run: () => {
               render(<Column id="intro" title="Introduction" items={mockItems} isFocusMode={true} />);
-              expect(screen.getByText('Outline Points')).toBeInTheDocument();
+              expect(screen.getByText('SermonOutline Points')).toBeInTheDocument();
             }
           },
           {
@@ -380,8 +380,8 @@ describe('Column Component', () => {
   });
 
   // New tests for outline point operations in focus mode
-  describe('Outline Point Operations in Focus Mode', () => {
-    const mockOutlinePoints = {
+  describe('SermonOutline Point Operations in Focus Mode', () => {
+    const mockSermonPoints = {
       introduction: [
         { id: 'point1', text: 'Existing outline point' }
       ],
@@ -538,7 +538,7 @@ describe('Column Component', () => {
 
   // Tests for hover styles and UI details in focus mode
   describe('Hover Styles and UI Details in Focus Mode', () => {
-    const mockOutlinePoints = {
+    const mockSermonPoints = {
       introduction: [
         { id: 'point1', text: 'Existing outline point' }
       ],
@@ -571,7 +571,7 @@ describe('Column Component', () => {
               render(
                 <Column
                   {...focusScaffold}
-                  outlinePoints={mockOutlinePoints.introduction}
+                  outlinePoints={mockSermonPoints.introduction}
                 />
               );
               const sidebarPoint = screen
@@ -587,7 +587,7 @@ describe('Column Component', () => {
               render(
                 <Column
                   {...focusScaffold}
-                  outlinePoints={mockOutlinePoints.introduction}
+                  outlinePoints={mockSermonPoints.introduction}
                 />
               );
               expect(screen.getByLabelText('Edit')).toHaveClass('hover:text-white');
@@ -618,8 +618,8 @@ describe('Column Component', () => {
   });
 
   // Tests for outline points functionality in focus mode
-  describe('Outline Points Functionality in Focus Mode', () => {
-    const mockOutlinePoints = [
+  describe('SermonOutline Points Functionality in Focus Mode', () => {
+    const mockSermonPoints = [
       { id: 'point1', text: 'Introduction Point 1' },
       { id: 'point2', text: 'Introduction Point 2' }
     ];
@@ -641,8 +641,8 @@ describe('Column Component', () => {
                   title="Introduction"
                   items={mockItems}
                   isFocusMode={true}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getAllByText('Introduction Point 1')).toHaveLength(2);
@@ -660,8 +660,8 @@ describe('Column Component', () => {
                   title="Introduction"
                   items={mockItems}
                   isFocusMode={true}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getAllByText('1')).toHaveLength(2);
@@ -680,8 +680,8 @@ describe('Column Component', () => {
                   title="Introduction"
                   items={itemsWithAllAssigned}
                   isFocusMode={true}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
@@ -705,7 +705,7 @@ describe('Column Component', () => {
           {
             name: 'keeps outline columns even with zero items',
             run: () => {
-              const outlinePointsOnly = [{ id: 'p1', text: 'Focus Outline Point' }];
+              const outlinePointsOnly = [{ id: 'p1', text: 'Focus SermonOutline Point' }];
               const { container } = render(
                 <Column
                   id="introduction"
@@ -715,7 +715,7 @@ describe('Column Component', () => {
                   outlinePoints={outlinePointsOnly}
                 />
               );
-              expect(container.querySelector('.md\\:min-w-\\[500px\\]')).toHaveTextContent('Focus Outline Point');
+              expect(container.querySelector('.md\\:min-w-\\[500px\\]')).toHaveTextContent('Focus SermonOutline Point');
               expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
             }
           },
@@ -732,8 +732,8 @@ describe('Column Component', () => {
   });
 
   // Tests for outline points display in normal mode
-  describe('Outline Points Display in Normal Mode', () => {
-    const mockOutlinePoints = [
+  describe('SermonOutline Points Display in Normal Mode', () => {
+    const mockSermonPoints = [
       { id: 'point1', text: 'Introduction Point 1' },
       { id: 'point2', text: 'Introduction Point 2' }
     ];
@@ -754,8 +754,8 @@ describe('Column Component', () => {
                   id="introduction"
                   title="Introduction"
                   items={mockItems}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getAllByText('Introduction Point 1')).toHaveLength(2);
@@ -771,8 +771,8 @@ describe('Column Component', () => {
                   id="introduction"
                   title="Introduction"
                   items={mockItems}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getAllByText('1')).toHaveLength(3);
@@ -790,8 +790,8 @@ describe('Column Component', () => {
                   id="introduction"
                   title="Introduction"
                   items={itemsWithAllAssigned}
-                  outlinePoints={mockOutlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1, point2: 1 }}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
                 />
               );
               expect(screen.getByText(/Unassigned Thoughts \(0\)/)).toBeInTheDocument();
@@ -896,7 +896,7 @@ describe('Column Component', () => {
                   title="Introduction"
                   items={items}
                   outlinePoints={outlinePoints}
-                  thoughtsPerOutlinePoint={{ point1: 1 }}
+                  thoughtsPerSermonPoint={{ point1: 1 }}
                 />
               );
               expect(container.querySelector('.border-t.dark\\:border-gray-700')).toBeInTheDocument();
@@ -995,12 +995,12 @@ describe('Column Component', () => {
   });
 
   describe('Column with outline points and isReviewed functionality', () => {
-    const mockOutlinePoints = [
+    const mockSermonPoints = [
       { id: 'op1', text: 'Point 1', isReviewed: false },
       { id: 'op2', text: 'Point 2', isReviewed: true },
     ];
 
-    const mockItemsWithOutlinePoints: Item[] = [
+    const mockItemsWithSermonPoints: Item[] = [
       {
         id: '1',
         content: 'Thought for point 1',
@@ -1027,8 +1027,8 @@ describe('Column Component', () => {
                 <Column
                   id="introduction"
                   title="Introduction"
-                  items={mockItemsWithOutlinePoints}
-                  outlinePoints={mockOutlinePoints}
+                  items={mockItemsWithSermonPoints}
+                  outlinePoints={mockSermonPoints}
                   onToggleReviewed={handler}
                 />
               );
@@ -1044,8 +1044,8 @@ describe('Column Component', () => {
                 <Column
                   id="introduction"
                   title="Introduction"
-                  items={mockItemsWithOutlinePoints}
-                  outlinePoints={mockOutlinePoints}
+                  items={mockItemsWithSermonPoints}
+                  outlinePoints={mockSermonPoints}
                   onToggleReviewed={handler}
                 />
               );
@@ -1062,8 +1062,8 @@ describe('Column Component', () => {
                 <Column
                   id="introduction"
                   title="Introduction"
-                  items={mockItemsWithOutlinePoints}
-                  outlinePoints={mockOutlinePoints}
+                  items={mockItemsWithSermonPoints}
+                  outlinePoints={mockSermonPoints}
                 />
               );
               expect(screen.queryByRole('button', { name: /mark as reviewed/i })).not.toBeInTheDocument();
@@ -1081,7 +1081,7 @@ describe('Column Component', () => {
                 <Column
                   id="introduction"
                   title="Introduction"
-                  items={mockItemsWithOutlinePoints}
+                  items={mockItemsWithSermonPoints}
                   outlinePoints={outlinePointsWithoutFlag}
                   onToggleReviewed={handler}
                 />

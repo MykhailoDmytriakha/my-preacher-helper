@@ -11,7 +11,7 @@ import {
 } from "@/services/insights.service";
 import { generateSermonPlan } from "@/services/plan.service";
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
-import { Sermon, Insights, Plan } from '@/models/models';
+import { Sermon, Insights, SermonDraft, SectionHints } from '@/models/models';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
@@ -38,7 +38,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   // Keep local insights state for immediate UI updates
   const [localInsights, setLocalInsights] = useState<Insights | undefined>(sermon.insights);
   // Keep local plan state for immediate UI updates
-  const [localPlan, setLocalPlan] = useState<Plan | undefined>(sermon.plan);
+  const [localDraft, setLocalDraft] = useState<SermonDraft | undefined>(sermon.draft || sermon.plan);
   
   // Loading states
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -69,7 +69,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   };
 
   // Get thoughts plan from insights or sermon plan
-  const getThoughtsPlan = () => {
+  const getSectionHints = () => {
     // Helper to coerce API results that may be arrays into a markdown string
     const toMarkdown = (value: unknown): string | undefined => {
       if (typeof value === 'string') return value;
@@ -77,23 +77,23 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       return undefined;
     };
 
-    // First try to get from insights.thoughtsPlan
-    if (localInsights?.thoughtsPlan) {
-      console.log('🎯 Getting thoughts plan from insights.thoughtsPlan', localInsights.thoughtsPlan);
-      const tp: any = localInsights.thoughtsPlan as any;
+    // First try to get from insights.sectionHints
+    if (localInsights?.sectionHints) {
+      console.log('🎯 Getting thoughts plan from insights.sectionHints', localInsights.sectionHints);
+      const tp: any = localInsights.sectionHints as any;
       return {
         introduction: toMarkdown(tp?.introduction) || '',
         main: toMarkdown(tp?.main) || '',
         conclusion: toMarkdown(tp?.conclusion) || ''
       };
     }
-    // If not available in insights, convert sermon.plan to ThoughtsPlan format
-    console.log('🎯 Getting thoughts plan from sermon.plan', localPlan);
-    if (localPlan) {
+    // If not available in insights, convert sermon draft to SectionHints format
+    console.log('🎯 Getting thoughts plan from sermon draft', localDraft);
+    if (localDraft) {
       return {
-        introduction: localPlan.introduction.outline,
-        main: localPlan.main.outline,
-        conclusion: localPlan.conclusion.outline
+        introduction: localDraft.introduction.outline,
+        main: localDraft.main.outline,
+        conclusion: localDraft.conclusion.outline
       };
     }
     return undefined;
@@ -113,13 +113,13 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   };
 
   // Update sermon with new plan
-  const updateSermonWithPlan = (plan: Plan) => {
+  const updateSermonWithDraft = (draft: SermonDraft) => {
     // Update local state immediately for fast UI refresh
-    setLocalPlan(plan);
+    setLocalDraft(draft);
     
     // Then update parent if needed
     if (updateSermon) {
-      const updatedSermon = { ...sermon, plan };
+      const updatedSermon = { ...sermon, draft, plan: draft };
       updateSermon(updatedSermon);
     }
   };
@@ -210,9 +210,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
 
       console.log('🎯 Starting thoughts plan generation...');
       // Generate thoughts-based plan
-      const thoughtsPlanResult = await generateThoughtsBasedPlan(sermon.id);
-      if (thoughtsPlanResult?.thoughtsPlan) {
-        insights.thoughtsPlan = thoughtsPlanResult.thoughtsPlan;
+      const sectionHintsResult = await generateThoughtsBasedPlan(sermon.id);
+      if (sectionHintsResult?.sectionHints) {
+        insights.sectionHints = sectionHintsResult.sectionHints;
       }
       
 
@@ -248,9 +248,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setSuccessNotification(false);
     
     try {
-      const plan = await generateSermonPlan(sermon.id);
-      if (plan) {
-        updateSermonWithPlan(plan);
+      const draft = await generateSermonPlan(sermon.id);
+      if (draft) {
+        updateSermonWithDraft(draft);
         
         // Show success notification
         setSuccessNotification(true);
@@ -285,10 +285,10 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setLocalInsights(sermon.insights);
   }, [sermon.insights]);
 
-  // Keep localPlan in sync with sermon.plan when it changes from props
+  // Keep localDraft in sync with sermon draft/plan when it changes from props
   useEffect(() => {
-    setLocalPlan(sermon.plan);
-  }, [sermon.plan]);
+    setLocalDraft(sermon.draft || sermon.plan);
+  }, [sermon.draft, sermon.plan]);
   
   useEffect(() => {
     // Reset states when sermon changes
@@ -312,22 +312,22 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const topics = extractTopics();
   const relatedVerses = getRelatedVerses();
   const possibleDirections = getPossibleDirections();
-  const thoughtsPlan = getThoughtsPlan();
+  const sectionHints = getSectionHints();
   
   // Debug logging (commented out for production)
   // console.log('🔍 Debug Plan:', {
   //   localInsights,
-  //   thoughtsPlan,
-  //   'thoughtsPlan.introduction': thoughtsPlan?.introduction,
-  //   'thoughtsPlan.main': thoughtsPlan?.main,
-  //   'thoughtsPlan.conclusion': thoughtsPlan?.conclusion
+  //   sectionHints,
+  //   'sectionHints.introduction': sectionHints?.introduction,
+  //   'sectionHints.main': sectionHints?.main,
+  //   'sectionHints.conclusion': sectionHints?.conclusion
   // });
   
-  const hasThoughtsPlan = thoughtsPlan && (thoughtsPlan.introduction || thoughtsPlan.main || thoughtsPlan.conclusion);
+  const hasSectionHints = sectionHints && (sectionHints.introduction || sectionHints.main || sectionHints.conclusion);
   
   // Data for rendering
   // Check if we have any data to show
-  const hasAnyData = topics.length > 0 || relatedVerses.length > 0 || possibleDirections.length > 0 || hasThoughtsPlan;
+  const hasAnyData = topics.length > 0 || relatedVerses.length > 0 || possibleDirections.length > 0 || hasSectionHints;
 
   // Reusable components
   const LoadingSpinner = () => (
@@ -506,29 +506,29 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               </div>
             </div>
             <div className="space-y-3 mt-2">
-              {hasThoughtsPlan ? (
+              {hasSectionHints ? (
                 <>
-                  {thoughtsPlan?.introduction && (
+                  {sectionHints?.introduction && (
                     <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
                       <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>{t('knowledge.planIntroduction')}</h4>
                       <div className={`text-sm ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`}>
-                        <MarkdownRenderer markdown={thoughtsPlan.introduction} section="introduction" />
+                        <MarkdownRenderer markdown={sectionHints.introduction} section="introduction" />
                       </div>
                     </div>
                   )}
-                  {thoughtsPlan?.main && (
+                  {sectionHints?.main && (
                     <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
                       <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>{t('knowledge.planMain')}</h4>
                       <div className={`text-sm ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`}>
-                        <MarkdownRenderer markdown={thoughtsPlan.main} section="main" />
+                        <MarkdownRenderer markdown={sectionHints.main} section="main" />
                       </div>
                     </div>
                   )}
-                  {thoughtsPlan?.conclusion && (
+                  {sectionHints?.conclusion && (
                     <div className={`p-3 rounded-md border ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
                       <h4 className={`font-medium mb-1 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>{t('knowledge.planConclusion')}</h4>
                       <div className={`text-sm ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`}>
-                        <MarkdownRenderer markdown={thoughtsPlan.conclusion} section="conclusion" />
+                        <MarkdownRenderer markdown={sectionHints.conclusion} section="conclusion" />
                       </div>
                     </div>
                   )}

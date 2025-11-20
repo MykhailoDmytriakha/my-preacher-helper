@@ -73,8 +73,8 @@ jest.mock('@/components/sermon/StructureStats', () => () => (
 
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
 
-describe('SermonPage mobile Structure placement', () => {
-  it('renders Structure section between header export buttons and audio recorder (DOM order)', () => {
+describe('SermonPage mobile ThoughtsBySection placement', () => {
+  it('renders ThoughtsBySection section between header export buttons and audio recorder (DOM order)', () => {
     const { container } = render(<SermonPage />);
 
     const headerExport = screen.getByTestId('export-buttons');

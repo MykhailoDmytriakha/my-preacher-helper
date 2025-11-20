@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
-import { generateOutlinePoints } from '@clients/openAI.client';
+import { generateSermonPoints } from '@clients/openAI.client';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     // Generate outline points
-    const { outlinePoints, success } = await generateOutlinePoints(sermon, section);
+    const { outlinePoints, success } = await generateSermonPoints(sermon, section);
     
     if (!success) {
       return NextResponse.json(

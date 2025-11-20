@@ -42,7 +42,7 @@ describe('DashboardStats Component', () => {
   const mockSermons: Sermon[] = [
     {
       id: 'sermon-1',
-      title: 'Sermon With Outline and Thoughts',
+      title: 'Sermon With SermonOutline and Thoughts',
       verse: 'Matthew 5:1-12',
       date: dateWithOffset(5), // 5 days ago
       userId: 'user-1',
@@ -58,7 +58,7 @@ describe('DashboardStats Component', () => {
     },
     {
       id: 'sermon-2',
-      title: 'Sermon With Thoughts No Outline',
+      title: 'Sermon With Thoughts No SermonOutline',
       verse: 'John 3:16',
       date: dateWithOffset(10), // 10 days ago
       userId: 'user-1',
@@ -68,7 +68,7 @@ describe('DashboardStats Component', () => {
     },
     {
       id: 'sermon-3',
-      title: 'Sermon With Outline No Thoughts',
+      title: 'Sermon With SermonOutline No Thoughts',
       verse: 'Romans 8:28',
       date: dateWithOffset(2), // 2 days ago (most recent)
       userId: 'user-1',

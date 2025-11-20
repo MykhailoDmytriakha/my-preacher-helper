@@ -138,7 +138,7 @@ export default function SermonCard({
               <span>{thoughtCount}</span>
             </div>
 
-            {/* Outline Status */}
+            {/* SermonOutline Status */}
             {hasOutline && (
               <div className="flex items-center text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-800/30" title={t('dashboard.hasOutline')}>
                 <List className="w-3 h-3 mr-1.5" />

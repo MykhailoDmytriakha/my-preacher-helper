@@ -1,5 +1,5 @@
 import { getExportContent } from '../exportContent';
-import { Sermon, Thought, Structure } from '@/models/models';
+import { Sermon, Thought, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the tagUtils module
@@ -71,7 +71,7 @@ describe('exportContent', () => {
     userId: 'user1'
   };
 
-  const mockStructure: Structure = {
+  const mockStructure: ThoughtsBySection = {
     introduction: ['thought1'],
     main: ['thought2'],
     conclusion: ['thought3'],

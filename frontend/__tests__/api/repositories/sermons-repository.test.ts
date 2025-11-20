@@ -79,49 +79,49 @@ describe('SermonsRepository', () => {
     };
 
     it('validates plan permutations with scenarios', async () => {
-      const invalidPlanCases = [
-        { name: 'plan is null', plan: null, error: 'Invalid plan data' },
-        { name: 'plan is undefined', plan: undefined, error: 'Invalid plan data' },
-        { name: 'plan is not object', plan: 'not an object', error: 'Invalid plan data' },
+    const invalidPlanCases = [
+        { name: 'plan is null', plan: null, error: 'Invalid draft data' },
+        { name: 'plan is undefined', plan: undefined, error: 'Invalid draft data' },
+        { name: 'plan is not object', plan: 'not an object', error: 'Invalid draft data' },
         {
           name: 'missing introduction',
           plan: { main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure'
+          error: 'Invalid draft structure'
         },
         {
           name: 'missing main',
           plan: { introduction: { outline: 'Introduction outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure'
+          error: 'Invalid draft structure'
         },
         {
           name: 'missing conclusion',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' } },
-          error: 'Invalid plan structure'
+          error: 'Invalid draft structure'
         },
         {
           name: 'non-string introduction outline',
           plan: { introduction: { outline: 123 }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure - outline values must be strings'
+          error: 'Invalid draft structure - outline values must be strings'
         },
         {
           name: 'non-string main outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: true }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure - outline values must be strings'
+          error: 'Invalid draft structure - outline values must be strings'
         },
         {
           name: 'non-string conclusion outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' }, conclusion: { outline: {} } },
-          error: 'Invalid plan structure - outline values must be strings'
+          error: 'Invalid draft structure - outline values must be strings'
         },
         {
           name: 'undefined introduction outline',
           plan: { introduction: { outline: undefined }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure - outline values must be strings'
+          error: 'Invalid draft structure - outline values must be strings'
         },
         {
           name: 'null main outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: null }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid plan structure - outline values must be strings'
+          error: 'Invalid draft structure - outline values must be strings'
         }
       ];
 
@@ -131,7 +131,7 @@ describe('SermonsRepository', () => {
             name: 'successfully updates valid plan',
             run: async () => {
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', validPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ plan: validPlan });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: validPlan, plan: validPlan });
               expect(result).toEqual(validPlan);
             }
           },
@@ -151,20 +151,20 @@ describe('SermonsRepository', () => {
                 conclusion: { outline: '' }
               };
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', emptyPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ plan: emptyPlan });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: emptyPlan, plan: emptyPlan });
               expect(result).toEqual(emptyPlan);
             }
           },
           {
             name: 'accepts outlinePoints metadata',
             run: async () => {
-              const planWithOutlinePoints = {
+              const planWithSermonPoints = {
                 introduction: { outline: 'Introduction outline', outlinePoints: { point1: 'content1' } },
                 main: { outline: 'Main outline', outlinePoints: { point2: 'content2' } },
                 conclusion: { outline: 'Conclusion outline', outlinePoints: { point3: 'content3' } }
               };
-              await sermonsRepository.updateSermonPlan('test-sermon-123', planWithOutlinePoints);
-              expect(mockUpdate).toHaveBeenCalledWith({ plan: planWithOutlinePoints });
+              await sermonsRepository.updateSermonPlan('test-sermon-123', planWithSermonPoints);
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: planWithSermonPoints, plan: planWithSermonPoints });
             }
           },
           {
@@ -200,6 +200,7 @@ describe('SermonsRepository', () => {
     const seedFetchSuccess = () => {
       mockDocSnap = {
         exists: true,
+        id: 'test-sermon-123',
         data: () => ({
           id: 'test-sermon-123',
           title: 'Test Sermon',

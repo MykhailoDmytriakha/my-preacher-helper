@@ -1,4 +1,4 @@
-import { Plan } from '@/models/models';
+import { SermonDraft } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 /**
@@ -6,7 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
  * @param sermonId The ID of the sermon to fetch the plan for
  * @returns The sermon plan or undefined if not found
  */
-export const getSermonPlan = async (sermonId: string): Promise<Plan | undefined> => {
+export const getSermonPlan = async (sermonId: string): Promise<SermonDraft | undefined> => {
   try {
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/plan`, {
       cache: "no-store",
@@ -37,7 +37,7 @@ export const getSermonPlan = async (sermonId: string): Promise<Plan | undefined>
  * @param section Optional section to generate plan for (introduction, main, conclusion)
  * @returns The generated plan or undefined if generation failed
  */
-export const generateSermonPlan = async (sermonId: string, section?: string): Promise<Plan | undefined> => {
+export const generateSermonPlan = async (sermonId: string, section?: string): Promise<SermonDraft | undefined> => {
   try {
     const url = section 
       ? `${API_BASE}/api/sermons/${sermonId}/plan?section=${section}`

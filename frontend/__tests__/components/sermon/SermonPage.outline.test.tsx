@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Outline, Sermon } from '@/models/models';
+import { SermonOutline, Sermon } from '@/models/models';
 
 // --- Mock Dependencies First --- 
 
@@ -36,13 +36,13 @@ const mockSermonData: Sermon = {
 
 // --- Define Mock Components BEFORE using them in jest.mock --- 
 
-const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon, onOutlineUpdate: (outline: Outline) => void }) => (
+const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon, onOutlineUpdate: (outline: SermonOutline) => void }) => (
   <div data-testid="sermon-outline">
-    <h2>Sermon Outline Mock</h2>
+    <h2>Sermon SermonOutline Mock</h2>
     <button 
       data-testid="update-outline-button"
       onClick={() => {
-        const updatedOutline: Outline = {
+        const updatedOutline: SermonOutline = {
           introduction: [
             { id: 'intro1', text: 'Introduction Point 1' }, 
             { id: 'intro2', text: 'New Introduction Point' }
@@ -53,12 +53,12 @@ const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon
         onOutlineUpdate(updatedOutline);
       }}
     >
-      Update Outline
+      Update SermonOutline
     </button>
   </div>
 ));
 
-const MockEditThoughtModal = jest.fn(({ sermonOutline, onClose }: { sermonOutline: Outline | undefined, onClose: () => void }) => (
+const MockEditThoughtModal = jest.fn(({ sermonOutline, onClose }: { sermonOutline: SermonOutline | undefined, onClose: () => void }) => (
   <div data-testid="edit-thought-modal">
     <h2>Edit Thought Modal Mock</h2>
     <div data-testid="outline-points">
@@ -98,7 +98,7 @@ const TestSermonPage = () => {
   const [sermon, setSermon] = React.useState<Sermon | null>(mockSermonData);
   const [editingModalData, setEditingModalData] = React.useState<{ thought: any; index: number } | null>(null);
 
-  const handleOutlineUpdate = (updatedOutline: Outline) => {
+  const handleOutlineUpdate = (updatedOutline: SermonOutline) => {
     // Use the useState setter
     setSermon(prevSermon => {
       if (!prevSermon) return null;
@@ -135,7 +135,7 @@ const TestSermonPage = () => {
           thoughtId={editingModalData.thought.id}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
-          initialOutlinePointId={undefined} 
+          initialSermonPointId={undefined} 
           allowedTags={[]}
           sermonOutline={sermon.outline}
           onSave={jest.fn()}
@@ -146,7 +146,7 @@ const TestSermonPage = () => {
   );
 };
 
-describe('SermonPage Outline Update', () => {
+describe('SermonPage SermonOutline Update', () => {
   // Remove beforeEach related to external state
   // let currentTestSermonState: Sermon | null;
 

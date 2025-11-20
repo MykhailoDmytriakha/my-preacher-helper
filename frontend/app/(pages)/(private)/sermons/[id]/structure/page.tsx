@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense, useRef, useCallback } from "react
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Column from "@/components/Column";
-import { Item, Sermon, OutlinePoint, Thought, Outline, Structure } from "@/models/models";
+import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { updateThought, deleteThought } from "@/services/thought.service";
 import { updateStructure } from "@/services/structure.service";
@@ -29,7 +29,7 @@ interface UseSermonStructureDataReturn {
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
   containers: Record<string, Item[]>;
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
-  outlinePoints: { introduction: OutlinePoint[]; main: OutlinePoint[]; conclusion: OutlinePoint[] };
+  outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   requiredTagColors: { introduction?: string; main?: string; conclusion?: string };
   allowedTags: { name: string; color: string }[];
   loading: boolean;
@@ -108,8 +108,8 @@ function StructurePageContent() {
     navigateToSection,
   } = useFocusMode({ searchParams, sermonId });
 
-  // Outline stats hook
-  const { thoughtsPerOutlinePoint } = useOutlineStats({ sermon, containers });
+  // SermonOutline stats hook
+  const { thoughtsPerSermonPoint } = useOutlineStats({ sermon, containers });
 
   // AI sorting diff hook
   const {
@@ -218,7 +218,7 @@ function StructurePageContent() {
       if (thought.outlinePointId && sermon.outline) {
         const sections = ['introduction', 'main', 'conclusion'] as const;
         for (const sec of sections) {
-          const p = sermon.outline[sec]?.find((pt: OutlinePoint) => pt.id === thought.outlinePointId);
+          const p = sermon.outline[sec]?.find((pt: SermonPoint) => pt.id === thought.outlinePointId);
           if (p) {
             outlinePoint = { text: p.text, section: '' };
             break;
@@ -256,7 +256,7 @@ function StructurePageContent() {
 
       containersRef.current = updatedContainers;
 
-      const newStructure: Structure = {
+      const newStructure: ThoughtsBySection = {
         introduction: (updatedContainers.introduction || []).map((it) => it.id),
         main: (updatedContainers.main || []).map((it) => it.id),
         conclusion: (updatedContainers.conclusion || []).map((it) => it.id),
@@ -303,7 +303,7 @@ function StructurePageContent() {
           const sections = ['introduction', 'main', 'conclusion'] as const;
           
           for (const section of sections) {
-            const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
+            const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
             if (point) {
               outlinePoint = {
                 text: point.text,
@@ -389,7 +389,7 @@ function StructurePageContent() {
           const sections = ['introduction', 'main', 'conclusion'] as const;
           
           for (const section of sections) {
-            const point = sermon.outline[section]?.find((p: OutlinePoint) => p.id === outlinePointId);
+            const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
             if (point) {
               outlinePoint = {
                 text: point.text,
@@ -478,7 +478,7 @@ function StructurePageContent() {
     }
 
     // Persist structure
-    const newStructure: Structure = {
+    const newStructure: ThoughtsBySection = {
       introduction: updatedContainers.introduction.map((it) => it.id),
       main: updatedContainers.main.map((it) => it.id),
       conclusion: updatedContainers.conclusion.map((it) => it.id),
@@ -549,7 +549,7 @@ function StructurePageContent() {
       };
 
       // 3. Recalculate structure for DB update (based on updated containers)
-      const newStructure: Structure = {
+      const newStructure: ThoughtsBySection = {
           introduction: (newContainers.introduction || []).map((item: Item) => item.id),
           main: (newContainers.main || []).map((item: Item) => item.id),
           conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
@@ -582,12 +582,12 @@ function StructurePageContent() {
   };
 
   // Function to handle outline updates from Column components
-  const handleOutlineUpdate = (updatedOutline: Outline) => {
+  const handleOutlineUpdate = (updatedOutline: SermonOutline) => {
     setSermon((prevSermon: Sermon | null) => {
       if (!prevSermon) return null;
 
       // Merge the updated outline sections with existing ones
-      const mergedOutline: Outline = {
+      const mergedOutline: SermonOutline = {
         introduction: updatedOutline.introduction.length > 0 ? updatedOutline.introduction : (prevSermon.outline?.introduction || []),
         main: updatedOutline.main.length > 0 ? updatedOutline.main : (prevSermon.outline?.main || []),
         conclusion: updatedOutline.conclusion.length > 0 ? updatedOutline.conclusion : (prevSermon.outline?.conclusion || [])
@@ -605,7 +605,7 @@ function StructurePageContent() {
 
     try {
       // Find and update the outline point in the outline
-      const updatedOutline: Outline = {
+      const updatedOutline: SermonOutline = {
         introduction: sermon.outline?.introduction?.map(point =>
           point.id === outlinePointId ? { ...point, isReviewed } : point
         ) || [],
@@ -722,7 +722,7 @@ function StructurePageContent() {
                 onAddThought={handleAddThoughtToSection}
                 onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
@@ -756,7 +756,7 @@ function StructurePageContent() {
                 onAddThought={handleAddThoughtToSection}
                 onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
@@ -790,7 +790,7 @@ function StructurePageContent() {
                 onAddThought={handleAddThoughtToSection}
                 onAudioThoughtCreated={handleAudioThoughtCreated}
                 onOutlineUpdate={handleOutlineUpdate}
-                thoughtsPerOutlinePoint={thoughtsPerOutlinePoint}
+                thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
@@ -839,7 +839,7 @@ function StructurePageContent() {
           <EditThoughtModal
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
-            initialOutlinePointId={editingItem.outlinePointId || undefined}
+            initialSermonPointId={editingItem.outlinePointId || undefined}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
             containerSection={addingThoughtToSection || Object.keys(containers).find(key => 

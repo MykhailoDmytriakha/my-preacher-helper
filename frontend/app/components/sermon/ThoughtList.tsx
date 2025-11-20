@@ -1,13 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Thought, Outline } from '@/models/models';
+import type { Thought, SermonOutline } from '@/models/models';
 import ThoughtCard from '@components/ThoughtCard';
 
 interface ThoughtListProps {
   filteredThoughts: Thought[];
   totalThoughtsCount: number;
   allowedTags: { name: string; color: string }[];
-  sermonOutline: Outline | null | undefined;
+  sermonOutline: SermonOutline | null | undefined;
   sermonId?: string;
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;

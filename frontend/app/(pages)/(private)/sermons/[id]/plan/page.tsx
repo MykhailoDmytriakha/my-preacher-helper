@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getSermonById } from "@/services/sermon.service";
-import { OutlinePoint, Sermon, Thought, Plan, Structure } from "@/models/models";
+import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -144,8 +144,8 @@ const SectionHeader = ({ section, onSwitchPage }: { section: 'introduction' | 'm
           <button
             onClick={onSwitchPage}
             className="group p-1 bg-white/20 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-            title={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
-            aria-label={t('plan.switchToStructure', { defaultValue: 'Switch to Structure view' })}
+            title={t('plan.switchToStructure', { defaultValue: 'Switch to ThoughtsBySection view' })}
+            aria-label={t('plan.switchToStructure', { defaultValue: 'Switch to ThoughtsBySection view' })}
           >
             <SwitchViewIcon className={`h-4 w-4 ${colors.text} dark:${colors.darkText} group-hover:text-gray-900 dark:group-hover:text-gray-100`} />
           </button>
@@ -441,8 +441,8 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
 );
 };
 
-interface OutlinePointCardProps {
-  outlinePoint: OutlinePoint;
+interface SermonPointCardProps {
+  outlinePoint: SermonPoint;
   thoughts: Thought[];
   sectionName: string;
   onGenerate: (outlinePointId: string) => Promise<void>;
@@ -452,7 +452,7 @@ interface OutlinePointCardProps {
   onOpenFragmentsModal: (outlinePointId: string) => void;
 }
 
-const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>(({
+const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>(({
   outlinePoint,
   thoughts,
   sectionName,
@@ -543,7 +543,7 @@ const OutlinePointCard = React.forwardRef<HTMLDivElement, OutlinePointCardProps>
     </Card>
   );
 });
-OutlinePointCard.displayName = 'OutlinePointCard';
+SermonPointCard.displayName = 'SermonPointCard';
 
 // Add a debounce utility to prevent too frequent calls
 function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
@@ -633,7 +633,7 @@ export default function PlanPage() {
   const [immersiveCopyStatus, setImmersiveCopyStatus] = useState<CopyStatus>('idle');
   
   // Track saved outline points
-  const [savedOutlinePoints, setSavedOutlinePoints] = useState<Record<string, boolean>>({});
+  const [savedSermonPoints, setSavedSermonPoints] = useState<Record<string, boolean>>({});
   
   // Track which content has been modified since last save
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
@@ -644,7 +644,7 @@ export default function PlanPage() {
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
   
-  const [modalOutlinePointId, setModalOutlinePointId] = useState<string | null>(null);
+  const [modalSermonPointId, setModalSermonPointId] = useState<string | null>(null);
   
   const [showSectionMenu, setShowSectionMenu] = useState<boolean>(false);
   const sectionMenuRef = useRef<HTMLDivElement>(null);
@@ -995,7 +995,7 @@ export default function PlanPage() {
           
           // Set all saved points at once
           if (Object.keys(savedPoints).length > 0) {
-            setSavedOutlinePoints(savedPoints);
+            setSavedSermonPoints(savedPoints);
           }
         }
       } catch (err) {
@@ -1024,7 +1024,7 @@ export default function PlanPage() {
   };
   
   // Get thoughts for a specific outline point
-  const getThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
+  const getThoughtsForSermonPoint = (outlinePointId: string): Thought[] => {
     if (!sermon) return [];
     
     // 1. Найти точку плана и определить, к какой секции она относится
@@ -1044,7 +1044,7 @@ export default function PlanPage() {
     }
     
     // 2. Получаем упорядоченный массив ID мыслей из структуры для данной секции
-    const structureIds = sermon.structure?.[sectionName as keyof Structure];
+    const structureIds = sermon.structure?.[sectionName as keyof ThoughtsBySection];
     const structureIdsArray = Array.isArray(structureIds) ? structureIds : 
                            (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
     
@@ -1071,20 +1071,20 @@ export default function PlanPage() {
   };
 
   // Find thoughts for an outline point
-  // const findThoughtsForOutlinePoint = (outlinePointId: string): Thought[] => {
+  // const findThoughtsForSermonPoint = (outlinePointId: string): Thought[] => {
   //   // Используем существующую функцию с учетом порядка из структуры
-  //   return getThoughtsForOutlinePoint(outlinePointId);
+  //   return getThoughtsForSermonPoint(outlinePointId);
   // };
 
   // Generate content for an outline point
-  const generateOutlinePointContent = async (outlinePointId: string) => {
+  const generateSermonPointContent = async (outlinePointId: string) => {
     if (!sermon) return;
     
     setGeneratingId(outlinePointId);
     
     try {
       // Find the outline point in the sermon structure
-      let outlinePoint: OutlinePoint | undefined;
+      let outlinePoint: SermonPoint | undefined;
       let section: string | undefined;
       
       if (sermon.outline?.introduction.some((op) => op.id === outlinePointId)) {
@@ -1226,7 +1226,7 @@ export default function PlanPage() {
   // };
   
   // Save individual outline point
-  const saveOutlinePoint = async (outlinePointId: string, content: string, section: keyof Plan) => {
+  const saveSermonPoint = async (outlinePointId: string, content: string, section: keyof Plan) => {
     if (!sermon) return;
     
     try {
@@ -1246,7 +1246,7 @@ export default function PlanPage() {
       };
       
       // Preserve existing outline points and add/update the new one
-      const existingOutlinePoints = currentPlan[section]?.outlinePoints || {};
+      const existingSermonPoints = currentPlan[section]?.outlinePoints || {};
       
       // Update the outline point in the plan
       const updatedPlan: Plan = {
@@ -1254,7 +1254,7 @@ export default function PlanPage() {
         [section]: {
           ...currentPlan[section],
           outlinePoints: {
-            ...existingOutlinePoints,
+            ...existingSermonPoints,
             [outlinePointId]: content
           }
         }
@@ -1274,7 +1274,7 @@ export default function PlanPage() {
       }
       
       // Mark this point as saved
-      setSavedOutlinePoints(prev => ({...prev, [outlinePointId]: true}));
+      setSavedSermonPoints(prev => ({...prev, [outlinePointId]: true}));
       
       // Mark content as unmodified since it's now saved
       setModifiedContent(prev => ({...prev, [outlinePointId]: false}));
@@ -1284,7 +1284,7 @@ export default function PlanPage() {
       // Check if all points in this section are saved
       const allPointsInSection = sermon.outline?.[section] || [];
       const allSaved = allPointsInSection.every(point => 
-        savedOutlinePoints[point.id] || point.id === outlinePointId
+        savedSermonPoints[point.id] || point.id === outlinePointId
       );
       
       // If all points are saved, update the combined section text
@@ -1367,7 +1367,7 @@ export default function PlanPage() {
   };
   
   // Find outline point by id
-  const findOutlinePointById = (outlinePointId: string): OutlinePoint | undefined => {
+  const findSermonPointById = (outlinePointId: string): SermonPoint | undefined => {
     if (!sermon || !sermon.outline) return undefined;
     
     let outlinePoint;
@@ -2449,7 +2449,7 @@ export default function PlanPage() {
           >
             <div className="p-3">
               {sermon.outline?.introduction.map((outlinePoint) => (
-                <OutlinePointCard
+                <SermonPointCard
                   key={outlinePoint.id}
                   ref={(el) => {
                     if (!introPointRefs.current[outlinePoint.id]) {
@@ -2458,17 +2458,17 @@ export default function PlanPage() {
                     introPointRefs.current[outlinePoint.id].left = el;
                   }}
                   outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForOutlinePoint(outlinePoint.id)}
+                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
                   sectionName="introduction"
-                  onGenerate={generateOutlinePointContent}
+                  onGenerate={generateSermonPointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
                   sermonId={sermonId}
-                  onOpenFragmentsModal={setModalOutlinePointId}
+                  onOpenFragmentsModal={setModalSermonPointId}
                 />
               ))}
               {sermon.outline?.introduction.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
@@ -2494,7 +2494,7 @@ export default function PlanPage() {
                     <div className="flex space-x-2">
                       <Button
                         className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveOutlinePoint(
+                        onClick={() => saveSermonPoint(
                           outlinePoint.id,
                           generatedContent[outlinePoint.id] || "",
                           "introduction"
@@ -2504,7 +2504,7 @@ export default function PlanPage() {
                         disabled={
                           !generatedContent[outlinePoint.id] || 
                           generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedOutlinePoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
                         }
                         title={t("plan.save")}
                       >
@@ -2586,7 +2586,7 @@ export default function PlanPage() {
                 </div>
               ))}
               {sermon.outline?.introduction.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
@@ -2602,7 +2602,7 @@ export default function PlanPage() {
           >
             <div className="p-3">
               {sermon.outline?.main.map((outlinePoint) => (
-                <OutlinePointCard
+                <SermonPointCard
                   key={outlinePoint.id}
                   ref={(el) => {
                     if (!mainPointRefs.current[outlinePoint.id]) {
@@ -2611,17 +2611,17 @@ export default function PlanPage() {
                     mainPointRefs.current[outlinePoint.id].left = el;
                   }}
                   outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForOutlinePoint(outlinePoint.id)}
+                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
                   sectionName="main"
-                  onGenerate={generateOutlinePointContent}
+                  onGenerate={generateSermonPointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
                   sermonId={sermonId}
-                  onOpenFragmentsModal={setModalOutlinePointId}
+                  onOpenFragmentsModal={setModalSermonPointId}
                 />
               ))}
               {sermon.outline?.main.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
@@ -2647,7 +2647,7 @@ export default function PlanPage() {
                     <div className="flex space-x-2">
                       <Button
                         className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveOutlinePoint(
+                        onClick={() => saveSermonPoint(
                           outlinePoint.id,
                           generatedContent[outlinePoint.id] || "",
                           "main"
@@ -2657,7 +2657,7 @@ export default function PlanPage() {
                         disabled={
                           !generatedContent[outlinePoint.id] || 
                           generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedOutlinePoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
                         }
                         title={t("plan.save")}
                       >
@@ -2739,7 +2739,7 @@ export default function PlanPage() {
                 </div>
               ))}
               {sermon.outline?.main.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
@@ -2755,7 +2755,7 @@ export default function PlanPage() {
           >
             <div className="p-3">
               {sermon.outline?.conclusion.map((outlinePoint) => (
-                <OutlinePointCard
+                <SermonPointCard
                   key={outlinePoint.id}
                   ref={(el) => {
                     if (!conclusionPointRefs.current[outlinePoint.id]) {
@@ -2764,17 +2764,17 @@ export default function PlanPage() {
                     conclusionPointRefs.current[outlinePoint.id].left = el;
                   }}
                   outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForOutlinePoint(outlinePoint.id)}
+                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
                   sectionName="conclusion"
-                  onGenerate={generateOutlinePointContent}
+                  onGenerate={generateSermonPointContent}
                   generatedContent={generatedContent[outlinePoint.id] || null}
                   isGenerating={generatingId === outlinePoint.id}
                   sermonId={sermonId}
-                  onOpenFragmentsModal={setModalOutlinePointId}
+                  onOpenFragmentsModal={setModalSermonPointId}
                 />
               ))}
               {sermon.outline?.conclusion.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
@@ -2800,7 +2800,7 @@ export default function PlanPage() {
                     <div className="flex space-x-2">
                       <Button
                         className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveOutlinePoint(
+                        onClick={() => saveSermonPoint(
                           outlinePoint.id,
                           generatedContent[outlinePoint.id] || "",
                           "conclusion"
@@ -2810,7 +2810,7 @@ export default function PlanPage() {
                         disabled={
                           !generatedContent[outlinePoint.id] || 
                           generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedOutlinePoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
                         }
                         title={t("plan.save")}
                       >
@@ -2892,23 +2892,23 @@ export default function PlanPage() {
                 </div>
               ))}
               {sermon.outline?.conclusion.length === 0 && (
-                <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Key Fragments Modal */}
-        {modalOutlinePointId && (() => {
-          const outlinePoint = findOutlinePointById(modalOutlinePointId);
+        {modalSermonPointId && (() => {
+          const outlinePoint = findSermonPointById(modalSermonPointId);
           if (!outlinePoint) return null;
           return (
             <KeyFragmentsModal
               data-testid="key-fragments-modal-instance"
-              isOpen={!!modalOutlinePointId}
-              onClose={() => setModalOutlinePointId(null)}
+              isOpen={!!modalSermonPointId}
+              onClose={() => setModalSermonPointId(null)}
               outlinePoint={outlinePoint}
-              thoughts={getThoughtsForOutlinePoint(modalOutlinePointId)}
+              thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
               sermonId={sermonId}
               onThoughtUpdate={handleThoughtUpdate}
             />

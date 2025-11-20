@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { Thought, Sermon, Outline, OutlinePoint } from '@/models/models';
+import type { Thought, Sermon, SermonOutline, SermonPoint } from '@/models/models';
 import { STRUCTURE_TAGS } from '@lib/constants'; // Use new @lib alias
 import { normalizeStructureTag } from '@utils/tagUtils';
 
@@ -90,8 +90,8 @@ export function useThoughtFiltering({
       const outlineIndexByPoint: Record<string, { section: keyof typeof sectionOrder; index: number }> = {};
       if (sermonOutline) {
         (['introduction', 'main', 'conclusion'] as const).forEach((sec) => {
-          const pts = (sermonOutline as Outline)?.[sec] || [];
-          (pts as OutlinePoint[]).forEach((p, idx) => {
+          const pts = (sermonOutline as SermonOutline)?.[sec] || [];
+          (pts as SermonPoint[]).forEach((p, idx) => {
             outlineIndexByPoint[p.id] = { section: sec, index: idx };
           });
         });
@@ -126,7 +126,7 @@ export function useThoughtFiltering({
       const getWithinSectionRank = (t: Thought): number => {
         // Exact index from sermonStructure if present
         if (structuredIndexById[t.id]) return structuredIndexById[t.id].index;
-        // Position field can be present from Structure page; use it next
+        // Position field can be present from ThoughtsBySection page; use it next
         if (typeof t.position === 'number') return t.position;
         // Fallback to date (newest first like other lists)
         return -new Date(t.date).getTime();

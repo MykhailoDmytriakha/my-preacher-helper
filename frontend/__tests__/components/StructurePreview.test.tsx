@@ -8,7 +8,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: { [key: string]: string } = {
-        'structure.preview': 'Structure Preview',
+        'structure.preview': 'ThoughtsBySection Preview',
         'structure.underConsideration': 'Under Consideration',
         'tags.introduction': 'Introduction',
         'tags.mainPart': 'Main Part',
@@ -54,7 +54,7 @@ const MockStructurePreview: React.FC<{
   return (
     <div data-testid="structure-preview" className={isCollapsed ? 'collapsed' : 'expanded'}>
       <div className="header">
-        <h3>Structure Preview</h3>
+        <h3>ThoughtsBySection Preview</h3>
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
           aria-label={isCollapsed ? "Expand" : "Collapse"}
@@ -153,7 +153,7 @@ describe('StructurePreview Component', () => {
     render(<MockStructurePreview sermon={mockSermon} />);
 
     // Check if all section titles are rendered
-    expect(screen.getByText('Structure Preview')).toBeInTheDocument();
+    expect(screen.getByText('ThoughtsBySection Preview')).toBeInTheDocument();
     expect(screen.getByText('Introduction')).toBeInTheDocument();
     expect(screen.getByText('Main Part')).toBeInTheDocument();
     expect(screen.getByText('Conclusion')).toBeInTheDocument();

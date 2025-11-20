@@ -20,7 +20,7 @@ export function useSermonValidator(sermon: Sermon | null) {
     if (structuralThoughts.length === 0) return false;
     
     // Check if all structural thoughts have a valid outlinePointId
-    const allThoughtsHaveOutlinePoints = structuralThoughts.every(thought => {
+    const allThoughtsHaveSermonPoints = structuralThoughts.every(thought => {
       // Check if the thought has a non-empty outlinePointId
       if (!thought.outlinePointId) return false;
       
@@ -34,7 +34,7 @@ export function useSermonValidator(sermon: Sermon | null) {
       return sermon.outline[outlineSection].some(point => point.id === thought.outlinePointId);
     });
     
-    return allThoughtsHaveOutlinePoints;
+    return allThoughtsHaveSermonPoints;
   }, [sermon]);
   
   return { isPlanAccessible };

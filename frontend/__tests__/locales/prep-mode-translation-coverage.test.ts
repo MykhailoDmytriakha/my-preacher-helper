@@ -120,7 +120,7 @@ describe('Prep Mode Translation Coverage', () => {
     });
   });
 
-  describe('Translation Structure Consistency', () => {
+  describe('Translation ThoughtsBySection Consistency', () => {
     it('verifies translation structure is consistent across languages', async () => {
       await runScenarios(
         [

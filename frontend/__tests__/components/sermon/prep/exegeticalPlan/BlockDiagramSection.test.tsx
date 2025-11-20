@@ -118,7 +118,7 @@ describe('BlockDiagramSection', () => {
     });
   });
 
-  describe('Component Structure', () => {
+  describe('Component ThoughtsBySection', () => {
     it('renders ListTree icon', () => {
       const { container } = render(<BlockDiagramSection />);
       

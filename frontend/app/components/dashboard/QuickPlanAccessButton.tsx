@@ -40,7 +40,7 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-      {/* Primary action: Plan/Structure button */}
+      {/* Primary action: Plan/ThoughtsBySection button */}
       <button
         onClick={handlePlanClick}
         className={`inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${

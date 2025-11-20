@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { generatePlanForSection, generatePlanPointContent } from '@clients/openAI.client';
-import { Plan } from '@/models/models';
+import { SermonDraft } from '@/models/models';
 
-// Use the Plan interface from models.ts
+// Use the SermonDraft interface from models.ts
 
 // GET /api/sermons/:id/plan - generates full plan by default
 // GET /api/sermons/:id/plan?section=introduction|main|conclusion - generates plan for specific section
@@ -20,7 +20,7 @@ export async function GET(
   
   // If outlinePointId is provided, generate content for the specific outline point
   if (outlinePointId) {
-    return generateOutlinePointContent(id, outlinePointId);
+    return generateSermonPointContent(id, outlinePointId);
   }
   
   // Validate section parameter if provided
@@ -87,10 +87,10 @@ export async function GET(
       };
 
       // Update the section that was just generated
-      const updatedPlan: Plan = { 
-        introduction: (existingPlan as Plan)?.introduction || { outline: '' },
-        main: (existingPlan as Plan)?.main || { outline: '' },
-        conclusion: (existingPlan as Plan)?.conclusion || { outline: '' }
+      const updatedPlan: SermonDraft = { 
+        introduction: (existingPlan as SermonDraft)?.introduction || { outline: '' },
+        main: (existingPlan as SermonDraft)?.main || { outline: '' },
+        conclusion: (existingPlan as SermonDraft)?.conclusion || { outline: '' }
       };
       
       // Type-safe way to update the plan section
@@ -156,9 +156,9 @@ async function generateFullPlan(sermonId: string) {
     let hasFailures = false;
     
     // Declare result variables to check for incomplete structure
-    let introResult: { plan: Plan, success: boolean } | null = null;
-    let mainResult: { plan: Plan, success: boolean } | null = null;
-    let conclusionResult: { plan: Plan, success: boolean } | null = null;
+    let introResult: { plan: SermonDraft, success: boolean } | null = null;
+    let mainResult: { plan: SermonDraft, success: boolean } | null = null;
+    let conclusionResult: { plan: SermonDraft, success: boolean } | null = null;
     
     // Process each section sequentially with proper error handling
     try {
@@ -246,7 +246,7 @@ async function generateFullPlan(sermonId: string) {
     }
     
     // Store the full plan in the database, excluding sectionStatuses
-    const planToStore: Plan = {
+    const planToStore: SermonDraft = {
       introduction: {
         outline: fullPlan.introduction?.outline || '',
         ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as Record<string, unknown>).outlinePoints as Record<string, string> })
@@ -341,7 +341,7 @@ async function generateFullPlan(sermonId: string) {
 }
 
 // Helper function to generate content for a specific outline point
-async function generateOutlinePointContent(sermonId: string, outlinePointId: string) {
+async function generateSermonPointContent(sermonId: string, outlinePointId: string) {
   try {
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
@@ -366,7 +366,7 @@ async function generateOutlinePointContent(sermonId: string, outlinePointId: str
     
     if (!outlinePoint || !sectionName) {
       return NextResponse.json(
-        { error: 'Outline point not found in sermon structure' },
+        { error: 'SermonOutline point not found in sermon structure' },
         { status: 404 }
       );
     }
@@ -457,7 +457,7 @@ export async function PUT(
     }
     
     // Ensure the plan has all required sections
-    const plan: Plan = {
+    const plan: SermonDraft = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' }

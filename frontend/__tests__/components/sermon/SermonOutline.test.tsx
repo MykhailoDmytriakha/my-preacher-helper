@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import SermonOutline from '@/components/sermon/SermonOutline';
-import { Outline, Sermon } from '@/models/models';
+import { SermonOutline, Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock translations (simplified)
@@ -139,7 +139,7 @@ describe('SermonOutline Component', () => {
     expect(within(conclSection).getByText('1')).toBeInTheDocument();
   });
 
-  test('displays thought counts when thoughtsPerOutlinePoint prop is provided', async () => {
+  test('displays thought counts when thoughtsPerSermonPoint prop is provided', async () => {
     // Create mock thought counts for specific outline points
     const mockThoughtsPerPoint = {
       'intro1': 3,
@@ -151,7 +151,7 @@ describe('SermonOutline Component', () => {
       <SermonOutline 
         sermon={mockSermon} 
         onOutlineUpdate={mockOnOutlineUpdate}
-        thoughtsPerOutlinePoint={mockThoughtsPerPoint}
+        thoughtsPerSermonPoint={mockThoughtsPerPoint}
       />
     );
     
@@ -186,7 +186,7 @@ describe('SermonOutline Component', () => {
       <SermonOutline 
         sermon={mockSermon} 
         onOutlineUpdate={mockOnOutlineUpdate}
-        thoughtsPerOutlinePoint={mockThoughtsPerPoint}
+        thoughtsPerSermonPoint={mockThoughtsPerPoint}
       />
     );
     
@@ -238,7 +238,7 @@ describe('SermonOutline Component', () => {
 
     // Verify the API was called correctly
     await waitFor(() => {
-      const expectedOutline: Outline = {
+      const expectedOutline: SermonOutline = {
           introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: 'New intro point' })],
           main: [{ id: 'main1', text: 'Main point 1' }],
           conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
@@ -329,7 +329,7 @@ describe('SermonOutline Component', () => {
       
       // Check if updateSermonOutline was called with the updated outline
       await waitFor(() => {
-        const expectedOutline: Outline = {
+        const expectedOutline: SermonOutline = {
           introduction: [],
           main: [{ id: 'main1', text: 'Main point 1' }],
           conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
@@ -377,7 +377,7 @@ describe('SermonOutline Component', () => {
     
     // Check if updateSermonOutline was called with the updated outline
     await waitFor(() => {
-      const expectedOutline: Outline = {
+      const expectedOutline: SermonOutline = {
         introduction: [{ id: 'intro1', text: 'Edited introduction point' }],
         main: [{ id: 'main1', text: 'Main point 1' }],
         conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]

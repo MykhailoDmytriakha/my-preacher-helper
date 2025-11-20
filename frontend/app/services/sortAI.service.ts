@@ -1,4 +1,4 @@
-import { Item, OutlinePoint } from "@/models/models";
+import { Item, SermonPoint } from "@/models/models";
 import { toast } from 'sonner';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -15,7 +15,7 @@ export const sortItemsWithAI = async (
   columnId: string,
   items: Item[],
   sermonId: string,
-  outlinePoints?: OutlinePoint[]
+  outlinePoints?: SermonPoint[]
 ): Promise<Item[]> => {
   try {
     console.log(`sortItemsWithAI: Starting AI sort for column ${columnId} with ${items.length} items`);

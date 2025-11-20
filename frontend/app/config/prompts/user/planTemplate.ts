@@ -1,4 +1,4 @@
-import { Sermon, OutlinePoint } from '@/models/models';
+import { Sermon, SermonPoint } from '@/models/models';
 
 export function createPlanUserMessage(
   sermon: Sermon,
@@ -19,7 +19,7 @@ export function createPlanUserMessage(
   // Extract outline points for the specific section if available
   let outlinePointsText = '';
   if (sermon.outline && sermon.outline[sectionLower as keyof typeof sermon.outline]) {
-    const outlinePoints = sermon.outline[sectionLower as keyof typeof sermon.outline] as OutlinePoint[];
+    const outlinePoints = sermon.outline[sectionLower as keyof typeof sermon.outline] as SermonPoint[];
     if (outlinePoints && outlinePoints.length > 0) {
       outlinePointsText = `\n\n==== MANDATORY OUTLINE STRUCTURE ====`;
       outlinePointsText += `\nThe following outline points MUST be used as the exact structure for your response:`;
@@ -32,7 +32,7 @@ export function createPlanUserMessage(
 
   const hasOutline = sermon.outline && 
                      sermon.outline[sectionLower as keyof typeof sermon.outline] && 
-                     (sermon.outline[sectionLower as keyof typeof sermon.outline] as OutlinePoint[]).length > 0;
+                     (sermon.outline[sectionLower as keyof typeof sermon.outline] as SermonPoint[]).length > 0;
 
   return `Create a PREACHING-FRIENDLY outline for the ${sectionLower.toUpperCase()} section that can be quickly scanned during sermon delivery:
 
@@ -60,7 +60,7 @@ CRITICAL REQUIREMENTS FOR PREACHING:
    - Use bullet points (*) for easy visual scanning
    - Keep subpoints to 1-2 words maximum
    - Use clear transitions between ideas
-   - Structure for logical preaching flow
+   - ThoughtsBySection for logical preaching flow
 
 4. **PREACHING OPTIMIZATION**:
    - Focus on what the preacher needs to SAY
@@ -98,7 +98,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
  * @param sermonContent The extracted content from the sermon
  * @returns A formatted user message string
  */
-export function createThoughtsPlanUserMessage(
+export function createSectionHintsUserMessage(
   sermon: Sermon,
   sermonContent: string
 ): string {
@@ -124,7 +124,7 @@ export function createThoughtsPlanUserMessage(
     - Use *italic* for Bible references and supporting details
     - Keep main points to 3-6 words maximum
     - Make each point immediately recognizable and actionable
-    - Structure for quick visual scanning during preaching
+    - ThoughtsBySection for quick visual scanning during preaching
     - Respond in the EXACT SAME LANGUAGE as the THOUGHTS provided
     - Focus on organizing existing thoughts into preaching-friendly format
     - Use bullet points (*) for easy scanning

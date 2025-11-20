@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
-// Mocks for dnd libs used by Column/OutlinePointPlaceholder
+// Mocks for dnd libs used by Column/SermonPointPlaceholder
 jest.mock('@dnd-kit/core', () => ({
   useDroppable: () => ({ setNodeRef: jest.fn(), isOver: false }),
 }));
@@ -48,7 +48,7 @@ describe('Focus mode: mic icon per outline point', () => {
         sermonId="s-1"
         isFocusMode={true}
         outlinePoints={outlinePoints}
-        thoughtsPerOutlinePoint={{}}
+        thoughtsPerSermonPoint={{}}
       />
     );
 

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Thought, Outline, OutlinePoint } from '@/models/models';
+import { Thought, SermonOutline, SermonPoint } from '@/models/models';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 
@@ -12,19 +12,19 @@ const STRUCTURE_SECTIONS: Record<string, string> = {
   'conclusion': 'Заключение'
 } as const;
 
-interface OutlinePointSelectorProps {
+interface SermonPointSelectorProps {
   thought: Thought;
-  sermonOutline?: Outline;
-  onOutlinePointChange: (outlinePointId: string | undefined) => Promise<void>;
+  sermonOutline?: SermonOutline;
+  onSermonPointChange: (outlinePointId: string | undefined) => Promise<void>;
   disabled?: boolean;
 }
 
-export default function OutlinePointSelector({
+export default function SermonPointSelector({
   thought,
   sermonOutline,
-  onOutlinePointChange,
+  onSermonPointChange,
   disabled = false
-}: OutlinePointSelectorProps) {
+}: SermonPointSelectorProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -40,7 +40,7 @@ export default function OutlinePointSelector({
     return mapping[sectionKey] || sectionKey;
   }, [t]);
 
-  const findOutlinePoint = useCallback((): { text: string; section: string } | undefined => {
+  const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
     
     const introPoint = sermonOutline.introduction?.find(p => p.id === thought.outlinePointId);
@@ -65,7 +65,7 @@ export default function OutlinePointSelector({
     return sectionEntry?.[0];
   }, [thought.tags]);
 
-  const filteredOutlinePoints = useMemo(() => {
+  const filteredSermonPoints = useMemo(() => {
     if (!sermonOutline) return {};
     
     const thoughtSection = getThoughtSection();
@@ -79,18 +79,18 @@ export default function OutlinePointSelector({
     }
     
     return {
-      [thoughtSection]: sermonOutline[thoughtSection as keyof Outline] || []
+      [thoughtSection]: sermonOutline[thoughtSection as keyof SermonOutline] || []
     };
   }, [sermonOutline, getThoughtSection, thought.tags]);
 
-  const outlinePoint = useMemo(() => findOutlinePoint(), [findOutlinePoint]);
+  const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
 
-  const handleOutlinePointSelect = async (outlinePointId: string) => {
+  const handleSermonPointSelect = async (outlinePointId: string) => {
     if (isUpdating || disabled) return;
     
     setIsUpdating(true);
     try {
-      await onOutlinePointChange(outlinePointId === '' ? undefined : outlinePointId);
+      await onSermonPointChange(outlinePointId === '' ? undefined : outlinePointId);
       setIsOpen(false);
     } catch (error) {
       console.error('Failed to update outline point:', error);
@@ -117,9 +117,9 @@ export default function OutlinePointSelector({
 
   if (!sermonOutline) return null;
 
-  const hasOutlinePoints = Object.values(filteredOutlinePoints).some(points => points.length > 0);
+  const hasSermonPoints = Object.values(filteredSermonPoints).some(points => points.length > 0);
   
-  if (!hasOutlinePoints) return null;
+  if (!hasSermonPoints) return null;
 
   if (outlinePoint) {
     return (
@@ -145,23 +145,23 @@ export default function OutlinePointSelector({
               className="absolute z-50 mt-2 min-w-[250px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto"
             >
               <button
-                onClick={() => handleOutlinePointSelect('')}
+                onClick={() => handleSermonPointSelect('')}
                 disabled={isUpdating}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
               >
-                {t('editThought.noOutlinePoint')}
+                {t('editThought.noSermonPoint')}
               </button>
               
-              {Object.entries(filteredOutlinePoints).map(([section, points]) => 
+              {Object.entries(filteredSermonPoints).map(([section, points]) => 
                 points.length > 0 ? (
                   <div key={section}>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
                       {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
                     </div>
-                    {points.map((point: OutlinePoint) => (
+                    {points.map((point: SermonPoint) => (
                       <button
                         key={point.id}
-                        onClick={() => handleOutlinePointSelect(point.id)}
+                        onClick={() => handleSermonPointSelect(point.id)}
                         disabled={isUpdating}
                         className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${
                           thought.outlinePointId === point.id
@@ -190,7 +190,7 @@ export default function OutlinePointSelector({
         className="text-left text-sm inline-flex items-center gap-2 rounded-full px-3 py-1.5 border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span>
-          {t('editThought.noOutlinePointAssigned')}
+          {t('editThought.noSermonPointAssigned')}
         </span>
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -205,19 +205,19 @@ export default function OutlinePointSelector({
             className="absolute z-50 mt-2 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto"
           >
             <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
-              {t('editThought.selectOutlinePoint')}
+              {t('editThought.selectSermonPoint')}
             </div>
             
-            {Object.entries(filteredOutlinePoints).map(([section, points]) => 
+            {Object.entries(filteredSermonPoints).map(([section, points]) => 
               points.length > 0 ? (
                 <div key={section}>
                   <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
                     {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
                   </div>
-                  {points.map((point: OutlinePoint) => (
+                  {points.map((point: SermonPoint) => (
                     <button
                       key={point.id}
-                      onClick={() => handleOutlinePointSelect(point.id)}
+                      onClick={() => handleSermonPointSelect(point.id)}
                       disabled={isUpdating}
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                     >

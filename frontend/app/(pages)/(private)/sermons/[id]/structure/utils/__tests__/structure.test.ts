@@ -1,10 +1,10 @@
 import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition } from '../structure';
-import { Item, Structure } from '@/models/models';
+import { Item, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
-describe('Structure Utilities', () => {
+describe('ThoughtsBySection Utilities', () => {
   describe('isStructureChanged', () => {
-    const baseStructure: Structure = {
+    const baseStructure: ThoughtsBySection = {
       introduction: ['thought-1', 'thought-2'],
       main: ['thought-3', 'thought-4'],
       conclusion: ['thought-5'],
@@ -12,7 +12,7 @@ describe('Structure Utilities', () => {
     };
 
     it('evaluates structural deltas without spawning dozens of Jest tests', async () => {
-      const emptyStructure: Structure = { introduction: [], main: [], conclusion: [], ambiguous: [] };
+      const emptyStructure: ThoughtsBySection = { introduction: [], main: [], conclusion: [], ambiguous: [] };
       const baseJson = JSON.stringify(baseStructure);
 
       await runScenarios([
@@ -306,14 +306,14 @@ describe('Structure Utilities', () => {
 
       const cleanedContainers = removeIdFromOtherSections(uniqueContainers, 'introduction', 'thought-1');
 
-      const originalStructure: Structure = {
+      const originalStructure: ThoughtsBySection = {
         introduction: ['thought-1'],
         main: ['thought-1', 'thought-2'],
         conclusion: [],
         ambiguous: [],
       };
 
-      const newStructure: Structure = {
+      const newStructure: ThoughtsBySection = {
         introduction: ['thought-1'],
         main: ['thought-2'],
         conclusion: [],

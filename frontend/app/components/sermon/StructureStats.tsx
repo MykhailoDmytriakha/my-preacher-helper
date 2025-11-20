@@ -160,7 +160,7 @@ const StructurePlanToggle: React.FC<{
         }}
       />
       
-      {/* Structure button */}
+      {/* ThoughtsBySection button */}
       <button
         type="button"
         onClick={() => !hasInconsistentThoughts && router.push(`/sermons/${sermonId}/structure`)}

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Thought, Outline } from '@/models/models';
+import { Thought, SermonOutline } from '@/models/models';
 import { createManualThought } from '@services/thought.service';
 import { getSermonById } from '@services/sermon.service';
 import { getTags } from '@services/tag.service';
@@ -18,15 +18,15 @@ interface AddThoughtManualProps {
   onNewThought: (thought: Thought) => void;
   // Optional preloaded data to avoid fetching on open
   allowedTags?: { name: string; color: string; translationKey?: string }[];
-  sermonOutline?: Outline;
+  sermonOutline?: SermonOutline;
 }
 
 export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: allowedTagsProp, sermonOutline: sermonOutlineProp }: AddThoughtManualProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [selectedOutlinePointId, setSelectedOutlinePointId] = useState<string | undefined>();
-  const [sermonOutlineState, setSermonOutlineState] = useState<Outline | undefined>(sermonOutlineProp);
+  const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>();
+  const [sermonOutlineState, setSermonOutlineState] = useState<SermonOutline | undefined>(sermonOutlineProp);
   const [allowedTagsState, setAllowedTagsState] = useState<{ name: string; color: string; translationKey?: string }[]>(allowedTagsProp || []);
   const [loading, setLoading] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
@@ -45,7 +45,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
       const sermon = await getSermonById(sermonId);
       if (!sermon) return;
 
-      // Outline
+      // SermonOutline
       if (!sermonOutlineProp) setSermonOutlineState(sermon.outline);
 
       // Tags using sermon's userId
@@ -90,9 +90,9 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
     setTags(tags.filter((_, i) => i !== index));
   };
 
-  const handleOutlinePointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setSelectedOutlinePointId(value === "" ? undefined : value);
+    setSelectedSermonPointId(value === "" ? undefined : value);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,7 +105,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
       text: trimmedText,
       tags: tags,
       date: new Date().toISOString(),
-      outlinePointId: selectedOutlinePointId
+      outlinePointId: selectedSermonPointId
     };
 
     try {
@@ -115,7 +115,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
       toast.success(t('manualThought.addedSuccess'));
       setText("");
       setTags([]);
-      setSelectedOutlinePointId(undefined);
+      setSelectedSermonPointId(undefined);
       setOpen(false);
     } catch (error) {
       console.error("Error adding thought manually:", error);
@@ -126,33 +126,33 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
   };
 
   // Create a flat array of all outline points with section information
-  const effectiveOutline: Outline | undefined = useMemo(() => sermonOutlineProp || sermonOutlineState, [sermonOutlineProp, sermonOutlineState]);
+  const effectiveOutline: SermonOutline | undefined = useMemo(() => sermonOutlineProp || sermonOutlineState, [sermonOutlineProp, sermonOutlineState]);
   const effectiveAllowedTags = useMemo(() => allowedTagsProp && allowedTagsProp.length > 0 ? allowedTagsProp : allowedTagsState, [allowedTagsProp, allowedTagsState]);
 
-  const allOutlinePoints: { id: string; text: string; section: string }[] = [];
+  const allSermonPoints: { id: string; text: string; section: string }[] = [];
   
   if (effectiveOutline) {
     if (effectiveOutline.introduction && Array.isArray(effectiveOutline.introduction)) {
       effectiveOutline.introduction.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.introduction') });
+        allSermonPoints.push({ ...point, section: t('outline.introduction') });
       });
     }
     
     if (effectiveOutline.main && Array.isArray(effectiveOutline.main)) {
       effectiveOutline.main.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.mainPoints') });
+        allSermonPoints.push({ ...point, section: t('outline.mainPoints') });
       });
     }
     
     if (effectiveOutline.conclusion && Array.isArray(effectiveOutline.conclusion)) {
       effectiveOutline.conclusion.forEach(point => {
-        allOutlinePoints.push({ ...point, section: t('outline.conclusion') });
+        allSermonPoints.push({ ...point, section: t('outline.conclusion') });
       });
     }
   }
 
   // Find the selected outline point text for display
-  const selectedPointInfo = allOutlinePoints.find(point => point.id === selectedOutlinePointId);
+  const selectedPointInfo = allSermonPoints.find(point => point.id === selectedSermonPointId);
 
   const availableTags = effectiveAllowedTags.filter(t => !tags.includes(t.name));
 
@@ -186,14 +186,14 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
 
               {effectiveOutline && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'Outline Point'}</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'SermonOutline Point'}</label>
                   <select
-                    value={selectedOutlinePointId || ""}
-                    onChange={handleOutlinePointChange}
+                    value={selectedSermonPointId || ""}
+                    onChange={handleSermonPointChange}
                     className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
                     disabled={loading}
                   >
-                    <option value="">{t('editThought.noOutlinePoint') || 'No outline point selected'}</option>
+                    <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
                     
                     {/* Group outline points by section */}
                     {Object.entries({
@@ -213,7 +213,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                   
                   {selectedPointInfo && (
                     <p className="mt-1 text-sm text-gray-500">
-                      {t('editThought.selectedOutlinePoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
+                      {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
                     </p>
                   )}
                 </div>

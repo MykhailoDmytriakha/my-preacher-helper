@@ -162,7 +162,7 @@ describe('InstructionSection', () => {
     });
   });
 
-  describe('Component Structure', () => {
+  describe('Component ThoughtsBySection', () => {
     it('applies structural styling and icons', async () => {
       await runScenarios(
         [

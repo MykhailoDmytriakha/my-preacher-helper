@@ -10,7 +10,7 @@ interface Thought {
   date: string;
 }
 
-interface Structure {
+interface ThoughtsBySection {
   introduction: string[];
   main: string[];
   conclusion: string[];
@@ -24,7 +24,7 @@ interface Sermon {
   date: string;
   userId: string;
   thoughts: Thought[];
-  structure?: Structure;
+  structure?: ThoughtsBySection;
 }
 
 // Create a mock SermonPage component that includes the filter functionality

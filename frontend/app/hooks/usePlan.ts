@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Sermon, OutlinePoint, Thought, Plan } from "@/models/models";
+import { Sermon, SermonPoint, Thought, SermonDraft } from "@/models/models";
 import { toast } from "sonner";
 
 interface UsePlanOptions {
@@ -13,20 +13,21 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
   // State for generated content
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
-  const [savedOutlinePoints, setSavedOutlinePoints] = useState<Record<string, boolean>>({});
+  const [savedSermonPoints, setSavedSermonPoints] = useState<Record<string, boolean>>({});
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Load existing content when sermon changes
   useEffect(() => {
-    if (sermon?.plan) {
+    const draft = sermon?.draft || sermon?.plan;
+    if (draft) {
       const content: Record<string, string> = {};
       const saved: Record<string, boolean> = {};
 
       // Load content from all sections
       ['introduction', 'main', 'conclusion'].forEach(section => {
-        const sectionData = sermon.plan?.[section as keyof Plan];
+        const sectionData = draft?.[section as keyof SermonDraft];
         if (sectionData?.outlinePoints) {
           Object.entries(sectionData.outlinePoints).forEach(([id, pointContent]) => {
             content[id] = pointContent;
@@ -36,25 +37,25 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       });
 
       setGeneratedContent(content);
-      setSavedOutlinePoints(saved);
+      setSavedSermonPoints(saved);
     }
   }, [sermon]);
 
   // Get thoughts for a specific outline point
-  const getThoughtsForOutlinePoint = useCallback((outlinePointId: string): Thought[] => {
+  const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
     if (!sermon?.thoughts) return [];
     return sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
   }, [sermon?.thoughts]);
 
   // Generate content for an outline point
-  const generateOutlinePointContent = useCallback(async (outlinePointId: string) => {
+  const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
     if (!sermon) return;
     
     setGeneratingId(outlinePointId);
     
     try {
       // Find the outline point in the sermon structure
-      let outlinePoint: OutlinePoint | undefined;
+      let outlinePoint: SermonPoint | undefined;
       let section: string | undefined;
       
       if (sermon.outline?.introduction.some((op) => op.id === outlinePointId)) {
@@ -69,7 +70,7 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       }
       
       if (!outlinePoint || !section) {
-        toast.error("Outline point not found");
+        toast.error("SermonOutline point not found");
         return;
       }
       
@@ -109,10 +110,10 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
   }, [sermon]);
 
   // Save an individual outline point
-  const saveOutlinePoint = useCallback(async (
+  const saveSermonPoint = useCallback(async (
     outlinePointId: string, 
     content: string, 
-    section: keyof Plan
+    section: keyof SermonDraft
   ) => {
     if (!sermon) return;
 
@@ -124,24 +125,25 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       }
       
       const latestSermon = await latestSermonResponse.json();
+      const latestDraft = latestSermon.draft || latestSermon.plan;
       
-      // Create plan object if it doesn't exist
-      const currentPlan = latestSermon.plan || {
+      // Create draft object if it doesn't exist
+      const currentPlan = latestDraft || {
         introduction: { outline: "" },
         main: { outline: "" },
         conclusion: { outline: "" }
       };
       
       // Preserve existing outline points and add/update the new one
-      const existingOutlinePoints = currentPlan[section]?.outlinePoints || {};
+      const existingSermonPoints = currentPlan[section]?.outlinePoints || {};
       
       // Update the outline point in the plan
-      const updatedPlan: Plan = {
+      const updatedPlan: SermonDraft = {
         ...currentPlan,
         [section]: {
           ...currentPlan[section],
           outlinePoints: {
-            ...existingOutlinePoints,
+            ...existingSermonPoints,
             [outlinePointId]: content
           }
         }
@@ -161,12 +163,12 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       }
       
       // Mark this point as saved
-      setSavedOutlinePoints(prev => ({...prev, [outlinePointId]: true}));
+      setSavedSermonPoints(prev => ({...prev, [outlinePointId]: true}));
       
       // Mark content as unmodified since it's now saved
       setModifiedContent(prev => ({...prev, [outlinePointId]: false}));
       
-      toast.success("Outline point saved successfully!");
+      toast.success("SermonOutline point saved successfully!");
     } catch (error) {
       console.error("Failed to save outline point:", error);
       toast.error("Failed to save outline point");
@@ -174,7 +176,7 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
   }, [sermon]);
 
   // Helper functions
-  const findSectionForOutlinePoint = useCallback((outlinePointId: string): string | null => {
+  const findSectionForSermonPoint = useCallback((outlinePointId: string): string | null => {
     if (!sermon?.outline) return null;
     
     if (sermon.outline.introduction.some(op => op.id === outlinePointId)) return 'introduction';
@@ -184,7 +186,7 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
     return null;
   }, [sermon?.outline]);
 
-  const findOutlinePointById = useCallback((outlinePointId: string): OutlinePoint | undefined => {
+  const findSermonPointById = useCallback((outlinePointId: string): SermonPoint | undefined => {
     if (!sermon?.outline) return undefined;
     
     const sections = [sermon.outline.introduction, sermon.outline.main, sermon.outline.conclusion];
@@ -202,22 +204,22 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
       const savePromises = Object.entries(generatedContent)
         .filter(([id]) => modifiedContent[id])
         .map(([id, content]) => {
-          const section = findSectionForOutlinePoint(id);
+          const section = findSectionForSermonPoint(id);
           if (section) {
-            return saveOutlinePoint(id, content, section as keyof Plan);
+            return saveSermonPoint(id, content, section as keyof SermonDraft);
           }
           return Promise.resolve();
         });
 
       await Promise.all(savePromises);
-      toast.success("Plan saved successfully!");
+      toast.success("SermonDraft saved successfully!");
     } catch (error) {
       console.error("Failed to save plan:", error);
       toast.error("Failed to save plan");
     } finally {
       setIsSaving(false);
     }
-  }, [generatedContent, modifiedContent, saveOutlinePoint, findSectionForOutlinePoint]);
+  }, [generatedContent, modifiedContent, saveSermonPoint, findSectionForSermonPoint]);
 
   // Toggle edit mode for a point
   const toggleEditMode = useCallback((outlinePointId: string) => {
@@ -235,9 +237,9 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
     }));
     
     // Check if content is modified from saved version
-    const section = findSectionForOutlinePoint(outlinePointId);
+    const section = findSectionForSermonPoint(outlinePointId);
     if (section) {
-      const savedContent = sermon?.plan?.[section as keyof Plan]?.outlinePoints?.[outlinePointId] || "";
+      const savedContent = sermon?.plan?.[section as keyof SermonDraft]?.outlinePoints?.[outlinePointId] || "";
       const isModified = content !== savedContent;
       
       setModifiedContent(prev => ({
@@ -245,7 +247,7 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
         [outlinePointId]: isModified
       }));
     }
-  }, [sermon?.plan, findSectionForOutlinePoint]);
+  }, [sermon?.plan, findSectionForSermonPoint]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = Object.values(modifiedContent).some(isModified => isModified);
@@ -254,22 +256,22 @@ export const usePlan = ({ sermon }: UsePlanOptions) => {
     // State
     generatedContent,
     modifiedContent,
-    savedOutlinePoints,
+    savedSermonPoints,
     editModePoints,
     generatingId,
     isSaving,
     hasUnsavedChanges,
     
     // Actions
-    generateOutlinePointContent,
-    saveOutlinePoint,
+    generateSermonPointContent,
+    saveSermonPoint,
     savePlan,
     toggleEditMode,
     handleContentChange,
-    getThoughtsForOutlinePoint,
+    getThoughtsForSermonPoint,
     
     // Helpers
-    findOutlinePointById,
-    findSectionForOutlinePoint,
+    findSermonPointById,
+    findSectionForSermonPoint,
   };
 }; 

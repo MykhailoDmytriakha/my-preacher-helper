@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import KeyFragmentsModal from '@components/plan/KeyFragmentsModal';
 import { updateThought } from '@services/thought.service';
-import { OutlinePoint, Thought } from '@/models/models';
+import { SermonPoint, Thought } from '@/models/models';
 import { toast } from 'sonner';
 
 // --- Mocks --- //
@@ -43,7 +43,7 @@ global.window.getSelection = mockGetSelection;
 
 // --- Test Data --- //
 
-const mockOutlinePoint: OutlinePoint = {
+const mockSermonPoint: SermonPoint = {
   id: 'op-1',
   text: 'Point 1: Introduction',
 };
@@ -108,7 +108,7 @@ describe('KeyFragmentsModal', () => {
       <KeyFragmentsModal
         isOpen={isOpen}
         onClose={mockOnClose}
-        outlinePoint={mockOutlinePoint}
+        outlinePoint={mockSermonPoint}
         thoughts={thoughts}
         sermonId={sermonId}
         onThoughtUpdate={mockOnThoughtUpdate}

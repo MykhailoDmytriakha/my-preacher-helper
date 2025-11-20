@@ -79,7 +79,7 @@ describe('Sermon Detail Layout', () => {
           <div data-testid="sermon-meta">Sermon Meta Information</div>
         </header>
         <main data-testid="sermon-main">
-          <section data-testid="sermon-outline">Sermon Outline</section>
+          <section data-testid="sermon-outline">Sermon SermonOutline</section>
           <section data-testid="sermon-notes">Sermon Notes</section>
         </main>
         <aside data-testid="sermon-sidebar">Sermon Sidebar</aside>
@@ -104,7 +104,7 @@ describe('Sermon Detail Layout', () => {
     
     expect(screen.getByText('Sermon Title')).toBeInTheDocument();
     expect(screen.getByText('Sermon Meta Information')).toBeInTheDocument();
-    expect(screen.getByText('Sermon Outline')).toBeInTheDocument();
+    expect(screen.getByText('Sermon SermonOutline')).toBeInTheDocument();
     expect(screen.getByText('Sermon Notes')).toBeInTheDocument();
     expect(screen.getByText('Sermon Sidebar')).toBeInTheDocument();
   });
@@ -145,7 +145,7 @@ describe('Sermon Detail Layout', () => {
           <button data-testid="prep-mode">Prep</button>
         </div>
         <div data-testid="sermon-outline" className="sermon-outline">
-          <h2>Outline</h2>
+          <h2>SermonOutline</h2>
           <ul>
             <li>Introduction</li>
             <li>Main Points</li>
@@ -175,7 +175,7 @@ describe('Sermon Detail Layout', () => {
     
     expect(screen.getByText('Classic')).toBeInTheDocument();
     expect(screen.getByText('Prep')).toBeInTheDocument();
-    expect(screen.getByText('Outline')).toBeInTheDocument();
+    expect(screen.getByText('SermonOutline')).toBeInTheDocument();
     expect(screen.getByText('Introduction')).toBeInTheDocument();
     expect(screen.getByText('Main Points')).toBeInTheDocument();
     expect(screen.getByText('Conclusion')).toBeInTheDocument();

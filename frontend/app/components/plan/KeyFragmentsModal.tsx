@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { OutlinePoint, Thought } from "@/models/models";
+import { SermonPoint, Thought } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { useTranslation } from "react-i18next";
 import { X, Plus, Trash2, Lightbulb } from "lucide-react";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 interface KeyFragmentsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  outlinePoint: OutlinePoint;
+  outlinePoint: SermonPoint;
   thoughts: Thought[];
   sermonId: string;
   onThoughtUpdate: (updatedThought: Thought) => void;

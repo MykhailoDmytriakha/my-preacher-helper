@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { useStructureDnd } from '../useStructureDnd';
 import { updateStructure } from '@/services/structure.service';
-import { Item, Sermon, OutlinePoint, Thought } from '@/models/models';
+import { Item, Sermon, SermonPoint, Thought } from '@/models/models';
 import { toast } from 'sonner';
 
 // Mock services
@@ -38,10 +38,10 @@ describe('useStructureDnd', () => {
     ambiguous: []
   };
 
-  const mockOutlinePoints = {
-    introduction: [{ id: 'intro-1', text: 'Introduction point' }] as OutlinePoint[],
-    main: [{ id: 'main-1', text: 'Main point' }] as OutlinePoint[],
-    conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }] as OutlinePoint[]
+  const mockSermonPoints = {
+    introduction: [{ id: 'intro-1', text: 'Introduction point' }] as SermonPoint[],
+    main: [{ id: 'main-1', text: 'Main point' }] as SermonPoint[],
+    conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }] as SermonPoint[]
   };
 
   const mockColumnTitles = {
@@ -61,7 +61,7 @@ describe('useStructureDnd', () => {
     containersRef: { current: mockContainers },
     sermon: mockSermon,
     setSermon: mockSetSermon,
-    outlinePoints: mockOutlinePoints,
+    outlinePoints: mockSermonPoints,
     columnTitles: mockColumnTitles,
     debouncedSaveThought: mockDebouncedSaveThought,
   };

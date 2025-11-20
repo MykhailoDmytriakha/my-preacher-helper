@@ -31,7 +31,7 @@ jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeCha
 
 jest.mock('@/components/sermon/SermonOutline', () => ({ sermon, uiMode }: any) => (
   <div data-testid="sermon-outline" data-mode={uiMode || 'classic'}>
-    <h2>Sermon Outline</h2>
+    <h2>Sermon SermonOutline</h2>
     <p>Mode: {uiMode || 'classic'}</p>
   </div>
 ));
@@ -109,7 +109,7 @@ describe('Sermon Detail Page', () => {
     it('renders the sermon outline by default', async () => {
       await waitFor(() => {
         expect(screen.getByTestId('sermon-outline')).toBeInTheDocument();
-        expect(screen.getByText('Sermon Outline')).toBeInTheDocument();
+        expect(screen.getByText('Sermon SermonOutline')).toBeInTheDocument();
       });
     });
 

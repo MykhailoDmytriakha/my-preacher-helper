@@ -15,5 +15,5 @@ export { createSortingUserMessage } from './user/sortingTemplate';
 export { createTopicsUserMessage } from './user/topicsTemplate';
 export { createVersesUserMessage } from './user/versesTemplate';
 export { createDirectionsUserMessage } from './user/directionsTemplate';
-export { createPlanUserMessage, createThoughtsPlanUserMessage } from './user/planTemplate';
+export { createPlanUserMessage, createSectionHintsUserMessage } from './user/planTemplate';
 export { createBrainstormUserMessage } from './user/brainstormTemplate'; 

@@ -307,7 +307,11 @@
     "noOutlinePoint": "Пункт плана не выбран",
     "noOutlinePointAssigned": "Пункт плана не назначен",
     "selectOutlinePoint": "Выберите пункт плана",
-    "selectedOutlinePoint": "Выбран пункт плана из раздела «{{section}}»"
+    "selectedOutlinePoint": "Выбран пункт плана из раздела «{{section}}»",
+    "noSermonPoint": "Пункт плана не выбран",
+    "noSermonPointAssigned": "Пункт плана не назначен",
+    "selectSermonPoint": "Выберите пункт плана",
+    "selectedSermonPoint": "Выбран пункт плана из раздела «{{section}}»"
   },
   "structure": {
     "title": "Композиция проповеди:",
@@ -347,6 +351,8 @@
     "generate": "Создать",
     "generateOutlinePoints": "Сгенерировать пункты плана",
     "generateOutlinePointsError": "Не удалось сгенерировать пункты плана",
+    "generateSermonPoints": "Сгенерировать пункты плана",
+    "generateSermonPointsError": "Не удалось сгенерировать пункты плана",
     "outlinePointsGenerated": "Успешно сгенерировано {{count}} пунктов плана",
     "outlinePointsExist": "Пункты плана уже существуют",
     "thought": "мысль",
@@ -574,6 +580,7 @@
     "selectTextTip3": "Нажмите кнопку, чтобы сохранить выделенный текст как ключевой фрагмент",
     "noThoughtsAssigned": "Нет мыслей, привязанных к этой точке плана",
     "viewPlan": "Просмотр плана",
+    "noSermonPoints": "Нет пунктов плана",
     "expand": "Развернуть",
     "collapse": "Свернуть",
     "savePlan": "Сохранить план",

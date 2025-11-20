@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Item, Sermon, OutlinePoint, Tag, Thought } from '@/models/models';
+import { Item, Sermon, SermonPoint, Tag, Thought } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
@@ -19,10 +19,10 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     conclusion: [],
     ambiguous: [],
   });
-  const [outlinePoints, setOutlinePoints] = useState<{
-    introduction: OutlinePoint[];
-    main: OutlinePoint[];
-    conclusion: OutlinePoint[];
+  const [outlinePoints, setSermonPoints] = useState<{
+    introduction: SermonPoint[];
+    main: SermonPoint[];
+    conclusion: SermonPoint[];
   }>({
     introduction: [],
     main: [],
@@ -140,7 +140,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
             if (thought.outlinePointId && fetchedSermon.outline) {
                 const outlineSections = ['introduction', 'main', 'conclusion'] as const;
                 for (const section of outlineSections) {
-                    const point = fetchedSermon.outline[section]?.find((p: OutlinePoint) => p.id === thought.outlinePointId);
+                    const point = fetchedSermon.outline[section]?.find((p: SermonPoint) => p.id === thought.outlinePointId);
                     if (point) {
                         outlinePointData = {
                             text: point.text,
@@ -250,17 +250,17 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         try {
             const outlineData = await getSermonOutline(sermonId);
             if (outlineData) {
-                setOutlinePoints({
+                setSermonPoints({
                   introduction: outlineData.introduction || [],
                   main: outlineData.main || [],
                   conclusion: outlineData.conclusion || [],
                 });
             } else {
-                 setOutlinePoints({ introduction: [], main: [], conclusion: [] });
+                 setSermonPoints({ introduction: [], main: [], conclusion: [] });
             }
         } catch (outlineError) {
             console.error("Error fetching sermon outline:", outlineError);
-             setOutlinePoints({ introduction: [], main: [], conclusion: [] }); // Default on error
+             setSermonPoints({ introduction: [], main: [], conclusion: [] }); // Default on error
             toast.error(t('errors.fetchOutlineError'));
         }
 
@@ -312,7 +312,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           ambiguous: ambiguous.map((item) => item.id),
         };
         if (isStructureChanged(fetchedSermon.structure || {}, newStructure)) {
-           console.log("Structure changed on initial load, potentially updating backend.");
+           console.log("ThoughtsBySection changed on initial load, potentially updating backend.");
            // await updateStructure(sermonId, newStructure); // Consider if auto-update on load is desired
         }
         */
@@ -325,7 +325,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         // Reset state on error
         setSermon(null);
         setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-        setOutlinePoints({ introduction: [], main: [], conclusion: [] });
+        setSermonPoints({ introduction: [], main: [], conclusion: [] });
         setAllowedTags([]);
         setRequiredTagColors({});
       } finally {
@@ -340,7 +340,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {
     if (sermon?.outline) {
-      setOutlinePoints({
+      setSermonPoints({
         introduction: sermon.outline.introduction || [],
         main: sermon.outline.main || [],
         conclusion: sermon.outline.conclusion || [],

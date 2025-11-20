@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sermon, Thought, Outline } from '@/models/models';
+import { Sermon, Thought, SermonOutline } from '@/models/models';
 
 // Изолированная функция для тестирования
 const checkForInconsistentThoughts = (sermon: Sermon): boolean => {

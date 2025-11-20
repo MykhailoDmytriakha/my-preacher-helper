@@ -256,7 +256,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
               </ul>
             </div>
 
-            {/* Structure examples */}
+            {/* ThoughtsBySection examples */}
             <div className="mb-3">
               <h6 className="text-sm font-semibold mb-1">{t('wizard.steps.homileticPlan.guide.structureExamples.title')}</h6>
               {/* Time logic */}

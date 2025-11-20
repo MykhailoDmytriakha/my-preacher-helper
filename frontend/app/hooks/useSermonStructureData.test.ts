@@ -4,7 +4,7 @@ import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { getSermonOutline } from '@/services/outline.service';
 import { toast } from 'sonner';
-import { Sermon, Thought, Structure, Outline } from '@/models/models';
+import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
 import { TFunction } from 'i18next';
 
 // Mocks
@@ -44,14 +44,14 @@ const mockThoughts: Thought[] = [
   { id: 't7', text: 'Thought for structure', tags: [], date: '2023-01-01T10:06:00Z' },
 ];
 
-const mockStructure: Structure = {
+const mockStructure: ThoughtsBySection = {
     introduction: ['t7'],
     main: [],
     conclusion: [],
     ambiguous: [],
 };
 
-const mockOutline: Outline = {
+const mockOutline: SermonOutline = {
     introduction: [{ id: 'op1', text: 'Opening point' }],
     main: [{ id: 'op2', text: 'Main point A' }],
     conclusion: [],
@@ -222,7 +222,7 @@ describe('useSermonStructureData Hook', () => {
     // Allowed tags should be empty as fetch failed
     expect(result.current.allowedTags).toEqual([]);
 
-    // Outline should still be fetched
+    // SermonOutline should still be fetched
     expect(mockedGetSermonOutline).toHaveBeenCalledWith('sermon123');
     expect(result.current.outlinePoints).toEqual(mockOutlineData);
 
@@ -251,7 +251,7 @@ describe('useSermonStructureData Hook', () => {
     expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
     expect(result.current.allowedTags.length).toBeGreaterThan(0);
 
-    // Outline points should be synced with sermon.outline when getSermonOutline fails
+    // SermonOutline points should be synced with sermon.outline when getSermonOutline fails
     expect(result.current.outlinePoints).toEqual(mockOutline);
   });
 
@@ -268,7 +268,7 @@ describe('useSermonStructureData Hook', () => {
     });
 
     // Simulate sermon outline update with isReviewed field
-    const updatedOutline: Outline = {
+    const updatedOutline: SermonOutline = {
       introduction: [{ id: 'op1', text: 'Opening point', isReviewed: true }],
       main: [
         { id: 'op2', text: 'Main point A' },
@@ -292,7 +292,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle outline points with isReviewed field from initial load', async () => {
-    const outlineWithReviews: Outline = {
+    const outlineWithReviews: SermonOutline = {
       introduction: [{ id: 'op1', text: 'Opening point', isReviewed: true }],
       main: [{ id: 'op2', text: 'Main point A', isReviewed: false }],
       conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
@@ -319,7 +319,7 @@ describe('useSermonStructureData Hook', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Update only main section with isReviewed field
-    const partialUpdate: Outline = {
+    const partialUpdate: SermonOutline = {
       introduction: mockOutline.introduction,
       main: [{ id: 'op2', text: 'Main point A', isReviewed: true }],
       conclusion: mockOutline.conclusion,
@@ -338,7 +338,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle empty outline sections with isReviewed fields', async () => {
-    const emptyOutlineWithReviews: Outline = {
+    const emptyOutlineWithReviews: SermonOutline = {
       introduction: [],
       main: [{ id: 'op1', text: 'Only main point', isReviewed: true }],
       conclusion: [],

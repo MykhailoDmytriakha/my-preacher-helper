@@ -96,7 +96,7 @@ describe('ThoughtFilterControls', () => {
 
     // Custom tag appears
     expect(screen.getByText('Grace')).toBeInTheDocument();
-    // Structure tags are filtered out from the tag checklist
+    // ThoughtsBySection tags are filtered out from the tag checklist
     expect(screen.queryByText(STRUCTURE_TAGS.INTRODUCTION)).not.toBeInTheDocument();
     expect(screen.queryByText(STRUCTURE_TAGS.CONCLUSION)).not.toBeInTheDocument();
   });

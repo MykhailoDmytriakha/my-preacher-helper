@@ -51,9 +51,9 @@ jest.mock('@/services/sermon.service', () => ({
       { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
     ],
     plan: {
-      introduction: { outline: "Intro Outline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
-      main: { outline: "Main Outline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
-      conclusion: { outline: "Conclusion Outline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
+      introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
+      main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
+      conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
     },
     outline: {
       introduction: [{id: 'intro-p1', text: 'Intro Point 1'}],
@@ -82,14 +82,14 @@ jest.mock('react-i18next', () => ({
         'plan.thoughtsNotAssigned': 'Thoughts not assigned',
         'plan.assignThoughtsFirst': 'Please assign all thoughts to outline points first',
         'plan.workOnSermon': 'Work on Sermon',
-        'plan.workOnStructure': 'Work on Structure',
+        'plan.workOnStructure': 'Work on ThoughtsBySection',
         'plan.markKeyFragments': 'Mark Key Fragments',
         'plan.generating': 'Generating...',
         'plan.regenerate': 'Regenerate',
         'plan.generate': 'Generate',
         'plan.noThoughts': 'No thoughts',
         'plan.noContent': 'No content',
-        'plan.noOutlinePoints': 'No outline points',
+        'plan.noSermonPoints': 'No outline points',
         'plan.contentGenerated': 'Content generated',
         'plan.pointSaved': 'Point saved',
         'plan.sectionSaved': 'Section saved',
@@ -103,7 +103,7 @@ jest.mock('react-i18next', () => ({
         'actions.backToSermon': 'Back to Sermon',
         'errors.sermonNotFound': 'Sermon not found',
         'errors.failedToLoadSermon': 'Failed to load sermon',
-        'errors.outlinePointNotFound': 'Outline point not found',
+        'errors.outlinePointNotFound': 'SermonOutline point not found',
         'errors.failedToGenerateContent': 'Failed to generate content',
         'errors.failedToSavePoint': 'Failed to save point',
       };
@@ -154,9 +154,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
         { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
       ],
       plan: {
-        introduction: { outline: "Intro Outline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
-        main: { outline: "Main Outline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
-        conclusion: { outline: "Conclusion Outline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
+        introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
+        main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
+        conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
       },
       outline: {
         introduction: [{id: 'intro-p1', text: 'Intro Point 1'}],

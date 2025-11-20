@@ -17,10 +17,10 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: any) => {
       const translations: Record<string, string> = {
-        'structure.title': 'Sermon Structure',
+        'structure.title': 'Sermon ThoughtsBySection',
         'structure.entries': 'entries',
         'structure.recommended': `Recommended: ${options?.percent || 0}%`,
-        'structure.workButton': 'Work on Structure',
+        'structure.workButton': 'Work on ThoughtsBySection',
         'structure.focusMode': 'Focus Mode',
         'structure.inconsistentTagsWarning': 'Some thoughts have tag inconsistencies. Please fix them before working on structure.',
         'tags.introduction': 'Introduction',
@@ -117,7 +117,7 @@ describe('StructureStats Component', () => {
 
   it('renders structure overview with percentages and focus buttons', () => {
     renderStats()
-    expect(screen.getByText('Sermon Structure')).toBeInTheDocument()
+    expect(screen.getByText('Sermon ThoughtsBySection')).toBeInTheDocument()
     expect(screen.getAllByText('33%')).toHaveLength(3)
     expect(screen.getAllByText(/Recommended: 20%/)).toHaveLength(2)
     expect(screen.getAllByText(/Recommended: 60%/)).toHaveLength(1)
@@ -132,7 +132,7 @@ describe('StructureStats Component', () => {
 
   it('handles navigation buttons and inconsistency gating rules', () => {
     renderStats()
-    fireEvent.click(screen.getByText('Work on Structure'))
+    fireEvent.click(screen.getByText('Work on ThoughtsBySection'))
     expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/structure`)
     fireEvent.click(screen.getByText('Plan'))
     expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/plan`)
@@ -140,11 +140,11 @@ describe('StructureStats Component', () => {
     mockPush.mockClear()
     cleanup()
     renderStats({ hasInconsistentThoughts: true })
-    fireEvent.click(screen.getByText('Work on Structure'))
+    fireEvent.click(screen.getByText('Work on ThoughtsBySection'))
     expect(mockPush).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('Plan'))
     expect(mockPush).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/plan`)
-    const structureButton = screen.getByText('Work on Structure')
+    const structureButton = screen.getByText('Work on ThoughtsBySection')
     expect(structureButton).toHaveAttribute('title', 'Some thoughts have tag inconsistencies. Please fix them before working on structure.')
   })
 
@@ -170,7 +170,7 @@ describe('StructureStats Component', () => {
 
   it('renders plan toggle buttons with hover, active, and disabled styling', () => {
     renderStats({ hasInconsistentThoughts: true })
-    const structureButton = screen.getByText('Work on Structure')
+    const structureButton = screen.getByText('Work on ThoughtsBySection')
     const planButton = screen.getByText('Plan')
 
     ;[structureButton, planButton].forEach((button) => {
@@ -188,7 +188,7 @@ describe('StructureStats Component', () => {
 
   it('maintains accessibility, translations, and layout helpers', () => {
     renderStats()
-    expect(screen.getByText('Work on Structure')).toBeInTheDocument()
+    expect(screen.getByText('Work on ThoughtsBySection')).toBeInTheDocument()
     expect(screen.getByText('Plan')).toBeInTheDocument()
     // Note: 'entries' appears in tooltips, not as visible text in this component
     const separator = document.querySelector('.w-0\\.5.h-6.bg-white\\/90.dark\\:bg-white\\/70')

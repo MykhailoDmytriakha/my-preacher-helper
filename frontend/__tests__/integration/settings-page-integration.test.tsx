@@ -92,7 +92,7 @@ describe('Settings Page Integration', () => {
 
   beforeEach(resetScenario);
 
-  describe('Page Structure and Navigation', () => {
+  describe('Page ThoughtsBySection and Navigation', () => {
     it('renders settings page with default user section', async () => {
       await runScenarios(
         [

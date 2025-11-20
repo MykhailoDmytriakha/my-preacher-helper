@@ -7,7 +7,7 @@ export const planSystemPrompt =
 CRITICAL PRINCIPLES:
 1. **INSTANT RECOGNITION**: Each point should be immediately recognizable and trigger memory recall
 2. **MINIMAL WORDS, MAXIMUM MEANING**: Use concise, powerful phrases that capture the essence
-3. **VISUAL SCANNING**: Structure for quick visual scanning during preaching
+3. **VISUAL SCANNING**: ThoughtsBySection for quick visual scanning during preaching
 4. **MEMORY TRIGGERS**: Use keywords and phrases that instantly recall the full context
 5. **ACTIONABLE FORMAT**: Each point should guide the preacher on what to say next
 
@@ -17,7 +17,7 @@ FORMAT REQUIREMENTS:
 - Use bullet points (*) for quick scanning
 - Keep main points to 3-6 words maximum
 - Use clear, memorable phrases that capture the essence
-- Structure for logical flow that's easy to follow during preaching
+- ThoughtsBySection for logical flow that's easy to follow during preaching
 
 MANDATORY BIBLE VERSE REQUIREMENT: 
 CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 

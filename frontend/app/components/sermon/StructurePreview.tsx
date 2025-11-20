@@ -74,7 +74,7 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
     return [...unique].sort((aId, bId) => {
       const a = thoughtById[aId];
       const b = thoughtById[bId];
-      // 1) Outline point order
+      // 1) SermonOutline point order
       const aO = a?.outlinePointId ? outlineIndexByPoint[a.outlinePointId] ?? 9999 : 9999;
       const bO = b?.outlinePointId ? outlineIndexByPoint[b.outlinePointId] ?? 9999 : 9999;
       if (aO !== bO) return aO - bO;

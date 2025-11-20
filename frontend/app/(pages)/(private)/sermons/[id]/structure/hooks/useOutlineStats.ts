@@ -8,7 +8,7 @@ interface UseOutlineStatsProps {
 
 export const useOutlineStats = ({ sermon, containers }: UseOutlineStatsProps) => {
   // Calculate counts of thoughts per outline point
-  const thoughtsPerOutlinePoint = useMemo(() => {
+  const thoughtsPerSermonPoint = useMemo(() => {
     if (!sermon || !sermon.outline) return {};
     
     const result: Record<string, number> = {};
@@ -36,5 +36,5 @@ export const useOutlineStats = ({ sermon, containers }: UseOutlineStatsProps) =>
     return result;
   }, [sermon?.outline, containers.introduction, containers.main, containers.conclusion]);
 
-  return { thoughtsPerOutlinePoint };
+  return { thoughtsPerSermonPoint };
 };

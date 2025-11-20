@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EditThoughtModal from '@/components/EditThoughtModal';
-import { Outline, Thought } from '@/models/models';
+import { SermonOutline, Thought } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -21,9 +21,9 @@ jest.mock('react-i18next', () => ({
         const translations: Record<string, string> = {
           'editThought.editTitle': 'Edit Thought',
           'editThought.textLabel': 'Text',
-          'editThought.outlinePointLabel': 'Outline Point',
-          'editThought.noOutlinePoint': 'No outline point selected',
-          'editThought.selectedOutlinePoint': 'Selected outline point from {{section}}',
+          'editThought.outlinePointLabel': 'SermonOutline Point',
+          'editThought.noSermonPoint': 'No outline point selected',
+          'editThought.selectedSermonPoint': 'Selected outline point from {{section}}',
           'editThought.availableTags': 'Available tags',
           'thought.tagsLabel': 'Tags',
           'buttons.cancel': 'Cancel',
@@ -61,7 +61,7 @@ describe('EditThoughtModal Component', () => {
     { name: 'custom', color: '#A3CB38' }
   ];
 
-  const mockSermonOutline: Outline = {
+  const mockSermonOutline: SermonOutline = {
     introduction: [
       { id: 'intro1', text: 'Introduction point 1' },
       { id: 'intro2', text: 'Introduction point 2' }
@@ -79,7 +79,7 @@ describe('EditThoughtModal Component', () => {
     thoughtId: 'test-thought-id',
     initialText: 'Test thought content',
     initialTags: ['intro'],
-    initialOutlinePointId: 'intro1',
+    initialSermonPointId: 'intro1',
     allowedTags: mockAllowedTags,
     sermonOutline: mockSermonOutline,
     containerSection: 'introduction',
@@ -103,7 +103,7 @@ describe('EditThoughtModal Component', () => {
     expect(textArea).toBeInTheDocument();
     
     // Check outline selector
-    expect(screen.getByText('Outline Point')).toBeInTheDocument();
+    expect(screen.getByText('SermonOutline Point')).toBeInTheDocument();
     const select = screen.getByRole('combobox');
     expect(select).toHaveValue('intro1');
     

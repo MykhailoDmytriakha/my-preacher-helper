@@ -1,11 +1,12 @@
 import { Sermon } from '@/models/models';
 
 const hasStructure = (sermon: Sermon): boolean => {
-  if (!sermon.structure) {
+  const structure = sermon.thoughtsBySection || sermon.structure;
+  if (!structure) {
     return false;
   }
 
-  const { introduction, main, conclusion } = sermon.structure;
+  const { introduction, main, conclusion } = structure;
   return Boolean(
     introduction?.length ||
       main?.length ||
@@ -14,11 +15,12 @@ const hasStructure = (sermon: Sermon): boolean => {
 };
 
 const hasPlan = (sermon: Sermon): boolean => {
-  if (!sermon.plan) {
+  const draft = sermon.draft || sermon.plan;
+  if (!draft) {
     return false;
   }
 
-  const { introduction, main, conclusion } = sermon.plan;
+  const { introduction, main, conclusion } = draft;
   return Boolean(
     introduction?.outline ||
       main?.outline ||
@@ -64,11 +66,12 @@ export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
  * A plan is considered ready for preaching if it has content in all sections
  */
 export function isSermonReadyForPreaching(sermon: Sermon): boolean {
-  if (!sermon.plan) {
+  const draft = sermon.draft || sermon.plan;
+  if (!draft) {
     return false;
   }
 
-  const { introduction, main, conclusion } = sermon.plan;
+  const { introduction, main, conclusion } = draft;
 
   // Check if all sections have meaningful content (not just empty strings)
   const hasIntroContent = Boolean(introduction?.outline?.trim().length);

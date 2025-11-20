@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Insights } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
-import { generateThoughtsPlan } from '@clients/openAI.client';
+import { generateSectionHints } from '@clients/openAI.client';
 
 // POST /api/insights/plan?sermonId=<id>
 export async function POST(request: Request) {
@@ -28,8 +28,8 @@ export async function POST(request: Request) {
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
     
     // Generate thoughts plan using OpenAI
-    const thoughtsPlan = await generateThoughtsPlan(sermon);
-    if (!thoughtsPlan) {
+    const sectionHints = await generateSectionHints(sermon);
+    if (!sectionHints) {
       console.error("Plan route: Failed to generate thoughts plan");
       return NextResponse.json({ error: "Failed to generate thoughts plan" }, { status: 500 });
     }
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     // Update the sermon with new plan but preserve other insights
     const updatedInsights: Insights = {
       ...currentInsights,
-      thoughtsPlan
+      sectionHints
     };
     
     // Update the sermon with insights using adminDb instead of client-side db

@@ -1,14 +1,14 @@
 "use client";
 
 import React from "react";
-import { OutlinePoint, Thought } from "@/models/models";
+import { SermonPoint, Thought } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
-import OutlinePointCard from "./OutlinePointCard";
+import SermonPointCard from "./SermonPointCard";
 
 interface PlanSectionProps {
   sectionName: "introduction" | "main" | "conclusion";
-  outlinePoints: OutlinePoint[];
+  outlinePoints: SermonPoint[];
   thoughts: Thought[];
   generatedContent: Record<string, string>;
   modifiedContent: Record<string, boolean>;
@@ -20,7 +20,7 @@ interface PlanSectionProps {
   onContentChange: (outlinePointId: string, content: string) => void;
   onToggleEditMode: (outlinePointId: string) => void;
   onOpenFragmentsModal: (outlinePointId: string) => void;
-  getThoughtsForOutlinePoint: (outlinePointId: string) => Thought[];
+  getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
   className?: string;
   "data-testid"?: string;
 }
@@ -38,7 +38,7 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
   onContentChange,
   onToggleEditMode,
   onOpenFragmentsModal,
-  getThoughtsForOutlinePoint,
+  getThoughtsForSermonPoint,
   className,
   "data-testid": testId,
 }, ref) => {
@@ -79,10 +79,10 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
       
       <div className="p-3">
         {outlinePoints.map((outlinePoint) => (
-          <OutlinePointCard
+          <SermonPointCard
             key={outlinePoint.id}
             outlinePoint={outlinePoint}
-            thoughts={getThoughtsForOutlinePoint(outlinePoint.id)}
+            thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
             sectionName={sectionName}
             onGenerate={onGenerate}
             generatedContent={generatedContent[outlinePoint.id] || null}
@@ -98,7 +98,7 @@ export const PlanSection = React.forwardRef<HTMLDivElement, PlanSectionProps>(({
         ))}
         
         {outlinePoints.length === 0 && (
-          <p className="text-gray-500">{t("plan.noOutlinePoints")}</p>
+          <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
         )}
       </div>
     </div>

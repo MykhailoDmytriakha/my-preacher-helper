@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { usePersistence } from '../usePersistence';
 import { updateStructure } from '@/services/structure.service';
 import { updateThought } from '@/services/thought.service';
-import { Thought, Structure, Sermon } from '@/models/models';
+import { Thought, ThoughtsBySection, Sermon } from '@/models/models';
 import { toast } from 'sonner';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -38,7 +38,7 @@ describe('usePersistence', () => {
     date: new Date().toISOString()
   };
 
-  const mockStructure: Structure = {
+  const mockStructure: ThoughtsBySection = {
     introduction: ['thought-1'],
     main: ['thought-2'],
     conclusion: [],
@@ -145,8 +145,8 @@ describe('usePersistence', () => {
         {
           name: 'empty and large structures',
           run: async () => {
-            const emptyStructure: Structure = { introduction: [], main: [], conclusion: [], ambiguous: [] };
-            const largeStructure: Structure = {
+            const emptyStructure: ThoughtsBySection = { introduction: [], main: [], conclusion: [], ambiguous: [] };
+            const largeStructure: ThoughtsBySection = {
               introduction: Array.from({ length: 100 }, (_, i) => `thought-${i}`),
               main: Array.from({ length: 50 }, (_, i) => `main-${i}`),
               conclusion: Array.from({ length: 25 }, (_, i) => `conclusion-${i}`),
@@ -228,7 +228,7 @@ describe('usePersistence', () => {
         {
           name: 'latest structure wins',
           run: async () => {
-            const structure2: Structure = { ...mockStructure, introduction: ['thought-3'] };
+            const structure2: ThoughtsBySection = { ...mockStructure, introduction: ['thought-3'] };
             const { result } = renderHook(() => usePersistence(defaultProps));
             act(() => {
               result.current.debouncedSaveStructure('sermon-1', mockStructure);
