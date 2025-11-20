@@ -3,6 +3,7 @@ import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom';
 jest.mock('@locales/i18n', () => ({}));
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
+import { TestProviders } from '../../../test-utils/test-providers';
 
 // Mock dynamic AudioRecorder
 jest.mock('@/components/AudioRecorder', () => ({
@@ -64,7 +65,11 @@ describe('SermonPage mode transitions', () => {
 
   test('classic mode shows recorder and brainstorm trigger button', async () => {
     // By default mode is null => classic
-    render(<SermonPage />);
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     
     // Brainstorm button should be visible
@@ -85,7 +90,11 @@ describe('SermonPage mode transitions', () => {
 
   test('prep mode shows mini recorder and hides brainstorm', async () => {
     searchParamsMock.set('mode', 'prep');
-    render(<SermonPage />);
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     
     // Brainstorm button should not be visible in prep mode
@@ -95,8 +104,12 @@ describe('SermonPage mode transitions', () => {
 
   test('initializes mode from URL param when present', async () => {
     searchParamsMock.set('mode', 'prep');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'prep');
     });
@@ -104,16 +117,24 @@ describe('SermonPage mode transitions', () => {
 
   test('initializes mode from localStorage when URL param is not present', async () => {
     mockLocalStorage.getItem.mockReturnValue('prep');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });
   });
 
   test('defaults to classic mode when no URL param or localStorage value', async () => {
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });
@@ -121,16 +142,24 @@ describe('SermonPage mode transitions', () => {
 
   test('syncs mode with URL params on mount', async () => {
     searchParamsMock.set('mode', 'prep');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'prep');
     });
   });
 
   test('handles mode changes and persists to localStorage', async () => {
-    const { rerender } = render(<SermonPage />);
-    
+    const { rerender } = render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     // Initial render with no mode
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
@@ -138,7 +167,11 @@ describe('SermonPage mode transitions', () => {
 
     // Change mode to prep
     searchParamsMock.set('mode', 'prep');
-    rerender(<SermonPage />);
+    rerender(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
     
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'prep');
@@ -148,8 +181,12 @@ describe('SermonPage mode transitions', () => {
   test('handles deep link to specific prep step', async () => {
     searchParamsMock.set('mode', 'prep');
     searchParamsMock.set('prepStep', 'spiritual');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     // Should render in prep mode
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
@@ -159,9 +196,13 @@ describe('SermonPage mode transitions', () => {
     searchParamsMock.set('mode', 'prep');
     searchParamsMock.set('prepStep', 'exegeticalPlan');
     searchParamsMock.set('otherParam', 'value');
-    
-    render(<SermonPage />);
-    
+
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'prep');
     });
@@ -169,8 +210,12 @@ describe('SermonPage mode transitions', () => {
 
   test('handles empty search params gracefully', async () => {
     searchParamsMock = new URLSearchParams('');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });
@@ -178,8 +223,12 @@ describe('SermonPage mode transitions', () => {
 
   test('handles invalid mode values gracefully', async () => {
     searchParamsMock.set('mode', 'invalid');
-    render(<SermonPage />);
-    
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });

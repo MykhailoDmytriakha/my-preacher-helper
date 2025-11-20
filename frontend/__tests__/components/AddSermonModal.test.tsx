@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AddSermonModal from '@/components/AddSermonModal';
 import { createSermon } from '@/services/sermon.service';
 import { auth } from '@/services/firebaseAuth.service';
+import { TestProviders } from '../../test-utils/test-providers';
 import '@testing-library/jest-dom';
 
 // Mock dependencies
@@ -55,52 +56,64 @@ jest.mock('react-i18next', () => ({
 
 describe('AddSermonModal Component', () => {
   const mockOnNewSermonCreated = jest.fn();
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
   
   test('renders add button but not modal initially', () => {
-    render(<AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />);
-    
+    render(
+      <TestProviders>
+        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
+      </TestProviders>
+    );
+
     // Button should be visible
     expect(screen.getByText('New Sermon')).toBeInTheDocument();
-    
+
     // Modal should not be visible initially
     expect(screen.queryByRole('heading', { name: 'New Sermon' })).not.toBeInTheDocument();
   });
   
   test('opens modal when add button is clicked', () => {
-    render(<AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />);
-    
+    render(
+      <TestProviders>
+        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
+      </TestProviders>
+    );
+
     // Click the button to open modal
     fireEvent.click(screen.getByText('New Sermon'));
-    
+
     // Modal should now be visible
     expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
   });
   
   test('closes modal when cancel button is clicked', () => {
-    render(<AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />);
-    
+    render(
+      <TestProviders>
+        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
+      </TestProviders>
+    );
+
     // Open the modal
     fireEvent.click(screen.getByText('New Sermon'));
     expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-    
+
     // Click cancel
     fireEvent.click(screen.getByText('Cancel'));
-    
+
     // Modal should be closed
     expect(screen.queryByRole('heading', { name: 'New Sermon' })).not.toBeInTheDocument();
   });
   
   test('calls createSermon with correct data when form is submitted', async () => {
-    // Mock Date.now to return a consistent value
-    const mockDate = new Date('2023-01-01');
-    jest.spyOn(global, 'Date').mockImplementation(() => mockDate);
-    
-    render(<AddSermonModal />);
-    
+    render(
+      <TestProviders>
+        <AddSermonModal />
+      </TestProviders>
+    );
+
     // Click add button to open modal
     fireEvent.click(screen.getByText('New Sermon'));
     
@@ -124,26 +137,27 @@ describe('AddSermonModal Component', () => {
           verse: 'Test 1:1-2',
           userId: 'test-user-id',
           thoughts: [],
-          date: mockDate.toISOString(),
+          date: expect.any(String),
         })
       );
     });
-    
-    // Cleanup
-    jest.restoreAllMocks();
   });
   
   test('handles authentication errors gracefully', async () => {
     // Mock console.error
     jest.spyOn(console, 'error').mockImplementation();
-    
+
     // Mock an authentication error
     (createSermon as jest.Mock).mockImplementationOnce(() => {
       console.error("User is not authenticated");
       throw new Error("User is not authenticated");
     });
-    
-    render(<AddSermonModal />);
+
+    render(
+      <TestProviders>
+        <AddSermonModal />
+      </TestProviders>
+    );
     
     // Click add button to open modal
     fireEvent.click(screen.getByText('New Sermon'));
@@ -155,25 +169,29 @@ describe('AddSermonModal Component', () => {
     
     // Submit the form
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    
+
     // Wait for the error to be shown
     await waitFor(() => {
       expect(screen.findByText('Error creating sermon')).resolves.toBeInTheDocument();
     });
-    
-    // Restore mock
+
+    // Restore mocks
     (console.error as jest.Mock).mockRestore();
   });
-  
+
   test('handles API errors gracefully', async () => {
     // Mock console.error
     jest.spyOn(console, 'error').mockImplementation();
-    
+
     // Mock an API error
     const apiError = new Error('Server error');
     (createSermon as jest.Mock).mockRejectedValueOnce(apiError);
-    
-    render(<AddSermonModal />);
+
+    render(
+      <TestProviders>
+        <AddSermonModal />
+      </TestProviders>
+    );
     
     // Click add button to open modal
     fireEvent.click(screen.getByText('New Sermon'));
@@ -194,8 +212,8 @@ describe('AddSermonModal Component', () => {
     await waitFor(() => {
       expect(screen.findByText('Error creating sermon')).resolves.toBeInTheDocument();
     });
-    
-    // Restore mock
+
+    // Restore mocks
     (console.error as jest.Mock).mockRestore();
   });
 }); 

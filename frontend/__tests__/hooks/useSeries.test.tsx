@@ -1,4 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useSeries } from '@/hooks/useSeries';
 import {
   getAllSeries,
@@ -29,6 +31,17 @@ const mockDeleteSeries = deleteSeries as jest.MockedFunction<typeof deleteSeries
 const mockAddSermonToSeries = addSermonToSeries as jest.MockedFunction<typeof addSermonToSeries>;
 const mockRemoveSermonFromSeries = removeSermonFromSeries as jest.MockedFunction<typeof removeSermonFromSeries>;
 const mockReorderSermons = reorderSermons as jest.MockedFunction<typeof reorderSermons>;
+
+const createWrapper = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, cacheTime: 0, staleTime: 0 },
+    },
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+};
 
 describe('useSeries', () => {
   const mockSeries: Series[] = [
@@ -67,7 +80,7 @@ describe('useSeries', () => {
 
   describe('Initial state and data fetching', () => {
     it('should initialize with loading state and empty series', () => {
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       expect(result.current.loading).toBe(true);
       expect(result.current.series).toEqual([]);
@@ -75,7 +88,7 @@ describe('useSeries', () => {
     });
 
     it('should fetch series on mount when userId is provided', async () => {
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -87,7 +100,7 @@ describe('useSeries', () => {
     });
 
     it('should not fetch series when userId is null', () => {
-      const { result } = renderHook(() => useSeries(null));
+      const { result } = renderHook(() => useSeries(null), { wrapper: createWrapper() });
 
       expect(result.current.loading).toBe(false);
       expect(result.current.series).toEqual([]);
@@ -99,7 +112,7 @@ describe('useSeries', () => {
       const error = new Error('Fetch failed');
       mockGetAllSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -112,10 +125,10 @@ describe('useSeries', () => {
 
   describe('createNewSeries', () => {
     it('should create a new series and update state', async () => {
-      const newSeriesData = {
-        userId: 'user-1',
-        title: 'New Series',
-        theme: 'New Theme',
+    const newSeriesData = {
+      userId: 'user-1',
+      title: 'New Series',
+      theme: 'New Theme',
         description: 'New Description',
         bookOrTopic: 'New Book',
         sermonIds: [],
@@ -128,7 +141,7 @@ describe('useSeries', () => {
       const createdSeries = { ...newSeriesData, id: 'new-series-id' };
       mockCreateSeries.mockResolvedValue(createdSeries);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       // Wait for initial load
       await waitFor(() => {
@@ -150,7 +163,7 @@ describe('useSeries', () => {
       const error = new Error('Create failed');
       mockCreateSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -182,7 +195,7 @@ describe('useSeries', () => {
       const updatedSeries = { ...mockSeries[0], ...updates };
       mockUpdateSeries.mockResolvedValue(updatedSeries);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -204,7 +217,7 @@ describe('useSeries', () => {
       const error = new Error('Update failed');
       mockUpdateSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -223,7 +236,7 @@ describe('useSeries', () => {
     it('should delete series and update state', async () => {
       mockDeleteSeries.mockResolvedValue(undefined);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -242,7 +255,7 @@ describe('useSeries', () => {
       const error = new Error('Delete failed');
       mockDeleteSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -263,7 +276,7 @@ describe('useSeries', () => {
       // Mock refresh call
       mockGetAllSeries.mockResolvedValue(mockSeries);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -282,7 +295,7 @@ describe('useSeries', () => {
       const error = new Error('Add sermon failed');
       mockAddSermonToSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -301,7 +314,7 @@ describe('useSeries', () => {
     it('should remove sermon from series and refresh data', async () => {
       mockRemoveSermonFromSeries.mockResolvedValue(undefined);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -320,7 +333,7 @@ describe('useSeries', () => {
       const error = new Error('Remove sermon failed');
       mockRemoveSermonFromSeries.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -340,7 +353,7 @@ describe('useSeries', () => {
       const newOrder = ['sermon-2', 'sermon-1'];
       mockReorderSermons.mockResolvedValue(undefined);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -359,7 +372,7 @@ describe('useSeries', () => {
       const error = new Error('Reorder failed');
       mockReorderSermons.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
@@ -376,7 +389,7 @@ describe('useSeries', () => {
 
   describe('refreshSeries', () => {
     it('should refresh series data', async () => {
-      const { result } = renderHook(() => useSeries('user-1'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);

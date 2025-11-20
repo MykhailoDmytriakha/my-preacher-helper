@@ -76,6 +76,7 @@ import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import SettingsPage from '@/(pages)/(private)/settings/page';
+import { TestProviders } from '../../test-utils/test-providers';
 
 // Helper that asserts private page does not add global shell classes
 function expectNoPageLevelShell(container: HTMLElement) {
@@ -96,7 +97,11 @@ describe('Private pages adhere to single-shell policy', () => {
   ];
 
   it.each(cases)('page %s does not add page-level shell wrappers', (_name, PageComp) => {
-    const { container } = render(<PageComp />);
+    const { container } = render(
+      <TestProviders>
+        <PageComp />
+      </TestProviders>
+    );
     expectNoPageLevelShell(container);
   });
 });

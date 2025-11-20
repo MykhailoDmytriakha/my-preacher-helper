@@ -407,6 +407,11 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
+              // Wait for loading to complete
+              await waitFor(() => {
+                expect(screen.queryByTestId('prep-mode-loading')).not.toBeInTheDocument();
+              });
+
               const toggle = screen.getByRole('switch');
               fireEvent.click(toggle);
 

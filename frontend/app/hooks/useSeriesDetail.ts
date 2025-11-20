@@ -1,182 +1,294 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { getSeriesById } from "@services/series.service";
 import { getSermonById } from "@services/sermon.service";
-import { addSermonToSeries, removeSermonFromSeries, reorderSermons as reorderSermonsAPI, updateSeries } from "@services/series.service";
+import {
+  addSermonToSeries,
+  removeSermonFromSeries,
+  reorderSermons as reorderSermonsAPI,
+  updateSeries,
+} from "@services/series.service";
 import type { Series, Sermon } from "@/models/models";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+type SeriesDetailPayload = {
+  series: Series;
+  sermons: Sermon[];
+};
 
 export function useSeriesDetail(seriesId: string) {
-  const [series, setSeries] = useState<Series | null>(null);
-  const [sermons, setSermons] = useState<Sermon[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState<Error | null>(null);
 
-  const refreshSeriesDetail = useCallback(async () => {
-    if (!seriesId) {
-      setSeries(null);
-      setSermons([]);
-      setLoading(false);
-      return;
-    }
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery<SeriesDetailPayload | null>({
+    queryKey: ["series-detail", seriesId],
+    enabled: !!seriesId,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      if (!seriesId) return null;
 
-    setLoading(true);
-    try {
-      // Get series data
       const seriesData = await getSeriesById(seriesId);
       if (!seriesData) {
-        throw new Error('Series not found');
+        throw new Error("Series not found");
       }
 
-      setSeries(seriesData);
-
-      // Get all sermons in the series
-      const sermonsPromises = seriesData.sermonIds.map(sermonId => getSermonById(sermonId));
-      const sermonsData = await Promise.all(sermonsPromises);
-
-      // Filter out undefined sermons and sort by position
+      const sermonsData = await Promise.all(seriesData.sermonIds.map((id) => getSermonById(id)));
       const validSermons = sermonsData
         .filter((sermon): sermon is Sermon => sermon !== undefined)
         .sort((a, b) => (a.seriesPosition || 0) - (b.seriesPosition || 0));
 
-      setSermons(validSermons);
-      setError(null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-      setSeries(null);
-      setSermons([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [seriesId]);
+      return { series: seriesData, sermons: validSermons };
+    },
+  });
 
-  useEffect(() => {
-    refreshSeriesDetail();
-  }, [refreshSeriesDetail]);
+  const series = data?.series ?? null;
+  const sermons = data?.sermons ?? [];
 
-  const addSermon = useCallback(async (sermonId: string, position?: number) => {
-    if (!series) return;
+  const refreshSeriesDetail = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
-    try {
-      await addSermonToSeries(series.id, sermonId, position);
-      await refreshSeriesDetail();
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [series, refreshSeriesDetail]);
+  const updateDetailCache = useCallback(
+    (updater: (payload: SeriesDetailPayload) => SeriesDetailPayload) => {
+      queryClient.setQueryData<SeriesDetailPayload | null>(["series-detail", seriesId], (old) =>
+        old ? updater(old) : old
+      );
+    },
+    [queryClient, seriesId]
+  );
 
-  const addSermons = useCallback(async (sermonIds: string[]) => {
-    if (!series) return;
+  const addSermon = useCallback(
+    async (sermonId: string, position?: number) => {
+      if (!series) return;
+      setMutationError(null);
+      try {
+        await addSermonToSeries(series.id, sermonId, position);
+        await refreshSeriesDetail();
+        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+      } catch (e: unknown) {
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
+      }
+    },
+    [series, refreshSeriesDetail, queryClient]
+  );
 
-    // Store previous state for potential rollback
-    const previousSermons = [...sermons];
+  const addSermons = useCallback(
+    async (sermonIds: string[]) => {
+      if (!series) return;
+      setMutationError(null);
+      const previous = data;
 
-    try {
-      // Optimistically add sermons to local state
-      const newSermonsPromises = sermonIds.map(async (sermonId) => {
-        // Get sermon data
-        const sermonData = await getSermonById(sermonId);
-        if (sermonData) {
-          // Add series metadata
+      try {
+        updateDetailCache((payload) => {
+          if (!payload) return payload;
+
+          const existingIds = new Set(payload.series.sermonIds);
+          const optimisticSermons = [...payload.sermons];
+
+          sermonIds.forEach((id, index) => {
+            if (optimisticSermons.some((s) => s.id === id)) return;
+            const basePosition = optimisticSermons.length + 1;
+            optimisticSermons.push({
+              id,
+              title: "Loading…",
+              verse: "",
+              date: "",
+              userId: payload.series.userId,
+              thoughts: [],
+              outline: {
+                introduction: [],
+                main: [],
+                conclusion: [],
+              },
+              isPreached: false,
+              seriesId: payload.series.id,
+              seriesPosition: basePosition + index,
+            } as Sermon);
+            existingIds.add(id);
+          });
+
           return {
-            ...sermonData,
-            seriesId: series.id,
-            seriesPosition: sermons.length + sermonIds.indexOf(sermonId) + 1
+            ...payload,
+            series: { ...payload.series, sermonIds: Array.from(existingIds) },
+            sermons: optimisticSermons,
           };
+        });
+
+        await Promise.all(
+          sermonIds.map((id, idx) =>
+            addSermonToSeries(series.id, id, (data?.sermons?.length || 0) + idx + 1)
+          )
+        );
+
+        const fetchedSermons = await Promise.all(sermonIds.map((id) => getSermonById(id)));
+
+        updateDetailCache((payload) => {
+          if (!payload) return payload;
+
+          const existing = payload.sermons.filter((s) => !sermonIds.includes(s.id));
+          const basePosition = existing.length;
+
+          const hydrated = fetchedSermons.map((sermon, idx) => {
+            const fallback: Sermon = {
+              id: sermonIds[idx],
+              title: "New Sermon",
+              verse: "",
+              date: "",
+              userId: payload.series.userId,
+              thoughts: [],
+              outline: {
+                introduction: [],
+                main: [],
+                conclusion: []
+              },
+              isPreached: false,
+              seriesId: payload.series.id,
+              seriesPosition: basePosition + idx + 1,
+            };
+
+            const merged = {
+              ...fallback,
+              ...(sermon ?? {}),
+              thoughts: sermon?.thoughts ?? fallback.thoughts,
+              outline: sermon?.outline ?? fallback.outline,
+              seriesId: sermon?.seriesId ?? fallback.seriesId,
+              seriesPosition: sermon?.seriesPosition ?? fallback.seriesPosition,
+            };
+
+            return merged;
+          });
+
+          const mergedSermons = [...existing, ...hydrated].sort(
+            (a, b) => (a.seriesPosition || 0) - (b.seriesPosition || 0)
+          );
+
+          const mergedIds = Array.from(new Set([...payload.series.sermonIds, ...sermonIds]));
+
+          return {
+            ...payload,
+            series: { ...payload.series, sermonIds: mergedIds },
+            sermons: mergedSermons,
+          };
+        });
+
+        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+      } catch (e: unknown) {
+        if (previous) {
+          queryClient.setQueryData(["series-detail", seriesId], previous);
         }
-        return null;
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
+      }
+    },
+    [series, data, updateDetailCache, queryClient, seriesId]
+  );
+
+  const removeSermon = useCallback(
+    async (sermonId: string) => {
+      if (!series) return;
+      setMutationError(null);
+      const previous = data;
+      try {
+        updateDetailCache((payload) =>
+          payload
+            ? {
+                ...payload,
+                series: {
+                  ...payload.series,
+                  sermonIds: payload.series.sermonIds.filter((id) => id !== sermonId),
+                },
+                sermons: payload.sermons.filter((sermon) => sermon.id !== sermonId),
+              }
+            : payload
+        );
+
+        await removeSermonFromSeries(series.id, sermonId);
+        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+      } catch (e: unknown) {
+        if (previous) {
+          queryClient.setQueryData(["series-detail", seriesId], previous);
+        }
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
+      }
+    },
+    [series, data, updateDetailCache, queryClient, seriesId]
+  );
+
+  const reorderSeriesSermons = useCallback(
+    async (sermonIds: string[]) => {
+      if (!series) return;
+      setMutationError(null);
+
+      const previous = data;
+
+      // Optimistic UI update
+      updateDetailCache((payload) => {
+        const reordered = sermonIds.map((sermonId, index) => {
+          const sermon = payload.sermons.find((s) => s.id === sermonId);
+          if (!sermon) {
+            throw new Error(`Sermon with id ${sermonId} not found`);
+          }
+          return { ...sermon, seriesPosition: index + 1 };
+        });
+
+        return {
+          ...payload,
+          series: { ...payload.series, sermonIds },
+          sermons: reordered,
+        };
       });
 
-      const newSermons = (await Promise.all(newSermonsPromises)).filter((sermon): sermon is NonNullable<typeof sermon> => sermon !== null && sermon !== undefined);
-
-      // Update local state immediately
-      setSermons(prevSermons => [...prevSermons, ...newSermons]);
-
-      // Send API requests
-      await Promise.all(sermonIds.map(sermonId => addSermonToSeries(series.id, sermonId)));
-
-    } catch (e: unknown) {
-      // Rollback on error
-      setSermons(previousSermons);
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [series, sermons, setSermons, setError]);
-
-  const removeSermon = useCallback(async (sermonId: string) => {
-    if (!series) return;
-
-    // Store previous state for potential rollback
-    const previousSermons = [...sermons];
-
-    try {
-      // Optimistically remove sermon from local state
-      setSermons(prevSermons => prevSermons.filter(sermon => sermon.id !== sermonId));
-
-      // Send API request
-      await removeSermonFromSeries(series.id, sermonId);
-
-    } catch (e: unknown) {
-      // Rollback on error
-      setSermons(previousSermons);
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [series, sermons, setSermons, setError]);
-
-  const reorderSeriesSermons = useCallback(async (sermonIds: string[]) => {
-    if (!series) return;
-
-    // Store previous state for potential rollback
-    const previousSermons = [...sermons];
-
-    // Optimistically update UI with new order
-    const reorderedSermons = sermonIds.map((sermonId, index) => {
-      const sermon = sermons.find(s => s.id === sermonId);
-      if (sermon) {
-        return { ...sermon, seriesPosition: index + 1 };
+      try {
+        await reorderSermonsAPI(series.id, sermonIds);
+      } catch (e: unknown) {
+        if (previous) {
+          queryClient.setQueryData(["series-detail", seriesId], previous);
+        }
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
       }
-      throw new Error(`Sermon with id ${sermonId} not found`);
-    });
+    },
+    [series, data, updateDetailCache, queryClient, seriesId]
+  );
 
-    setSermons(reorderedSermons);
-
-    try {
-      await reorderSermonsAPI(series.id, sermonIds);
-    } catch (e: unknown) {
-      // Rollback on error
-      setSermons(previousSermons);
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [series, sermons, setSermons, setError]);
-
-  const updateSeriesDetail = useCallback(async (updates: Partial<Series>) => {
-    if (!series) return;
-
-    try {
-      await updateSeries(series.id, updates);
-      await refreshSeriesDetail();
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [series, refreshSeriesDetail]);
+  const updateSeriesDetail = useCallback(
+    async (updates: Partial<Series>) => {
+      if (!series) return;
+      setMutationError(null);
+      try {
+        await updateSeries(series.id, updates);
+        await refreshSeriesDetail();
+        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+      } catch (e: unknown) {
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
+      }
+    },
+    [series, refreshSeriesDetail, queryClient]
+  );
 
   return {
     series,
     sermons,
-    loading,
-    error,
+    loading: isLoading || isFetching,
+    error: (error as Error | null) ?? mutationError,
     refreshSeriesDetail,
     addSermon,
     addSermons,
     removeSermon,
     reorderSeriesSermons,
-    updateSeriesDetail
+    updateSeriesDetail,
   };
 }

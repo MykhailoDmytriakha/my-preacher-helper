@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AddSermonModal from '@/components/AddSermonModal';
+import { TestProviders } from '../../test-utils/test-providers';
 
 // Mock translations
 jest.mock('react-i18next', () => ({
@@ -38,7 +39,12 @@ describe('AddSermonModal portal + centering (regression)', () => {
     wrapper.setAttribute('id', 'transform-wrapper');
     document.body.appendChild(wrapper);
 
-    render(<AddSermonModal />, { container: wrapper });
+    render(
+      <TestProviders>
+        <AddSermonModal />
+      </TestProviders>,
+      { container: wrapper }
+    );
 
     // Open the modal
     fireEvent.click(screen.getByText('New Sermon'));

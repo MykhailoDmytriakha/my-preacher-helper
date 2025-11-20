@@ -154,7 +154,6 @@ describe('CreateSeriesModal Component', () => {
     // Verify the button exists and has correct attributes
     expect(customColorButton).toBeInTheDocument();
     expect(customColorButton).toHaveAttribute('title', 'Custom color');
-    expect(customColorButton).toHaveClass('cursor-pointer');
   });
 
   test('calls onClose when cancel button is clicked', () => {

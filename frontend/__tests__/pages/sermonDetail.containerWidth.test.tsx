@@ -43,10 +43,15 @@ jest.mock('@components/sermon/StructureStats', () => () => <div>Stats</div>);
 jest.mock('@components/sermon/SermonOutline', () => () => <div>SermonOutline</div>);
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
+import { TestProviders } from '../../test-utils/test-providers';
 
 describe('Sermon detail container width', () => {
   it('uses fluid container without fixed max width', () => {
-    const { container } = render(<SermonDetailPage />);
+    const { container } = render(
+      <TestProviders>
+        <SermonDetailPage />
+      </TestProviders>
+    );
     // Should not contain legacy fixed width classes
     expect(container.querySelector('.max-w-7xl')).toBeNull();
     expect(container.querySelector('.max-w-4xl')).toBeNull();

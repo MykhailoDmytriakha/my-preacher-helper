@@ -1,119 +1,177 @@
-import { useState, useEffect, useCallback } from "react";
-import { getAllSeries } from "@services/series.service";
-import { createSeries, updateSeries, deleteSeries } from "@services/series.service";
-import { addSermonToSeries, removeSermonFromSeries, reorderSermons } from "@services/series.service";
+import { useCallback, useState } from "react";
+import {
+  addSermonToSeries,
+  createSeries,
+  deleteSeries,
+  getAllSeries,
+  removeSermonFromSeries,
+  reorderSermons,
+  updateSeries,
+} from "@services/series.service";
 import type { Series } from "@/models/models";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+const buildQueryKey = (userId: string | null) => ["series", userId];
 
 export function useSeries(userId: string | null) {
-  const [series, setSeries] = useState<Series[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState<Error | null>(null);
+
+  const {
+    data: series = [],
+    isLoading,
+    isFetching,
+    error,
+  } = useQuery({
+    queryKey: buildQueryKey(userId),
+    queryFn: () => (userId ? getAllSeries(userId) : Promise.resolve([])),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+  });
+
+  const createSeriesMutation = useMutation({
+    mutationFn: (payload: Omit<Series, "id">) => createSeries(payload),
+    onSuccess: (createdSeries) => {
+      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old = []) => [
+        createdSeries,
+        ...(old ?? []),
+      ]);
+      setMutationError(null);
+    },
+    onError: (err: unknown) => {
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+    },
+  });
+
+  const updateSeriesMutation = useMutation({
+    mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series> }) =>
+      updateSeries(seriesId, updates),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old) =>
+        (old ?? []).map((s) => (s.id === updated.id ? updated : s))
+      );
+      queryClient.setQueryData(["series-detail", updated.id], (prev: any) =>
+        prev
+          ? {
+              ...prev,
+              series: { ...(prev.series ?? {}), ...updated },
+            }
+          : prev
+      );
+      setMutationError(null);
+    },
+    onError: (err: unknown) => {
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+    },
+  });
+
+  const deleteSeriesMutation = useMutation({
+    mutationFn: (seriesId: string) => deleteSeries(seriesId),
+    onMutate: async (seriesId) => {
+      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
+      const previous = queryClient.getQueryData<Series[]>(buildQueryKey(userId));
+      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old = []) =>
+        (old ?? []).filter((s) => s.id !== seriesId)
+      );
+      return { previous };
+    },
+    onError: (err, _id, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(buildQueryKey(userId), ctx.previous);
+      }
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+    },
+    onSuccess: (_data, seriesId) => {
+      queryClient.removeQueries({ queryKey: ["series-detail", seriesId] });
+      setMutationError(null);
+    },
+  });
+
+  const mutationGuard = useCallback(
+    async <TResult>(action: () => Promise<TResult>) => {
+      setMutationError(null);
+      try {
+        return await action();
+      } catch (e: unknown) {
+        const errorObj = e instanceof Error ? e : new Error(String(e));
+        setMutationError(errorObj);
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  const createNewSeries = useCallback(
+    async (seriesData: Omit<Series, "id">) =>
+      mutationGuard(() => createSeriesMutation.mutateAsync(seriesData)),
+    [createSeriesMutation, mutationGuard]
+  );
+
+  const updateExistingSeries = useCallback(
+    async (seriesId: string, updates: Partial<Series>) =>
+      mutationGuard(() => updateSeriesMutation.mutateAsync({ seriesId, updates })),
+    [updateSeriesMutation, mutationGuard]
+  );
+
+  const deleteExistingSeries = useCallback(
+    async (seriesId: string) => mutationGuard(() => deleteSeriesMutation.mutateAsync(seriesId)),
+    [deleteSeriesMutation, mutationGuard]
+  );
 
   const refreshSeries = useCallback(async () => {
-    if (!userId) {
-      setSeries([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
+    if (!userId) return;
+    setMutationError(null);
     try {
-      const data = await getAllSeries(userId);
-      setSeries(data);
-      setError(null);
+      const updated = await getAllSeries(userId);
+      queryClient.setQueryData(buildQueryKey(userId), updated);
+      return updated;
     } catch (e: unknown) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-      setSeries([]);
-    } finally {
-      setLoading(false);
+      const errorObj = e instanceof Error ? e : new Error(String(e));
+      setMutationError(errorObj);
+      throw errorObj;
     }
-  }, [userId]);
+  }, [queryClient, userId]);
 
-  useEffect(() => {
-    refreshSeries();
-  }, [refreshSeries]);
+  const addSermon = useCallback(
+    async (seriesId: string, sermonId: string, position?: number) =>
+      mutationGuard(async () => {
+        await addSermonToSeries(seriesId, sermonId, position);
+        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+      }),
+    [mutationGuard, queryClient, userId]
+  );
 
-  const createNewSeries = useCallback(async (seriesData: Omit<Series, 'id'>) => {
-    try {
-      const newSeries = await createSeries(seriesData);
-      setSeries(prev => [newSeries, ...prev]);
-      return newSeries;
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, []);
+  const removeSermon = useCallback(
+    async (seriesId: string, sermonId: string) =>
+      mutationGuard(async () => {
+        await removeSermonFromSeries(seriesId, sermonId);
+        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+      }),
+    [mutationGuard, queryClient, userId]
+  );
 
-  const updateExistingSeries = useCallback(async (seriesId: string, updates: Partial<Series>) => {
-    try {
-      const updatedSeries = await updateSeries(seriesId, updates);
-      setSeries(prev => prev.map(s => s.id === seriesId ? updatedSeries : s));
-      return updatedSeries;
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, []);
-
-  const deleteExistingSeries = useCallback(async (seriesId: string) => {
-    try {
-      await deleteSeries(seriesId);
-      setSeries(prev => prev.filter(s => s.id !== seriesId));
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, []);
-
-  const addSermon = useCallback(async (seriesId: string, sermonId: string, position?: number) => {
-    try {
-      await addSermonToSeries(seriesId, sermonId, position);
-      // Refresh to get updated series data
-      await refreshSeries();
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [refreshSeries]);
-
-  const removeSermon = useCallback(async (seriesId: string, sermonId: string) => {
-    try {
-      await removeSermonFromSeries(seriesId, sermonId);
-      // Refresh to get updated series data
-      await refreshSeries();
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [refreshSeries]);
-
-  const reorderSeriesSermons = useCallback(async (seriesId: string, sermonIds: string[]) => {
-    try {
-      await reorderSermons(seriesId, sermonIds);
-      // Refresh to get updated series data
-      await refreshSeries();
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      setError(error);
-      throw error;
-    }
-  }, [refreshSeries]);
+  const reorderSeriesSermons = useCallback(
+    async (seriesId: string, sermonIds: string[]) =>
+      mutationGuard(async () => {
+        await reorderSermons(seriesId, sermonIds);
+        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+      }),
+    [mutationGuard, queryClient, userId]
+  );
 
   return {
     series,
-    loading,
-    error,
+    loading: isLoading || isFetching,
+    error: (error as Error | null) ?? mutationError,
     refreshSeries,
     createNewSeries,
     updateExistingSeries,
     deleteExistingSeries,
     addSermon,
     removeSermon,
-    reorderSeriesSermons
+    reorderSeriesSermons,
   };
 }

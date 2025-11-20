@@ -72,10 +72,15 @@ jest.mock('@/components/sermon/StructureStats', () => () => (
 ));
 
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
+import { TestProviders } from '../../../test-utils/test-providers';
 
 describe('SermonPage mobile ThoughtsBySection placement', () => {
   it('renders ThoughtsBySection section between header export buttons and audio recorder (DOM order)', () => {
-    const { container } = render(<SermonPage />);
+    const { container } = render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
 
     const headerExport = screen.getByTestId('export-buttons');
     // AudioRecorder is dynamically imported with ssr: false; tests render the loading fallback

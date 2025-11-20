@@ -451,6 +451,7 @@
     "cancel": "Cancel",
     "showSearch": "Show search",
     "hideSearch": "Hide search",
+    "filters": "Filters",
     "loading": "Loading...",
     "copied": "Copied!",
     "scripture": "Scripture",
@@ -1087,7 +1088,7 @@
     "series": {
       "badge": "Work in progress",
       "title": "Series workspace",
-      "description": "Organize upcoming sermon series, attach resources, and keep your team aligned while we finish the dedicated experience.",
+      "description": "Organize upcoming sermon series, attach resources, and keep your team aligned.",
       "listTitle": "On the roadmap",
       "items": {
         "plan": "Plan and visualize multi-week arcs with themes and supporting texts.",
@@ -1149,6 +1150,7 @@
         "addSermons": "Add sermons to get started",
         "dragToReorder": "Drag sermons to reorder them",
         "sermonCount": "{{count}} sermon(s)",
+        "duration": "Duration",
         "completedCount": "{{completed}} of {{total}} completed"
       },
       "filters": {

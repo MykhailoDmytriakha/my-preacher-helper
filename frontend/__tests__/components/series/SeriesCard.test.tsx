@@ -9,13 +9,6 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock next/link
-jest.mock('next/link', () => ({
-  __esModule: true,
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
 
 describe('SeriesCard', () => {
   const mockSeries: Series = {

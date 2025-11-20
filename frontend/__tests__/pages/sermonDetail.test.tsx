@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
+import { TestProviders } from '@test-utils/test-providers';
 import '@testing-library/jest-dom';
 
 // Mock next/navigation
@@ -96,7 +97,11 @@ describe('Sermon Detail Page', () => {
 
   describe('Basic Rendering', () => {
     beforeEach(() => {
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
     });
 
     it('renders the sermon header', async () => {
@@ -130,7 +135,11 @@ describe('Sermon Detail Page', () => {
 
   describe('UI Mode Management', () => {
     beforeEach(() => {
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
     });
 
     it('starts in classic mode by default', async () => {
@@ -165,7 +174,11 @@ describe('Sermon Detail Page', () => {
         return null;
       });
 
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
 
       // The localStorage restoration logic is complex and depends on URL params
       // This test verifies the component renders without crashing
@@ -177,7 +190,11 @@ describe('Sermon Detail Page', () => {
 
   describe('Data Loading', () => {
     it('loads sermon data on mount', async () => {
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
 
       await waitFor(() => {
         expect(require('@/services/sermon.service').getSermonById).toHaveBeenCalledWith(sermonId);
@@ -185,7 +202,11 @@ describe('Sermon Detail Page', () => {
     });
 
     it('passes sermon data to child components', async () => {
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
 
       await waitFor(() => {
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
@@ -195,7 +216,11 @@ describe('Sermon Detail Page', () => {
 
   describe('Accessibility', () => {
     beforeEach(() => {
-      render(<SermonDetailPage />);
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
     });
 
     it('has proper heading structure', async () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SeriesDetailPage from '@/(pages)/(private)/series/[id]/page';
+import { TestProviders } from '../../test-utils/test-providers';
 
 // Mock Next.js router
 const mockPush = jest.fn();
@@ -97,17 +98,25 @@ describe('SeriesDetailPage', () => {
   });
 
   it('renders series details correctly', () => {
-    render(<SeriesDetailPage />);
+    render(
+      <TestProviders>
+        <SeriesDetailPage />
+      </TestProviders>
+    );
 
     expect(screen.getByText('Test Series')).toBeInTheDocument();
     expect(screen.getByText('Test Theme')).toBeInTheDocument();
-    expect(screen.getByText('workspaces.series.form.statuses.active')).toBeInTheDocument();
+    expect(screen.getAllByText('workspaces.series.form.statuses.active')).toHaveLength(2); // status badge and indicator
   });
 
   it('navigates to /series when Back to Series button is clicked', () => {
-    render(<SeriesDetailPage />);
+    render(
+      <TestProviders>
+        <SeriesDetailPage />
+      </TestProviders>
+    );
 
-    const backButton = screen.getByText('Back to Series');
+    const backButton = screen.getByText('navigation.series');
     fireEvent.click(backButton);
 
     expect(mockPush).toHaveBeenCalledWith('/series');

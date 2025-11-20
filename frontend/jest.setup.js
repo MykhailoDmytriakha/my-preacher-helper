@@ -308,7 +308,11 @@ jest.mock('i18next', () => {
 });
 
 // Mock i18n module - REMOVED as it conflicts with react-i18next mock
-// jest.mock('@locales/i18n', () => {}, { virtual: true }); 
+// jest.mock('@locales/i18n', () => {}, { virtual: true });
+
+// Mock Date.now globally to prevent React Query timer issues in tests
+const originalDateNow = Date.now;
+Date.now = jest.fn(() => new Date('2023-01-01').getTime()); 
 
 // Optimized Firebase mocks - shared mock user for consistency and performance
 const createMockUser = (isAnonymous = false) => ({

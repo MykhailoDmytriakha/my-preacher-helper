@@ -1,0 +1,17 @@
+{
+  "name": "my-preacher-helper-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "cd frontend && npm run test",
+    "test:fast": "cd frontend && npm run test:fast",
+    "test:components": "cd frontend && npm run test:components",
+    "test:utils": "cd frontend && npm run test:utils",
+    "test:coverage": "cd frontend && npm run test:coverage",
+    "test:quick": "cd frontend && npm run test:quick",
+    "test:clean": "cd frontend && npm run test:clean",
+    "test:translations": "cd frontend && npm run test:translations",
+    "test:summary": "cd frontend && npm run test:summary",
+    "test:perf": "cd frontend && npm run test:perf"
+  }
+}

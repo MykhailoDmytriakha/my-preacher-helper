@@ -25,181 +25,184 @@ export default function AddSermonToSeriesModal({
   const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
 
-  // Filter sermons that are not already in the series
-  const availableSermons = useMemo(() => {
-    return sermons.filter(sermon => !currentSeriesSermonIds.includes(sermon.id));
-  }, [sermons, currentSeriesSermonIds]);
+  const availableSermons = useMemo(
+    () => sermons.filter((sermon) => !currentSeriesSermonIds.includes(sermon.id)),
+    [sermons, currentSeriesSermonIds]
+  );
 
-  // Filter by search query
   const filteredSermons = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return availableSermons;
-    }
-
+    if (!searchQuery.trim()) return availableSermons;
     const query = searchQuery.toLowerCase();
-    return availableSermons.filter(sermon =>
-      sermon.title.toLowerCase().includes(query) ||
-      sermon.verse.toLowerCase().includes(query)
+    return availableSermons.filter(
+      (sermon) =>
+        sermon.title.toLowerCase().includes(query) ||
+        sermon.verse.toLowerCase().includes(query)
     );
   }, [availableSermons, searchQuery]);
 
   const handleToggleSermon = (sermonId: string) => {
-    const newSelected = new Set(selectedSermonIds);
-    if (newSelected.has(sermonId)) {
-      newSelected.delete(sermonId);
-    } else {
-      newSelected.add(sermonId);
-    }
-    setSelectedSermonIds(newSelected);
+    const next = new Set(selectedSermonIds);
+    next.has(sermonId) ? next.delete(sermonId) : next.add(sermonId);
+    setSelectedSermonIds(next);
   };
 
   const handleAddSelected = async () => {
     if (selectedSermonIds.size === 0) return;
-
     setIsAdding(true);
     try {
       await onAddSermons(Array.from(selectedSermonIds));
       onClose();
-    } catch (error) {
-      console.error('Error adding sermons to series:', error);
     } finally {
       setIsAdding(false);
     }
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl mx-4 rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800 max-h-[80vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            {t('workspaces.series.actions.addSermon')}
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="relative mb-4">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('common.search') || 'Search sermons...'}
-            className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-          />
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          {sermonsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin"></div>
-              <span className="ml-2 text-gray-500 dark:text-gray-400">
-                Loading sermons...
-              </span>
-            </div>
-          ) : filteredSermons.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 dark:text-gray-400">
-                {searchQuery.trim()
-                  ? 'No sermons match your search'
-                  : 'No sermons available to add'
-                }
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800 flex flex-col">
+        <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-500" />
+        <div className="p-6 sm:p-7 flex flex-col flex-1 overflow-hidden">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-100 dark:ring-blue-800/60">
+                {t('workspaces.series.actions.addSermon')}
               </p>
-              {searchQuery.trim() && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="mt-2 text-blue-500 hover:text-blue-600"
-                >
-                  Clear search
-                </button>
-              )}
+              <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-gray-100">
+                Выберите проповеди
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Превью тезиса/мысли, дата и количество заметок помогут быстро ориентироваться.
+              </p>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredSermons.map((sermon) => (
-                <div
-                  key={sermon.id}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedSermonIds.has(sermon.id)
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-                      : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700'
-                  }`}
-                  onClick={() => handleToggleSermon(sermon.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Checkbox */}
-                    <div className="flex-shrink-0 mt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedSermonIds.has(sermon.id)}
-                        onChange={() => handleToggleSermon(sermon.id)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                      />
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {sermon.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                        {sermon.verse}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {formatDate(sermon.date)}
-                        </span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
-                          •
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {sermon.thoughts?.length || 0} thoughts
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {selectedSermonIds.size} sermon{selectedSermonIds.size !== 1 ? 's' : ''} selected
-          </span>
-          <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
             >
-              {t('common.cancel') || 'Cancel'}
+              <XMarkIcon className="h-6 w-6" />
             </button>
-            <button
-              onClick={handleAddSelected}
-              disabled={selectedSermonIds.size === 0 || isAdding}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {isAdding ? (
-                <>
-                  <div className="w-4 h-4 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <PlusIcon className="h-4 w-4" />
-                  Add Selected
-                </>
-              )}
-            </button>
+          </div>
+
+          <div className="relative mb-4">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('common.search') || 'Search sermons...'}
+              className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-1">
+            {sermonsLoading ? (
+              <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-b-transparent border-blue-600 mr-3" />
+                Loading sermons...
+              </div>
+            ) : filteredSermons.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+                {searchQuery.trim()
+                  ? 'Нет проповедей по запросу'
+                  : 'Пока нет проповедей для добавления'}
+                {searchQuery.trim() && (
+                  <div>
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="mt-2 text-blue-600 hover:text-blue-700"
+                    >
+                      Сбросить поиск
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredSermons.map((sermon) => {
+                  const preview =
+                    sermon.preparation?.thesis?.oneSentence || sermon.thoughts?.[0]?.text || '';
+                  return (
+                    <div
+                      key={sermon.id}
+                      className={`cursor-pointer rounded-xl border p-3 transition bg-white/80 dark:bg-gray-800/70 ${
+                        selectedSermonIds.has(sermon.id)
+                          ? 'border-blue-500 ring-2 ring-blue-500/20'
+                          : 'border-gray-200 hover:border-blue-200 hover:shadow-sm dark:border-gray-700'
+                      }`}
+                      onClick={() => handleToggleSermon(sermon.id)}
+                    >
+                      <div className="flex gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedSermonIds.has(sermon.id)}
+                          onChange={() => handleToggleSermon(sermon.id)}
+                          className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+                              {sermon.title}
+                            </h3>
+                            {sermon.isPreached && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                                {t('dashboard.preached')}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1 italic">
+                            {sermon.verse}
+                          </p>
+                          {preview && (
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                              {preview}
+                            </p>
+                          )}
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-800">
+                              {formatDate(sermon.date)}
+                            </span>
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                              {sermon.thoughts?.length || 0} thoughts
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4 dark:border-gray-800">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {selectedSermonIds.size} выбрано
+            </span>
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {t('common.cancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={handleAddSelected}
+                disabled={selectedSermonIds.size === 0 || isAdding}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isAdding ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent border-white" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <PlusIcon className="h-4 w-4" />
+                    Add Selected
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
