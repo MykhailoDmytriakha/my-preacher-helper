@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import dynamicImport from "next/dynamic";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import type { Sermon, Thought, SermonOutline, Preparation, BrainstormSuggestion } from "@/models/models";
+import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import Link from "next/link";
 import { getTags } from "@/services/tag.service";
 import useSermon from "@/hooks/useSermon";
@@ -824,7 +824,7 @@ export default function SermonPage() {
   const hasInconsistentThoughts = checkForInconsistentThoughts();
 
   // Function to update only the outline part of the sermon state
-  const handleOutlineUpdate = (updatedOutline: SermonOutline) => {
+  const handleOutlineUpdate = (updatedOutline: SermonOutlineType) => {
     setSermon(prevSermon => {
       if (!prevSermon) return null;
       return {

@@ -90,7 +90,9 @@ jest.mock('react-i18next', () => ({
         'workspaces.series.filters.allSermons': 'All Sermons',
         'workspaces.series.filters.inSeries': 'In Series',
         'workspaces.series.filters.standalone': 'Standalone',
+        'dashboard.activeSermons': 'Active Sermons',
         'dashboard.preached': 'Preached',
+        'dashboard.all': 'All',
       };
       return translations[key] || key;
     },
@@ -148,20 +150,29 @@ describe('Dashboard Page', () => {
   });
 
   describe('Tabs Functionality', () => {
-    it('switches between Active and Preached', async () => {
+    it('switches between Active, All, and Preached tabs', async () => {
       render(<DashboardPage />);
-      
-      // Initially Active tab
+
+      // Initially Active tab - should show active sermons only
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
+      expect(screen.getByTestId('sermon-card-3')).toBeInTheDocument();
       expect(screen.queryByTestId('sermon-card-2')).not.toBeInTheDocument();
+
+      // Click All tab
+      fireEvent.click(screen.getByText('All'));
+
+      // Should show all sermons
+      expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
+      expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
+      expect(screen.getByTestId('sermon-card-3')).toBeInTheDocument();
 
       // Click Preached tab
       fireEvent.click(screen.getByText('Preached'));
 
-      // Should show Preached sermon
+      // Should show Preached sermon only
       expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
-      // Should hide Active sermons
       expect(screen.queryByTestId('sermon-card-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('sermon-card-3')).not.toBeInTheDocument();
     });
   });
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { SermonOutline, Sermon } from '@/models/models';
+import { SermonOutline as SermonOutlineType, Sermon } from '@/models/models';
 
 // --- Mock Dependencies First --- 
 
@@ -36,13 +36,13 @@ const mockSermonData: Sermon = {
 
 // --- Define Mock Components BEFORE using them in jest.mock --- 
 
-const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon, onOutlineUpdate: (outline: SermonOutline) => void }) => (
+const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon, onOutlineUpdate: (outline: SermonOutlineType) => void }) => (
   <div data-testid="sermon-outline">
     <h2>Sermon SermonOutline Mock</h2>
     <button 
       data-testid="update-outline-button"
       onClick={() => {
-        const updatedOutline: SermonOutline = {
+        const updatedOutline: SermonOutlineType = {
           introduction: [
             { id: 'intro1', text: 'Introduction Point 1' }, 
             { id: 'intro2', text: 'New Introduction Point' }
@@ -58,7 +58,7 @@ const MockSermonOutline = jest.fn(({ sermon, onOutlineUpdate }: { sermon: Sermon
   </div>
 ));
 
-const MockEditThoughtModal = jest.fn(({ sermonOutline, onClose }: { sermonOutline: SermonOutline | undefined, onClose: () => void }) => (
+const MockEditThoughtModal = jest.fn(({ sermonOutline, onClose }: { sermonOutline: SermonOutlineType | undefined, onClose: () => void }) => (
   <div data-testid="edit-thought-modal">
     <h2>Edit Thought Modal Mock</h2>
     <div data-testid="outline-points">
@@ -98,7 +98,7 @@ const TestSermonPage = () => {
   const [sermon, setSermon] = React.useState<Sermon | null>(mockSermonData);
   const [editingModalData, setEditingModalData] = React.useState<{ thought: any; index: number } | null>(null);
 
-  const handleOutlineUpdate = (updatedOutline: SermonOutline) => {
+  const handleOutlineUpdate = (updatedOutline: SermonOutlineType) => {
     // Use the useState setter
     setSermon(prevSermon => {
       if (!prevSermon) return null;

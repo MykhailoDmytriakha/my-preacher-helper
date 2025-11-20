@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import SermonOutline from '@/components/sermon/SermonOutline';
-import { SermonOutline, Sermon } from '@/models/models';
+import { SermonOutline as SermonOutlineType, Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock translations (simplified)

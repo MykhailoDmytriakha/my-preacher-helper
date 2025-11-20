@@ -4,7 +4,7 @@ import React from "react";
 import { SermonPoint, Thought } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
-import SermonPointCard from "./SermonPointCard";
+import SermonPointCard from "./OutlinePointCard";
 
 interface PlanSectionProps {
   sectionName: "introduction" | "main" | "conclusion";

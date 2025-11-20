@@ -26,7 +26,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "inSeries" | "standalone">("all");
-  const [activeTab, setActiveTab] = useState<"active" | "preached">("active");
+  const [activeTab, setActiveTab] = useState<"active" | "preached" | "all">("active");
   const [isMobileSearchVisible, setIsMobileSearchVisible] = useState(false);
 
   // Multi-select state
@@ -85,12 +85,13 @@ export default function DashboardPage() {
       filtered = filtered.filter(sermon => !sermon.seriesId);
     }
 
-    // Tab filter (Active vs Preached)
+    // Tab filter (Active vs Preached vs All)
     if (activeTab === "active") {
       filtered = filtered.filter(s => !s.isPreached);
-    } else {
+    } else if (activeTab === "preached") {
       filtered = filtered.filter(s => s.isPreached);
     }
+    // For "all", no additional filtering is needed
 
     return [...filtered].sort((a, b) => {
       switch (sortOption) {
@@ -176,10 +177,10 @@ export default function DashboardPage() {
               }
             `}
           >
-            Active Sermons
+            {t('dashboard.activeSermons')}
             <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
-              activeTab === "active" 
-                ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400" 
+              activeTab === "active"
+                ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
                 : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
             }`}>
               {loading ? "-" : sermons.filter(s => !s.isPreached).length}
@@ -202,6 +203,25 @@ export default function DashboardPage() {
                 : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
             }`}>
               {loading ? "-" : sermons.filter(s => s.isPreached).length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+              ${activeTab === "all"
+                ? "border-green-500 text-green-600 dark:text-green-400"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
+              }
+            `}
+          >
+            {t('dashboard.all')}
+            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
+              activeTab === "all"
+                ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
+                : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
+            }`}>
+              {loading ? "-" : sermons.length}
             </span>
           </button>
         </nav>
