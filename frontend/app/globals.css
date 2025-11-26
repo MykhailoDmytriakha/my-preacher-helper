@@ -7,6 +7,9 @@
 @import './time-picker.css';
 @import './timer-effects.css';
 
+/* Plan Markdown Styles */
+@import './markdownStyles.css';
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
