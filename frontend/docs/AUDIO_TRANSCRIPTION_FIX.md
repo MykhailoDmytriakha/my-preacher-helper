@@ -21,6 +21,7 @@ Frequent "Audio file might be corrupted or unsupported" errors (400 Bad Request)
 - Chrome: generates WebM with Opus (problematic)
 - Firefox: generates WebM with Vorbis (better compatibility)
 - Safari: varies by version
+- **Android (all browsers)**: claims MP4 support but produces WebM containers with wrong MIME type
 
 ### 4. **File Size/Duration Validation** (30% likelihood)
 - Very short recordings (< 500ms) may fail validation
@@ -44,7 +45,7 @@ const formatPriority = [
 ];
 ```
 
-**Impact**: Browser will now select the most compatible format available.
+**Impact**: Browser will now select the most compatible format available. Android devices automatically skip problematic MP4 format selection to prevent MIME type mismatch errors.
 
 ### 2. **Fixed WebM Header Corruption**
 
@@ -110,9 +111,10 @@ Features:
 
 After deployment, monitor:
 
-1. **Error Rate by Browser**
-   - Chrome vs Firefox vs Safari
-   - Identify browser-specific issues
+1. **Error Rate by Platform**
+   - Android vs iOS vs Desktop vs macOS
+   - Chrome vs Firefox vs Safari vs Samsung Internet
+   - Identify platform-specific MediaRecorder issues
 
 2. **Error Rate by Format**
    - Which formats still cause problems

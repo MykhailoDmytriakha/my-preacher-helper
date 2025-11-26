@@ -94,42 +94,54 @@ export function validateAudioBlob(blob: Blob): { valid: boolean; error?: string 
 }
 
 /**
- * Detect if browser is known to lie about MP4 support
- * 
- * CRITICAL FINDING: This is NOT browser-specific, but macOS-specific!
- * Chrome, Safari, and Firefox on macOS ALL have this issue.
- * 
- * Root cause: macOS MediaRecorder claims MP4 support but actually 
- * records in WebM container with Opus codec, then lies about the MIME type.
+ * Detect if browser/platform is known to lie about MP4 support
+ *
+ * CRITICAL FINDINGS:
+ * 1. macOS: ALL browsers (Chrome, Safari, Firefox) claim MP4 support but produce WebM+Opus
+ * 2. iOS: WebKit MediaRecorder limitations affect all browsers
+ * 3. Android: MediaRecorder claims MP4 support but produces WebM containers with wrong MIME type
+ *
+ * Root cause: Platform-level MediaRecorder bugs where browsers claim MP4 support
+ * but actually record in incompatible containers with mismatched MIME types.
  */
 function isBrowserWithMP4Issues(): boolean {
   if (typeof navigator === 'undefined') return false;
-  
+
   const ua = navigator.userAgent.toLowerCase();
   const isMac = /mac os/.test(ua);
-  
+  const isAndroid = /android/.test(ua);
+
   // CRITICAL: On macOS, ALL browsers (Chrome, Safari, Firefox) have this issue
   // They claim to support audio/mp4 but actually record WebM+Opus
   if (isMac) {
     console.log('🍎 macOS detected - will skip audio/mp4 due to known MediaRecorder bugs across all browsers');
     return true;
   }
-  
+
   // Also check for iOS (same WebKit issues)
   const isIOS = /iphone|ipad|ipod/.test(ua);
   if (isIOS) {
     console.log('📱 iOS detected - will skip audio/mp4 due to WebKit MediaRecorder limitations');
     return true;
   }
-  
+
+  // CRITICAL: Android MediaRecorder claims audio/mp4 support but produces WebM containers
+  // This causes "Audio file might be corrupted or unsupported" errors with OpenAI
+  if (isAndroid) {
+    console.log('🤖 Android detected - will skip audio/mp4 due to MediaRecorder MIME type mismatch bug');
+    return true;
+  }
+
   return false;
 }
 
 /**
  * Get best supported format for current browser
- * 
- * IMPORTANT: On macOS/iOS, automatically skips audio/mp4 due to system-wide
- * MediaRecorder bug that affects ALL browsers (Chrome, Safari, Firefox).
+ *
+ * IMPORTANT: Automatically skips audio/mp4 on problematic platforms:
+ * - macOS: System-wide MediaRecorder bug affects ALL browsers (Chrome, Safari, Firefox)
+ * - iOS: WebKit MediaRecorder limitations affect all browsers
+ * - Android: MediaRecorder MIME type mismatch bug produces WebM in MP4 containers
  */
 export function getBestSupportedFormat(): string {
   if (typeof MediaRecorder === 'undefined') {

@@ -220,6 +220,12 @@ describe('audioFormatUtils', () => {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.123 Safari/537.36';
       const chromeWinUA =
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      const chromeAndroidUA =
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      const firefoxAndroidUA =
+        'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/109.0 Firefox/120.0';
+      const samsungInternetUA =
+        'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0.0.0 Mobile Safari/537.36';
 
       const dualSupport = (format: string) => format === 'audio/mp4' || format === 'audio/webm';
 
@@ -234,6 +240,11 @@ describe('audioFormatUtils', () => {
       assertSkipsMp4(safariUA);
       assertSkipsMp4(firefoxUA);
       assertSkipsMp4(chromeMacUA);
+
+      // Test Android devices skip MP4 due to MIME type mismatch bug
+      assertSkipsMp4(chromeAndroidUA);
+      assertSkipsMp4(firefoxAndroidUA);
+      assertSkipsMp4(samsungInternetUA);
 
       resetEnv();
       (global as any).navigator = { userAgent: chromeWinUA };
