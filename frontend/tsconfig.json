@@ -27,6 +27,7 @@
       "@clients/*": ["./app/api/clients/*"],
       "@repositories/*": ["./app/api/repositories/*"],
       "@utils/*": ["./app/utils/*"],
+      "@types/*": ["./app/types/*"],
       "@test-utils/*": ["./test-utils/*"],
       "@locales/*": ["./locales/*"],
       "@hooks/*": ["./hooks/*"],

@@ -3,8 +3,8 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollText, FileText, Save, Maximize2, Minimize2 } from "lucide-react";
-import { Button } from "../ui/Button";
-import { LoadingSpinner } from "../ui/LoadingSpinner";
+import { Button } from "@/components/ui/Button";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 interface PlanActionsProps {
   isExpanded: boolean;

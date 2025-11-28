@@ -1,7 +1,7 @@
 // Timer Constants and Configuration
 
-import { TimerSettings, TimerPhase } from '../types/TimerState';
-import { PHASE_DEFINITIONS } from '../types/TimerPhase';
+import { TimerSettings, TimerPhase } from '@/types/TimerState';
+import { PHASE_DEFINITIONS } from '@/types/TimerPhase';
 
 /**
  * Default timer settings for different sermon lengths

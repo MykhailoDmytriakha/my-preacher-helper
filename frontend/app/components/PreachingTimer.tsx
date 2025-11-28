@@ -6,8 +6,8 @@ import { useTranslation } from 'react-i18next';
 import DigitalTimerDisplay from './DigitalTimerDisplay';
 import TimerControls from './TimerControls';
 import CustomTimePicker from './CustomTimePicker';
-import { usePreachingTimer } from '../hooks/usePreachingTimer';
-import { TimerPhase } from '../types/TimerState';
+import { usePreachingTimer } from '@/hooks/usePreachingTimer';
+import { TimerPhase } from '@/types/TimerState';
 
 // Error Boundary for Timer Components
 const TimerErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {

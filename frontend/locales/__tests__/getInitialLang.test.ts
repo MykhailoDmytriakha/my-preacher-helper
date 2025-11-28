@@ -1,7 +1,7 @@
-import { getInitialLanguage, initializeLanguageFromDB } from '../getInitialLang';
+import { getInitialLanguage, initializeLanguageFromDB } from '@locales/getInitialLang';
 import { getCookieLanguage, getUserLanguage, setLanguageCookie } from '@/services/userSettings.service';
 import { getAuth } from 'firebase/auth';
-import i18n from '../i18n';
+import i18n from '@locales/i18n';
 
 // Mock dependencies
 jest.mock('@/services/userSettings.service');

@@ -10,7 +10,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Check, FileText, File, FileType } from 'lucide-react';
 import { exportToWord, PlanData } from '../../utils/wordExport';
-import { sanitizeMarkdown } from "../utils/markdownUtils";
+import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;

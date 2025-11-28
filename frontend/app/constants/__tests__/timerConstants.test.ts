@@ -17,7 +17,7 @@ import {
   getPhaseColor,
   getEmergencyColor,
 } from '../timerConstants'
-import { TimerSettings } from '../../types/TimerState'
+import { TimerSettings } from '@/types/TimerState'
 import { runScenarios } from '@test-utils/scenarioRunner'
 
 describe('timerConstants', () => {

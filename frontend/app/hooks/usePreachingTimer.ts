@@ -8,15 +8,15 @@ import {
   TimerSettings,
   DEFAULT_TIMER_SETTINGS,
   TIMER_PHASE_COLORS
-} from '../types/TimerState';
+} from '@/types/TimerState';
 import {
   UsePreachingTimerReturn
-} from '../types/TimerProps';
+} from '@/types/TimerProps';
 import {
   triggerScreenBlink,
   triggerTextHighlight,
   cancelVisualEffects
-} from '../utils/visualEffects';
+} from '@/utils/visualEffects';
 
 export const usePreachingTimer = (
   initialSettings?: Partial<TimerSettings>

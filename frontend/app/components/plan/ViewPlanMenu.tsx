@@ -6,7 +6,7 @@ import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getPlanMarkdownStyles } from './markdownStyles';
-import { sanitizeMarkdown } from "../../utils/markdownUtils";
+import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 
 interface ViewPlanMenuProps {

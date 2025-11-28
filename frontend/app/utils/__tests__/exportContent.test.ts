@@ -1,4 +1,4 @@
-import { getExportContent } from '../exportContent';
+import { getExportContent } from '@/utils/exportContent';
 import { Sermon, Thought, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 

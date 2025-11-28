@@ -6,7 +6,7 @@ import { Sermon, Thought } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
-import enTranslation from '../../../locales/en/translation.json';
+import enTranslation from '@locales/en/translation.json';
 
 // POST api/thoughts
 export async function POST(request: Request) {

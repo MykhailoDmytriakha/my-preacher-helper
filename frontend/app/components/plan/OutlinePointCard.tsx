@@ -6,9 +6,9 @@ import { useTranslation } from "react-i18next";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { Key, Sparkles, Save, FileText, Pencil } from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
-import { Button } from "../ui/Button";
-import { LoadingSpinner } from "../ui/LoadingSpinner";
-import { MarkdownRenderer } from "../ui/MarkdownRenderer";
+import { Button } from "@/components/ui/Button";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 interface SermonPointCardProps {
   outlinePoint: SermonPoint;
