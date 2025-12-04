@@ -21,6 +21,7 @@ import { StudyNote, ScriptureReference } from '@/models/models';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { getTags } from '@/services/tag.service';
 import { BIBLE_BOOKS } from '@/constants/bible';
+import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
 type BookMatch = { book: string; remaining: string[] };
 
@@ -538,7 +539,7 @@ export default function StudiesPage() {
                           }
                         }}
                         placeholder={t('studiesWorkspace.quickRefPlaceholder')}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                        className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                       />
                       {quickRefError && <p className="mt-1 text-xs text-red-600">{quickRefError}</p>}
                     </div>
@@ -662,7 +663,7 @@ export default function StudiesPage() {
                           }
                         }}
                         placeholder={t('studiesWorkspace.addTag')}
-                        className="w-full min-w-[200px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                        className={`w-full min-w-[200px] ${STUDIES_INPUT_SHARED_CLASSES}`}
                       />
                       <datalist id="tag-suggestions">
                         {tagOptions.map((tag) => (
