@@ -30,6 +30,16 @@ describe('referenceParser', () => {
     });
   });
 
+  it('supports hyphen ranges', () => {
+    const parsed = parseReferenceText('евр 4 5-6');
+    expect(parsed).toEqual({
+      book: 'Hebrews',
+      chapter: 4,
+      fromVerse: 5,
+      toVerse: 6,
+    });
+  });
+
   it('returns null for malformed references', () => {
     expect(parseReferenceText('евр')).toBeNull();
     expect(parseReferenceText('Hebrews two nine')).toBeNull();

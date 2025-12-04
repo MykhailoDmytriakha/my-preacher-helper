@@ -173,6 +173,12 @@ export function parseReferenceText(raw: string): ParsedReference | null {
   const tokens = raw
     .replace(/[:,.;]/g, ' ')
     .split(/\s+/)
+    .flatMap((token) =>
+      token
+        .split('-')
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+    )
     .filter(Boolean);
   if (tokens.length < 3) return null;
 
