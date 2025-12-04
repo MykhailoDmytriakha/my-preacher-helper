@@ -14,6 +14,7 @@ import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import "@locales/i18n";
 import ModeToggle from './ModeToggle';
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
+import { getNavItemTheme } from '@/utils/themeColors';
 
 export default function DashboardNav() {
   const { t } = useTranslation();
@@ -141,6 +142,7 @@ export default function DashboardNav() {
                   {navItems.map((item) => {
                     const active = isNavItemActive(pathname, item.matchers);
                     const Icon = item.icon;
+                    const themeClasses = getNavItemTheme(item.theme);
                     return (
                       <Link
                         key={item.key}
@@ -149,7 +151,7 @@ export default function DashboardNav() {
                         aria-current={active ? 'page' : undefined}
                         className={`flex items-center gap-2 px-4 py-2 text-sm transition ${
                           active
-                            ? 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
+                            ? themeClasses.menu
                             : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                         }`}
                         onClick={() => setNavDropdownOpen(false)}
@@ -171,6 +173,7 @@ export default function DashboardNav() {
               {navItems.map((item) => {
                 const active = isNavItemActive(pathname, item.matchers);
                 const Icon = item.icon;
+                const themeClasses = getNavItemTheme(item.theme);
                 return (
                   <li key={item.key}>
                     <Link
@@ -179,7 +182,7 @@ export default function DashboardNav() {
                       aria-current={active ? 'page' : undefined}
                       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${
                         active
-                          ? 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
+                          ? themeClasses.pill
                           : 'border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
                       }`}
                     >

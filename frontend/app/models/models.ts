@@ -238,6 +238,60 @@ export interface SermonDraft {
 
 // Legacy aliases kept for backward compatibility during refactor
 export type OutlinePoint = SermonPoint;
+
+// --- Studies workspace ---
+
+/**
+ * Lightweight scripture reference used by study notes.
+ * We keep it normalized to make filtering by book/chapter simple on the client.
+ */
+export interface ScriptureReference {
+  id: string;
+  book: string;
+  chapter: number;
+  fromVerse: number;
+  toVerse?: number;
+  /** Optional user-supplied text snippet (RST or other translation). */
+  text?: string;
+}
+
+export interface StudyNote {
+  id: string;
+  userId: string;
+  content: string;
+  title?: string;
+  scriptureRefs: ScriptureReference[];
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  /** Calculated draft status stored for quick filtering */
+  isDraft: boolean;
+  /** Materials (sermons / groups / studies) that use this note */
+  materialIds?: string[];
+  /** Optional links to existing sermons */
+  relatedSermonIds?: string[];
+}
+
+export type StudyMaterialType = 'sermon' | 'study' | 'group' | 'guide';
+
+export interface MaterialSection {
+  id: string;
+  title: string;
+  noteIds: string[];
+  connector?: string;
+}
+
+export interface StudyMaterial {
+  id: string;
+  userId: string;
+  title: string;
+  type: StudyMaterialType;
+  description?: string;
+  noteIds: string[];
+  sections?: MaterialSection[];
+  createdAt: string;
+  updatedAt: string;
+}
 export type Outline = SermonOutline;
 export type Structure = ThoughtsBySection;
 export type Item = ThoughtInStructure;

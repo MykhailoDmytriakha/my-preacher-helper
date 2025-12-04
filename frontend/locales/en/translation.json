@@ -1174,7 +1174,7 @@
     "studies": {
       "badge": "Preview",
       "title": "Studies workspace",
-      "description": "A focused home for word studies and research sessions, wired into the rest of your library.",
+      "description": "A workspace for Bible notes: capture insights and find them by books, chapters, and themes.",
       "listTitle": "Planned capabilities",
       "items": {
         "collect": "Collect lexicon notes, cross references, and insights for key terms.",
@@ -1196,6 +1196,67 @@
       },
       "ctaTitle": "Help steer the flow",
       "ctaDescription": "Share your preferred agenda layouts or question patterns through Feedback so we can bake them into templates."
+    }
+  }
+  ,
+  "studiesWorkspace": {
+    "newNote": "Capture note",
+    "editNote": "Edit note",
+    "titlePlaceholder": "Optional title for the note",
+    "contentPlaceholder": "Write an observation, cross-reference, or insight...",
+    "scriptureRefs": "Scripture references",
+    "chapter": "Chapter",
+    "from": "From",
+    "to": "To",
+    "addReference": "Add reference",
+    "quickRefPlaceholder": "Quick add: e.g., isa 47 8-10 or rev 18 4",
+    "quickRefError": "Cannot parse reference. Use format: book chapter verse [to]",
+    "tags": "Tags",
+    "addTag": "Add tag",
+    "saveNote": "Save note",
+    "updateNote": "Update note",
+    "authHint": "Sign in to save your studies",
+    "quickWins": "Wire your study flow",
+    "searchPlaceholder": "Search notes, tags, or references...",
+    "filterByTag": "Filter by tag",
+    "filterByBook": "Filter by book",
+    "filterUntagged": "Only without tags",
+    "filterNoScripture": "Only without scripture",
+    "toggleFilters": "Toggle filters",
+    "showDrafts": "Only drafts (missing tags or references)",
+    "topBooks": "Books you study most",
+    "noBookData": "Add references to see book stats",
+    "notesList": "Notes",
+    "matchingNotes": "matches",
+    "noNotes": "No notes match the filters yet",
+    "draft": "Draft",
+    "usedInMaterials": "Used in {{count}} material(s)",
+    "untitled": "Untitled note",
+    "noTags": "No tags yet",
+    "noRefs": "No scripture references yet",
+    "addToMaterial": "Select for material",
+    "materialBuilder": "Material builder",
+    "materialTitlePlaceholder": "Title for sermon / study / group",
+    "materialDescriptionPlaceholder": "Short description or goal",
+    "materialTypes": {
+      "sermon": "Sermon",
+      "study": "Study",
+      "group": "Group",
+      "guide": "Guide"
+    },
+    "selectedNotes": "Selected: {{count}}",
+    "noSelectedNotes": "Choose notes to assemble a material",
+    "saveMaterial": "Save material",
+    "updateMaterial": "Update material",
+    "noMaterials": "No materials yet",
+    "notesCount": "notes",
+    "deleteConfirm": "Delete this note?",
+    "formCollapsed": "Note form is hidden",
+    "hideForm": "Hide note form",
+    "showForm": "Show note form",
+    "stats": {
+      "notesLabel": "notes",
+      "booksLabel": "books"
     }
   }
 }

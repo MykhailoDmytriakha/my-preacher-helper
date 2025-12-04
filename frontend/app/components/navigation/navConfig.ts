@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
+import type { NavItemThemeKey } from '@/utils/themeColors';
 import {
   BookOpenIcon,
   Squares2X2Icon,
@@ -14,6 +15,7 @@ export type PrimaryNavItem = {
   defaultLabel: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   matchers: RegExp[];
+  theme?: NavItemThemeKey;
 };
 
 const dashboardMatcher = /^\/(dashboard|sermons)(\/|$)/;
@@ -41,7 +43,8 @@ export const primaryNavItems: PrimaryNavItem[] = [
     labelKey: 'navigation.studies',
     defaultLabel: 'Studies',
     icon: RectangleStackIcon,
-    matchers: [/^\/studies(\/|$)/]
+    matchers: [/^\/studies(\/|$)/],
+    theme: 'studies'
   },
   {
     key: 'groups',

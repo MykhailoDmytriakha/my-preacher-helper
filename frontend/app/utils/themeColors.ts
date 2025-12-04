@@ -128,6 +128,24 @@ export const UI_COLORS = {
   }
 };
 
+// Navigation item accent palettes (keep navigation styling consistent across workspaces)
+export const NAV_ITEM_THEMES = {
+  default: {
+    pill: 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
+    menu: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
+    indicator: 'text-blue-600 dark:text-blue-300'
+  },
+  studies: {
+    pill: 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
+    menu: 'text-emerald-600 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
+    indicator: 'text-emerald-600 dark:text-emerald-200'
+  }
+} as const;
+
+export type NavItemThemeKey = keyof typeof NAV_ITEM_THEMES;
+
+export const getNavItemTheme = (key?: NavItemThemeKey) => NAV_ITEM_THEMES[key ?? 'default'];
+
 // Helper function to get standard button/section styling
 export function getSectionStyling(section: 'introduction' | 'mainPart' | 'conclusion') {
   const colors = SERMON_SECTION_COLORS[section];

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import "@locales/i18n";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
+import { getNavItemTheme } from '@/utils/themeColors';
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate }: M
           {navItems.map((item) => {
             const active = isNavItemActive(pathname || null, item.matchers);
             const Icon = item.icon;
+            const themeClasses = getNavItemTheme(item.theme);
             return (
               <Link
                 key={item.key}
@@ -42,7 +44,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate }: M
                 aria-current={active ? 'page' : undefined}
                 className={`flex items-center justify-between rounded-md px-3 py-2 text-base font-medium transition ${
                   active
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                    ? themeClasses.menu
                     : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                 }`}
               >
@@ -51,7 +53,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate }: M
                   {item.label}
                 </span>
                 {active && (
-                  <span className="text-xs text-blue-600 dark:text-blue-300" aria-hidden="true">
+                  <span className={`text-xs ${themeClasses.indicator}`} aria-hidden="true">
                     •
                   </span>
                 )}
