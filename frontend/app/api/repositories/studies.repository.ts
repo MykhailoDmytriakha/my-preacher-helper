@@ -44,7 +44,7 @@ export class StudiesRepository {
 
   async createNote(payload: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): Promise<StudyNote> {
     const now = new Date().toISOString();
-    const note: Omit<StudyNote, 'id'> = {
+    const note: Omit<StudyNote, 'id' | 'isDraft'> = {
       ...payload,
       createdAt: now,
       updatedAt: now,

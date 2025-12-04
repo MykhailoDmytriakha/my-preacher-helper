@@ -80,7 +80,7 @@ export function useStudyNotes() {
     error: notesQuery.error as Error | null,
     refetch: notesQuery.refetch,
     createNote: createNote.mutateAsync,
-    updating: updateNoteMutation.isLoading,
+    updating: updateNoteMutation.isPending,
     updateNote: updateNoteMutation.mutateAsync,
     deleteNote: deleteNoteMutation.mutateAsync,
   };
