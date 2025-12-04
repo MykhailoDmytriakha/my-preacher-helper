@@ -22,97 +22,12 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { getTags } from '@/services/tag.service';
 import { BIBLE_BOOKS } from '@/constants/bible';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
-
-type BookMatch = { book: string; remaining: string[] };
+import { parseReferenceText } from './referenceParser';
 
 const makeId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
-
-const BOOK_ALIASES: Record<string, string> = {
-  gen: 'Genesis',
-  genesis: 'Genesis',
-  ge: 'Genesis',
-  исх: 'Exodus',
-  ex: 'Exodus',
-  exo: 'Exodus',
-  lev: 'Leviticus',
-  leviticus: 'Leviticus',
-  чис: 'Numbers',
-  num: 'Numbers',
-  numbers: 'Numbers',
-  deut: 'Deuteronomy',
-  вт: 'Deuteronomy',
-  deutero: 'Deuteronomy',
-  пров: 'Proverbs',
-  prov: 'Proverbs',
-  proverb: 'Proverbs',
-  пс: 'Psalms',
-  psa: 'Psalms',
-  ps: 'Psalms',
-  псал: 'Psalms',
-  isa: 'Isaiah',
-  ис: 'Isaiah',
-  jer: 'Jeremiah',
-  jeremiah: 'Jeremiah',
-  rev: 'Revelation',
-  откр: 'Revelation',
-  отк: 'Revelation',
-};
-
-function resolveBook(input: string): BookMatch | null {
-  const normalized = input.toLowerCase();
-  const direct = BOOK_ALIASES[normalized];
-  if (direct) return { book: direct, remaining: [] };
-
-  const found = BIBLE_BOOKS.find((book) => book.toLowerCase().startsWith(normalized));
-  if (found) return { book: found, remaining: [] };
-
-  return null;
-}
-
-function parseReferenceText(raw: string): ScriptureReference | null {
-  const tokens = raw
-    .replace(/[:,.;]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-  if (tokens.length < 3) return null;
-  const maybeBookParts: string[] = [];
-  // Try longest prefix for book name
-  for (let i = 1; i <= Math.min(2, tokens.length - 2); i++) {
-    maybeBookParts.push(tokens.slice(0, i).join(' '));
-  }
-
-  let matched: BookMatch | null = null;
-  let consumed = 0;
-  for (let i = maybeBookParts.length - 1; i >= 0; i--) {
-    const candidate = maybeBookParts[i];
-    const res = resolveBook(candidate);
-    if (res) {
-      matched = res;
-      consumed = i + 1;
-      break;
-    }
-  }
-  if (!matched) return null;
-
-  const numbers = tokens.slice(consumed).map((t) => Number(t));
-  if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
-  const [chapter, fromVerse, maybeTo] = numbers;
-  if (!chapter || !fromVerse) return null;
-
-  const ref: ScriptureReference = {
-    id: makeId(),
-    book: matched.book,
-    chapter,
-    fromVerse,
-  };
-  if (maybeTo && maybeTo >= fromVerse) {
-    ref.toVerse = maybeTo;
-  }
-  return ref;
-}
 
 type NoteFormValues = {
   title: string;
@@ -534,7 +449,10 @@ export default function StudiesPage() {
                               setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse reference');
                               return;
                             }
-                            setFormState((s) => ({ ...s, scriptureRefs: [...s.scriptureRefs, parsed] }));
+                            setFormState((s) => ({
+                              ...s,
+                              scriptureRefs: [...s.scriptureRefs, { ...parsed, id: makeId() }],
+                            }));
                             setQuickRefInput('');
                           }
                         }}
