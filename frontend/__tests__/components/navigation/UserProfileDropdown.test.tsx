@@ -3,18 +3,29 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import UserProfileDropdown from '@/components/navigation/UserProfileDropdown';
 import { User } from 'firebase/auth';
+import type { ThemePreference } from '@/hooks/useThemePreference';
+
+const translations: Record<string, string> = {
+  'navigation.logout': 'Logout',
+  'navigation.guest': 'Guest',
+  'settings.appearance.themeMode': 'Theme mode',
+  'settings.appearance.dark': 'Dark',
+  'settings.appearance.system': 'System default',
+  'settings.appearance.light': 'Light',
+};
 
 // Mock dependencies
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
-      const translations: { [key: string]: string } = {
-        'navigation.logout': 'Logout',
-        'navigation.guest': 'Guest'
-      };
-      return translations[key] || key;
-    }
+    t: (key: string, options?: { defaultValue?: string }) => translations[key] ?? options?.defaultValue ?? key
   })
+}));
+
+const mockSetPreference = jest.fn();
+const mockUseThemePreference = jest.fn();
+
+jest.mock('@/hooks/useThemePreference', () => ({
+  useThemePreference: () => mockUseThemePreference()
 }));
 
 // Mock Icons
@@ -33,8 +44,26 @@ describe('UserProfileDropdown Component', () => {
 
   const mockLogout = jest.fn().mockResolvedValue(undefined);
 
+  const renderWithPreference = (preference: ThemePreference = 'system') => {
+    mockUseThemePreference.mockReturnValue({
+      preference,
+      setPreference: mockSetPreference,
+      ready: true,
+    });
+    render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
+  };
+
+  const openDropdown = () => {
+    fireEvent.click(screen.getByTestId('avatar-button'));
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseThemePreference.mockReturnValue({
+      preference: 'system',
+      setPreference: mockSetPreference,
+      ready: true,
+    });
 
     // Reset document listeners between tests
     document.removeEventListener = jest.fn();
@@ -118,6 +147,30 @@ describe('UserProfileDropdown Component', () => {
     
     // Verify Guest is displayed
     expect(screen.getByText('Guest')).toBeInTheDocument();
+  });
+
+  test('updates theme preference when toggler button is pressed', () => {
+    renderWithPreference('system');
+    openDropdown();
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+
+    expect(mockSetPreference).toHaveBeenCalledWith('dark');
+  });
+
+  test('shows theme header and translation for current preference', () => {
+    renderWithPreference('system');
+    openDropdown();
+
+    expect(screen.getByText('Theme mode')).toBeInTheDocument();
+    expect(screen.getAllByText('System default').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /(Dark|System default|Light)/ })).toHaveLength(3);
+  });
+
+  test('displays light label when preference is light', () => {
+    renderWithPreference('light');
+    openDropdown();
+
+    expect(screen.getAllByText('Light').length).toBeGreaterThanOrEqual(1);
   });
 
   test('closes dropdown when clicking outside', () => {

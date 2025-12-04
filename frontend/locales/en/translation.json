@@ -160,6 +160,13 @@
       "title": "Preparation Mode (Beta)",
       "description": "Enable access to the new preparation mode workflow"
     },
+    "appearance": {
+      "title": "Appearance",
+      "themeMode": "Theme mode",
+      "dark": "Dark",
+      "light": "Light",
+      "system": "System default"
+    },
     "manageTags": "Tag Management",
     "displayName": "Display Name",
     "noDisplayName": "No display name set",

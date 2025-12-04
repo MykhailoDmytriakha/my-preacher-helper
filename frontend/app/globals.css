@@ -17,10 +17,16 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme-preference="system"],
+  :root:not([data-theme-preference]) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+:root.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
