@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { StudyMaterial, StudyNote } from '@/models/models';
 import {
@@ -11,20 +10,42 @@ import {
   updateStudyMaterial,
   updateStudyNote,
 } from '@services/studies.service';
-import { auth } from '@services/firebaseAuth.service';
+import { useAuth } from '@/providers/AuthProvider';
 
-function resolveUid(): string | undefined {
-  const currentUser = auth.currentUser;
-  if (currentUser?.uid) return currentUser.uid;
-  if (typeof window === 'undefined') return undefined;
+/**
+ * Resolve uid from auth context.
+ * IMPORTANT: Only returns uid when auth state is settled (not loading).
+ * This prevents using stale localStorage data before Firebase auth initializes.
+ */
+function useResolveUid(): { uid: string | undefined; isAuthLoading: boolean } {
+  const { user, loading } = useAuth();
+  
+  // Wait for auth to settle before returning any uid
+  // This prevents race conditions where stale localStorage data is used
+  if (loading) {
+    return { uid: undefined, isAuthLoading: true };
+  }
+  
+  // Primary: use user from AuthProvider (reactive to auth state changes)
+  if (user?.uid) {
+    return { uid: user.uid, isAuthLoading: false };
+  }
+  
+  // Fallback: check localStorage for guest user ONLY when auth is settled and no user
+  if (typeof window === 'undefined') {
+    return { uid: undefined, isAuthLoading: false };
+  }
+  
   try {
     const guestData = window.localStorage.getItem('guestUser');
-    if (!guestData) return undefined;
+    if (!guestData) {
+      return { uid: undefined, isAuthLoading: false };
+    }
     const parsed = JSON.parse(guestData) as { uid?: string };
-    return parsed.uid;
+    return { uid: parsed.uid, isAuthLoading: false };
   } catch (error) {
     console.error('useStudyNotes: error parsing guestUser', error);
-    return undefined;
+    return { uid: undefined, isAuthLoading: false };
   }
 }
 
@@ -32,13 +53,14 @@ const notesKey = (uid: string | undefined) => ['study-notes', uid];
 const materialsKey = (uid: string | undefined) => ['study-materials', uid];
 
 export function useStudyNotes() {
-  const uid = resolveUid();
+  const { uid, isAuthLoading } = useResolveUid();
   const queryClient = useQueryClient();
 
   const notesQuery = useQuery({
     queryKey: notesKey(uid),
     queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
-    enabled: !!uid,
+    // Only enable query when auth is settled AND we have a uid
+    enabled: !isAuthLoading && !!uid,
     staleTime: 60_000,
   });
 
@@ -76,7 +98,8 @@ export function useStudyNotes() {
   return {
     uid,
     notes: notesQuery.data ?? [],
-    loading: notesQuery.isLoading,
+    // Show loading when auth is loading OR query is loading
+    loading: isAuthLoading || notesQuery.isLoading,
     error: notesQuery.error as Error | null,
     refetch: notesQuery.refetch,
     createNote: createNote.mutateAsync,
@@ -87,13 +110,14 @@ export function useStudyNotes() {
 }
 
 export function useStudyMaterials() {
-  const uid = resolveUid();
+  const { uid, isAuthLoading } = useResolveUid();
   const queryClient = useQueryClient();
 
   const materialsQuery = useQuery({
     queryKey: materialsKey(uid),
     queryFn: () => (uid ? getStudyMaterials(uid) : Promise.resolve([])),
-    enabled: !!uid,
+    // Only enable query when auth is settled AND we have a uid
+    enabled: !isAuthLoading && !!uid,
     staleTime: 60_000,
   });
 
@@ -131,7 +155,8 @@ export function useStudyMaterials() {
   return {
     uid,
     materials: materialsQuery.data ?? [],
-    loading: materialsQuery.isLoading,
+    // Show loading when auth is loading OR query is loading
+    loading: isAuthLoading || materialsQuery.isLoading,
     error: materialsQuery.error as Error | null,
     refetch: materialsQuery.refetch,
     createMaterial: createMaterialMutation.mutateAsync,

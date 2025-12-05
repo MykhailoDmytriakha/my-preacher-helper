@@ -44,4 +44,22 @@ describe('referenceParser', () => {
     expect(parseReferenceText('евр')).toBeNull();
     expect(parseReferenceText('Hebrews two nine')).toBeNull();
   });
+
+  it('converts Psalm numbers from Septuagint (ru) to Hebrew storage', () => {
+    const parsed = parseReferenceText('Пс 22 1', 'ru');
+    expect(parsed).toEqual({
+      book: 'Psalms',
+      chapter: 23,
+      fromVerse: 1,
+    });
+  });
+
+  it('resolves English abbreviations through bible data lookup', () => {
+    const parsed = parseReferenceText('Gen 1 1');
+    expect(parsed).toEqual({
+      book: 'Genesis',
+      chapter: 1,
+      fromVerse: 1,
+    });
+  });
 });

@@ -1216,6 +1216,10 @@
     "from": "From",
     "to": "To",
     "addReference": "Add reference",
+    "addReferenceShort": "Add",
+    "browseBooks": "Browse",
+    "editReference": "Edit reference",
+    "book": "Book",
     "quickRefPlaceholder": "Quick add: e.g., isa 47 8-10 or rev 18 4",
     "quickRefError": "Cannot parse reference. Use format: book chapter verse [to]",
     "tags": "Tags",
@@ -1263,7 +1267,20 @@
     "showForm": "Show note form",
     "stats": {
       "notesLabel": "notes",
-      "booksLabel": "books"
+      "booksLabel": "books",
+      "refsCount": "{{count}} refs",
+      "tagsCount": "{{count}} tags",
+      "refsSeparator": " · "
+    },
+    "tagCatalog": {
+      "button": "Catalog",
+      "title": "Select tags",
+      "searchPlaceholder": "Search tags...",
+      "noResults": "No tags match your search",
+      "noTags": "No tags available yet",
+      "selected": "Selected",
+      "noneSelected": "No tags selected",
+      "done": "Done"
     }
   }
 }

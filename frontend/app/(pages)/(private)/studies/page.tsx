@@ -14,15 +14,19 @@ import {
   PencilIcon,
   PlusIcon,
   SparklesIcon,
+  Squares2X2Icon,
   TagIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { StudyNote, ScriptureReference } from '@/models/models';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { getTags } from '@/services/tag.service';
-import { BIBLE_BOOKS } from '@/constants/bible';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 import { parseReferenceText } from './referenceParser';
+import ScriptureRefBadge from './ScriptureRefBadge';
+import ScriptureRefPicker from './ScriptureRefPicker';
+import TagCatalogModal from './TagCatalogModal';
+import { getBooksForDropdown, getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
 
 const makeId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -44,7 +48,7 @@ const emptyForm: NoteFormValues = {
 };
 
 export default function StudiesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     uid,
     notes,
@@ -54,6 +58,17 @@ export default function StudiesPage() {
     updateNote,
     deleteNote,
   } = useStudyNotes();
+
+  // Get current locale for Bible data (map i18n language to BibleLocale)
+  const bibleLocale: BibleLocale = useMemo(() => {
+    const lang = i18n.language?.toLowerCase() || 'en';
+    if (lang.startsWith('ru')) return 'ru';
+    if (lang.startsWith('uk')) return 'uk';
+    return 'en';
+  }, [i18n.language]);
+
+  // Get localized book list for dropdowns
+  const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [formState, setFormState] = useState<NoteFormValues>(emptyForm);
@@ -69,12 +84,25 @@ export default function StudiesPage() {
   const [quickRefError, setQuickRefError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Scripture reference editing state
+  const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
+  const [showRefPicker, setShowRefPicker] = useState(false);
+  // Tag catalog modal state
+  const [showTagCatalog, setShowTagCatalog] = useState(false);
 
   // Load user tags for tag selector
   useEffect(() => {
     if (!uid) return;
     getTags(uid)
-      .then((tags) => setAvailableTags(tags.map((t: { name: string }) => t.name)))
+      .then((tags) => {
+        // Defensive: ensure tags is an array before mapping
+        if (Array.isArray(tags)) {
+          setAvailableTags(tags.map((t: { name: string }) => t.name));
+        } else {
+          console.warn('getTags returned non-array:', tags);
+          setAvailableTags([]);
+        }
+      })
       .catch((err) => console.error('Failed to load tags for studies', err));
   }, [uid]);
 
@@ -143,6 +171,17 @@ export default function StudiesPage() {
     if (!value) return;
     setFormState((s) => ({ ...s, tags: Array.from(new Set([...s.tags, value])) }));
     setTagInput('');
+  };
+
+  // Toggle tag selection (for TagCatalogModal)
+  const toggleTag = (tag: string) => {
+    setFormState((s) => {
+      const isSelected = s.tags.includes(tag);
+      return {
+        ...s,
+        tags: isSelected ? s.tags.filter((t) => t !== tag) : [...s.tags, tag],
+      };
+    });
   };
 
   const handleEditNote = (note: StudyNote) => {
@@ -239,9 +278,9 @@ export default function StudiesPage() {
                   className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 >
                   <option value="">{t('studiesWorkspace.filterByBook')}</option>
-                  {BIBLE_BOOKS.map((book) => (
-                    <option key={book} value={book}>
-                      {book}
+                  {bookList.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.name}
                     </option>
                   ))}
                 </select>
@@ -281,9 +320,9 @@ export default function StudiesPage() {
               {booksLeaderboard.length === 0 && (
                 <p className="text-sm text-gray-500">{t('studiesWorkspace.noBookData')}</p>
               )}
-              {booksLeaderboard.map(([book, count]) => (
-                <div key={book} className="flex items-center justify-between text-sm text-gray-800 dark:text-gray-200">
-                  <span>{book}</span>
+              {booksLeaderboard.map(([bookId, count]) => (
+                <div key={bookId} className="flex items-center justify-between text-sm text-gray-800 dark:text-gray-200">
+                  <span>{getLocalizedBookName(bookId, bibleLocale)}</span>
                   <span className="text-gray-500">{count}</span>
                 </div>
               ))}
@@ -373,20 +412,28 @@ export default function StudiesPage() {
 
                     <div className="mt-3 space-y-1 text-xs text-gray-600 dark:text-gray-300">
                       {note.scriptureRefs.length === 0 && <span>{t('studiesWorkspace.noRefs')}</span>}
-                      {note.scriptureRefs.map((ref) => (
-                        <div key={ref.id} className="flex items-center gap-2">
-                          <BookmarkIcon className="h-4 w-4 text-emerald-600" />
-                          <span>
-                            {ref.book} {ref.chapter}:{ref.fromVerse}
-                            {ref.toVerse ? `-${ref.toVerse}` : ''}
-                          </span>
-                        </div>
-                      ))}
+                      {note.scriptureRefs.map((ref) => {
+                        // Convert Psalm chapter from Hebrew (storage) to locale numbering for display
+                        const displayChapter = ref.book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')
+                          ? psalmHebrewToSeptuagint(ref.chapter)
+                          : ref.chapter;
+                        return (
+                          <div key={ref.id} className="flex items-center gap-2">
+                            <BookmarkIcon className="h-4 w-4 text-emerald-600" />
+                            <span>
+                              {getLocalizedBookName(ref.book, bibleLocale)} {displayChapter}:{ref.fromVerse}
+                              {ref.toVerse ? `-${ref.toVerse}` : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <div className="mt-auto flex items-center justify-end pt-4 text-xs text-gray-600 dark:text-gray-300">
                       <span>
-                        {note.scriptureRefs.length} refs · {note.tags.length} tags
+                        {t('studiesWorkspace.stats.refsCount', { count: note.scriptureRefs.length })}
+                        {t('studiesWorkspace.stats.refsSeparator')}
+                        {t('studiesWorkspace.stats.tagsCount', { count: note.tags.length })}
                       </span>
                     </div>
                   </article>
@@ -426,13 +473,37 @@ export default function StudiesPage() {
                   className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
 
-                {/* Scripture refs */}
+                {/* Scripture refs - compact badge-based UI */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                     <BookmarkIcon className="h-4 w-4" />
                     {t('studiesWorkspace.scriptureRefs')}
                   </div>
 
+                  {/* Display added references as compact badges */}
+                  {formState.scriptureRefs.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {formState.scriptureRefs.map((ref, idx) => (
+                        <ScriptureRefBadge
+                          key={ref.id}
+                          reference={ref}
+                          isEditing={editingRefIndex === idx}
+                          onClick={() => {
+                            setEditingRefIndex(idx);
+                            setShowRefPicker(false);
+                          }}
+                          onRemove={() =>
+                            setFormState((s) => ({
+                              ...s,
+                              scriptureRefs: s.scriptureRefs.filter((_, i) => i !== idx),
+                            }))
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick input and Add button */}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="relative flex-1">
                       <input
@@ -444,7 +515,8 @@ export default function StudiesPage() {
                         onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
-                            const parsed = parseReferenceText(quickRefInput.trim());
+                            // Pass locale for proper Psalm number conversion
+                            const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
                             if (!parsed) {
                               setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse reference');
                               return;
@@ -454,6 +526,7 @@ export default function StudiesPage() {
                               scriptureRefs: [...s.scriptureRefs, { ...parsed, id: makeId() }],
                             }));
                             setQuickRefInput('');
+                            setEditingRefIndex(null);
                           }
                         }}
                         placeholder={t('studiesWorkspace.quickRefPlaceholder')}
@@ -463,103 +536,52 @@ export default function StudiesPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        setFormState((s) => ({
-                          ...s,
-                          scriptureRefs: [
-                            ...s.scriptureRefs,
-                            { id: makeId(), book: 'Genesis', chapter: 1, fromVerse: 1 },
-                          ],
-                        }))
-                      }
+                      onClick={() => {
+                        setShowRefPicker(true);
+                        setEditingRefIndex(null);
+                      }}
                       className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-100"
                     >
-                      <PlusIcon className="h-4 w-4" />
-                      {t('studiesWorkspace.addReference')}
+                      <BookOpenIcon className="h-4 w-4" />
+                      {t('studiesWorkspace.browseBooks')}
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    {formState.scriptureRefs.map((ref, idx) => (
-                      <div key={ref.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-                        <select
-                          value={ref.book}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setFormState((s) => {
-                              const refs = [...s.scriptureRefs];
-                              refs[idx] = { ...refs[idx], book: value };
-                              return { ...s, scriptureRefs: refs };
-                            });
-                          }}
-                          className="min-w-[140px] flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                        >
-                          {BIBLE_BOOKS.map((book) => (
-                            <option key={book} value={book}>
-                              {book}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min={1}
-                          value={ref.chapter}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            setFormState((s) => {
-                              const refs = [...s.scriptureRefs];
-                              refs[idx] = { ...refs[idx], chapter: value };
-                              return { ...s, scriptureRefs: refs };
-                            });
-                          }}
-                          className="w-24 rounded-md border border-gray-200 px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                          placeholder={t('studiesWorkspace.chapter') || 'Chapter'}
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          value={ref.fromVerse}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            setFormState((s) => {
-                              const refs = [...s.scriptureRefs];
-                              refs[idx] = { ...refs[idx], fromVerse: value };
-                              return { ...s, scriptureRefs: refs };
-                            });
-                          }}
-                          className="w-24 rounded-md border border-gray-200 px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                          placeholder={t('studiesWorkspace.from') || 'From'}
-                        />
-                        <input
-                          type="number"
-                          min={ref.fromVerse}
-                          value={ref.toVerse ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setFormState((s) => {
-                              const refs = [...s.scriptureRefs];
-                              refs[idx] = { ...refs[idx], toVerse: val ? Number(val) : undefined };
-                              return { ...s, scriptureRefs: refs };
-                            });
-                          }}
-                          className="w-24 rounded-md border border-gray-200 px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                          placeholder={t('studiesWorkspace.to') || 'To'}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFormState((s) => ({
-                              ...s,
-                              scriptureRefs: s.scriptureRefs.filter((_, i) => i !== idx),
-                            }))
-                          }
-                          className="ml-auto text-sm text-red-600 hover:text-red-700"
-                        >
-                          {t('common.delete')}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Picker for adding new reference - positioned below input row */}
+                  {showRefPicker && (
+                    <div className="relative">
+                      <ScriptureRefPicker
+                        mode="add"
+                        onConfirm={(ref) => {
+                          setFormState((s) => ({
+                            ...s,
+                            scriptureRefs: [...s.scriptureRefs, { ...ref, id: makeId() }],
+                          }));
+                          setShowRefPicker(false);
+                        }}
+                        onCancel={() => setShowRefPicker(false)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Picker for editing existing reference */}
+                  {editingRefIndex !== null && (
+                    <div className="relative">
+                      <ScriptureRefPicker
+                        mode="edit"
+                        initialRef={formState.scriptureRefs[editingRefIndex]}
+                        onConfirm={(ref) => {
+                          setFormState((s) => {
+                            const refs = [...s.scriptureRefs];
+                            refs[editingRefIndex] = { ...ref, id: refs[editingRefIndex].id };
+                            return { ...s, scriptureRefs: refs };
+                          });
+                          setEditingRefIndex(null);
+                        }}
+                        onCancel={() => setEditingRefIndex(null)}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Tags */}
@@ -573,7 +595,6 @@ export default function StudiesPage() {
                       <input
                         value={tagInput}
                         onChange={(e) => setTagInput(e.target.value)}
-                        list="tag-suggestions"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -583,11 +604,6 @@ export default function StudiesPage() {
                         placeholder={t('studiesWorkspace.addTag')}
                         className={`w-full min-w-[200px] ${STUDIES_INPUT_SHARED_CLASSES}`}
                       />
-                      <datalist id="tag-suggestions">
-                        {tagOptions.map((tag) => (
-                          <option key={tag} value={tag} />
-                        ))}
-                      </datalist>
                     </div>
                     <button
                       type="button"
@@ -596,6 +612,15 @@ export default function StudiesPage() {
                     >
                       <PlusIcon className="h-4 w-4" />
                       {t('studiesWorkspace.addTag')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowTagCatalog(true)}
+                      className="inline-flex items-center justify-center rounded-md border border-emerald-200 p-2 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-100"
+                      title={t('studiesWorkspace.tagCatalog.button')}
+                      aria-label={t('studiesWorkspace.tagCatalog.button')}
+                    >
+                      <MagnifyingGlassIcon className="h-5 w-5" />
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -662,6 +687,14 @@ export default function StudiesPage() {
         </div>
       </div>
 
+      {/* Tag Catalog Modal */}
+      <TagCatalogModal
+        isOpen={showTagCatalog}
+        onClose={() => setShowTagCatalog(false)}
+        availableTags={tagOptions}
+        selectedTags={formState.tags}
+        onToggleTag={toggleTag}
+      />
     </section>
   );
 }

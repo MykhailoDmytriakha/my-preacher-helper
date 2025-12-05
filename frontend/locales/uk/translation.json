@@ -1216,6 +1216,10 @@
     "from": "Вірш з",
     "to": "до",
     "addReference": "Додати місце",
+    "addReferenceShort": "Додати",
+    "browseBooks": "Каталог",
+    "editReference": "Редагувати місце",
+    "book": "Книга",
     "quickRefPlaceholder": "Швидкий ввід: напр., іс 47 8-10 або одкр 18 4",
     "quickRefError": "Не вдалося розпізнати посилання. Формат: книга розділ вірш [до]",
     "tags": "Теги",
@@ -1263,7 +1267,20 @@
     "showForm": "Показати форму",
     "stats": {
       "notesLabel": "нотаток",
-      "booksLabel": "книг"
+      "booksLabel": "книг",
+      "refsCount": "{{count}} посилань",
+      "tagsCount": "{{count}} тегів",
+      "refsSeparator": " · "
+    },
+    "tagCatalog": {
+      "button": "Каталог",
+      "title": "Вибір тегів",
+      "searchPlaceholder": "Пошук тегів...",
+      "noResults": "Теги не знайдено",
+      "noTags": "Поки немає доступних тегів",
+      "selected": "Вибрано",
+      "noneSelected": "Теги не вибрано",
+      "done": "Готово"
     }
   }
 }
