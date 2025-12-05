@@ -44,8 +44,8 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
         inline-flex items-center gap-1 rounded-full 
         px-3 py-1 text-xs font-medium
         transition-all duration-150
-        ${isEditing 
-          ? 'bg-emerald-200 text-emerald-900 ring-2 ring-emerald-500 dark:bg-emerald-800 dark:text-emerald-100' 
+        ${isEditing
+          ? 'bg-emerald-200 text-emerald-900 ring-2 ring-emerald-500 dark:bg-emerald-800 dark:text-emerald-100'
           : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-800/60'
         }
         ${onClick ? 'cursor-pointer' : ''}
@@ -54,7 +54,22 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
-      aria-label={`${reference.book} ${reference.chapter}:${reference.fromVerse}${reference.toVerse ? '-' + reference.toVerse : ''}`}
+      aria-label={(() => {
+        // Build accessible label based on reference type
+        let label = reference.book;
+        if (reference.chapter !== undefined) {
+          label += ` ${reference.chapter}`;
+          if (reference.toChapter !== undefined) {
+            label += `-${reference.toChapter}`;
+          } else if (reference.fromVerse !== undefined) {
+            label += `:${reference.fromVerse}`;
+            if (reference.toVerse !== undefined) {
+              label += `-${reference.toVerse}`;
+            }
+          }
+        }
+        return label;
+      })()}
     >
       <span>{displayText}</span>
       {onRemove && (

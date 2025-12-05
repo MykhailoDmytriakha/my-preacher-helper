@@ -1210,8 +1210,7 @@
       "ctaTitle": "Help steer the flow",
       "ctaDescription": "Share your preferred agenda layouts or question patterns through Feedback so we can bake them into templates."
     }
-  }
-  ,
+  },
   "studiesWorkspace": {
     "newNote": "New note",
     "editNote": "Edit note",
@@ -1229,6 +1228,13 @@
     "browseBooks": "Browse",
     "editReference": "Edit reference",
     "book": "Book",
+    "referenceScope": "Reference Type",
+    "scopeBook": "Entire Book",
+    "scopeChapter": "Chapter",
+    "scopeChapterRange": "Chapter Range",
+    "scopeVerses": "Verse(s)",
+    "fromChapter": "From Chapter",
+    "toChapter": "To Chapter",
     "quickRefPlaceholder": "Quick add: e.g., isa 47 8-10 or rev 18 4",
     "quickRefError": "Cannot parse reference. Use format: book chapter verse [to]",
     "tags": "Tags",
@@ -1277,6 +1283,7 @@
     "noMaterials": "No materials yet",
     "notesCount": "notes",
     "deleteConfirm": "Delete this note?",
+    "unsavedChangesConfirm": "You have unsaved changes. Are you sure you want to close?",
     "formCollapsed": "Note form is hidden",
     "hideForm": "Hide note form",
     "showForm": "Show note form",
@@ -1306,6 +1313,12 @@
       "hintReanalyze": "Add missing metadata",
       "emptyContent": "Please enter note content first",
       "error": "Failed to analyze note. Please try again."
+    },
+    "voiceInput": {
+      "button": "Record voice",
+      "recording": "Recording...",
+      "transcribing": "Processing...",
+      "error": "Recording failed. Please try again."
     }
   }
 }

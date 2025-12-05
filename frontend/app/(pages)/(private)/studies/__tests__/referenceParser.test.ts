@@ -40,9 +40,45 @@ describe('referenceParser', () => {
     });
   });
 
-  it('returns null for malformed references', () => {
-    expect(parseReferenceText('евр')).toBeNull();
+  it('returns null for truly malformed references', () => {
+    // Non-numeric chapter/verse still returns null
     expect(parseReferenceText('Hebrews two nine')).toBeNull();
+    // Unknown book name
+    expect(parseReferenceText('unknownbook 1 1')).toBeNull();
+    // Empty string
+    expect(parseReferenceText('')).toBeNull();
+  });
+
+  // New tests for flexible reference types
+
+  it('parses book-only references', () => {
+    expect(parseReferenceText('евр')).toEqual({ book: 'Hebrews' });
+    expect(parseReferenceText('Ezekiel')).toEqual({ book: 'Ezekiel' });
+    expect(parseReferenceText('Иезекииль')).toEqual({ book: 'Ezekiel' });
+  });
+
+  it('parses chapter-only references', () => {
+    expect(parseReferenceText('Romans 8')).toEqual({
+      book: 'Romans',
+      chapter: 8,
+    });
+    expect(parseReferenceText('Рим 8')).toEqual({
+      book: 'Romans',
+      chapter: 8,
+    });
+  });
+
+  it('parses chapter range references', () => {
+    expect(parseReferenceText('Matthew 5-7')).toEqual({
+      book: 'Matthew',
+      chapter: 5,
+      toChapter: 7,
+    });
+    expect(parseReferenceText('Мф 5-7')).toEqual({
+      book: 'Matthew',
+      chapter: 5,
+      toChapter: 7,
+    });
   });
 
   it('converts Psalm numbers from Septuagint (ru) to Hebrew storage', () => {
@@ -51,6 +87,15 @@ describe('referenceParser', () => {
       book: 'Psalms',
       chapter: 23,
       fromVerse: 1,
+    });
+  });
+
+  it('converts Psalm chapter range from Septuagint', () => {
+    const parsed = parseReferenceText('Пс 22-24', 'ru');
+    expect(parsed).toEqual({
+      book: 'Psalms',
+      chapter: 23,
+      toChapter: 25,
     });
   });
 
@@ -63,3 +108,4 @@ describe('referenceParser', () => {
     });
   });
 });
+

@@ -62,9 +62,34 @@ export default function StudyNoteCard({
   };
 
   // Format scripture reference for display
-  const formatRef = (ref: { book: string; chapter: number; fromVerse: number; toVerse?: number }) => {
+  const formatRef = (ref: {
+    book: string;
+    chapter?: number;
+    toChapter?: number;
+    fromVerse?: number;
+    toVerse?: number
+  }) => {
     const bookName = getLocalizedBookName(ref.book, bibleLocale);
+
+    // Book-only reference
+    if (ref.chapter === undefined) {
+      return bookName;
+    }
+
     const chapter = getDisplayChapter(ref.book, ref.chapter);
+
+    // Chapter range (e.g., Matthew 5-7)
+    if (ref.toChapter !== undefined) {
+      const toChapter = getDisplayChapter(ref.book, ref.toChapter);
+      return `${bookName} ${chapter}-${toChapter}`;
+    }
+
+    // Chapter-only reference (e.g., Romans 8)
+    if (ref.fromVerse === undefined) {
+      return `${bookName} ${chapter}`;
+    }
+
+    // Verse or verse range
     const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
     return `${bookName} ${chapter}:${verses}`;
   };
@@ -74,8 +99,8 @@ export default function StudyNoteCard({
       className={`
         rounded-xl border bg-white shadow-sm transition-all duration-200
         dark:bg-gray-800
-        ${isExpanded 
-          ? 'border-emerald-200 dark:border-emerald-700' 
+        ${isExpanded
+          ? 'border-emerald-200 dark:border-emerald-700'
           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
         }
       `}

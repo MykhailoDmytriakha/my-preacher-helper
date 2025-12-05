@@ -200,14 +200,22 @@ type ParsedReference = Omit<ScriptureReference, 'id'>;
  * - EN uses Hebrew numbering (stored as-is)
  * - RU/UK use Septuagint numbering (converted to Hebrew for storage)
  *
- * Example: "Пс.22:1" in Russian locale → stored as Psalms chapter 23 (Hebrew numbering)
+ * Supported formats:
+ * - Book only: "Ezekiel", "Иезекииль" -> { book: "Ezekiel" }
+ * - Chapter only: "Пс 23", "Romans 8" -> { book: "Psalms", chapter: 24 }
+ * - Chapter range: "Мф 5-7", "Matthew 5-7" -> { book: "Matthew", chapter: 5, toChapter: 7 }
+ * - Verse: "Ин 3:16" -> { book: "John", chapter: 3, fromVerse: 16 }
+ * - Verse range: "Ис 4:5-8" -> { book: "Isaiah", chapter: 4, fromVerse: 5, toVerse: 8 }
  *
- * @param raw - The raw reference string (e.g., "Пс.22:1", "Genesis 1:1")
+ * @param raw - The raw reference string
  * @param locale - The user's locale for proper Psalm numbering conversion
  */
 export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedReference | null {
-  const tokens = raw
-    .replace(/[:,.;]/g, ' ')
+  // Normalize separators
+  const normalized = raw.replace(/[:,.;]/g, ' ');
+
+  // First, split all tokens naively (splitting hyphens too)
+  const allTokensNaive = normalized
     .split(/\s+/)
     .flatMap((token) =>
       token
@@ -216,10 +224,49 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
         .filter(Boolean)
     )
     .filter(Boolean);
-  if (tokens.length < 3) return null;
 
+  // Need at least 1 token for book-only references
+  if (allTokensNaive.length < 1) return null;
+
+  // Count how many non-book tokens we'd have for format detection
+  // This helps distinguish "book 5-7" (chapter range) from "book 4 5-6" (verse range)
+  const rangeMatch = raw.match(/(\d+)\s*-\s*(\d+)$/);
+  const hasRange = rangeMatch !== null;
+
+  // Simpler approach: split first, then determine format
+  // Split WITHOUT splitting on hyphen first to count numeric tokens
+  const tokensPreservingHyphen = normalized.split(/\s+/).filter(Boolean);
+
+  // Find how many tokens look like numbers (including hyphenated like "5-7")
+  let numericTokenCount = 0;
+  for (const token of tokensPreservingHyphen) {
+    if (/^\d+(-\d+)?$/.test(token)) {
+      numericTokenCount++;
+    }
+  }
+
+  // Now split everything for book resolution
+  let tokens: string[];
+  let isChapterRangeFormat = false;
+
+  // Chapter range format: exactly 1 numeric token that contains a hyphen (e.g., "book 5-7")
+  // Verse range format: 2+ numeric tokens, last may contain hyphen (e.g., "book 4 5-6")
+  if (hasRange && numericTokenCount === 1) {
+    // This is a chapter range: "book 5-7"
+    isChapterRangeFormat = true;
+    const beforeRange = normalized.replace(/\d+\s*-\s*\d+$/, '').trim();
+    tokens = beforeRange.split(/\s+/).filter(Boolean);
+  } else {
+    // Normal parsing - split hyphens to get individual numbers
+    tokens = allTokensNaive;
+  }
+
+  // Need at least 1 token for book-only references
+  if (tokens.length < 1) return null;
+
+  // Try to match book name (1-4 tokens)
   const maybeBookParts: string[] = [];
-  const maxBookTokens = Math.min(4, tokens.length - 2);
+  const maxBookTokens = Math.min(4, tokens.length);
   for (let i = 1; i <= maxBookTokens; i += 1) {
     maybeBookParts.push(tokens.slice(0, i).join(' '));
   }
@@ -237,13 +284,57 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
   }
   if (!matched) return null;
 
+  // Handle chapter range pattern
+  if (isChapterRangeFormat && rangeMatch) {
+    let fromChapter = Number(rangeMatch[1]);
+    let toChapter = Number(rangeMatch[2]);
+
+    if (isNaN(fromChapter) || isNaN(toChapter) || fromChapter <= 0 || toChapter <= 0) {
+      return null;
+    }
+
+    // Convert Psalm numbers for storage
+    if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
+      fromChapter = psalmSeptuagintToHebrew(fromChapter);
+      toChapter = psalmSeptuagintToHebrew(toChapter);
+    }
+
+    return {
+      book: matched.book,
+      chapter: fromChapter,
+      toChapter: toChapter,
+    };
+  }
+
+  // Get remaining numbers after book name
   const numbers = tokens.slice(consumed).map((t) => Number(t));
+
+  // Book-only reference (no numbers after book name)
+  if (numbers.length === 0) {
+    return { book: matched.book };
+  }
+
+  // Filter out invalid numbers
   if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
+
   let [chapter, fromVerse, maybeTo] = numbers;
+
+  // Chapter-only reference (one number after book name)
+  if (numbers.length === 1) {
+    // Convert Psalm number for storage
+    if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
+      chapter = psalmSeptuagintToHebrew(chapter);
+    }
+    return {
+      book: matched.book,
+      chapter,
+    };
+  }
+
+  // Verse reference (chapter and verse(s))
   if (!chapter || !fromVerse) return null;
 
   // Convert Psalm number from Septuagint (RU/UK) to Hebrew (EN) for storage
-  // This ensures consistent storage regardless of user locale
   if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
     chapter = psalmSeptuagintToHebrew(chapter);
   }
@@ -259,3 +350,4 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
 
   return parsed;
 }
+

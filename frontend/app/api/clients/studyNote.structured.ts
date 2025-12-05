@@ -33,33 +33,61 @@ function detectLanguage(text: string): {
 } {
   const isCyrillic = /[\u0400-\u04FF]/.test(text);
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(text);
-  
-  const languageHint = isCyrillic
-    ? "Cyrillic (Russian/Ukrainian)"
-    : hasNonLatinChars
-      ? "non-English"
-      : "English";
-  
+
+  // Detect specific language by unique characters
+  const hasUkrainianChars = /[їієґЇІЄҐ]/.test(text);  // ї, і, є, ґ - only in Ukrainian
+  const hasRussianChars = /[ыэъЫЭЪ]/.test(text);     // ы, э, ъ - only in Russian
+
+  let languageHint: string;
+  if (hasUkrainianChars) {
+    languageHint = "Ukrainian";
+  } else if (hasRussianChars) {
+    languageHint = "Russian";
+  } else if (isCyrillic) {
+    languageHint = "Cyrillic (Russian or Ukrainian)";
+  } else if (hasNonLatinChars) {
+    languageHint = "non-English";
+  } else {
+    languageHint = "English";
+  }
+
   return { isCyrillic, hasNonLatinChars, languageHint };
 }
 
 /**
  * Build the system prompt for study note analysis.
  */
-function buildSystemPrompt(isCyrillic: boolean, hasNonLatinChars: boolean): string {
-  const languageDirective = isCyrillic
-    ? `LANGUAGE RULES:
-- The note is written in Cyrillic (Russian or Ukrainian).
-- Generate the title in the SAME Cyrillic language as the note.
-- Generate tags in the SAME Cyrillic language as the note.
-- Scripture book names MUST ALWAYS be in English (e.g., "Matthew", NOT "Матфей" or "Матвія").`
-    : hasNonLatinChars
-      ? `LANGUAGE RULES:
-- Generate title and tags in the SAME language as the note content.
-- Scripture book names MUST ALWAYS be in English.`
-      : `LANGUAGE RULES:
+function buildSystemPrompt(languageHint: string): string {
+  // Build language directive based on detected language
+  let languageDirective: string;
+
+  if (languageHint === "Russian") {
+    languageDirective = `LANGUAGE RULES:
+- The note is written in Russian.
+- Generate the title in Russian.
+- Generate tags in Russian.
+- Scripture book names MUST ALWAYS be in English (e.g., "Matthew", NOT "Матфей").`;
+  } else if (languageHint === "Ukrainian") {
+    languageDirective = `LANGUAGE RULES:
+- The note is written in Ukrainian.
+- Generate the title in Ukrainian.
+- Generate tags in Ukrainian.
+- Scripture book names MUST ALWAYS be in English (e.g., "Matthew", NOT "Матвія").`;
+  } else if (languageHint === "Cyrillic (Russian or Ukrainian)") {
+    languageDirective = `LANGUAGE RULES:
+- The note is written in Cyrillic. Try to detect if it's Russian or Ukrainian based on context.
+- Generate the title in the SAME language as the note.
+- Generate tags in the SAME language as the note.
+- Scripture book names MUST ALWAYS be in English.`;
+  } else if (languageHint === "English") {
+    languageDirective = `LANGUAGE RULES:
 - Generate title and tags in English.
 - Scripture book names in English.`;
+  } else {
+    languageDirective = `LANGUAGE RULES:
+- Generate title and tags in the SAME language as the note content.
+- Scripture book names MUST ALWAYS be in English.`;
+  }
 
   return `You are a biblical study assistant that helps organize and categorize study notes.
 
@@ -74,19 +102,38 @@ SCRIPTURE REFERENCE RULES:
 - Extract ALL Bible references mentioned in the note (explicit or implied)
 - Book names MUST be in English: Genesis, Exodus, Matthew, John, Psalms, etc.
 - Use Hebrew/Protestant chapter numbering for Psalms
+- IMPORTANT: Extract MULTIPLE references when the note discusses different sections:
+  * If a note discusses "the book of Ezekiel" AND mentions events in specific chapters, extract BOTH the book-level reference AND the chapter-specific references
+  * Example: "Книга Иезекииля... видение славы в начале... слава отошла... в конце храм" should yield:
+    - Ezekiel (entire book as context)
+    - Ezekiel 1 (initial glory vision)
+    - Ezekiel 10-11 (glory departing)
+    - Ezekiel 40-48 (temple vision, glory returns)
+- Use the appropriate level of specificity for EACH reference:
+  * For entire book references (e.g., "the book of Ezekiel"): only include "book" field
+  * For entire chapter (e.g., "Psalm 23", "Romans 8"): include "book" and "chapter", omit verse fields
+  * For chapter ranges (e.g., "Matthew 5-7", "chapters 40-48"): include "book", "chapter", and "toChapter"
+  * For specific verse: include "book", "chapter", and "fromVerse"
+  * For verse range: include "book", "chapter", "fromVerse", and "toVerse"
 - If a verse range is mentioned (e.g., "verses 1-12"), include both fromVerse and toVerse
 - If only one verse is mentioned, only include fromVerse (omit toVerse)
+- Use your biblical knowledge to infer chapter numbers for well-known events even if not explicitly stated
+- IMPORTANT: Infer scripture references from well-known theological concepts:
+  * "666" or "число зверя" → Revelation 13:18
+  * "Нагорная проповедь" → Matthew 5-7
+  * "Отче наш" / "молитва Господня" → Matthew 6:9-13 or Luke 11:2-4
+  * "заповеди блаженства" → Matthew 5:3-12
+  * "Добрый Самарянин" → Luke 10:25-37
+  * and other well-known passages based on your biblical knowledge
 
 TAGGING RULES:
 - Suggest 2-5 relevant tags based on the content
 - Tags should help categorize the note by theme, topic, or type
 - Common categories: theological themes, book names, concepts, study types
-- Tags MUST be in the same language as the note
 
 TITLE RULES:
 - Create a concise, descriptive title (5-15 words)
 - Title should capture the main theme or insight of the note
-- Title MUST be in the same language as the note
 
 Return ONLY the structured JSON response with title, scriptureRefs, and tags.`;
 }
@@ -147,16 +194,19 @@ export async function analyzeStudyNote(
   // Detect language for proper prompt construction
   const { isCyrillic, hasNonLatinChars, languageHint } = detectLanguage(noteContent);
 
-  if (isDebugMode) {
-    logger.debug('AnalyzeStudyNote', "Starting analysis", {
-      contentLength: noteContent.length,
-      languageHint,
-      existingTagsCount: existingTags?.length ?? 0,
-    });
-  }
+  // Always log for easier debugging (content preview truncated for readability)
+  const contentPreview = noteContent.length > 500
+    ? noteContent.substring(0, 500) + '...'
+    : noteContent;
+  logger.debug('AnalyzeStudyNote', "Starting analysis", {
+    contentLength: noteContent.length,
+    contentPreview,
+    languageHint,
+    existingTagsCount: existingTags?.length ?? 0,
+  });
 
   try {
-    const systemPrompt = buildSystemPrompt(isCyrillic, hasNonLatinChars);
+    const systemPrompt = buildSystemPrompt(languageHint);
     const userMessage = buildUserMessage(noteContent, existingTags);
 
     const result: StructuredOutputResult<StudyNoteAnalysis> = await callWithStructuredOutput(
@@ -194,17 +244,41 @@ export async function analyzeStudyNote(
     }
 
     // Validate and clean scripture refs
+    // Now supporting flexible references: book-only, chapter-only, chapter-range, verse-level
     const validatedRefs = result.data.scriptureRefs
-      .filter(ref => 
-        ref.book && 
-        ref.chapter > 0 && 
-        ref.fromVerse > 0 &&
-        (!ref.toVerse || ref.toVerse >= ref.fromVerse)
-      )
+      .filter(ref => {
+        // Book is always required
+        if (!ref.book) return false;
+
+        // If chapter is present, it must be positive
+        if (ref.chapter !== undefined && ref.chapter <= 0) return false;
+
+        // If toChapter is present, chapter must also be present and toChapter >= chapter
+        if (ref.toChapter !== undefined) {
+          if (ref.chapter === undefined || ref.toChapter < ref.chapter) return false;
+        }
+
+        // If fromVerse is present, chapter must also be present and fromVerse must be positive
+        if (ref.fromVerse !== undefined) {
+          if (ref.chapter === undefined || ref.fromVerse <= 0) return false;
+        }
+
+        // If toVerse is present, fromVerse must also be present and toVerse >= fromVerse
+        if (ref.toVerse !== undefined) {
+          if (ref.fromVerse === undefined || ref.toVerse < ref.fromVerse) return false;
+        }
+
+        return true;
+      })
       .map(ref => {
         // Remove toVerse if it equals fromVerse (single verse, not a range)
-        if (ref.toVerse === ref.fromVerse) {
+        if (ref.toVerse !== undefined && ref.fromVerse !== undefined && ref.toVerse === ref.fromVerse) {
           const { toVerse, ...rest } = ref;
+          return rest;
+        }
+        // Remove toChapter if it equals chapter (single chapter, not a range)
+        if (ref.toChapter !== undefined && ref.chapter !== undefined && ref.toChapter === ref.chapter) {
+          const { toChapter, ...rest } = ref;
           return rest;
         }
         return ref;

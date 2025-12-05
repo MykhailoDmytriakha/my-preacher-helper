@@ -100,7 +100,7 @@ describe('analyzeStudyNote', () => {
   it('should pass existing tags to the AI', async () => {
     // Arrange
     const existingTags = ['Евангелия', 'Христология'];
-    
+
     (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
       success: true,
       data: {
@@ -213,7 +213,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(3);
-    
+
     // Joel 2:1 - toVerse should be removed
     expect(result.data?.scriptureRefs[0]).toEqual({
       book: 'Joel',
@@ -221,7 +221,7 @@ describe('analyzeStudyNote', () => {
       fromVerse: 1,
     });
     expect(result.data?.scriptureRefs[0]).not.toHaveProperty('toVerse');
-    
+
     // Matthew 5:1-12 - should keep range
     expect(result.data?.scriptureRefs[1]).toEqual({
       book: 'Matthew',
@@ -229,7 +229,7 @@ describe('analyzeStudyNote', () => {
       fromVerse: 1,
       toVerse: 12,
     });
-    
+
     // Romans 6:6 - toVerse should be removed
     expect(result.data?.scriptureRefs[2]).toEqual({
       book: 'Romans',
@@ -254,8 +254,252 @@ describe('analyzeStudyNote', () => {
     // Assert
     const callArgs = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
     const systemPrompt = callArgs[0];
-    expect(systemPrompt).toContain('Cyrillic');
+    // Language detection correctly identifies Russian text (contains 'Russian' directive)
+    expect(systemPrompt).toContain('Russian');
     expect(systemPrompt).toContain('English');
+  });
+
+  // New tests for flexible Scripture reference types
+
+  it('should accept book-only references', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Study of Ezekiel',
+      scriptureRefs: [
+        { book: 'Ezekiel' }, // Book-only: valid
+      ],
+      tags: ['Prophecy'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('A study about the book of Ezekiel');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
+  });
+
+  it('should accept chapter-only references', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Romans 8 Study',
+      scriptureRefs: [
+        { book: 'Romans', chapter: 8 }, // Chapter-only: valid
+      ],
+      tags: ['Salvation'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('A deep study of Romans chapter 8');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Romans', chapter: 8 });
+  });
+
+  it('should accept chapter-range references', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Sermon on the Mount',
+      scriptureRefs: [
+        { book: 'Matthew', chapter: 5, toChapter: 7 }, // Chapter range: valid
+      ],
+      tags: ['Sermon on Mount'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('The Sermon on the Mount in Matthew 5-7');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0]).toEqual({
+      book: 'Matthew',
+      chapter: 5,
+      toChapter: 7,
+    });
+  });
+
+  it('should filter out invalid chapter-range where toChapter < chapter', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Test',
+      scriptureRefs: [
+        { book: 'Matthew', chapter: 7, toChapter: 5 }, // Invalid: toChapter < chapter
+        { book: 'Romans', chapter: 8 }, // Valid
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test content');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0].book).toBe('Romans');
+  });
+
+  it('should filter out references with toChapter but no chapter', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Test',
+      scriptureRefs: [
+        { book: 'Matthew', toChapter: 7 }, // Invalid: toChapter without chapter
+        { book: 'Ezekiel' }, // Valid: book-only
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test content');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
+  });
+
+  it('should remove toChapter when it equals chapter (single chapter, not a range)', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Test',
+      scriptureRefs: [
+        { book: 'Romans', chapter: 8, toChapter: 8 }, // Should become just chapter: 8
+        { book: 'Matthew', chapter: 5, toChapter: 7 }, // Should keep range
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test content');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(2);
+
+    // Romans 8 - toChapter should be removed
+    expect(result.data?.scriptureRefs[0]).toEqual({
+      book: 'Romans',
+      chapter: 8,
+    });
+    expect(result.data?.scriptureRefs[0]).not.toHaveProperty('toChapter');
+
+    // Matthew 5-7 - should keep range
+    expect(result.data?.scriptureRefs[1]).toEqual({
+      book: 'Matthew',
+      chapter: 5,
+      toChapter: 7,
+    });
+  });
+
+  it('should accept mixed reference types in same analysis', async () => {
+    // Arrange - simulating the Ezekiel example from JSDOC
+    const mockResponse = {
+      title: 'Glory of God in Ezekiel',
+      scriptureRefs: [
+        { book: 'Ezekiel' }, // Book-only
+        { book: 'Ezekiel', chapter: 1 }, // Chapter-only
+        { book: 'Ezekiel', chapter: 10, toChapter: 11 }, // Chapter range
+        { book: 'Ezekiel', chapter: 40, toChapter: 48 }, // Chapter range
+      ],
+      tags: ['Glory', 'Temple'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote(
+      'Книга Иезекииля... видение славы в начале (глава 1)... слава отошла (главы 10-11)... в конце храм (главы 40-48)'
+    );
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(4);
+    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs[1]).toEqual({ book: 'Ezekiel', chapter: 1 });
+    expect(result.data?.scriptureRefs[2]).toEqual({ book: 'Ezekiel', chapter: 10, toChapter: 11 });
+    expect(result.data?.scriptureRefs[3]).toEqual({ book: 'Ezekiel', chapter: 40, toChapter: 48 });
+  });
+
+  it('should filter out references with fromVerse but no chapter', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Test',
+      scriptureRefs: [
+        { book: 'John', fromVerse: 16 }, // Invalid: fromVerse without chapter
+        { book: 'John', chapter: 3, fromVerse: 16 }, // Valid
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test content');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toHaveLength(1);
+    expect(result.data?.scriptureRefs[0]).toEqual({
+      book: 'John',
+      chapter: 3,
+      fromVerse: 16,
+    });
   });
 });
 

@@ -7,6 +7,13 @@ import { z } from "zod";
 /**
  * Schema for a single Scripture reference.
  * Book name is ALWAYS in English for consistency with storage format.
+ * 
+ * Semantic rules:
+ * - book only: entire book reference
+ * - book + chapter: entire chapter reference
+ * - book + chapter + toChapter: chapter range
+ * - book + chapter + fromVerse: specific verse
+ * - book + chapter + fromVerse + toVerse: verse range
  */
 export const ScriptureRefSchema = z.object({
   book: z
@@ -16,12 +23,20 @@ export const ScriptureRefSchema = z.object({
     .number()
     .int()
     .positive()
-    .describe("Chapter number (use Hebrew/Protestant numbering for Psalms)"),
+    .optional()
+    .describe("Chapter number (use Hebrew/Protestant numbering for Psalms). Omit if reference is to entire book."),
+  toChapter: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("Ending chapter number for chapter ranges (e.g., Matthew 5-7). Must be >= chapter."),
   fromVerse: z
     .number()
     .int()
     .positive()
-    .describe("Starting verse number"),
+    .optional()
+    .describe("Starting verse number. Omit if reference is to entire chapter."),
   toVerse: z
     .number()
     .int()

@@ -6,10 +6,14 @@
  */
 
 export { ThoughtResponseSchema, type ThoughtResponse } from './thought.zod';
-export { 
-  StudyNoteAnalysisSchema, 
+export {
+  StudyNoteAnalysisSchema,
   ScriptureRefSchema,
-  type StudyNoteAnalysis, 
-  type ScriptureRefAnalysis 
+  type StudyNoteAnalysis,
+  type ScriptureRefAnalysis
 } from './studyNote.zod';
+export {
+  PolishTranscriptionSchema,
+  type PolishTranscription
+} from './polishTranscription.zod';
 

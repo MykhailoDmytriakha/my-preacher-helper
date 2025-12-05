@@ -89,21 +89,19 @@ export const BOOK_ABBREVIATIONS: Record<string, string> = {
  * - EN uses Hebrew numbering (displayed as-is)
  * - RU/UK use Septuagint numbering (converted from Hebrew for display)
  *
- * Example: { book: 'Psalms', chapter: 23 } (stored in Hebrew numbering)
- *  - locale 'ru' -> "Пс.22:1" (Septuagint numbering)
- *  - locale 'en' -> "Ps.23:1" (Hebrew numbering)
- *  - locale 'uk' -> "Пс.22:1" (Septuagint numbering)
- *
- * Example: { book: 'Isaiah', chapter: 4, fromVerse: 5, toVerse: 8 }
- *  - locale 'ru' -> "Ис.4:5-8"
- *  - locale 'en' -> "Isa.4:5-8"
- *  - locale 'uk' -> "Іс.4:5-8"
+ * Supports flexible reference types:
+ * - Book only: { book: 'Ezekiel' } -> "Иез." (ru)
+ * - Chapter only: { book: 'Psalms', chapter: 23 } -> "Пс.22" (ru, Septuagint)
+ * - Chapter range: { book: 'Matthew', chapter: 5, toChapter: 7 } -> "Мф.5-7"
+ * - Verse: { book: 'John', chapter: 3, fromVerse: 16 } -> "Ин.3:16"
+ * - Verse range: { book: 'Isaiah', chapter: 4, fromVerse: 5, toVerse: 8 } -> "Ис.4:5-8"
  */
 export function formatScriptureRef(
   ref: {
     book: string;
-    chapter: number;
-    fromVerse: number;
+    chapter?: number;
+    toChapter?: number;
+    fromVerse?: number;
     toVerse?: number;
   },
   locale?: BibleLocale
@@ -113,12 +111,32 @@ export function formatScriptureRef(
     ? getLocalizedAbbrev(ref.book, locale)
     : BOOK_ABBREVIATIONS[ref.book] || ref.book;
 
+  // Book-only reference (e.g., "Ezekiel")
+  if (ref.chapter === undefined) {
+    return abbr;
+  }
+
   // Convert Psalm number from Hebrew (storage) to Septuagint (RU/UK display)
   let displayChapter = ref.chapter;
   if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
     displayChapter = psalmHebrewToSeptuagint(ref.chapter);
   }
 
+  // Chapter range (e.g., "Matthew 5-7")
+  if (ref.toChapter !== undefined) {
+    let displayToChapter = ref.toChapter;
+    if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
+      displayToChapter = psalmHebrewToSeptuagint(ref.toChapter);
+    }
+    return `${abbr}.${displayChapter}-${displayToChapter}`;
+  }
+
+  // Chapter-only reference (e.g., "Psalm 23")
+  if (ref.fromVerse === undefined) {
+    return `${abbr}.${displayChapter}`;
+  }
+
+  // Verse or verse range
   const verseRange =
     ref.toVerse && ref.toVerse !== ref.fromVerse
       ? `${ref.fromVerse}-${ref.toVerse}`
@@ -126,3 +144,4 @@ export function formatScriptureRef(
 
   return `${abbr}.${displayChapter}:${verseRange}`;
 }
+

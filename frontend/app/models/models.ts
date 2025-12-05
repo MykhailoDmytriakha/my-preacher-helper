@@ -47,7 +47,7 @@ export interface BrainstormSuggestion {
 
 export interface SectionHints {
   introduction: string;
-  main: string; 
+  main: string;
   conclusion: string;
 }
 
@@ -239,17 +239,26 @@ export interface SermonDraft {
 // Legacy aliases kept for backward compatibility during refactor
 export type OutlinePoint = SermonPoint;
 
-// --- Studies workspace ---
-
 /**
  * Lightweight scripture reference used by study notes.
  * We keep it normalized to make filtering by book/chapter simple on the client.
+ * 
+ * Semantic rules:
+ * - book only: entire book reference (e.g., Ezekiel)
+ * - book + chapter: entire chapter reference (e.g., Psalm 23)
+ * - book + chapter + toChapter: chapter range (e.g., Matthew 5-7)
+ * - book + chapter + fromVerse: specific verse (e.g., John 3:16)
+ * - book + chapter + fromVerse + toVerse: verse range (e.g., 1 Cor 13:4-8)
  */
 export interface ScriptureReference {
   id: string;
   book: string;
-  chapter: number;
-  fromVerse: number;
+  /** Chapter number. Omit if reference is to entire book. */
+  chapter?: number;
+  /** Ending chapter for chapter ranges (e.g., Matthew 5-7). */
+  toChapter?: number;
+  /** Starting verse number. Omit if reference is to entire chapter. */
+  fromVerse?: number;
   toVerse?: number;
   /** Optional user-supplied text snippet (RST or other translation). */
   text?: string;

@@ -3,6 +3,7 @@
 import { useState, useMemo, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import dynamic from 'next/dynamic';
 import {
   ArrowPathIcon,
   BookmarkIcon,
@@ -19,6 +20,12 @@ import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
 import TagCatalogModal from './TagCatalogModal';
 import { BibleLocale } from './bibleData';
+
+// Dynamic import AudioRecorder (client-side only)
+const AudioRecorder = dynamic(
+  () => import('@components/AudioRecorder').then((mod) => mod.AudioRecorder),
+  { ssr: false, loading: () => null }
+);
 
 const makeId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -76,6 +83,10 @@ export default function AddStudyNoteModal({
   // Show advanced fields
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Voice input state
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
   const resetForm = () => {
     setFormState(emptyForm);
     setTagInput('');
@@ -85,9 +96,25 @@ export default function AddStudyNoteModal({
     setShowAdvanced(false);
     setEditingRefIndex(null);
     setShowRefPicker(false);
+    setVoiceError(null);
   };
 
+  // Check if form has unsaved content
+  const hasUnsavedContent =
+    formState.content.trim() !== '' ||
+    formState.title.trim() !== '' ||
+    formState.tags.length > 0 ||
+    formState.scriptureRefs.length > 0;
+
   const handleClose = () => {
+    // If there's unsaved content, ask for confirmation
+    if (hasUnsavedContent) {
+      const confirmed = window.confirm(
+        t('studiesWorkspace.unsavedChangesConfirm') ||
+        'You have unsaved changes. Are you sure you want to close?'
+      );
+      if (!confirmed) return;
+    }
     resetForm();
     onClose();
   };
@@ -122,6 +149,43 @@ export default function AddStudyNoteModal({
         tags: isSelected ? s.tags.filter((t) => t !== tag) : [...s.tags, tag],
       };
     });
+  };
+
+  // Handle voice recording complete
+  const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
+    setIsVoiceProcessing(true);
+    setVoiceError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+
+      const response = await fetch('/api/studies/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setVoiceError(result.error || t('studiesWorkspace.voiceInput.error'));
+        return;
+      }
+
+      // Append polished text to content
+      const newText = result.polishedText;
+      setFormState((prev) => ({
+        ...prev,
+        content: prev.content
+          ? `${prev.content}\n\n${newText}`
+          : newText,
+      }));
+    } catch (error) {
+      console.error('Voice input error:', error);
+      setVoiceError(t('studiesWorkspace.voiceInput.error') || 'Failed to process voice input');
+    } finally {
+      setIsVoiceProcessing(false);
+    }
   };
 
   const handleAIAnalyze = async () => {
@@ -217,11 +281,29 @@ export default function AddStudyNoteModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* Main content area */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
-              {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
-            </label>
+          {/* Main content area with voice input */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
+              </label>
+              {/* Voice input button */}
+              <div className="flex items-center gap-2">
+                {isVoiceProcessing && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                    <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                    {t('studiesWorkspace.voiceInput.transcribing') || 'Processing...'}
+                  </span>
+                )}
+                <AudioRecorder
+                  onRecordingComplete={handleVoiceRecordingComplete}
+                  isProcessing={isVoiceProcessing}
+                  variant="mini"
+                  maxDuration={120}
+                  hideKeyboardShortcuts
+                />
+              </div>
+            </div>
             <textarea
               value={formState.content}
               onChange={(e) => setFormState((s) => ({ ...s, content: e.target.value }))}
@@ -230,6 +312,9 @@ export default function AddStudyNoteModal({
               className={`w-full resize-none ${STUDIES_INPUT_SHARED_CLASSES}`}
               autoFocus
             />
+            {voiceError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{voiceError}</p>
+            )}
           </div>
 
           {/* AI Analyze button */}

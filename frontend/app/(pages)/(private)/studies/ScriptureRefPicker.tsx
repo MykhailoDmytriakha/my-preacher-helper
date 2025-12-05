@@ -14,6 +14,11 @@ import {
   psalmSeptuagintToHebrew,
 } from './bibleData';
 
+/**
+ * Reference scope determines the level of specificity.
+ */
+type ReferenceScope = 'book' | 'chapter' | 'chapter-range' | 'verses';
+
 interface ScriptureRefPickerProps {
   /** Initial reference to edit, or undefined for new entry */
   initialRef?: ScriptureReference;
@@ -26,8 +31,19 @@ interface ScriptureRefPickerProps {
 }
 
 /**
+ * Detect scope from an existing reference.
+ */
+function detectScope(ref?: ScriptureReference): ReferenceScope {
+  if (!ref) return 'verses'; // Default for new refs
+  if (ref.chapter === undefined) return 'book';
+  if (ref.toChapter !== undefined) return 'chapter-range';
+  if (ref.fromVerse === undefined) return 'chapter';
+  return 'verses';
+}
+
+/**
  * Modal/popover picker for selecting a Scripture reference manually.
- * Allows selecting book, chapter, and verse range.
+ * Allows selecting book, chapter, and verse range with flexible scope.
  * Shows localized book names based on current language.
  */
 export default function ScriptureRefPicker({
@@ -50,17 +66,29 @@ export default function ScriptureRefPicker({
   // Get localized book list for dropdown
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);
 
+  // Reference scope state
+  const [scope, setScope] = useState<ReferenceScope>(() => detectScope(initialRef));
+
   // Convert initial chapter from Hebrew (storage) to locale numbering for display
   const getInitialChapter = () => {
-    if (!initialRef) return 1;
+    if (!initialRef?.chapter) return 1;
     if (initialRef.book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
       return psalmHebrewToSeptuagint(initialRef.chapter);
     }
     return initialRef.chapter;
   };
 
+  const getInitialToChapter = () => {
+    if (!initialRef?.toChapter) return 1;
+    if (initialRef.book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
+      return psalmHebrewToSeptuagint(initialRef.toChapter);
+    }
+    return initialRef.toChapter;
+  };
+
   const [book, setBook] = useState(initialRef?.book || 'Genesis');
   const [chapter, setChapter] = useState(getInitialChapter());
+  const [toChapter, setToChapter] = useState(getInitialToChapter());
   const [fromVerse, setFromVerse] = useState(initialRef?.fromVerse || 1);
   const [toVerse, setToVerse] = useState<number | ''>(initialRef?.toVerse || '');
 
@@ -85,7 +113,10 @@ export default function ScriptureRefPicker({
     if (chapter > maxChapters) {
       setChapter(1);
     }
-  }, [book, maxChapters, chapter]);
+    if (toChapter > maxChapters) {
+      setToChapter(1);
+    }
+  }, [book, maxChapters, chapter, toChapter]);
 
   // Reset fromVerse and toVerse if they exceed max verses when book/chapter changes
   useEffect(() => {
@@ -96,6 +127,13 @@ export default function ScriptureRefPicker({
       setToVerse('');
     }
   }, [book, chapter, maxVerses, fromVerse, toVerse]);
+
+  // Ensure toChapter >= chapter for chapter ranges
+  useEffect(() => {
+    if (scope === 'chapter-range' && toChapter < chapter) {
+      setToChapter(chapter);
+    }
+  }, [scope, chapter, toChapter]);
 
   // Focus first input on mount
   useEffect(() => {
@@ -126,20 +164,37 @@ export default function ScriptureRefPicker({
   }, [onCancel]);
 
   const handleConfirm = () => {
-    // Convert chapter from locale numbering to Hebrew (storage) for Psalms
-    let storageChapter = chapter;
-    if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-      storageChapter = psalmSeptuagintToHebrew(chapter);
+    // Convert chapters from locale numbering to Hebrew (storage) for Psalms
+    const convertChapter = (ch: number) => {
+      if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
+        return psalmSeptuagintToHebrew(ch);
+      }
+      return ch;
+    };
+
+    const ref: Omit<ScriptureReference, 'id'> = { book };
+
+    if (scope === 'book') {
+      // Book-only reference
+      // ref stays as { book }
+    } else if (scope === 'chapter') {
+      // Single chapter reference
+      ref.chapter = convertChapter(chapter);
+    } else if (scope === 'chapter-range') {
+      // Chapter range
+      ref.chapter = convertChapter(chapter);
+      if (toChapter > chapter) {
+        ref.toChapter = convertChapter(toChapter);
+      }
+    } else {
+      // Verse or verse range
+      ref.chapter = convertChapter(chapter);
+      ref.fromVerse = fromVerse;
+      if (toVerse && toVerse >= fromVerse) {
+        ref.toVerse = toVerse;
+      }
     }
 
-    const ref: Omit<ScriptureReference, 'id'> = {
-      book,
-      chapter: storageChapter,
-      fromVerse,
-    };
-    if (toVerse && toVerse >= fromVerse) {
-      ref.toVerse = toVerse;
-    }
     onConfirm(ref);
   };
 
@@ -150,8 +205,25 @@ export default function ScriptureRefPicker({
     }
   };
 
-  // Validation: book selected, chapter in range, fromVerse in range for this chapter
-  const isValid = book && chapter > 0 && chapter <= maxChapters && fromVerse > 0 && fromVerse <= maxVerses;
+  // Validation based on scope
+  const isValid = useMemo(() => {
+    if (!book) return false;
+    if (scope === 'book') return true;
+    if (scope === 'chapter') return chapter > 0 && chapter <= maxChapters;
+    if (scope === 'chapter-range') {
+      return chapter > 0 && chapter <= maxChapters && toChapter >= chapter && toChapter <= maxChapters;
+    }
+    // verses scope
+    return chapter > 0 && chapter <= maxChapters && fromVerse > 0 && fromVerse <= maxVerses;
+  }, [book, scope, chapter, toChapter, maxChapters, fromVerse, maxVerses]);
+
+  // Scope labels for UI
+  const scopeLabels: Record<ReferenceScope, string> = {
+    book: t('studiesWorkspace.scopeBook') || 'Entire Book',
+    chapter: t('studiesWorkspace.scopeChapter') || 'Chapter',
+    'chapter-range': t('studiesWorkspace.scopeChapterRange') || 'Chapter Range',
+    verses: t('studiesWorkspace.scopeVerses') || 'Verse(s)',
+  };
 
   return (
     <div
@@ -178,6 +250,28 @@ export default function ScriptureRefPicker({
 
       {/* Form */}
       <div className="space-y-3">
+        {/* Scope selector */}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            {t('studiesWorkspace.referenceScope') || 'Reference Type'}
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {(['book', 'chapter', 'chapter-range', 'verses'] as ReferenceScope[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={`px-2 py-1 text-xs rounded-md transition-colors ${scope === s
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                  }`}
+              >
+                {scopeLabels[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Book selector */}
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -197,61 +291,93 @@ export default function ScriptureRefPicker({
           </select>
         </div>
 
-        {/* Chapter and verses */}
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              {t('studiesWorkspace.chapter')}
-            </label>
-            <select
-              value={chapter}
-              onChange={(e) => setChapter(Number(e.target.value))}
-              onKeyDown={handleKeyDown}
-              className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-            >
-              {chapterOptions.map((ch) => (
-                <option key={ch} value={ch}>
-                  {ch}
-                </option>
-              ))}
-            </select>
+        {/* Chapter selector - shown for chapter, chapter-range, and verses scopes */}
+        {scope !== 'book' && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {scope === 'chapter-range'
+                  ? (t('studiesWorkspace.fromChapter') || 'From Chapter')
+                  : t('studiesWorkspace.chapter')
+                }
+              </label>
+              <select
+                value={chapter}
+                onChange={(e) => setChapter(Number(e.target.value))}
+                onKeyDown={handleKeyDown}
+                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+              >
+                {chapterOptions.map((ch) => (
+                  <option key={ch} value={ch}>
+                    {ch}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* To chapter - only for chapter-range scope */}
+            {scope === 'chapter-range' && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {t('studiesWorkspace.toChapter') || 'To Chapter'}
+                </label>
+                <select
+                  value={toChapter}
+                  onChange={(e) => setToChapter(Number(e.target.value))}
+                  onKeyDown={handleKeyDown}
+                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+                >
+                  {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
+                    <option key={ch} value={ch}>
+                      {ch}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              {t('studiesWorkspace.from')}
-            </label>
-            <select
-              value={fromVerse}
-              onChange={(e) => setFromVerse(Number(e.target.value))}
-              onKeyDown={handleKeyDown}
-              className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-            >
-              {verseOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+        )}
+
+        {/* Verse selectors - only for verses scope */}
+        {scope === 'verses' && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {t('studiesWorkspace.from')}
+              </label>
+              <select
+                value={fromVerse}
+                onChange={(e) => setFromVerse(Number(e.target.value))}
+                onKeyDown={handleKeyDown}
+                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+              >
+                {verseOptions.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {t('studiesWorkspace.to')}
+              </label>
+              <select
+                value={toVerse === '' ? '' : toVerse}
+                onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
+                onKeyDown={handleKeyDown}
+                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+              >
+                <option value="">—</option>
+                {verseOptions.filter((v) => v >= fromVerse).map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              {t('studiesWorkspace.to')}
-            </label>
-            <select
-              value={toVerse === '' ? '' : toVerse}
-              onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
-              onKeyDown={handleKeyDown}
-              className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-            >
-              <option value="">—</option>
-              {verseOptions.filter((v) => v >= fromVerse).map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -275,4 +401,3 @@ export default function ScriptureRefPicker({
     </div>
   );
 }
-
