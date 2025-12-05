@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSeries } from '@/hooks/useSeries';
@@ -246,7 +247,9 @@ export default function SeriesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="series-grid">
           {filteredSeries.map((s) => (
-            <SeriesCard key={s.id} series={s} />
+            <Link key={s.id} href={`/series/${s.id}`} className="block">
+              <SeriesCard series={s} />
+            </Link>
           ))}
         </div>
       )}
