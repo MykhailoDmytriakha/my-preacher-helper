@@ -40,6 +40,15 @@ jest.mock('@clients/openAI.client', () => ({
   }),
 }));
 
+jest.mock('@clients/thought.structured', () => ({
+  generateThoughtStructured: jest.fn().mockResolvedValue({
+    originalText: 'audio text',
+    formattedText: 'final text',
+    tags: ['Основная часть'],
+    meaningSuccessfullyPreserved: true,
+  }),
+}));
+
 jest.mock('app/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: () => ({
