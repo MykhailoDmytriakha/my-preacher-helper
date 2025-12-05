@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react';
 import StudiesPage from '../page';
-import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 
 jest.mock('@/hooks/useStudyNotes', () => ({
@@ -26,19 +25,10 @@ describe('StudiesPage', () => {
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
   });
 
-  it('applies the shared form-field classes to the quick-reference and tag inputs', () => {
+  it('shows the stats badge and new note button text', () => {
     render(<StudiesPage />);
 
-    const quickRefInput = screen.getByPlaceholderText('studiesWorkspace.quickRefPlaceholder');
-    const tagInput = screen.getByPlaceholderText('studiesWorkspace.addTag');
-
-    const sharedClasses = STUDIES_INPUT_SHARED_CLASSES.split(' ').filter(Boolean);
-    sharedClasses.forEach((className) => {
-      expect(quickRefInput).toHaveClass(className);
-      expect(tagInput).toHaveClass(className);
-    });
-
-    expect(quickRefInput).toHaveClass('w-full');
-    expect(tagInput).toHaveClass('w-full', 'min-w-[200px]');
+    expect(screen.getByText('0 studiesWorkspace.stats.notesLabel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'studiesWorkspace.newNote' })).toBeInTheDocument();
   });
 });
