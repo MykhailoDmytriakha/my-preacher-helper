@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createTranscription, generateThought } from "@clients/openAI.client";
+import { generateThoughtStructured } from "@clients/thought.structured";
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
+
+// Feature flag for structured output
+// Set to 'true' to use new structured output implementation
+const USE_STRUCTURED_OUTPUT = process.env.USE_STRUCTURED_OUTPUT === 'true';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Thought } from '@/models/models';
 import { adminDb } from 'app/config/firebaseAdminConfig';
@@ -132,8 +137,14 @@ export async function POST(request: Request) {
       );
     }
     
-    // Call generateThought and get the new result structure
-    const generationResult = await generateThought(transcriptionText, sermon, availableTags, forceTag);
+    // Call generateThought using either structured output or legacy implementation
+    const generationResult = USE_STRUCTURED_OUTPUT
+      ? await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag })
+      : await generateThought(transcriptionText, sermon, availableTags, forceTag);
+    
+    if (USE_STRUCTURED_OUTPUT) {
+      console.log("Thoughts route: Using STRUCTURED OUTPUT implementation");
+    }
     
     // Check if the generation was successful and meaning was preserved
     if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {

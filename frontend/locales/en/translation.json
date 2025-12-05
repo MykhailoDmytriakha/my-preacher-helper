@@ -1281,6 +1281,13 @@
       "selected": "Selected",
       "noneSelected": "No tags selected",
       "done": "Done"
+    },
+    "aiAnalyze": {
+      "button": "AI Analyze",
+      "analyzing": "Analyzing...",
+      "hint": "Extract title, references & tags",
+      "emptyContent": "Please enter note content first",
+      "error": "Failed to analyze note. Please try again."
     }
   }
 }

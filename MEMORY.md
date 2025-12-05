@@ -11,10 +11,14 @@
 - Stats simplified to total notes + distinct books; drafts/materials UI removed. Backend strips isDraft/materialIds/relatedSermonIds before persist/read.
 - Quick scripture input parser; scripture refs start empty (no default Genesis 1:1); tag suggestions via datalist plus explicit "Add tag" button mirroring reference UX.
 - Duplicate notes list fixed; only one notes grid remains.
+- **Structured Output Architecture:** New AI calls use Zod schemas + `zodResponseFormat()` for type-safe responses. Modules: `config/schemas/zod/` (schemas), `api/clients/structuredOutput.ts` (utility), `*.structured.ts` (domain functions). Feature flag `USE_STRUCTURED_OUTPUT` for gradual migration.
+- **AI Analyze for Studies:** Button on studies page extracts title, scripture refs (English book names), and tags from note content. Respects note language (RU/UK/EN) for title/tags.
 
 ## 📝 Short-Term Memory
-- Current session: widened open layout to ~60/40 (`lg:grid-cols-[1.6fr_1fr]`); added explicit "Add tag" button tied to controlled tag input.
-- No pending known issues after layout width and tag button updates.
+- Current session: Implemented structured output for AI calls using Zod schemas + OpenAI SDK.
+- Created modular architecture: `structuredOutput.ts` (utility), `thought.structured.ts`, `studyNote.structured.ts`.
+- Added AI Analyze button to Studies page for extracting title, scripture refs, and tags from notes.
+- Feature flag `USE_STRUCTURED_OUTPUT` controls thought generation method switch.
 
 ## 🎓 Lessons & Patterns
 
@@ -41,3 +45,30 @@
 **Correct Solution:** Updated `navigation.studies.description` in all locales to the same functional concept (Bible notes workspace found by books/chapters/themes) and ensured `studiesWorkspace` keys describe the same mental model.  
 **Best Practice:** When adjusting product copy for a core concept, always: (1) identify all keys that express that concept (nav, workspace, tooltips), (2) update all supported locales together, and (3) keep functional meaning, not just wording, in sync.  
 **Attention Points:** Before editing text, grep the key/phrase across `locales/`; when adding a new workspace, enforce symmetry between navigation description and in-workspace helper text in every language.
+
+### Lesson: Structured Output vs XML Function Extraction
+**Problem:** Legacy AI calls used ~200 lines of code for XML function definitions + JSON extraction with multiple fallback strategies (`<arguments>` tags, code blocks, regex). Fragile and hard to maintain.  
+**Wrong Paths:** Continuing to add more fallback parsing logic; assuming Gemini doesn't support structured output.  
+**Root Cause:** Historical approach built before OpenAI/Gemini added native structured output support with `response_format` and Zod schemas.  
+**Correct Solution:** Use `zodResponseFormat()` + `beta.chat.completions.parse()` which guarantees typed JSON responses. Created modular architecture:
+- `config/schemas/zod/*.zod.ts` — Zod schemas
+- `api/clients/structuredOutput.ts` — reusable utility
+- `api/clients/*.structured.ts` — domain-specific functions  
+**Best Practice:** For new AI features, always use structured output with Zod. Eliminates parsing code, provides type safety, automatic validation.  
+**Attention Points:** Gemini 2.0 Flash supports structured output via OpenAI-compatible SDK. Feature flags (`USE_STRUCTURED_OUTPUT`) allow gradual migration.
+
+### Lesson: Scripture Reference toVerse Cleanup
+**Problem:** AI returned `{ fromVerse: 1, toVerse: 1 }` for single verses, displaying as "Joel 2:1-1" instead of "Joel 2:1".  
+**Wrong Paths:** Trying to fix in AI prompt (unreliable); ignoring UX issue.  
+**Root Cause:** Structured output schema allowed `toVerse` regardless of whether it equals `fromVerse`.  
+**Correct Solution:** Post-process AI response in validation: if `toVerse === fromVerse`, remove `toVerse` from the object.  
+**Best Practice:** Always validate/normalize AI structured output before using. Even with schema constraints, AI may return semantically redundant data.  
+**Attention Points:** Check for edge cases like `toVerse < fromVerse` (invalid range) and `toVerse === fromVerse` (single verse, no range needed).
+
+### Lesson: Multilingual AI Output with Fixed Schema Fields
+**Problem:** Study notes can be in Russian/Ukrainian/English; AI must return title/tags in same language, but Scripture book names must ALWAYS be in English for storage compatibility.  
+**Wrong Paths:** Assuming AI will infer language rules; not detecting input language.  
+**Root Cause:** Mixed language requirements need explicit prompt engineering.  
+**Correct Solution:** Detect Cyrillic via `/[\u0400-\u04FF]/` regex. Build language-specific prompt directives: "Title and tags in note's language, Scripture books ALWAYS in English (Matthew, not Матфей)".  
+**Best Practice:** When AI output has mixed language requirements, (1) detect input language, (2) explicitly state per-field language rules in prompt, (3) include examples.  
+**Attention Points:** ScriptureReference.book must be English for `referenceParser.ts` compatibility; test with all supported locales (en/ru/uk).

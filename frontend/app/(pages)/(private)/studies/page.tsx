@@ -17,6 +17,7 @@ import {
   Squares2X2Icon,
   TagIcon,
   TrashIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { StudyNote, ScriptureReference } from '@/models/models';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -89,6 +90,9 @@ export default function StudiesPage() {
   const [showRefPicker, setShowRefPicker] = useState(false);
   // Tag catalog modal state
   const [showTagCatalog, setShowTagCatalog] = useState(false);
+  // AI analysis state
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   // Load user tags for tag selector
   useEffect(() => {
@@ -195,6 +199,74 @@ export default function StudiesPage() {
         : [{ id: makeId(), book: 'Genesis', chapter: 1, fromVerse: 1 }],
     });
     setTagInput('');
+  };
+
+  /**
+   * Analyze note content with AI to extract title, scripture refs, and tags.
+   * Results are merged into the form state for user review before saving.
+   */
+  const handleAIAnalyze = async () => {
+    if (!formState.content.trim()) {
+      setAnalyzeError(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content first');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+
+    try {
+      const response = await fetch('/api/studies/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: formState.content,
+          existingTags: tagOptions,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success || !result.data) {
+        setAnalyzeError(result.error || t('studiesWorkspace.aiAnalyze.error') || 'Analysis failed');
+        return;
+      }
+
+      const { title, scriptureRefs, tags } = result.data;
+
+      // Update form state with AI results
+      setFormState((prev) => ({
+        ...prev,
+        // Only set title if it's currently empty
+        title: prev.title.trim() ? prev.title : title,
+        // Add scripture refs with IDs (avoid duplicates by book+chapter+verse)
+        scriptureRefs: [
+          ...prev.scriptureRefs,
+          ...scriptureRefs
+            .filter((newRef: { book: string; chapter: number; fromVerse: number; toVerse?: number }) => 
+              !prev.scriptureRefs.some(
+                (existing) =>
+                  existing.book === newRef.book &&
+                  existing.chapter === newRef.chapter &&
+                  existing.fromVerse === newRef.fromVerse &&
+                  existing.toVerse === newRef.toVerse
+              )
+            )
+            .map((ref: { book: string; chapter: number; fromVerse: number; toVerse?: number }) => ({
+              ...ref,
+              id: makeId(),
+            })),
+        ],
+        // Merge tags (avoid duplicates)
+        tags: Array.from(new Set([...prev.tags, ...tags])),
+      }));
+
+      console.log('AI analysis applied:', { title, scriptureRefs: scriptureRefs.length, tags: tags.length });
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      setAnalyzeError(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze note');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const booksLeaderboard = useMemo(
@@ -472,6 +544,34 @@ export default function StudiesPage() {
                   rows={5}
                   className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
+
+                {/* AI Analyze Button */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAIAnalyze}
+                    disabled={isAnalyzing || !formState.content.trim()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                        {t('studiesWorkspace.aiAnalyze.analyzing') || 'Analyzing...'}
+                      </>
+                    ) : (
+                      <>
+                        <SparklesIcon className="h-4 w-4" />
+                        {t('studiesWorkspace.aiAnalyze.button') || 'AI Analyze'}
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {t('studiesWorkspace.aiAnalyze.hint') || 'Extract title, references & tags'}
+                  </span>
+                </div>
+                {analyzeError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">{analyzeError}</p>
+                )}
 
                 {/* Scripture refs - compact badge-based UI */}
                 <div className="space-y-2">
