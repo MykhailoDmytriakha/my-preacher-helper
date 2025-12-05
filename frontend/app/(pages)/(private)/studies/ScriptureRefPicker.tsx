@@ -8,6 +8,7 @@ import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 import {
   getBooksForDropdown,
   getChapterCount,
+  getVerseCount,
   BibleLocale,
   psalmHebrewToSeptuagint,
   psalmSeptuagintToHebrew,
@@ -23,9 +24,6 @@ interface ScriptureRefPickerProps {
   /** Mode: 'add' for new reference, 'edit' for editing existing */
   mode?: 'add' | 'edit';
 }
-
-// Maximum verses per chapter (safe upper bound for all books)
-const MAX_VERSES = 176; // Psalm 119 is longest with 176 verses
 
 /**
  * Modal/popover picker for selecting a Scripture reference manually.
@@ -74,10 +72,13 @@ export default function ScriptureRefPicker({
     return Array.from({ length: maxChapters }, (_, i) => i + 1);
   }, [maxChapters]);
 
-  // Generate verse options (1 to MAX_VERSES)
+  // Get max verses for current book and chapter (dynamic based on selection)
+  const maxVerses = useMemo(() => getVerseCount(book, chapter), [book, chapter]);
+
+  // Generate verse options (1 to maxVerses for current chapter)
   const verseOptions = useMemo(() => {
-    return Array.from({ length: MAX_VERSES }, (_, i) => i + 1);
-  }, []);
+    return Array.from({ length: maxVerses }, (_, i) => i + 1);
+  }, [maxVerses]);
 
   // Reset chapter if it exceeds max when book changes
   useEffect(() => {
@@ -85,6 +86,16 @@ export default function ScriptureRefPicker({
       setChapter(1);
     }
   }, [book, maxChapters, chapter]);
+
+  // Reset fromVerse and toVerse if they exceed max verses when book/chapter changes
+  useEffect(() => {
+    if (fromVerse > maxVerses) {
+      setFromVerse(1);
+      setToVerse('');
+    } else if (toVerse !== '' && toVerse > maxVerses) {
+      setToVerse('');
+    }
+  }, [book, chapter, maxVerses, fromVerse, toVerse]);
 
   // Focus first input on mount
   useEffect(() => {
@@ -139,7 +150,8 @@ export default function ScriptureRefPicker({
     }
   };
 
-  const isValid = book && chapter > 0 && chapter <= maxChapters && fromVerse > 0;
+  // Validation: book selected, chapter in range, fromVerse in range for this chapter
+  const isValid = book && chapter > 0 && chapter <= maxChapters && fromVerse > 0 && fromVerse <= maxVerses;
 
   return (
     <div
