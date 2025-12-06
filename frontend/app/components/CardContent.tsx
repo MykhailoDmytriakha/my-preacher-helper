@@ -5,6 +5,7 @@ import { getTagStyle } from "@/utils/tagUtils";
 import { Item } from "@/models/models";
 import { useTranslation } from "react-i18next";
 import { normalizeStructureTag } from "@utils/tagUtils";
+import MarkdownDisplay from '@components/MarkdownDisplay';
 
 interface CardContentProps {
   item: Item;
@@ -13,11 +14,11 @@ interface CardContentProps {
 
 export default function CardContent({ item, className = "" }: CardContentProps) {
   const { t } = useTranslation();
-  
+
   return (
-    <div className={`whitespace-pre-wrap dark:text-gray-200 ${className}`}>
-      {item.content}
-      
+    <div className={`dark:text-gray-200 ${className}`}>
+      <MarkdownDisplay content={item.content} />
+
       {item.customTagNames && item.customTagNames.length > 0 && (
         <div className="flex flex-wrap gap-1 justify-end mt-2">
           {item.customTagNames.map((tag) => {
@@ -31,7 +32,7 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
               else if (canonical === 'main') displayName = t('tags.mainPart');
               else if (canonical === 'conclusion') displayName = t('tags.conclusion');
             }
-            
+
             const { className, style } = getTagStyle(tag.name, tag.color);
             return (
               <span

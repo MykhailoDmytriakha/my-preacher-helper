@@ -16,7 +16,7 @@ jest.mock('@dnd-kit/sortable', () => ({
     transition: 'transform 250ms ease-in-out',
     isDragging: false
   }),
-  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</> 
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
 
 // Mock the CSS utility
@@ -96,7 +96,7 @@ describe('SortableItem Component', () => {
 
     // Get the edit button by testId instead of role+name
     const editButton = screen.getByTestId('edit-icon').closest('button');
-    
+
     // Check for proper accessibility attributes
     expect(editButton).toHaveAttribute('title', 'structure.editThought');
     expect(editButton).toBeInTheDocument();
@@ -116,11 +116,15 @@ describe('SortableItem Component', () => {
       />
     );
 
-    // Check if the content div has the whitespace-pre-wrap class
-    const contentDiv = container.querySelector('div.whitespace-pre-wrap');
+    // Check if the content div has the prose class from MarkdownDisplay
+    const contentDiv = container.querySelector('.prose');
     expect(contentDiv).toBeInTheDocument();
-    expect(contentDiv).toHaveClass('whitespace-pre-wrap');
-    
+
+    // Check if the content is rendered
+    // react-markdown will render this as a single paragraph with newlines collapsed to spaces by default,
+    // or as multiple paragraphs if there were blank lines. 
+    // toHaveTextContent automatically handles whitespace normalization.
+
     // Check if the content is rendered with preserved line breaks
     // Note: Browser rendering adds spaces when rendering newlines with whitespace-pre-wrap
     expect(contentDiv).toHaveTextContent('Line 1 Line 2 Line 3');
@@ -147,10 +151,10 @@ Second paragraph with indentation.
       />
     );
 
-    // Check if the content div has the whitespace-pre-wrap class
-    const contentDiv = container.querySelector('div.whitespace-pre-wrap');
+    // Check if the content div has the prose class
+    const contentDiv = container.querySelector('.prose');
     expect(contentDiv).toBeInTheDocument();
-    
+
     // Verify the content is rendered with proper whitespace preservation
     expect(contentDiv?.textContent).toBe(multilineContent);
   });

@@ -23,6 +23,7 @@ import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
+import MarkdownDisplay from "@components/MarkdownDisplay";
 
 type PlanViewMode = "overlay" | "immersive" | "preaching";
 
@@ -47,7 +48,7 @@ const sectionButtonStyles = `
 // Custom UI components
 const Card = React.forwardRef<HTMLDivElement, { className?: string, children: React.ReactNode }>(
   ({ className, children }, ref) => (
-    <div 
+    <div
       ref={ref}
       className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow ${className || ''}`}
     >
@@ -57,27 +58,27 @@ const Card = React.forwardRef<HTMLDivElement, { className?: string, children: Re
 );
 Card.displayName = 'Card';
 
-const Button = ({ 
-  onClick, 
-  variant = "default", 
+const Button = ({
+  onClick,
+  variant = "default",
   sectionColor,
-  className, 
-  disabled, 
+  className,
+  disabled,
   children,
   title
-}: { 
-  onClick?: () => void | Promise<void>, 
-  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure", 
+}: {
+  onClick?: () => void | Promise<void>,
+  variant?: "default" | "primary" | "secondary" | "section" | "plan" | "structure",
   sectionColor?: { base: string, light: string, dark: string },
-  className?: string, 
-  disabled?: boolean, 
+  className?: string,
+  disabled?: boolean,
   children: React.ReactNode,
   title?: string
 }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md transition-colors";
-  
+
   let variantClass = "";
-  
+
   if (variant === "section" && sectionColor) {
     // Для секционных стилей используем базовый класс без цветов,
     // цвета будут применены через inline-стили
@@ -92,7 +93,7 @@ const Button = ({
     };
     variantClass = variantClasses[variant] || variantClasses.default;
   }
-  
+
   return (
     <button
       onClick={onClick}
@@ -118,7 +119,7 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
     medium: "w-6 h-6",
     large: "w-10 h-10"
   };
-  
+
   return (
     <div className={`inline-block animate-spin rounded-full border-2 border-solid border-gray-300 border-t-blue-600 ${sizeClasses[size]} ${className}`}></div>
   );
@@ -172,7 +173,7 @@ const SectionHeader = ({ section, onSwitchPage }: { section: 'introduction' | 'm
 const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: 'introduction' | 'main' | 'conclusion' }) => {
   const sectionClass = section ? `prose-${section}` : '';
   const sectionDivClass = section ? `${section}-section` : '';
-  
+
   // Sanitize the markdown content
   const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
@@ -209,8 +210,8 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
   const prevTimerStateRef = useRef<{ currentPhase: TimerPhase; phaseProgress: number; totalProgress: number } | null>(null);
   useEffect(() => {
     if (timerState && prevTimerStateRef.current &&
-        timerState.currentPhase !== prevTimerStateRef.current.currentPhase &&
-        isPhaseCompleted(prevTimerStateRef.current.currentPhase, timerState.currentPhase)) {
+      timerState.currentPhase !== prevTimerStateRef.current.currentPhase &&
+      isPhaseCompleted(prevTimerStateRef.current.currentPhase, timerState.currentPhase)) {
       // Phase changed - trigger completion animation for previous phase
       setCompletingPhase(prevTimerStateRef.current.currentPhase);
       const timer = setTimeout(() => {
@@ -363,82 +364,82 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       )}
       {sermonVerse && (
         <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
-        <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
-          {sermonVerse}
-        </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          {t("common.scripture")}
-        </p>
-      </div>
-    )}
-
-    <div data-section="introduction" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
-      {/* Progress overlay for introduction */}
-      {timerState && (
-        <div
-          className={getProgressOverlayClasses('introduction')}
-          style={{
-            clipPath: getProgressClipPath('introduction'),
-            ...getProgressOverlayStyles('introduction')
-          }}
-          {...getProgressAriaAttributes('introduction')}
-        />
+          <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
+            {sermonVerse}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            {t("common.scripture")}
+          </p>
+        </div>
       )}
-      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
-        {t("sections.introduction")}
-      </h2>
-      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
-        <MarkdownRenderer
-          markdown={combinedPlan.introduction || t("plan.noContent")}
-          section="introduction"
-        />
-      </div>
-    </div>
 
-    <div data-section="main" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
-      {/* Progress overlay for main */}
-      {timerState && (
-        <div
-          className={getProgressOverlayClasses('main')}
-          style={{
-            clipPath: getProgressClipPath('main'),
-            ...getProgressOverlayStyles('main')
-          }}
-          {...getProgressAriaAttributes('main')}
-        />
-      )}
-      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
-        {t("sections.main")}
-      </h2>
-      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
-        <MarkdownRenderer
-          markdown={combinedPlan.main || t("plan.noContent")}
-          section="main"
-        />
+      <div data-section="introduction" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
+        {/* Progress overlay for introduction */}
+        {timerState && (
+          <div
+            className={getProgressOverlayClasses('introduction')}
+            style={{
+              clipPath: getProgressClipPath('introduction'),
+              ...getProgressOverlayStyles('introduction')
+            }}
+            {...getProgressAriaAttributes('introduction')}
+          />
+        )}
+        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+          {t("sections.introduction")}
+        </h2>
+        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
+          <MarkdownRenderer
+            markdown={combinedPlan.introduction || t("plan.noContent")}
+            section="introduction"
+          />
+        </div>
       </div>
-    </div>
 
-    <div data-section="conclusion" className={`mb-4 relative overflow-hidden rounded-lg`}>
-      {/* Progress overlay for conclusion */}
-      {timerState && (
-        <div
-          className={getProgressOverlayClasses('conclusion')}
-          style={{ clipPath: getProgressClipPath('conclusion') }}
-          {...getProgressAriaAttributes('conclusion')}
-        />
-      )}
-      <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
-        {t("sections.conclusion")}
-      </h2>
-      <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
-        <MarkdownRenderer
-          markdown={combinedPlan.conclusion || t("plan.noContent")}
-          section="conclusion"
-        />
+      <div data-section="main" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
+        {/* Progress overlay for main */}
+        {timerState && (
+          <div
+            className={getProgressOverlayClasses('main')}
+            style={{
+              clipPath: getProgressClipPath('main'),
+              ...getProgressOverlayStyles('main')
+            }}
+            {...getProgressAriaAttributes('main')}
+          />
+        )}
+        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+          {t("sections.main")}
+        </h2>
+        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
+          <MarkdownRenderer
+            markdown={combinedPlan.main || t("plan.noContent")}
+            section="main"
+          />
+        </div>
       </div>
-    </div>
-  </>
-);
+
+      <div data-section="conclusion" className={`mb-4 relative overflow-hidden rounded-lg`}>
+        {/* Progress overlay for conclusion */}
+        {timerState && (
+          <div
+            className={getProgressOverlayClasses('conclusion')}
+            style={{ clipPath: getProgressClipPath('conclusion') }}
+            {...getProgressAriaAttributes('conclusion')}
+          />
+        )}
+        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+          {t("sections.conclusion")}
+        </h2>
+        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
+          <MarkdownRenderer
+            markdown={combinedPlan.conclusion || t("plan.noContent")}
+            section="conclusion"
+          />
+        </div>
+      </div>
+    </>
+  );
 };
 
 interface SermonPointCardProps {
@@ -462,20 +463,20 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   onOpenFragmentsModal,
 }, ref) => {
   const { t } = useTranslation();
-  
+
   // Map the API section name to the theme section name
   const themeSectionName = sectionName === 'main' ? 'mainPart' : sectionName as 'introduction' | 'mainPart' | 'conclusion';
-  
+
   // Get the colors for this section
   const sectionColors = SERMON_SECTION_COLORS[themeSectionName];
-  
+
   // Count key fragments across all thoughts for this outline point
   const keyFragmentsCount = thoughts.reduce((count, thought) => {
     return count + (thought.keyFragments?.length || 0);
   }, 0);
-  
+
   return (
-    <Card 
+    <Card
       ref={ref}
       className={`mb-4 p-4 border-${sectionColors.base.replace('#', '').substring(0, 3)} bg-white dark:bg-gray-800`}
     >
@@ -514,19 +515,22 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
           </Button>
         </div>
       </h3>
-      
+
       <div className="mb-3">
         <ul className="mt-2 ml-4 text-base">
           {thoughts.map((thought) => (
-            <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base">
-              • <span className="whitespace-pre-wrap break-words">{thought.text}</span>
-                     {thought.keyFragments && thought.keyFragments.length > 0 && (
+            <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base flex items-start gap-2">
+              <span className="mt-1.5">•</span>
+              <div className="flex-1 min-w-0">
+                <MarkdownDisplay content={thought.text} compact />
+              </div>
+              {thought.keyFragments && thought.keyFragments.length > 0 && (
                 <div className="mt-1 ml-2">
                   {thought.keyFragments.map((fragment, index) => (
                     <span
                       key={index}
-                             className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
-                             style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
+                      className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
+                      style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
                     >
                       &quot;{fragment}&quot;
                     </span>
@@ -548,8 +552,8 @@ SermonPointCard.displayName = 'SermonPointCard';
 // Add a debounce utility to prevent too frequent calls
 function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
-  
-  return function(...args: Parameters<T>) {
+
+  return function (...args: Parameters<T>) {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
@@ -607,19 +611,19 @@ export default function PlanPage() {
   const [sermon, setSermon] = useState<Sermon | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Generated content by outline point ID
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
   // Currently generating outline point ID
   const [generatingId, setGeneratingId] = useState<string | null>(null);
-  
+
   // State to hold the combined generated content for each section
   const [combinedPlan, setCombinedPlan] = useState<{
     introduction: string;
     main: string;
     conclusion: string;
   }>({ introduction: '', main: '', conclusion: '' });
-  
+
   // Refs for the outline point cards in each column
   const introPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   const mainPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
@@ -631,21 +635,21 @@ export default function PlanPage() {
   type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
   const [overlayCopyStatus, setOverlayCopyStatus] = useState<CopyStatus>('idle');
   const [immersiveCopyStatus, setImmersiveCopyStatus] = useState<CopyStatus>('idle');
-  
+
   // Track saved outline points
   const [savedSermonPoints, setSavedSermonPoints] = useState<Record<string, boolean>>({});
-  
+
   // Track which content has been modified since last save
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
-  
+
   // Add syncInProgress flag to prevent recursive sync calls
   // const syncInProgressRef = useRef(false);
-  
+
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
-  
+
   const [modalSermonPointId, setModalSermonPointId] = useState<string | null>(null);
-  
+
   const [showSectionMenu, setShowSectionMenu] = useState<boolean>(false);
   const sectionMenuRef = useRef<HTMLDivElement>(null);
 
@@ -728,11 +732,11 @@ export default function PlanPage() {
         setShowSectionMenu(false);
       }
     }
-    
+
     if (showSectionMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -781,7 +785,7 @@ export default function PlanPage() {
       setImmersiveCopyStatus('idle');
     }
   }, [isPlanImmersive]);
-  
+
   // Function to synchronize heights
   const syncHeights = () => {
     // Always reset heights first
@@ -832,7 +836,7 @@ export default function PlanPage() {
     applyMaxHeights(mainPointRefs);
     applyMaxHeights(conclusionPointRefs);
   };
-  
+
   // Create a debounced version of syncHeights with a 200ms delay
   const debouncedSyncHeights = useRef(debounce(syncHeights, 200)).current;
 
@@ -957,42 +961,42 @@ export default function PlanPage() {
       setIsLoading(true);
       try {
         const sermonData = await getSermonById(sermonId);
-        
+
         if (!sermonData) {
           setError(t("errors.sermonNotFound"));
           return;
         }
-        
+
         setSermon(sermonData);
-        
+
         // Initialize the combined plan if a plan already exists
         if (sermonData.plan) {
           setCombinedPlan({
             introduction: sermonData.plan.introduction?.outline || "",
-            main: sermonData.plan.main?.outline || "", 
+            main: sermonData.plan.main?.outline || "",
             conclusion: sermonData.plan.conclusion?.outline || "",
           });
-          
+
           // Initialize generatedContent from saved outlinePoints if they exist
           const savedContent: Record<string, string> = {};
           const savedPoints: Record<string, boolean> = {};
-          
+
           // Extract all saved outline point content
           ['introduction', 'main', 'conclusion'].forEach(sectionKey => {
             const section = sermonData.plan?.[sectionKey as keyof Plan];
-            const outlinePoints = section?.outlinePoints || {}; 
-            
+            const outlinePoints = section?.outlinePoints || {};
+
             Object.entries(outlinePoints).forEach(([pointId, content]) => {
               savedContent[pointId] = content;
               savedPoints[pointId] = true;
             });
           });
-          
+
           // Set the saved content to the generatedContent state
           if (Object.keys(savedContent).length > 0) {
-            setGeneratedContent(prev => ({...prev, ...savedContent}));
+            setGeneratedContent(prev => ({ ...prev, ...savedContent }));
           }
-          
+
           // Set all saved points at once
           if (Object.keys(savedPoints).length > 0) {
             setSavedSermonPoints(savedPoints);
@@ -1005,31 +1009,31 @@ export default function PlanPage() {
         setIsLoading(false);
       }
     }
-    
+
     if (sermonId) {
       loadSermon();
     }
   }, [sermonId, t]);
-  
+
   // Check if all thoughts are assigned to outline points
   const areAllThoughtsAssigned = (sermon: Sermon | null): boolean => {
     if (!sermon) return false;
-    
+
     // Count thoughts that aren't assigned to an outline point
     const unassignedThoughts = sermon.thoughts.filter(
       (thought) => !thought.outlinePointId
     );
-    
+
     return unassignedThoughts.length === 0;
   };
-  
+
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = (outlinePointId: string): Thought[] => {
     if (!sermon) return [];
-    
+
     // 1. Найти точку плана и определить, к какой секции она относится
     let sectionName: string | null = null;
-    
+
     if (sermon.outline?.introduction.some(op => op.id === outlinePointId)) {
       sectionName = "introduction";
     } else if (sermon.outline?.main.some(op => op.id === outlinePointId)) {
@@ -1037,34 +1041,34 @@ export default function PlanPage() {
     } else if (sermon.outline?.conclusion.some(op => op.id === outlinePointId)) {
       sectionName = "conclusion";
     }
-    
+
     if (!sectionName) {
       // Если секция не найдена, возвращаем мысли в порядке по умолчанию
       return sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
     }
-    
+
     // 2. Получаем упорядоченный массив ID мыслей из структуры для данной секции
     const structureIds = sermon.structure?.[sectionName as keyof ThoughtsBySection];
-    const structureIdsArray = Array.isArray(structureIds) ? structureIds : 
-                           (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
-    
+    const structureIdsArray = Array.isArray(structureIds) ? structureIds :
+      (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
+
     // 3. Отфильтровываем все мысли, связанные с данной точкой плана
     const thoughtsForPoint = sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
-    
+
     // 4. Если массив структуры пуст, возвращаем мысли без сортировки
     if (!structureIdsArray.length) {
       return thoughtsForPoint;
     }
-    
+
     // 5. Сортируем мысли в соответствии с порядком в структуре
     return thoughtsForPoint.sort((a, b) => {
       const indexA = structureIdsArray.indexOf(a.id);
       const indexB = structureIdsArray.indexOf(b.id);
-      
+
       // Если мысль не найдена в структуре, помещаем её в конец
       if (indexA === -1) return 1;
       if (indexB === -1) return -1;
-      
+
       // Сортировка по порядку в структуре
       return indexA - indexB;
     });
@@ -1079,14 +1083,14 @@ export default function PlanPage() {
   // Generate content for an outline point
   const generateSermonPointContent = async (outlinePointId: string) => {
     if (!sermon) return;
-    
+
     setGeneratingId(outlinePointId);
-    
+
     try {
       // Find the outline point in the sermon structure
       let outlinePoint: SermonPoint | undefined;
       let section: string | undefined;
-      
+
       if (sermon.outline?.introduction.some((op) => op.id === outlinePointId)) {
         outlinePoint = sermon.outline.introduction.find((op) => op.id === outlinePointId);
         section = "introduction";
@@ -1097,12 +1101,12 @@ export default function PlanPage() {
         outlinePoint = sermon.outline.conclusion.find((op) => op.id === outlinePointId);
         section = "conclusion";
       }
-      
+
       if (!outlinePoint || !section) {
         toast.error(t("errors.outlinePointNotFound"));
         return;
       }
-      
+
       // Call the API to generate content
       const response = await fetch(`/api/sermons/${sermon.id}/plan?outlinePointId=${outlinePointId}`, {
         method: "GET",
@@ -1110,25 +1114,25 @@ export default function PlanPage() {
           "Content-Type": "application/json",
         },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to generate content: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Update the generated content
       setGeneratedContent((prev) => ({
         ...prev,
         [outlinePointId]: data.content,
       }));
-      
+
       // Mark content as modified since it was just generated
       setModifiedContent(prev => ({
         ...prev,
         [outlinePointId]: true
       }));
-      
+
       // Update the combined plan
       updateCombinedPlan(outlinePointId, outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
 
@@ -1136,7 +1140,7 @@ export default function PlanPage() {
       if (section) {
         syncPairHeights(section as 'introduction' | 'main' | 'conclusion', outlinePointId);
       }
-      
+
       toast.success(t("plan.contentGenerated"));
     } catch (err) {
       console.error(err);
@@ -1145,7 +1149,7 @@ export default function PlanPage() {
       setGeneratingId(null);
     }
   };
-  
+
   // Update the combined plan when a new outline point content is generated
   const updateCombinedPlan = (
     outlinePointId: string,
@@ -1156,22 +1160,22 @@ export default function PlanPage() {
     setCombinedPlan((prev) => {
       // Create a heading with the outline point text
       const heading = `## ${outlinePointText}`;
-      
+
       // Current content of the section
       const currentSectionContent = prev[section];
-      
+
       // Check if the heading already exists in the content
       const headingIndex = currentSectionContent.indexOf(heading);
-      
+
       if (headingIndex !== -1) {
         // Find the end of the current content for this heading
         const nextHeadingIndex = currentSectionContent.indexOf("## ", headingIndex + heading.length);
-        
+
         // If there's a next heading, replace the content between the headings
         if (nextHeadingIndex !== -1) {
           const beforeHeading = currentSectionContent.substring(0, headingIndex + heading.length);
           const afterNextHeading = currentSectionContent.substring(nextHeadingIndex);
-          
+
           return {
             ...prev,
             [section]: `${beforeHeading}\n\n${content}\n\n${afterNextHeading}`,
@@ -1194,7 +1198,7 @@ export default function PlanPage() {
       }
     });
   };
-  
+
   // Save the plan to the server
   // const savePlan = async () => {
   //   if (!sermon) return;
@@ -1224,30 +1228,30 @@ export default function PlanPage() {
   //     toast.error(t("errors.failedToSavePlan"));
   //   }
   // };
-  
+
   // Save individual outline point
   const saveSermonPoint = async (outlinePointId: string, content: string, section: keyof Plan) => {
     if (!sermon) return;
-    
+
     try {
       // First fetch the latest sermon plan from server to avoid overwriting recent changes
       const latestSermonResponse = await fetch(`/api/sermons/${sermon.id}`);
       if (!latestSermonResponse.ok) {
         throw new Error(`Failed to fetch latest sermon data: ${latestSermonResponse.status}`);
       }
-      
+
       const latestSermon = await latestSermonResponse.json();
-      
+
       // Create plan object if it doesn't exist
       const currentPlan = latestSermon.plan || {
         introduction: { outline: "" },
         main: { outline: "" },
         conclusion: { outline: "" }
       };
-      
+
       // Preserve existing outline points and add/update the new one
       const existingSermonPoints = currentPlan[section]?.outlinePoints || {};
-      
+
       // Update the outline point in the plan
       const updatedPlan: Plan = {
         ...currentPlan,
@@ -1259,7 +1263,7 @@ export default function PlanPage() {
           }
         }
       };
-      
+
       // Send the updated plan to the server
       const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
         method: "PUT",
@@ -1268,38 +1272,38 @@ export default function PlanPage() {
         },
         body: JSON.stringify(updatedPlan),
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to save outline point: ${response.status}`);
       }
-      
+
       // Mark this point as saved
-      setSavedSermonPoints(prev => ({...prev, [outlinePointId]: true}));
-      
+      setSavedSermonPoints(prev => ({ ...prev, [outlinePointId]: true }));
+
       // Mark content as unmodified since it's now saved
-      setModifiedContent(prev => ({...prev, [outlinePointId]: false}));
-      
+      setModifiedContent(prev => ({ ...prev, [outlinePointId]: false }));
+
       toast.success(t("plan.pointSaved"));
-      
+
       // Check if all points in this section are saved
       const allPointsInSection = sermon.outline?.[section] || [];
-      const allSaved = allPointsInSection.every(point => 
+      const allSaved = allPointsInSection.every(point =>
         savedSermonPoints[point.id] || point.id === outlinePointId
       );
-      
+
       // If all points are saved, update the combined section text
       if (allSaved && allPointsInSection.length > 0) {
         // Collect all content for this section
         const sectionTexts = allPointsInSection.map(point => {
-          const pointContent = point.id === outlinePointId ? 
-            content : 
+          const pointContent = point.id === outlinePointId ?
+            content :
             updatedPlan[section]?.outlinePoints?.[point.id] || "";
-          
+
           return `## ${point.text}\n\n${pointContent}`;
         });
-        
+
         const combinedText = sectionTexts.join("\n\n");
-        
+
         // Update the section outline with the combined text
         const finalPlan: Plan = {
           ...updatedPlan,
@@ -1308,7 +1312,7 @@ export default function PlanPage() {
             outline: combinedText
           }
         };
-        
+
         // Save the final combined plan
         const finalResponse = await fetch(`/api/sermons/${sermon.id}/plan`, {
           method: "PUT",
@@ -1317,31 +1321,31 @@ export default function PlanPage() {
           },
           body: JSON.stringify(finalPlan),
         });
-        
+
         if (finalResponse.ok) {
           // Update the local sermon data with the latest plan
-          setSermon(prevSermon => prevSermon ? {...prevSermon, plan: finalPlan} : null);
-          
+          setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: finalPlan } : null);
+
           // Update the local combined plan state
           setCombinedPlan(prev => ({
             ...prev,
             [section]: combinedText
           }));
-          
+
           toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
         } else {
           throw new Error(`Failed to save section: ${finalResponse.status}`);
         }
       } else {
         // Update local sermon data with the latest plan even if we don't save the combined text
-        setSermon(prevSermon => prevSermon ? {...prevSermon, plan: updatedPlan} : null);
+        setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: updatedPlan } : null);
       }
     } catch (err) {
       console.error(err);
       toast.error(t("errors.failedToSavePoint"));
     }
   };
-  
+
   // Toggle edit mode for an outline point
   const toggleEditMode = (outlinePointId: string) => {
     setEditModePoints(prev => ({
@@ -1352,26 +1356,26 @@ export default function PlanPage() {
     // After toggling, equalize only this pair to avoid page-wide jumps
     syncPairHeightsByPointId(outlinePointId);
   };
-  
+
   // Handle thought update from key fragments modal
   const handleThoughtUpdate = (updatedThought: Thought) => {
     setSermon(prevSermon => {
       if (!prevSermon) return null;
       return {
         ...prevSermon,
-        thoughts: prevSermon.thoughts.map(t => 
+        thoughts: prevSermon.thoughts.map(t =>
           t.id === updatedThought.id ? updatedThought : t
         )
       };
     });
   };
-  
+
   // Find outline point by id
   const findSermonPointById = (outlinePointId: string): SermonPoint | undefined => {
     if (!sermon || !sermon.outline) return undefined;
-    
+
     let outlinePoint;
-    
+
     if (sermon.outline.introduction.some(op => op.id === outlinePointId)) {
       outlinePoint = sermon.outline.introduction.find(op => op.id === outlinePointId);
     } else if (sermon.outline.main.some(op => op.id === outlinePointId)) {
@@ -1379,7 +1383,7 @@ export default function PlanPage() {
     } else if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) {
       outlinePoint = sermon.outline.conclusion.find(op => op.id === outlinePointId);
     }
-    
+
     return outlinePoint;
   };
 
@@ -1498,22 +1502,22 @@ export default function PlanPage() {
 
   // Alias for compatibility with ViewPlanMenu component
   const handleOpenTimePicker = handleStartPreachingMode;
-  
+
   // Generate content for export as text
   const getExportContent = async (format: 'plain' | 'markdown'): Promise<string> => {
     if (!sermon) return '';
-    
+
     const titleSection = `# ${sermon.title}\n\n`;
     const verseSection = sermon.verse ? `> ${sermon.verse}\n\n` : '';
-    
+
     // Format the outline points and their content
     const introSection = `## ${t("sections.introduction")}\n\n${combinedPlan.introduction || t("plan.noContent")}\n\n`;
     const mainSection = `## ${t("sections.main")}\n\n${combinedPlan.main || t("plan.noContent")}\n\n`;
     const conclusionSection = `## ${t("sections.conclusion")}\n\n${combinedPlan.conclusion || t("plan.noContent")}\n\n`;
-    
+
     // Combine all sections
     const markdown = `${titleSection}${verseSection}${introSection}${mainSection}${conclusionSection}`;
-    
+
     // For plain text, we need to strip markdown formatting
     if (format === 'plain') {
       // A very simple markdown to plain text conversion - for a proper conversion, use a library
@@ -1526,18 +1530,18 @@ export default function PlanPage() {
         .replace(/>/g, '') // blockquotes at start
         .replace(/\n\n+/g, '\n\n'); // multiple line breaks
     }
-    
+
     return markdown;
   };
 
   // Generate content for PDF export
   const getPdfContent = async (): Promise<React.ReactNode> => {
     if (!sermon) return null;
-    
+
     return (
       <div className="p-6 bg-white text-black" style={{ fontFamily: 'Arial, sans-serif' }}>
         <h1 className="text-3xl font-bold mb-4">{sermon.title}</h1>
-        
+
         {sermon.verse && (
           <div className="mb-8 p-4 bg-gray-50 rounded-md border-l-4 border-blue-500">
             <p className="text-gray-700 italic text-lg whitespace-pre-line">
@@ -1548,7 +1552,7 @@ export default function PlanPage() {
             </p>
           </div>
         )}
-        
+
         <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} mb-4`}>
             {t("sections.introduction")}
@@ -1561,7 +1565,7 @@ export default function PlanPage() {
             </div>
           </div>
         </div>
-        
+
         <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} mb-4`}>
             {t("sections.main")}
@@ -1574,7 +1578,7 @@ export default function PlanPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="mb-4">
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} mb-4`}>
             {t("sections.conclusion")}
@@ -1590,7 +1594,7 @@ export default function PlanPage() {
       </div>
     );
   };
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1598,12 +1602,12 @@ export default function PlanPage() {
       </div>
     );
   }
-  
+
   if (error || !sermon) {
     return (
       <div className="p-6 text-center">
         <h1 className="text-2xl font-bold text-red-600 mb-4">{error}</h1>
-        <Button 
+        <Button
           onClick={() => router.push(`/sermons/${params.id}`)}
           variant="default"
           className="px-6 py-3 text-base"
@@ -1613,7 +1617,7 @@ export default function PlanPage() {
       </div>
     );
   }
-  
+
   // Check if all thoughts are assigned to outline points
   if (!areAllThoughtsAssigned(sermon)) {
     return (
@@ -2081,118 +2085,118 @@ export default function PlanPage() {
 
   const planOverlayPortal = isPlanOverlay && typeof document !== 'undefined' && sermon
     ? createPortal(
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
-          <div className="flex flex-1 justify-center p-4 overflow-y-auto">
-            <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
-                <div>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
-                </div>
-                <div className="flex items-center gap-2 h-10">
-                  <Button
-                    onClick={async () => {
-                      if (overlayCopyStatus === 'copying') {
-                        return;
-                      }
-                      setOverlayCopyStatus('copying');
-                      const copied = await copyFormattedFromElement(planOverlayContentRef.current);
-                      if (copied) {
-                        toast.success(t("plan.copySuccess"));
-                        setOverlayCopyStatus('success');
-                        if (overlayCopyTimeoutRef.current) {
-                          clearTimeout(overlayCopyTimeoutRef.current);
-                        }
-                        overlayCopyTimeoutRef.current = setTimeout(() => {
-                          setOverlayCopyStatus('idle');
-                          overlayCopyTimeoutRef.current = null;
-                        }, 2000);
-                      } else {
-                        toast.error(t("plan.copyError"));
-                        setOverlayCopyStatus('error');
-                        if (overlayCopyTimeoutRef.current) {
-                          clearTimeout(overlayCopyTimeoutRef.current);
-                        }
-                        overlayCopyTimeoutRef.current = setTimeout(() => {
-                          setOverlayCopyStatus('idle');
-                          overlayCopyTimeoutRef.current = null;
-                        }, 2500);
-                      }
-                    }}
-                    variant="secondary"
-                    className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
-                    title={
-                      overlayCopyStatus === 'success'
-                        ? t("common.copied")
-                        : overlayCopyStatus === 'error'
-                          ? t("plan.copyError")
-                          : overlayCopyStatus === 'copying'
-                            ? t('copy.copying', { defaultValue: 'Copying…' })
-                            : t("copy.copyFormatted")
+      <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
+        <div className="flex flex-1 justify-center p-4 overflow-y-auto">
+          <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
+              <div>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
+              </div>
+              <div className="flex items-center gap-2 h-10">
+                <Button
+                  onClick={async () => {
+                    if (overlayCopyStatus === 'copying') {
+                      return;
                     }
-                    disabled={overlayCopyStatus === 'copying'}
-                  >
-                    {overlayCopyStatus === 'copying' ? (
-                      <LoadingSpinner size="small" />
-                    ) : overlayCopyStatus === 'success' ? (
-                      <Check className="h-6 w-6 text-green-200" />
-                    ) : overlayCopyStatus === 'error' ? (
-                      <X className="h-6 w-6 text-rose-200" />
-                    ) : (
-                      <Copy className="h-6 w-6" />
-                    )}
-                  </Button>
-                  <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-                    {overlayCopyStatus === 'success'
-                      ? t("plan.copySuccess")
+                    setOverlayCopyStatus('copying');
+                    const copied = await copyFormattedFromElement(planOverlayContentRef.current);
+                    if (copied) {
+                      toast.success(t("plan.copySuccess"));
+                      setOverlayCopyStatus('success');
+                      if (overlayCopyTimeoutRef.current) {
+                        clearTimeout(overlayCopyTimeoutRef.current);
+                      }
+                      overlayCopyTimeoutRef.current = setTimeout(() => {
+                        setOverlayCopyStatus('idle');
+                        overlayCopyTimeoutRef.current = null;
+                      }, 2000);
+                    } else {
+                      toast.error(t("plan.copyError"));
+                      setOverlayCopyStatus('error');
+                      if (overlayCopyTimeoutRef.current) {
+                        clearTimeout(overlayCopyTimeoutRef.current);
+                      }
+                      overlayCopyTimeoutRef.current = setTimeout(() => {
+                        setOverlayCopyStatus('idle');
+                        overlayCopyTimeoutRef.current = null;
+                      }, 2500);
+                    }
+                  }}
+                  variant="secondary"
+                  className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
+                  title={
+                    overlayCopyStatus === 'success'
+                      ? t("common.copied")
                       : overlayCopyStatus === 'error'
                         ? t("plan.copyError")
                         : overlayCopyStatus === 'copying'
                           ? t('copy.copying', { defaultValue: 'Copying…' })
-                          : ''}
-                  </span>
-                  <button
-                    onClick={handleOpenPlanImmersive}
-                    className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                    title={t("plan.fullscreen")}
-                  >
-                    <Maximize2 className="h-7 w-7" />
-                  </button>
-                  <button
-                    onClick={handleClosePlanView}
-                    className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                    title={t("actions.close")}
-                  >
-                    <X className="h-7 w-7" />
-                  </button>
-                </div>
-              </div>
-              <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
-                <FullPlanContent
-                  sermonTitle={sermon.title}
-                  sermonVerse={sermon.verse}
-                  combinedPlan={combinedPlan}
-                  t={t}
-                  timerState={preachingTimerState}
-                  isPreachingMode={isPlanPreaching}
-                />
+                          : t("copy.copyFormatted")
+                  }
+                  disabled={overlayCopyStatus === 'copying'}
+                >
+                  {overlayCopyStatus === 'copying' ? (
+                    <LoadingSpinner size="small" />
+                  ) : overlayCopyStatus === 'success' ? (
+                    <Check className="h-6 w-6 text-green-200" />
+                  ) : overlayCopyStatus === 'error' ? (
+                    <X className="h-6 w-6 text-rose-200" />
+                  ) : (
+                    <Copy className="h-6 w-6" />
+                  )}
+                </Button>
+                <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                  {overlayCopyStatus === 'success'
+                    ? t("plan.copySuccess")
+                    : overlayCopyStatus === 'error'
+                      ? t("plan.copyError")
+                      : overlayCopyStatus === 'copying'
+                        ? t('copy.copying', { defaultValue: 'Copying…' })
+                        : ''}
+                </span>
+                <button
+                  onClick={handleOpenPlanImmersive}
+                  className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                  title={t("plan.fullscreen")}
+                >
+                  <Maximize2 className="h-7 w-7" />
+                </button>
+                <button
+                  onClick={handleClosePlanView}
+                  className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                  title={t("actions.close")}
+                >
+                  <X className="h-7 w-7" />
+                </button>
               </div>
             </div>
+            <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+              <FullPlanContent
+                sermonTitle={sermon.title}
+                sermonVerse={sermon.verse}
+                combinedPlan={combinedPlan}
+                t={t}
+                timerState={preachingTimerState}
+                isPreachingMode={isPlanPreaching}
+              />
+            </div>
           </div>
-        </div>,
-        document.body
-      )
+        </div>
+      </div>,
+      document.body
+    )
     : null;
-  
+
   return (
     <>
       {planOverlayPortal}
-      <div 
+      <div
         className="p-4"
         data-testid="sermon-plan-page-container"
       >
-      <style jsx global>{sectionButtonStyles}</style>
-      <style jsx global>{`
+        <style jsx global>{sectionButtonStyles}</style>
+        <style jsx global>{`
         /* Prevent scroll anchoring in dynamic plan columns */
         [data-testid="plan-introduction-left-section"],
         [data-testid="plan-introduction-right-section"],
@@ -2372,550 +2376,550 @@ export default function PlanPage() {
           }
         }
       `}</style>
-      <div className="w-full">
-        {/* Page Header */}
-        <div className="mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center">
-              <Link 
-                href={`/sermons/${params.id}`}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center mr-3"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                {t("actions.backToSermon")}
-              </Link>
-              {/* <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <div className="w-full">
+          {/* Page Header */}
+          <div className="mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center">
+                <Link
+                  href={`/sermons/${params.id}`}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center mr-3"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {t("actions.backToSermon")}
+                </Link>
+                {/* <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {t("plan.pageTitle")}
               </h1> */}
-            </div>
-          </div>
-          
-          {/* Sermon Title & Verse */}
-          {sermon && (
-            <div className="mt-6 mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4">
-                {sermon.title}
-              </h1>
-              {sermon.verse && (
-                <div className="pl-4 border-l-4 border-blue-500 dark:border-blue-400">
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line text-lg italic">
-                    {sermon.verse}
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    {t("common.scripture")}
-                  </p>
-                </div>
-              )}
-              
-              {/* View Plan Buttons */}
-              <div className="flex flex-wrap gap-3 mt-6">
-                <ViewPlanMenu
-                  sermonTitle={sermon.title}
-                  sermonId={sermonId}
-                  combinedPlan={combinedPlan}
-                  sectionMenuRef={sectionMenuRef}
-                  showSectionMenu={showSectionMenu}
-                  setShowSectionMenu={setShowSectionMenu}
-                  onRequestPlanOverlay={handleOpenPlanOverlay}
-                  onRequestPreachingMode={handleOpenTimePicker}
-                  onStartPreachingMode={handleStartPreachingMode}
-                />
-                
-                {/* Add Export Buttons */}
-                <ExportButtons
-                  sermonId={sermonId}
-                  getExportContent={getExportContent}
-                  getPdfContent={getPdfContent}
-                  title={sermon.title || "Sermon Plan"}
-                  className="ml-auto"
-                  disabledFormats={['pdf']} // Add this prop to disable PDF
-                />
               </div>
             </div>
-          )}
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Introduction header */}
-          <div ref={introductionSectionRef} data-section="introduction" className="lg:col-span-2">
-            <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
-          </div>
-          {/* Intro Left & Right */}
-          <div 
-            data-testid="plan-introduction-left-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.introduction.map((outlinePoint) => (
-                <SermonPointCard
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!introPointRefs.current[outlinePoint.id]) {
-                      introPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    introPointRefs.current[outlinePoint.id].left = el;
-                  }}
-                  outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                  sectionName="introduction"
-                  onGenerate={generateSermonPointContent}
-                  generatedContent={generatedContent[outlinePoint.id] || null}
-                  isGenerating={generatingId === outlinePoint.id}
-                  sermonId={sermonId}
-                  onOpenFragmentsModal={setModalSermonPointId}
-                />
-              ))}
-              {sermon.outline?.introduction.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-          
-          <div 
-            data-testid="plan-introduction-right-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.introduction.map((outlinePoint) => (
-                <div 
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!introPointRefs.current[outlinePoint.id]) {
-                      introPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    introPointRefs.current[outlinePoint.id].right = el;
-                  }}
-                  className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                >
-                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} flex justify-between items-center`}>
-                    {outlinePoint.text}
-                    <div className="flex space-x-2">
-                      <Button
-                        className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveSermonPoint(
-                          outlinePoint.id,
-                          generatedContent[outlinePoint.id] || "",
-                          "introduction"
-                        )}
-                        variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                        sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.introduction : undefined}
-                        disabled={
-                          !generatedContent[outlinePoint.id] || 
-                          generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                        }
-                        title={t("plan.save")}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </h3>
-                  
-                  <div className="relative">
-                    <Button
-                      className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                      onClick={() => toggleEditMode(outlinePoint.id)}
-                      variant="default"
-                      title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
-                    >
-                      {editModePoints[outlinePoint.id] ? (
-                        <FileText className="h-4 w-4" />
-                      ) : (
-                        <Pencil className="h-4 w-4" />
-                      )}
-                    </Button>
-                    {editModePoints[outlinePoint.id] ? (
-                      <TextareaAutosize
-                        className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                        minRows={4}
-                        placeholder={t("plan.noContent")}
-                        value={generatedContent[outlinePoint.id] || ""}
-                        onChange={(e) => {
-                          const newContent = e.target.value;
-                          // Mark content as modified if it's different from the current saved content
-                          const currentSavedContent = sermon.plan?.introduction?.outlinePoints?.[outlinePoint.id] || "";
-                          const isModified = newContent !== currentSavedContent;
-                          
-                          setGeneratedContent((prev) => ({
-                            ...prev,
-                            [outlinePoint.id]: newContent,
-                          }));
-                          
-                          // Mark as modified if content changed
-                          setModifiedContent(prev => ({
-                            ...prev,
-                            [outlinePoint.id]: isModified
-                          }));
-                          
-                          updateCombinedPlan(
-                            outlinePoint.id,
-                            outlinePoint.text,
-                            newContent,
-                            "introduction"
-                          );
-                          // Height will be synced by the MutationObserver
-                        }}
-                        onHeightChange={() => {
-                          // Equalize only the affected pair to reduce scroll jumps
-                          syncPairHeights('introduction', outlinePoint.id);
-                        }}
-                      />
-                    ) : (
-                      <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                        <div className="absolute top-2 right-2 z-10">
-                          <Button
-                            className="text-sm px-2 py-1 h-8"
-                            onClick={() => toggleEditMode(outlinePoint.id)}
-                            variant="default"
-                            title={t("plan.editMode")}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="p-3 pr-12">
-                          <MarkdownRenderer 
-                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
-                            section="introduction"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {sermon.outline?.introduction.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-          
-          {/* Main header */}
-          <div ref={mainSectionRef} data-section="main" className="lg:col-span-2">
-            <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
-          </div>
-          {/* Main Left & Right */}
-          <div 
-            data-testid="plan-main-left-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.main.map((outlinePoint) => (
-                <SermonPointCard
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!mainPointRefs.current[outlinePoint.id]) {
-                      mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    mainPointRefs.current[outlinePoint.id].left = el;
-                  }}
-                  outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                  sectionName="main"
-                  onGenerate={generateSermonPointContent}
-                  generatedContent={generatedContent[outlinePoint.id] || null}
-                  isGenerating={generatingId === outlinePoint.id}
-                  sermonId={sermonId}
-                  onOpenFragmentsModal={setModalSermonPointId}
-                />
-              ))}
-              {sermon.outline?.main.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-          
-          <div 
-            data-testid="plan-main-right-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.main.map((outlinePoint) => (
-                <div 
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!mainPointRefs.current[outlinePoint.id]) {
-                      mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    mainPointRefs.current[outlinePoint.id].right = el;
-                  }}
-                  className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                >
-                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} flex justify-between items-center`}>
-                    {outlinePoint.text}
-                    <div className="flex space-x-2">
-                      <Button
-                        className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveSermonPoint(
-                          outlinePoint.id,
-                          generatedContent[outlinePoint.id] || "",
-                          "main"
-                        )}
-                        variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                        sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.mainPart : undefined}
-                        disabled={
-                          !generatedContent[outlinePoint.id] || 
-                          generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                        }
-                        title={t("plan.save")}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </h3>
-                  
-                  <div className="relative">
-                    <Button
-                      className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                      onClick={() => toggleEditMode(outlinePoint.id)}
-                      variant="default"
-                      title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
-                    >
-                      {editModePoints[outlinePoint.id] ? (
-                        <FileText className="h-4 w-4" />
-                      ) : (
-                        <Pencil className="h-4 w-4" />
-                      )}
-                    </Button>
-                    {editModePoints[outlinePoint.id] ? (
-                      <TextareaAutosize
-                        className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                        minRows={4}
-                        placeholder={t("plan.noContent")}
-                        value={generatedContent[outlinePoint.id] || ""}
-                        onChange={(e) => {
-                          const newContent = e.target.value;
-                          // Mark content as modified if it's different from the current saved content
-                          const currentSavedContent = sermon.plan?.main?.outlinePoints?.[outlinePoint.id] || "";
-                          const isModified = newContent !== currentSavedContent;
-                          
-                          setGeneratedContent((prev) => ({
-                            ...prev,
-                            [outlinePoint.id]: newContent,
-                          }));
-                          
-                          // Mark as modified if content changed
-                          setModifiedContent(prev => ({
-                            ...prev,
-                            [outlinePoint.id]: isModified
-                          }));
-                          
-                          updateCombinedPlan(
-                            outlinePoint.id,
-                            outlinePoint.text,
-                            newContent,
-                            "main"
-                          );
-                          // Height will be synced by the MutationObserver
-                        }}
-                        onHeightChange={() => {
-                          // Equalize only the affected pair to reduce scroll jumps
-                          syncPairHeights('main', outlinePoint.id);
-                        }}
-                      />
-                    ) : (
-                      <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                        <div className="absolute top-2 right-2 z-10">
-                          <Button
-                            className="text-sm px-2 py-1 h-8"
-                            onClick={() => toggleEditMode(outlinePoint.id)}
-                            variant="default"
-                            title={t("plan.editMode")}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="p-3 pr-12">
-                          <MarkdownRenderer 
-                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
-                            section="main"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {sermon.outline?.main.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-          
-          {/* Conclusion header */}
-          <div ref={conclusionSectionRef} data-section="conclusion" className="lg:col-span-2">
-            <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
-          </div>
-          {/* Conclusion Left & Right */}
-          <div 
-            data-testid="plan-conclusion-left-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.conclusion.map((outlinePoint) => (
-                <SermonPointCard
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!conclusionPointRefs.current[outlinePoint.id]) {
-                      conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    conclusionPointRefs.current[outlinePoint.id].left = el;
-                  }}
-                  outlinePoint={outlinePoint}
-                  thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                  sectionName="conclusion"
-                  onGenerate={generateSermonPointContent}
-                  generatedContent={generatedContent[outlinePoint.id] || null}
-                  isGenerating={generatingId === outlinePoint.id}
-                  sermonId={sermonId}
-                  onOpenFragmentsModal={setModalSermonPointId}
-                />
-              ))}
-              {sermon.outline?.conclusion.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-          
-          <div 
-            data-testid="plan-conclusion-right-section"
-            className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
-          >
-            <div className="p-3">
-              {sermon.outline?.conclusion.map((outlinePoint) => (
-                <div 
-                  key={outlinePoint.id}
-                  ref={(el) => {
-                    if (!conclusionPointRefs.current[outlinePoint.id]) {
-                      conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                    }
-                    conclusionPointRefs.current[outlinePoint.id].right = el;
-                  }}
-                  className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                >
-                  <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} flex justify-between items-center`}>
-                    {outlinePoint.text}
-                    <div className="flex space-x-2">
-                      <Button
-                        className="text-sm px-2 py-1 h-8"
-                        onClick={() => saveSermonPoint(
-                          outlinePoint.id,
-                          generatedContent[outlinePoint.id] || "",
-                          "conclusion"
-                        )}
-                        variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                        sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.conclusion : undefined}
-                        disabled={
-                          !generatedContent[outlinePoint.id] || 
-                          generatedContent[outlinePoint.id].trim() === "" || 
-                          (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                        }
-                        title={t("plan.save")}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </h3>
-                  
-                  <div className="relative">
-                    <Button
-                      className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                      onClick={() => toggleEditMode(outlinePoint.id)}
-                      variant="default"
-                      title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
-                    >
-                      {editModePoints[outlinePoint.id] ? (
-                        <FileText className="h-4 w-4" />
-                      ) : (
-                        <Pencil className="h-4 w-4" />
-                      )}
-                    </Button>
-                    {editModePoints[outlinePoint.id] ? (
-                      <TextareaAutosize
-                        className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                        minRows={4}
-                        placeholder={t("plan.noContent")}
-                        value={generatedContent[outlinePoint.id] || ""}
-                        onChange={(e) => {
-                          const newContent = e.target.value;
-                          // Mark content as modified if it's different from the current saved content
-                          const currentSavedContent = sermon.plan?.conclusion?.outlinePoints?.[outlinePoint.id] || "";
-                          const isModified = newContent !== currentSavedContent;
-                          
-                          setGeneratedContent((prev) => ({
-                            ...prev,
-                            [outlinePoint.id]: newContent,
-                          }));
-                          
-                          // Mark as modified if content changed
-                          setModifiedContent(prev => ({
-                            ...prev,
-                            [outlinePoint.id]: isModified
-                          }));
-                          
-                          updateCombinedPlan(
-                            outlinePoint.id,
-                            outlinePoint.text,
-                            newContent,
-                            "conclusion"
-                          );
-                          // Height will be synced by the MutationObserver
-                        }}
-                        onHeightChange={() => {
-                          // Equalize only the affected pair to reduce scroll jumps
-                          syncPairHeights('conclusion', outlinePoint.id);
-                        }}
-                      />
-                    ) : (
-                      <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                        <div className="absolute top-2 right-2 z-10">
-                          <Button
-                            className="text-sm px-2 py-1 h-8"
-                            onClick={() => toggleEditMode(outlinePoint.id)}
-                            variant="default"
-                            title={t("plan.editMode")}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="p-3 pr-12">
-                          <MarkdownRenderer 
-                            markdown={generatedContent[outlinePoint.id] || t("plan.noContent")} 
-                            section="conclusion"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {sermon.outline?.conclusion.length === 0 && (
-                <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Key Fragments Modal */}
-        {modalSermonPointId && (() => {
-          const outlinePoint = findSermonPointById(modalSermonPointId);
-          if (!outlinePoint) return null;
-          return (
-            <KeyFragmentsModal
-              data-testid="key-fragments-modal-instance"
-              isOpen={!!modalSermonPointId}
-              onClose={() => setModalSermonPointId(null)}
-              outlinePoint={outlinePoint}
-              thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
-              sermonId={sermonId}
-              onThoughtUpdate={handleThoughtUpdate}
-            />
-          );
-        })()}
+            {/* Sermon Title & Verse */}
+            {sermon && (
+              <div className="mt-6 mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                  {sermon.title}
+                </h1>
+                {sermon.verse && (
+                  <div className="pl-4 border-l-4 border-blue-500 dark:border-blue-400">
+                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line text-lg italic">
+                      {sermon.verse}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                      {t("common.scripture")}
+                    </p>
+                  </div>
+                )}
+
+                {/* View Plan Buttons */}
+                <div className="flex flex-wrap gap-3 mt-6">
+                  <ViewPlanMenu
+                    sermonTitle={sermon.title}
+                    sermonId={sermonId}
+                    combinedPlan={combinedPlan}
+                    sectionMenuRef={sectionMenuRef}
+                    showSectionMenu={showSectionMenu}
+                    setShowSectionMenu={setShowSectionMenu}
+                    onRequestPlanOverlay={handleOpenPlanOverlay}
+                    onRequestPreachingMode={handleOpenTimePicker}
+                    onStartPreachingMode={handleStartPreachingMode}
+                  />
+
+                  {/* Add Export Buttons */}
+                  <ExportButtons
+                    sermonId={sermonId}
+                    getExportContent={getExportContent}
+                    getPdfContent={getPdfContent}
+                    title={sermon.title || "Sermon Plan"}
+                    className="ml-auto"
+                    disabledFormats={['pdf']} // Add this prop to disable PDF
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Introduction header */}
+            <div ref={introductionSectionRef} data-section="introduction" className="lg:col-span-2">
+              <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
+            </div>
+            {/* Intro Left & Right */}
+            <div
+              data-testid="plan-introduction-left-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.introduction.map((outlinePoint) => (
+                  <SermonPointCard
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!introPointRefs.current[outlinePoint.id]) {
+                        introPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      introPointRefs.current[outlinePoint.id].left = el;
+                    }}
+                    outlinePoint={outlinePoint}
+                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
+                    sectionName="introduction"
+                    onGenerate={generateSermonPointContent}
+                    generatedContent={generatedContent[outlinePoint.id] || null}
+                    isGenerating={generatingId === outlinePoint.id}
+                    sermonId={sermonId}
+                    onOpenFragmentsModal={setModalSermonPointId}
+                  />
+                ))}
+                {sermon.outline?.introduction.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+
+            <div
+              data-testid="plan-introduction-right-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.introduction.map((outlinePoint) => (
+                  <div
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!introPointRefs.current[outlinePoint.id]) {
+                        introPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      introPointRefs.current[outlinePoint.id].right = el;
+                    }}
+                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
+                  >
+                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} flex justify-between items-center`}>
+                      {outlinePoint.text}
+                      <div className="flex space-x-2">
+                        <Button
+                          className="text-sm px-2 py-1 h-8"
+                          onClick={() => saveSermonPoint(
+                            outlinePoint.id,
+                            generatedContent[outlinePoint.id] || "",
+                            "introduction"
+                          )}
+                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
+                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.introduction : undefined}
+                          disabled={
+                            !generatedContent[outlinePoint.id] ||
+                            generatedContent[outlinePoint.id].trim() === "" ||
+                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          }
+                          title={t("plan.save")}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </h3>
+
+                    <div className="relative">
+                      <Button
+                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
+                        onClick={() => toggleEditMode(outlinePoint.id)}
+                        variant="default"
+                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                      >
+                        {editModePoints[outlinePoint.id] ? (
+                          <FileText className="h-4 w-4" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </Button>
+                      {editModePoints[outlinePoint.id] ? (
+                        <TextareaAutosize
+                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
+                          minRows={4}
+                          placeholder={t("plan.noContent")}
+                          value={generatedContent[outlinePoint.id] || ""}
+                          onChange={(e) => {
+                            const newContent = e.target.value;
+                            // Mark content as modified if it's different from the current saved content
+                            const currentSavedContent = sermon.plan?.introduction?.outlinePoints?.[outlinePoint.id] || "";
+                            const isModified = newContent !== currentSavedContent;
+
+                            setGeneratedContent((prev) => ({
+                              ...prev,
+                              [outlinePoint.id]: newContent,
+                            }));
+
+                            // Mark as modified if content changed
+                            setModifiedContent(prev => ({
+                              ...prev,
+                              [outlinePoint.id]: isModified
+                            }));
+
+                            updateCombinedPlan(
+                              outlinePoint.id,
+                              outlinePoint.text,
+                              newContent,
+                              "introduction"
+                            );
+                            // Height will be synced by the MutationObserver
+                          }}
+                          onHeightChange={() => {
+                            // Equalize only the affected pair to reduce scroll jumps
+                            syncPairHeights('introduction', outlinePoint.id);
+                          }}
+                        />
+                      ) : (
+                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
+                          <div className="absolute top-2 right-2 z-10">
+                            <Button
+                              className="text-sm px-2 py-1 h-8"
+                              onClick={() => toggleEditMode(outlinePoint.id)}
+                              variant="default"
+                              title={t("plan.editMode")}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="p-3 pr-12">
+                            <MarkdownRenderer
+                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
+                              section="introduction"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {sermon.outline?.introduction.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Main header */}
+            <div ref={mainSectionRef} data-section="main" className="lg:col-span-2">
+              <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
+            </div>
+            {/* Main Left & Right */}
+            <div
+              data-testid="plan-main-left-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.main.map((outlinePoint) => (
+                  <SermonPointCard
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!mainPointRefs.current[outlinePoint.id]) {
+                        mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      mainPointRefs.current[outlinePoint.id].left = el;
+                    }}
+                    outlinePoint={outlinePoint}
+                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
+                    sectionName="main"
+                    onGenerate={generateSermonPointContent}
+                    generatedContent={generatedContent[outlinePoint.id] || null}
+                    isGenerating={generatingId === outlinePoint.id}
+                    sermonId={sermonId}
+                    onOpenFragmentsModal={setModalSermonPointId}
+                  />
+                ))}
+                {sermon.outline?.main.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+
+            <div
+              data-testid="plan-main-right-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.main.map((outlinePoint) => (
+                  <div
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!mainPointRefs.current[outlinePoint.id]) {
+                        mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      mainPointRefs.current[outlinePoint.id].right = el;
+                    }}
+                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
+                  >
+                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} flex justify-between items-center`}>
+                      {outlinePoint.text}
+                      <div className="flex space-x-2">
+                        <Button
+                          className="text-sm px-2 py-1 h-8"
+                          onClick={() => saveSermonPoint(
+                            outlinePoint.id,
+                            generatedContent[outlinePoint.id] || "",
+                            "main"
+                          )}
+                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
+                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.mainPart : undefined}
+                          disabled={
+                            !generatedContent[outlinePoint.id] ||
+                            generatedContent[outlinePoint.id].trim() === "" ||
+                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          }
+                          title={t("plan.save")}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </h3>
+
+                    <div className="relative">
+                      <Button
+                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
+                        onClick={() => toggleEditMode(outlinePoint.id)}
+                        variant="default"
+                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                      >
+                        {editModePoints[outlinePoint.id] ? (
+                          <FileText className="h-4 w-4" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </Button>
+                      {editModePoints[outlinePoint.id] ? (
+                        <TextareaAutosize
+                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
+                          minRows={4}
+                          placeholder={t("plan.noContent")}
+                          value={generatedContent[outlinePoint.id] || ""}
+                          onChange={(e) => {
+                            const newContent = e.target.value;
+                            // Mark content as modified if it's different from the current saved content
+                            const currentSavedContent = sermon.plan?.main?.outlinePoints?.[outlinePoint.id] || "";
+                            const isModified = newContent !== currentSavedContent;
+
+                            setGeneratedContent((prev) => ({
+                              ...prev,
+                              [outlinePoint.id]: newContent,
+                            }));
+
+                            // Mark as modified if content changed
+                            setModifiedContent(prev => ({
+                              ...prev,
+                              [outlinePoint.id]: isModified
+                            }));
+
+                            updateCombinedPlan(
+                              outlinePoint.id,
+                              outlinePoint.text,
+                              newContent,
+                              "main"
+                            );
+                            // Height will be synced by the MutationObserver
+                          }}
+                          onHeightChange={() => {
+                            // Equalize only the affected pair to reduce scroll jumps
+                            syncPairHeights('main', outlinePoint.id);
+                          }}
+                        />
+                      ) : (
+                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
+                          <div className="absolute top-2 right-2 z-10">
+                            <Button
+                              className="text-sm px-2 py-1 h-8"
+                              onClick={() => toggleEditMode(outlinePoint.id)}
+                              variant="default"
+                              title={t("plan.editMode")}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="p-3 pr-12">
+                            <MarkdownRenderer
+                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
+                              section="main"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {sermon.outline?.main.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Conclusion header */}
+            <div ref={conclusionSectionRef} data-section="conclusion" className="lg:col-span-2">
+              <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
+            </div>
+            {/* Conclusion Left & Right */}
+            <div
+              data-testid="plan-conclusion-left-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.conclusion.map((outlinePoint) => (
+                  <SermonPointCard
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!conclusionPointRefs.current[outlinePoint.id]) {
+                        conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      conclusionPointRefs.current[outlinePoint.id].left = el;
+                    }}
+                    outlinePoint={outlinePoint}
+                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
+                    sectionName="conclusion"
+                    onGenerate={generateSermonPointContent}
+                    generatedContent={generatedContent[outlinePoint.id] || null}
+                    isGenerating={generatingId === outlinePoint.id}
+                    sermonId={sermonId}
+                    onOpenFragmentsModal={setModalSermonPointId}
+                  />
+                ))}
+                {sermon.outline?.conclusion.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+
+            <div
+              data-testid="plan-conclusion-right-section"
+              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
+            >
+              <div className="p-3">
+                {sermon.outline?.conclusion.map((outlinePoint) => (
+                  <div
+                    key={outlinePoint.id}
+                    ref={(el) => {
+                      if (!conclusionPointRefs.current[outlinePoint.id]) {
+                        conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
+                      }
+                      conclusionPointRefs.current[outlinePoint.id].right = el;
+                    }}
+                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
+                  >
+                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} flex justify-between items-center`}>
+                      {outlinePoint.text}
+                      <div className="flex space-x-2">
+                        <Button
+                          className="text-sm px-2 py-1 h-8"
+                          onClick={() => saveSermonPoint(
+                            outlinePoint.id,
+                            generatedContent[outlinePoint.id] || "",
+                            "conclusion"
+                          )}
+                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
+                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.conclusion : undefined}
+                          disabled={
+                            !generatedContent[outlinePoint.id] ||
+                            generatedContent[outlinePoint.id].trim() === "" ||
+                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+                          }
+                          title={t("plan.save")}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </h3>
+
+                    <div className="relative">
+                      <Button
+                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
+                        onClick={() => toggleEditMode(outlinePoint.id)}
+                        variant="default"
+                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                      >
+                        {editModePoints[outlinePoint.id] ? (
+                          <FileText className="h-4 w-4" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </Button>
+                      {editModePoints[outlinePoint.id] ? (
+                        <TextareaAutosize
+                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
+                          minRows={4}
+                          placeholder={t("plan.noContent")}
+                          value={generatedContent[outlinePoint.id] || ""}
+                          onChange={(e) => {
+                            const newContent = e.target.value;
+                            // Mark content as modified if it's different from the current saved content
+                            const currentSavedContent = sermon.plan?.conclusion?.outlinePoints?.[outlinePoint.id] || "";
+                            const isModified = newContent !== currentSavedContent;
+
+                            setGeneratedContent((prev) => ({
+                              ...prev,
+                              [outlinePoint.id]: newContent,
+                            }));
+
+                            // Mark as modified if content changed
+                            setModifiedContent(prev => ({
+                              ...prev,
+                              [outlinePoint.id]: isModified
+                            }));
+
+                            updateCombinedPlan(
+                              outlinePoint.id,
+                              outlinePoint.text,
+                              newContent,
+                              "conclusion"
+                            );
+                            // Height will be synced by the MutationObserver
+                          }}
+                          onHeightChange={() => {
+                            // Equalize only the affected pair to reduce scroll jumps
+                            syncPairHeights('conclusion', outlinePoint.id);
+                          }}
+                        />
+                      ) : (
+                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
+                          <div className="absolute top-2 right-2 z-10">
+                            <Button
+                              className="text-sm px-2 py-1 h-8"
+                              onClick={() => toggleEditMode(outlinePoint.id)}
+                              variant="default"
+                              title={t("plan.editMode")}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="p-3 pr-12">
+                            <MarkdownRenderer
+                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
+                              section="conclusion"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {sermon.outline?.conclusion.length === 0 && (
+                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Key Fragments Modal */}
+          {modalSermonPointId && (() => {
+            const outlinePoint = findSermonPointById(modalSermonPointId);
+            if (!outlinePoint) return null;
+            return (
+              <KeyFragmentsModal
+                data-testid="key-fragments-modal-instance"
+                isOpen={!!modalSermonPointId}
+                onClose={() => setModalSermonPointId(null)}
+                outlinePoint={outlinePoint}
+                thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
+                sermonId={sermonId}
+                onThoughtUpdate={handleThoughtUpdate}
+              />
+            );
+          })()}
+        </div>
       </div>
-    </div>
     </>
   );
 } 

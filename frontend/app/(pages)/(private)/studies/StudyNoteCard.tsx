@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+
 import { useTranslation } from 'react-i18next';
 import {
   BookmarkIcon,
@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { StudyNote } from '@/models/models';
 import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
+import MarkdownDisplay from '@components/MarkdownDisplay';
 
 interface StudyNoteCardProps {
   note: StudyNote;
@@ -128,9 +129,9 @@ export default function StudyNoteCard({
 
           {/* Preview text (collapsed only) */}
           {!isExpanded && (
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-              {note.content}
-            </p>
+            <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+              <MarkdownDisplay content={note.content} compact />
+            </div>
           )}
 
           {/* Meta info */}
@@ -170,9 +171,9 @@ export default function StudyNoteCard({
         <div className="border-t border-gray-100 dark:border-gray-700">
           {/* Full content */}
           <div className="px-4 py-4 pl-12">
-            <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-line leading-relaxed">
-              {note.content}
-            </p>
+            <div className="text-sm text-gray-700 dark:text-gray-200">
+              <MarkdownDisplay content={note.content} />
+            </div>
           </div>
 
           {/* Scripture references */}

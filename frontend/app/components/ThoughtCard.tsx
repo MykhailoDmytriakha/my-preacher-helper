@@ -10,6 +10,7 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } 
 
 // Components
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
+import MarkdownDisplay from '@components/MarkdownDisplay';
 import SermonPointSelector from './SermonPointSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -19,10 +20,10 @@ import type { Thought, SermonOutline } from "@/models/models";
 // Icons imports
 
 // Types
-type TagInfo = { 
-  name: string; 
-  color: string; 
-  translationKey?: string 
+type TagInfo = {
+  name: string;
+  color: string;
+  translationKey?: string
 };
 
 // Constants
@@ -82,30 +83,30 @@ const ThoughtCard = ({
   // Helper Functions
   const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
-    
+
     const introPoint = sermonOutline.introduction.find(p => p.id === thought.outlinePointId);
     if (introPoint) return { text: introPoint.text, section: 'introduction' };
-    
+
     const mainPoint = sermonOutline.main.find(p => p.id === thought.outlinePointId);
     if (mainPoint) return { text: mainPoint.text, section: 'main' };
-    
+
     const conclPoint = sermonOutline.conclusion.find(p => p.id === thought.outlinePointId);
     if (conclPoint) return { text: conclPoint.text, section: 'conclusion' };
-    
+
     return undefined;
   }, [thought.outlinePointId, sermonOutline]);
 
   const checkSectionTagAndOutlineConsistency = useCallback((tags: string[], outlinePointSection?: string): boolean => {
     if (!outlinePointSection) return true;
-    
+
     const expectedTag = STRUCTURE_SECTIONS[outlinePointSection];
     if (!expectedTag) return true;
-    
+
     const hasExpectedTag = tags.includes(expectedTag);
     const hasOtherSectionTags = Object.values(STRUCTURE_SECTIONS)
       .filter(tag => tag !== expectedTag)
       .some(tag => tags.includes(tag));
-    
+
     return !hasOtherSectionTags || hasExpectedTag;
   }, []);
 
@@ -113,11 +114,11 @@ const ThoughtCard = ({
   const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
   const structureTags = useMemo(() => Object.values(STRUCTURE_SECTIONS), []);
   const hasRequiredTag = useMemo(() => thought.tags.some(tag => structureTags.includes(tag)), [thought.tags, structureTags]);
-  const hasInconsistentSection = useMemo(() => 
+  const hasInconsistentSection = useMemo(() =>
     !checkSectionTagAndOutlineConsistency(thought.tags, outlinePoint?.section),
     [thought.tags, outlinePoint, checkSectionTagAndOutlineConsistency]
   );
-  const hasMultipleStructureTags = useMemo(() => 
+  const hasMultipleStructureTags = useMemo(() =>
     thought.tags.filter(tag => structureTags.includes(tag)).length > 1,
     [thought.tags, structureTags]
   );
@@ -126,22 +127,22 @@ const ThoughtCard = ({
   // Determine card style based on status with improved visual hierarchy
   const cardStyle = useMemo(() => {
     const baseStyle = 'relative p-4 rounded-lg transition-all duration-200 hover:shadow-md';
-    
+
     if (hasInconsistentSection || hasMultipleStructureTags || needsSectionTag) {
       return `${baseStyle} border border-red-500 bg-red-50/50 dark:bg-red-900/50 dark:border-red-500 hover:bg-red-50 dark:hover:bg-red-900`;
     }
-    
+
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag]);
 
   const handleSermonPointChange = useCallback(async (outlinePointId: string | undefined) => {
     if (!sermonId || !onThoughtUpdate) return;
-    
+
     const updatedThought: Thought = {
       ...thought,
       outlinePointId
     };
-    
+
     try {
       const { updateThought } = await import('@/services/thought.service');
       const savedThought = await updateThought(sermonId, updatedThought);
@@ -155,18 +156,18 @@ const ThoughtCard = ({
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
     const warnings = [];
-    
+
     if (hasInconsistentSection && outlinePoint?.section) {
       const expectedTag = STRUCTURE_SECTIONS[outlinePoint.section];
-      const actualSectionTags = thought.tags.filter(tag => 
+      const actualSectionTags = thought.tags.filter(tag =>
         Object.values(STRUCTURE_SECTIONS).includes(tag) && tag !== expectedTag
       );
-      
+
       if (actualSectionTags.length > 0) {
         warnings.push(
-          <WarningMessage 
-            key="inconsistent" 
-            type="inconsistentSection" 
+          <WarningMessage
+            key="inconsistent"
+            type="inconsistentSection"
             sectionName={outlinePoint.section}
             actualTag={actualSectionTags[0]}
             getSectionName={getSectionName}
@@ -174,15 +175,15 @@ const ThoughtCard = ({
         );
       }
     }
-    
+
     if (hasMultipleStructureTags) {
       warnings.push(<WarningMessage key="multiple" type="multipleStructureTags" getSectionName={getSectionName} />);
     }
-    
+
     if (needsSectionTag) {
       warnings.push(<WarningMessage key="missing" type="missingSectionTag" getSectionName={getSectionName} />);
     }
-    
+
     return warnings;
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, outlinePoint, thought.tags, getSectionName]);
 
@@ -204,11 +205,11 @@ const ThoughtCard = ({
         />
       </div>
 
-      <ThoughtHeader 
+      <ThoughtHeader
         thought={thought}
         allowedTags={allowedTags}
       />
-      
+
       <AnimatePresence>
         {getWarningMessages().map((warning, index) => (
           <motion.div
@@ -222,16 +223,16 @@ const ThoughtCard = ({
           </motion.div>
         ))}
       </AnimatePresence>
-      
-      <motion.p 
+
+      <motion.div
         id={`thought-${thought.id}-text`}
-        className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words mt-2 leading-relaxed"
+        className="mt-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
       >
-        {thought.text}
-      </motion.p>
+        <MarkdownDisplay content={thought.text} className="text-gray-800 dark:text-gray-200" />
+      </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -277,23 +278,23 @@ ThoughtHeader.displayName = "ThoughtHeader";
 
 const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayProps) => {
   const { t } = useTranslation();
-  
+
   return (
     <div className="flex flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label="Tags">
       {tags.map((tag) => {
         const tagInfo = allowedTags.find(t => t.name === tag);
         let displayName = tag;
         const structureTagStatus = isStructureTag(tag);
-        
+
         // Determine if this is a structure tag via normalization
         const canonical = normalizeStructureTag(tag);
         if (canonical === 'intro') displayName = t('tags.introduction');
         else if (canonical === 'main') displayName = t('tags.mainPart');
         else if (canonical === 'conclusion') displayName = t('tags.conclusion');
-        
+
         // Get styling from our utilities
         const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
-        
+
         // Enhanced tag styling without hover scale
         const className = `
           ${baseClassName} 
@@ -302,9 +303,9 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
           transition-shadow duration-200
           hover:shadow-sm
         `;
-        
+
         const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
-        
+
         return (
           <span
             key={tag}
@@ -329,17 +330,17 @@ interface WarningMessageWithHelperProps extends WarningMessageProps {
   getSectionName: (section?: string) => string;
 }
 
-function WarningMessage({ 
-  type, 
-  sectionName, 
-  actualTag, 
-  getSectionName 
+function WarningMessage({
+  type,
+  sectionName,
+  actualTag,
+  getSectionName
 }: WarningMessageWithHelperProps) {
   const { t } = useTranslation();
 
   const getWarningStyle = () => {
     const baseStyle = "text-xs font-medium mb-2 flex items-center gap-1.5 px-3 py-2 rounded-lg";
-    
+
     switch (type) {
       case 'inconsistentSection':
         return `${baseStyle} bg-red-50 text-red-700 dark:bg-red-900/50 dark:text-red-200 border border-red-200 dark:border-red-800`;
@@ -365,7 +366,7 @@ function WarningMessage({
       </div>
     );
   }
-  
+
   if (type === 'multipleStructureTags') {
     return (
       <div className={getWarningStyle()} role="alert">
@@ -376,22 +377,22 @@ function WarningMessage({
       </div>
     );
   }
-  
+
   if (type === 'missingSectionTag') {
     return (
       <div className={getWarningStyle()} role="alert">
         <span className="flex-shrink-0">ℹ️</span>
         <span>
           {t('thought.missingRequiredTag', {
-            intro: getSectionName('introduction'), 
-            main: getSectionName('main'), 
+            intro: getSectionName('introduction'),
+            main: getSectionName('main'),
             conclusion: getSectionName('conclusion')
           })}
         </span>
       </div>
     );
   }
-  
+
   return null;
 }
 
