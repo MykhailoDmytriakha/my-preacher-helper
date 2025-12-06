@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
@@ -7,9 +7,11 @@ import { updateStructure } from '@/services/structure.service';
 import { sortItemsWithAI } from '@/services/sortAI.service';
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
+const searchParamsGetMock = jest.fn((param: string) => (param === 'sermonId' ? 'sermon-123' : null));
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
-  useSearchParams: () => ({ get: jest.fn((param: string) => param === 'sermonId' ? 'sermon-123' : null) }),
+  useSearchParams: () => ({ get: searchParamsGetMock }),
   usePathname: jest.fn().mockReturnValue('/sermons/sermon-123/structure'),
   useParams: jest.fn(() => ({ id: 'sermon-123' })),
 }));
@@ -32,6 +34,13 @@ jest.mock('@/utils/themeColors', () => ({
     muted: { text: 'text-gray-600', darkText: 'text-gray-400' },
     success: { bg: 'bg-green-600', darkBg: 'bg-green-700', text: 'text-white', darkText: 'text-white' },
   },
+  getFocusModeButtonColors: jest.fn(() => ({
+    bg: 'bg-gray-100',
+    hover: 'hover:bg-gray-200',
+    text: 'text-gray-800',
+    darkBg: 'dark:bg-gray-800',
+    darkText: 'dark:text-gray-200',
+  })),
 }));
 
 jest.mock('@/components/ExportButtons', () => ({
@@ -42,6 +51,9 @@ jest.mock('@/components/ExportButtons', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
+      if (key === 'structure.addThoughtToSection' && options?.section) {
+        return `Add thought to ${options.section}`;
+      }
       if (options?.defaultValue) return options.defaultValue as string;
       return mockTranslations[key] || key;
     },
@@ -64,6 +76,9 @@ jest.mock('lodash/debounce', () =>
 describe('ThoughtsBySection Page - Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    searchParamsGetMock.mockImplementation((param: string) =>
+      param === 'sermonId' ? 'sermon-123' : null
+    );
     (updateStructure as jest.Mock).mockResolvedValue({});
     (sortItemsWithAI as jest.Mock).mockResolvedValue([]);
   });
@@ -180,6 +195,95 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         expect(pointHeaders.length).toBeGreaterThan(0);
         expect(screen.getByText('Thought 1')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Add Thought flows', () => {
+    it('preselects outline point when adding from focus-mode outline placeholder', async () => {
+      searchParamsGetMock.mockImplementation((param: string) => {
+        if (param === 'sermonId') return 'sermon-123';
+        if (param === 'mode') return 'focus';
+        if (param === 'section') return 'introduction';
+        return null;
+      });
+
+      const mockSermon = createMockSermon({
+        outline: {
+          introduction: [createMockSermonPoint({ id: 'op-intro', text: 'Intro Point' })],
+          main: [createMockSermonPoint({ id: 'op-main', text: 'Main Point' })],
+          conclusion: [],
+        },
+      });
+
+      const containers = {
+        introduction: [],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      };
+
+      mockedUseSermonStructureData.mockReturnValue(
+        createMockHookReturn(mockSermon, containers, mockSermon.outline)
+      );
+
+      render(<StructurePage />);
+
+      const addButton = await screen.findByTitle('Add thought to Introduction');
+      fireEvent.click(addButton);
+
+      const outlineSelect = await screen.findByRole('combobox');
+      expect(outlineSelect).toHaveValue('op-intro');
+      expect(within(outlineSelect).queryByText('Main Point')).not.toBeInTheDocument();
+    });
+
+    it('clears pending section when closing modal before editing another section', async () => {
+      const mockSermon = createMockSermon({
+        thoughts: [
+          createMockThought({
+            id: 'main-thought',
+            text: 'Main thought',
+            tags: ['Main Part'],
+            outlinePointId: 'op-main',
+          }),
+        ],
+        structure: { introduction: [], main: ['main-thought'], conclusion: [], ambiguous: [] },
+        outline: {
+          introduction: [createMockSermonPoint({ id: 'op-intro', text: 'Intro Point' })],
+          main: [createMockSermonPoint({ id: 'op-main', text: 'Main Point' })],
+          conclusion: [],
+        },
+      });
+
+      const containers = {
+        introduction: [],
+        main: [
+          createMockItem({
+            id: 'main-thought',
+            content: 'Main thought',
+            outlinePointId: 'op-main',
+            requiredTags: ['Main Part'],
+          }),
+        ],
+        conclusion: [],
+        ambiguous: [],
+      };
+
+      mockedUseSermonStructureData.mockReturnValue(
+        createMockHookReturn(mockSermon, containers, mockSermon.outline)
+      );
+
+      render(<StructurePage />);
+
+      fireEvent.click(screen.getByTitle('Add thought to Introduction'));
+      fireEvent.click(screen.getByText('Cancel'));
+
+      await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByTitle('Edit Thought'));
+      const outlineSelect = await screen.findByRole('combobox');
+      expect(outlineSelect).toHaveValue('op-main');
+      expect(within(outlineSelect).getByText('Main Point')).toBeInTheDocument();
+      expect(within(outlineSelect).queryByText('Intro Point')).not.toBeInTheDocument();
     });
   });
 });

@@ -69,6 +69,10 @@
 - Append polished text directly (skip preview step for faster UX).
 - Support multiple recordings that append to same field.
 
+### 🖱️ Drag & Review UX
+- When items are locked (e.g., reviewed outline points), disable drag listeners and remove grab cursors/hover affordances; keep a clear “locked” cue instead of implying draggability.
+- Preserve normal pointer/touch behavior for locked items (no forced touch-action) to avoid false affordances.
+
 ### 🧭 Navigation & Architecture
 
 **Naming Consistency:**
@@ -98,13 +102,14 @@
 
 ## 📝 Short-Term Memory
 
-**Current session:** Navigation naming fix (Library → Sermons), context-dependent breadcrumbs completed.
+**Current session:** Drag affordance fix for reviewed outline points; locked items no longer show grab cursor or active drag listeners.
 
 **Recent changes:**
 - Renamed navigation item from "Библиотека/Library" to "Проповеди/Sermons" in `navConfig.ts`.
 - Updated `Breadcrumbs.tsx` with context-dependent root logic.
 - Removed obsolete `navigation.library` from all locales (en/ru/uk).
 - Updated Breadcrumbs tests for new behavior.
+- Disabled drag affordance for reviewed outline-point thoughts by gating `useSortable` listeners/cursors when items are locked.
 
 ---
 

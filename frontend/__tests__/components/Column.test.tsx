@@ -652,6 +652,24 @@ describe('Column Component', () => {
             }
           },
           {
+            name: 'exposes add-thought control per outline point in focus mode',
+            run: () => {
+              const onAddThought = jest.fn();
+              render(
+                <Column
+                  id="introduction"
+                  title="Introduction"
+                  items={[]}
+                  isFocusMode={true}
+                  outlinePoints={[{ id: 'point1', text: 'Introduction Point 1' }]}
+                  onAddThought={onAddThought}
+                />
+              );
+              fireEvent.click(screen.getByTitle('Add thought to Introduction'));
+              expect(onAddThought).toHaveBeenCalledWith('introduction', 'point1');
+            }
+          },
+          {
             name: 'renders badge counts for outline points',
             run: () => {
               render(

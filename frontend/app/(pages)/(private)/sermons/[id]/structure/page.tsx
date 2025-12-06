@@ -182,13 +182,14 @@ function StructurePageContent() {
     setEditingItem(item);
   };
 
-  const handleAddThoughtToSection = (sectionId: string) => {
+  const handleAddThoughtToSection = (sectionId: string, outlinePointId?: string) => {
     // Create an empty thought with predefined section
     const emptyThought: Item = {
       id: `temp-${Date.now()}`, // Temporary ID that will be replaced when saved
       content: '',
       requiredTags: [],
-      customTagNames: []
+      customTagNames: [],
+      outlinePointId,
     };
     
     // Set as the editing item with the specific section
@@ -434,6 +435,7 @@ function StructurePageContent() {
 
   const handleCloseEdit = () => {
     setEditingItem(null);
+    setAddingThoughtToSection(null);
   };
 
   // Move a thought from a concrete section to the ambiguous section

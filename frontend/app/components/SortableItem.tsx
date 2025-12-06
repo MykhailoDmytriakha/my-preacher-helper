@@ -42,11 +42,12 @@ export default function SortableItem({
   onMoveToAmbiguous,
   disabled = false
 }: SortableItemProps) {
+  const isDragDisabled = isDeleting || disabled;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: item.id,
       data: { container: containerId },
-      disabled: isDeleting || disabled,
+      disabled: isDragDisabled,
     });
   
   const { t } = useTranslation();
@@ -79,6 +80,9 @@ export default function SortableItem({
     ...getHighlightStyles()
   };
 
+  const hoverShadowClass = isDragDisabled ? '' : 'hover:shadow-xl';
+  const cursorClass = isDragDisabled ? 'cursor-default' : 'cursor-grab';
+
   // Icon color classes based on section color palette (project theme)
   const sectionIconColorClasses = (() => {
     if (containerId === 'introduction') {
@@ -100,15 +104,16 @@ export default function SortableItem({
         ...style,
         willChange: "transform",
         backfaceVisibility: "hidden",
-        touchAction: "none",  // Critical for touch devices - prevents browser scroll conflicts
+        touchAction: isDragDisabled ? "auto" : "none",  // Allow normal interactions when dragging is disabled
       }}
       {...attributes}
-      {...listeners}
+      {...(isDragDisabled ? {} : (listeners || {}))}
+      aria-disabled={isDragDisabled}
       className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white dark:bg-gray-800 rounded-md ${
         isHighlighted ? `border-2 shadow-lg ${
           highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
         }` : 'border border-gray-200 dark:border-gray-700 shadow-md'
-      } hover:shadow-xl ${isDeleting ? 'pointer-events-none' : ''} ${disabled ? 'opacity-75' : ''}`}
+      } ${hoverShadowClass} ${isDeleting ? 'pointer-events-none' : ''} ${isDragDisabled ? `opacity-75 ${cursorClass}` : cursorClass}`}
     >
       <div className="flex-grow">
         {disabled && (

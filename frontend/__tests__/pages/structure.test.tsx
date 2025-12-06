@@ -47,6 +47,13 @@ jest.mock('@/utils/themeColors', () => ({
     muted: { text: 'text-gray-600', darkText: 'text-gray-400' },
     success: { bg: 'bg-green-600', darkBg: 'bg-green-700', text: 'text-white', darkText: 'text-white' },
   },
+  getFocusModeButtonColors: jest.fn(() => ({
+    bg: 'bg-gray-100',
+    hover: 'hover:bg-gray-200',
+    text: 'text-gray-800',
+    darkBg: 'dark:bg-gray-800',
+    darkText: 'dark:text-gray-200',
+  })),
 }));
 
 jest.mock('@/components/ExportButtons', () => ({
@@ -57,6 +64,9 @@ jest.mock('@/components/ExportButtons', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
+      if (key === 'structure.addThoughtToSection' && options?.section) {
+        return `Add thought to ${options.section}`;
+      }
       if (options?.defaultValue) return options.defaultValue as string;
       return mockTranslations[key] || key;
     },

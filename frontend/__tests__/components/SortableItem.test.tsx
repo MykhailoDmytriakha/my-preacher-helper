@@ -252,6 +252,29 @@ Second paragraph with indentation.
     expect(deleteButton).toBeDisabled();
   });
 
+  test('disables drag affordances when item is locked/disabled', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+        disabled={true}
+      />
+    );
+
+    const sortableMock = useSortable as jest.Mock;
+    expect(sortableMock).toHaveBeenCalledWith(
+      expect.objectContaining({ disabled: true, id: mockItem.id })
+    );
+
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]');
+    expect(container).toHaveAttribute('aria-disabled', 'true');
+    expect(container?.className).toContain('cursor-default');
+    expect(container?.className).not.toContain('hover:shadow-xl');
+    expect(container?.style.touchAction).toBe('auto');
+  });
+
   test('renders move-to-ambiguous button and triggers handler', () => {
     render(
       <SortableItem

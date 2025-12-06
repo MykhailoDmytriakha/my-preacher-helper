@@ -33,7 +33,7 @@ interface ColumnProps {
   className?: string; // Custom class name for the column container
   getExportContent?: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>; // Function to get export content
   sermonId?: string; // Add sermonId prop for export functionality
-  onAddThought?: (sectionId: string) => void; // New callback for adding a thought to this section
+  onAddThought?: (sectionId: string, outlinePointId?: string) => void; // New callback for adding a thought to this section
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void; // Add callback for outline updates propagating back to parent
   thoughtsPerSermonPoint?: Record<string, number>; // Add this prop for non-focus mode display
   // New props for AI sort with interactive confirmation
@@ -80,6 +80,9 @@ const SermonPointPlaceholder: React.FC<{
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   sermonId?: string;
   onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void;
+  isFocusMode?: boolean;
+  onAddThought?: (sectionId: string, outlinePointId?: string) => void;
+  sectionTitle?: string;
 }> = ({
   point,
   items,
@@ -95,7 +98,10 @@ const SermonPointPlaceholder: React.FC<{
   activeId,
   onMoveToAmbiguous,
   sermonId,
-  onAudioThoughtCreated
+  onAudioThoughtCreated,
+  isFocusMode,
+  onAddThought,
+  sectionTitle,
 }) => {
   const { setNodeRef, isOver } = useDroppable({ 
     id: `outline-point-${point.id}`, 
@@ -244,6 +250,16 @@ const SermonPointPlaceholder: React.FC<{
               {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
             </span>
             {/* Focus Recorder Button (per outline point) */}
+            {isFocusMode && onAddThought && (
+              <button
+                onClick={() => onAddThought(containerId, point.id)}
+                className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+                title={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
+                aria-label={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
+              >
+                <PlusIcon className="h-4 w-4 text-white" />
+              </button>
+            )}
             {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
               <>
                 {console.log('Column: Rendering FocusRecorderButton for outline point:', containerId)}
@@ -729,19 +745,10 @@ export default function Column({
           >
             {/* Column title */}
             <div className="p-5 border-b border-white dark:border-gray-600">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center">
                 <h2 className="text-2xl font-bold text-white dark:text-gray-100">
                   {title}
                 </h2>
-                {onAddThought && (
-                  <button
-                    onClick={() => onAddThought(id)}
-                    className="ml-2 p-1.5 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded-full hover:bg-opacity-30 dark:hover:bg-opacity-30 transition-colors"
-                    title={t('structure.addThoughtToSection', { section: title })}
-                  >
-                    <PlusIcon className="h-5 w-5 text-white dark:text-gray-800" />
-                  </button>
-                )}
               </div>
             </div>
             
@@ -1063,6 +1070,9 @@ export default function Column({
                       onMoveToAmbiguous={onMoveToAmbiguous}
                       sermonId={sermonId}
                       onAudioThoughtCreated={onAudioThoughtCreated}
+                      isFocusMode={isFocusMode}
+                      onAddThought={onAddThought}
+                      sectionTitle={title}
                     />
                   ))}
 
@@ -1350,6 +1360,9 @@ export default function Column({
                   onMoveToAmbiguous={onMoveToAmbiguous}
                   sermonId={sermonId}
                   onAudioThoughtCreated={onAudioThoughtCreated}
+                  isFocusMode={false}
+                  onAddThought={onAddThought}
+                  sectionTitle={title}
                 />
               ))}
               
