@@ -437,6 +437,35 @@ describe('analyzeStudyNote', () => {
     });
   });
 
+  it('should remove redundant toChapter even when toVerse is collapsed', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Test',
+      scriptureRefs: [
+        { book: 'Hebrews', chapter: 10, toChapter: 10, fromVerse: 22, toVerse: 22 },
+        { book: 'Exodus', chapter: 13, toChapter: 13, fromVerse: 19, toVerse: 19 },
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test content');
+
+    // Assert
+    expect(result.success).toBe(true);
+    expect(result.data?.scriptureRefs).toEqual([
+      { book: 'Hebrews', chapter: 10, fromVerse: 22 },
+      { book: 'Exodus', chapter: 13, fromVerse: 19 },
+    ]);
+  });
+
   it('should accept mixed reference types in same analysis', async () => {
     // Arrange - simulating the Ezekiel example from JSDOC
     const mockResponse = {

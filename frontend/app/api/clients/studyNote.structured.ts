@@ -271,17 +271,28 @@ export async function analyzeStudyNote(
         return true;
       })
       .map(ref => {
+        // Normalize redundant fields without early returns to avoid skipping later cleanup
+        const normalizedRef = { ...ref };
+
         // Remove toVerse if it equals fromVerse (single verse, not a range)
-        if (ref.toVerse !== undefined && ref.fromVerse !== undefined && ref.toVerse === ref.fromVerse) {
-          const { toVerse, ...rest } = ref;
-          return rest;
+        if (
+          normalizedRef.toVerse !== undefined &&
+          normalizedRef.fromVerse !== undefined &&
+          normalizedRef.toVerse === normalizedRef.fromVerse
+        ) {
+          delete normalizedRef.toVerse;
         }
+
         // Remove toChapter if it equals chapter (single chapter, not a range)
-        if (ref.toChapter !== undefined && ref.chapter !== undefined && ref.toChapter === ref.chapter) {
-          const { toChapter, ...rest } = ref;
-          return rest;
+        if (
+          normalizedRef.toChapter !== undefined &&
+          normalizedRef.chapter !== undefined &&
+          normalizedRef.toChapter === normalizedRef.chapter
+        ) {
+          delete normalizedRef.toChapter;
         }
-        return ref;
+
+        return normalizedRef;
       });
 
     logger.success('AnalyzeStudyNote', "Analysis completed", {

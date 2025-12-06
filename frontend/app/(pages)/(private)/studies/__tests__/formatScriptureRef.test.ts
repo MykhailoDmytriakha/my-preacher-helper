@@ -42,6 +42,10 @@ describe('formatScriptureRef', () => {
             expect(formatScriptureRef({ book: 'Romans', chapter: 8 }, 'en')).toBe('Rom.8');
         });
 
+        it('should ignore redundant toChapter equal to chapter', () => {
+            expect(formatScriptureRef({ book: 'Hebrews', chapter: 10, toChapter: 10 })).toBe('Евр.10');
+        });
+
         it('should convert Psalm chapter from Hebrew to Septuagint for Russian', () => {
             // Psalm 23 (Hebrew) -> Psalm 22 (Septuagint)
             expect(formatScriptureRef({ book: 'Psalms', chapter: 23 }, 'ru')).toBe('Пс.22');
@@ -78,6 +82,10 @@ describe('formatScriptureRef', () => {
 
         it('should format single verse with English locale', () => {
             expect(formatScriptureRef({ book: 'John', chapter: 3, fromVerse: 16 }, 'en')).toBe('John.3:16');
+        });
+
+        it('should format verse when redundant toChapter is present', () => {
+            expect(formatScriptureRef({ book: 'Hebrews', chapter: 10, toChapter: 10, fromVerse: 22 })).toBe('Евр.10:22');
         });
 
         it('should convert Psalm with verse from Hebrew to Septuagint', () => {

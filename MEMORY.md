@@ -110,6 +110,33 @@
 - Removed obsolete `navigation.library` from all locales (en/ru/uk).
 - Updated Breadcrumbs tests for new behavior.
 - Disabled drag affordance for reviewed outline-point thoughts by gating `useSortable` listeners/cursors when items are locked.
+- Added missing `common.expand` / `common.collapse` translations (en/ru/uk) to satisfy coverage tests after moving chevron button in `SermonOutline`.
+
+---
+
+## 🎓 Lessons & Patterns
+
+### Lesson: Always run tests after changes
+
+**Problem:**
+- A UI tweak (chevron relocation) was merged without immediately running the full or relevant test suite, causing translation coverage tests to fail later (missing `common.expand`/`common.collapse` keys).
+
+**Wrong Paths:**
+- Relied on targeted component tests only; skipped running broader suites that include translation coverage.
+- Assumed UI-only change wouldn’t impact i18n, missed new translation keys introduced by accessibility props.
+
+**Root Cause:**
+- Process gap: no mandatory post-change test run, especially when adding new text/aria labels that require locale updates.
+
+**Correct Solution:**
+- Added the missing translation keys to all locales (en/ru/uk) and re-ran translation coverage tests to greenlight the suite.
+
+**Best Practice:**
+- After any change (especially UI/text/accessibility), run at least the relevant test suites (and ideally the full suite if time permits) before handoff. Always account for i18n impacts when adding aria-labels or visible text.
+
+**Attention Points:**
+- New labels/aria/text → update all locales + run translation coverage tests.
+- Prefer running `npm run test -- --watch=false` (or targeted suites when appropriate) immediately after code edits to catch regressions early.
 
 ---
 

@@ -117,31 +117,32 @@ export function formatScriptureRef(
   }
 
   // Convert Psalm number from Hebrew (storage) to Septuagint (RU/UK display)
-  let displayChapter = ref.chapter;
-  if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-    displayChapter = psalmHebrewToSeptuagint(ref.chapter);
+  const convertPsalmChapter = (chapter: number) => {
+    if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
+      return psalmHebrewToSeptuagint(chapter);
+    }
+    return chapter;
+  };
+
+  const displayChapter = convertPsalmChapter(ref.chapter);
+
+  // Verse or verse range takes precedence even if toChapter is present (handle legacy data)
+  if (ref.fromVerse !== undefined) {
+    const verseRange =
+      ref.toVerse && ref.toVerse !== ref.fromVerse
+        ? `${ref.fromVerse}-${ref.toVerse}`
+        : String(ref.fromVerse);
+
+    return `${abbr}.${displayChapter}:${verseRange}`;
   }
 
   // Chapter range (e.g., "Matthew 5-7")
-  if (ref.toChapter !== undefined) {
-    let displayToChapter = ref.toChapter;
-    if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-      displayToChapter = psalmHebrewToSeptuagint(ref.toChapter);
-    }
+  if (ref.toChapter !== undefined && ref.toChapter !== ref.chapter) {
+    const displayToChapter = convertPsalmChapter(ref.toChapter);
     return `${abbr}.${displayChapter}-${displayToChapter}`;
   }
 
   // Chapter-only reference (e.g., "Psalm 23")
-  if (ref.fromVerse === undefined) {
-    return `${abbr}.${displayChapter}`;
-  }
-
-  // Verse or verse range
-  const verseRange =
-    ref.toVerse && ref.toVerse !== ref.fromVerse
-      ? `${ref.fromVerse}-${ref.toVerse}`
-      : String(ref.fromVerse);
-
-  return `${abbr}.${displayChapter}:${verseRange}`;
+  return `${abbr}.${displayChapter}`;
 }
 
