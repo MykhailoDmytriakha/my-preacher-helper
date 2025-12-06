@@ -10,9 +10,9 @@ import { SermonDraft } from '@/models/models';
 // GET /api/sermons/:id/plan?outlinePointId=<id> - generates content for a specific outline point
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   const section = request.nextUrl.searchParams.get('section');
   const outlinePointId = request.nextUrl.searchParams.get('outlinePointId');
   
@@ -436,9 +436,9 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
 // PUT /api/sermons/:id/plan - saves sermon plan to database
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   try {
     // Get the sermon to confirm it exists

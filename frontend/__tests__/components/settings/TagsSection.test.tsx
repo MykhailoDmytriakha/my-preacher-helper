@@ -176,7 +176,7 @@ describe('TagsSection', () => {
     });
 
     // Find the remove button within the mock editable list
-    const removePrayerButton = screen.getByRole('button', { name: /Remove Prayer/i });
+    const removePrayerButton = await screen.findByRole('button', { name: /Remove Prayer/i });
     await userEvent.click(removePrayerButton);
 
     // Check that the service was called within the component's handler
@@ -199,7 +199,7 @@ describe('TagsSection', () => {
     expect(screen.queryByTestId('color-picker-modal')).not.toBeInTheDocument();
 
     // Find the edit button within the mock editable list
-    const editStoryButton = screen.getByRole('button', { name: /Edit Story/i });
+    const editStoryButton = await screen.findByRole('button', { name: /Edit Story/i });
     await userEvent.click(editStoryButton);
 
     // Check if the modal is rendered by the mock
@@ -212,7 +212,7 @@ describe('TagsSection', () => {
     await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
 
     // 1. Open the modal
-    const editStoryButton = screen.getByRole('button', { name: /Edit Story/i });
+    const editStoryButton = await screen.findByRole('button', { name: /Edit Story/i });
     await userEvent.click(editStoryButton);
     expect(await screen.findByTestId('color-picker-modal')).toBeInTheDocument();
 
@@ -244,7 +244,7 @@ describe('TagsSection', () => {
     await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
 
     // 1. Open the modal
-    const editStoryButton = screen.getByRole('button', { name: /Edit Story/i });
+    const editStoryButton = await screen.findByRole('button', { name: /Edit Story/i });
     await userEvent.click(editStoryButton);
     expect(await screen.findByTestId('color-picker-modal')).toBeInTheDocument();
 

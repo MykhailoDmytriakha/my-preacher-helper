@@ -102,15 +102,14 @@
 
 ## 📝 Short-Term Memory
 
-**Current session:** Drag affordance fix for reviewed outline points; locked items no longer show grab cursor or active drag listeners.
+**Current session:** Next.js 15.5.7 + React 19 upgrade, fixed API route param typings, cleaned prep-mode tests/build, resolved nested button hydration issue.
 
 **Recent changes:**
-- Renamed navigation item from "Библиотека/Library" to "Проповеди/Sermons" in `navConfig.ts`.
-- Updated `Breadcrumbs.tsx` with context-dependent root logic.
-- Removed obsolete `navigation.library` from all locales (en/ru/uk).
-- Updated Breadcrumbs tests for new behavior.
-- Disabled drag affordance for reviewed outline-point thoughts by gating `useSortable` listeners/cursors when items are locked.
-- Added missing `common.expand` / `common.collapse` translations (en/ru/uk) to satisfy coverage tests after moving chevron button in `SermonOutline`.
+- Upgraded deps: `next@15.5.7`, `react@19.2.1`, `react-dom@19.2.1`, `eslint-config-next@15.5.7`, `@hello-pangea/dnd@18.0.1`, `lucide-react@0.556.0`.
+- Fixed API routes requiring awaited params (Next 15): `app/api/sermons/[id]`, `/brainstorm`, `/plan`, `/generate-outline-points`, `app/api/series/[id]`, `/series/[id]/sermons`, `app/api/studies/materials/[id]`, `app/api/studies/notes/[id]` now use `params: Promise<{id}>` with `await`.
+- Resolved PrepModeToggle flakiness under React 19: stabilized loading flags and tests/e2e with `findByRole`/`waitFor`.
+- Fixed nested button hydration error in `StudyNoteCard`: header uses a single button row; analyze button sits alongside.
+- All tests green (`npm run test:fast`), build succeeds (`npm run build`).
 
 ---
 
@@ -137,6 +136,16 @@
 **Attention Points:**
 - New labels/aria/text → update all locales + run translation coverage tests.
 - Prefer running `npm run test -- --watch=false` (or targeted suites when appropriate) immediately after code edits to catch regressions early.
+
+### Lesson: Next.js 15 route params must be awaited
+
+**Problem:** Next 15 requires `params` to be awaited; routes with `{ params: { id: string } }` failed type checks during build.
+
+**Root Cause:** Next 15 (app router) expects `params` as `Promise`, so synchronous destructuring breaks type validation.
+
+**Correct Solution:** Type handlers as `{ params: Promise<{ id: string }> }` and `const { id } = await params;` across GET/PUT/POST/DELETE.
+
+**Best Practice:** For all app router API routes, default to async params signature and `await params` to stay compatible with Next updates.
 
 ---
 

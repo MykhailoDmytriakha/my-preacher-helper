@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
-import dynamic from 'next/dynamic';
 import { AuthProvider } from './providers/AuthProvider';
 import { TextScaleProvider } from './providers/TextScaleProvider';
 import { QueryProvider } from './providers/QueryProvider';
-
-// Dynamically import the LanguageInitializer component to ensure it only runs on client-side
-const LanguageInitializer = dynamic(
-  () => import('./components/navigation/LanguageInitializer'),
-  { ssr: false }
-);
+import LanguageInitializer from './components/navigation/LanguageInitializer';
 
 const interSans = Inter({
   variable: "--font-inter-sans",

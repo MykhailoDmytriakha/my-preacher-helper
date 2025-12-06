@@ -3,8 +3,8 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 
 // GET /api/sermons/:id
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const sermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(sermon);
@@ -17,8 +17,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 // PUT /api/sermons/:id – update sermon (title, verse, isPreached, preparation)
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     // Get fields from the request body
     const { title, verse, isPreached, preparation } = await request.json(); 
@@ -60,8 +60,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 // DELETE /api/sermons/:id - Delete a sermon
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {

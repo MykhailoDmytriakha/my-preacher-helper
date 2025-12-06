@@ -106,11 +106,14 @@ export default function StudyNoteCard({
         }
       `}
     >
-      {/* Header - always visible, clickable to expand */}
-      <button
-        onClick={onToggleExpand}
-        className="flex w-full items-start gap-3 p-4 text-left"
-      >
+      {/* Header row: left side is the expander button, right side may contain actions */}
+      <div className="flex w-full items-start gap-3 p-4">
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="flex flex-1 items-start gap-3 text-left"
+          aria-expanded={isExpanded}
+        >
         {/* Chevron */}
         <div className="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500">
           {isExpanded ? (
@@ -150,8 +153,14 @@ export default function StudyNoteCard({
         </div>
 
         {/* Analyze button for notes without metadata (collapsed only) */}
+          { !isExpanded && needsAnalysis && onAnalyze && (
+            <span className="sr-only">{t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}</span>
+          )}
+        </button>
+
         {!isExpanded && needsAnalysis && onAnalyze && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onAnalyze(note);
@@ -164,7 +173,7 @@ export default function StudyNoteCard({
             {t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}
           </button>
         )}
-      </button>
+      </div>
 
       {/* Expanded content */}
       {isExpanded && (

@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { generateSermonPoints } from '@clients/openAI.client';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { section } = await request.json();
-    const sermonId = params.id;
+    const { id: sermonId } = await params;
     
     if (!sermonId) {
       return NextResponse.json({ error: "Sermon ID is required" }, { status: 400 });

@@ -105,7 +105,7 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'false');
               expect(toggle).toHaveClass('bg-gray-200');
             }
@@ -121,7 +121,7 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'false');
             }
           }
@@ -147,17 +147,16 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'false');
 
               fireEvent.click(toggle);
 
               await waitFor(() => {
                 expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', true);
+                expect(toggle).toHaveAttribute('aria-checked', 'true');
+                expect(toggle).toHaveClass('bg-blue-600');
               });
-
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
-              expect(toggle).toHaveClass('bg-blue-600');
             }
           },
           {
@@ -172,17 +171,16 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'true');
 
               fireEvent.click(toggle);
 
               await waitFor(() => {
                 expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', false);
+                expect(toggle).toHaveAttribute('aria-checked', 'false');
+                expect(toggle).toHaveClass('bg-gray-200');
               });
-
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
-              expect(toggle).toHaveClass('bg-gray-200');
             }
           }
         ],
@@ -241,7 +239,7 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               fireEvent.click(toggle);
 
               await waitFor(() => {
@@ -326,7 +324,7 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toBeInTheDocument();
               expect(toggle).toHaveAttribute('aria-checked', 'true');
 
@@ -345,10 +343,12 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
-              expect(toggle).toHaveClass('bg-blue-600');
-              const thumb = toggle.querySelector('span');
-              expect(thumb).toHaveClass('translate-x-6'); // Thumb position for enabled
+              const toggle = await screen.findByRole('switch');
+              await waitFor(() => {
+                expect(toggle).toHaveClass('bg-blue-600');
+                const thumb = toggle.querySelector('span');
+                expect(thumb).toHaveClass('translate-x-6'); // Thumb position for enabled
+              });
             }
           },
           {
@@ -362,10 +362,12 @@ describe('PrepModeToggle Component', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
-              expect(toggle).toHaveClass('bg-gray-200');
-              const thumb = toggle.querySelector('span');
-              expect(thumb).toHaveClass('translate-x-1'); // Thumb position for disabled
+              const toggle = await screen.findByRole('switch');
+              await waitFor(() => {
+                expect(toggle).toHaveClass('bg-gray-200');
+                const thumb = toggle.querySelector('span');
+                expect(thumb).toHaveClass('translate-x-1'); // Thumb position for disabled
+              });
             }
           }
         ],

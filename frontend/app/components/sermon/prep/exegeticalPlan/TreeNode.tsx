@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X, CornerDownRight, ArrowDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
@@ -42,6 +42,18 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
   const isFocused = focusedId === node.id;
   const hasChildren = isOpen && node.children && node.children.length > 0;
+  const inputShouldFocus = focusedId === node.id;
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+
+    if (inputShouldFocus) {
+      inputRef.current.setAttribute('autofocus', 'true');
+      inputRef.current.focus();
+    } else {
+      inputRef.current.removeAttribute('autofocus');
+    }
+  }, [inputShouldFocus]);
 
   // Color scheme for different depth levels
   const getLineColor = (depth: number): string => {
@@ -106,7 +118,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             onBlur={() => {
               if (focusedId === node.id) onBlur(node.id);
             }}
-            autoFocus={focusedId === node.id}
+            autoFocus={inputShouldFocus}
             className={`w-full ${hasMarker ? 'pl-8' : 'pl-2.5'} pr-8 py-1.5 text-sm bg-white dark:bg-gray-800 border rounded-md outline-none transition-colors ${
               isFocused
                 ? 'border-blue-500 dark:border-blue-400'

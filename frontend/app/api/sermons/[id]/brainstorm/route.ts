@@ -4,11 +4,11 @@ import { Sermon } from '@/models/models';
 import { generateBrainstormSuggestion } from '@clients/openAI.client';
 
 // POST /api/sermons/:id/brainstorm
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   console.log("Brainstorm route: Received POST request for generating brainstorm suggestion");
   
   try {
-    const sermonId = params.id;
+    const { id: sermonId } = await params;
     
     if (!sermonId) {
       console.error("Brainstorm route: sermonId is missing");

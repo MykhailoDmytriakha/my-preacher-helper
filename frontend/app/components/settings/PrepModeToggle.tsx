@@ -10,30 +10,48 @@ export default function PrepModeToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
-    async function loadSettings() {
+    let isActive = true;
+
+    const loadSettings = async () => {
       if (!user?.uid) {
         console.log('❌ PrepModeToggle: no user.uid, skipping load');
-        setLoading(false);
+        if (isActive) {
+          setLoading(false);
+        }
         return;
       }
 
       console.log('🔍 PrepModeToggle: loading settings for user:', user.uid);
+      if (isActive) {
+        setLoading(true);
+      }
+
       try {
         const settings = await getUserSettings(user.uid);
         console.log('📊 PrepModeToggle: loaded settings:', settings);
         const enabledValue = settings?.enablePrepMode || false;
         console.log('✅ PrepModeToggle: setting enabled to:', enabledValue);
-        setEnabled(enabledValue);
+        if (isActive) {
+          setEnabled(enabledValue);
+        }
       } catch (error) {
         console.error('❌ PrepModeToggle: Error loading prep mode setting:', error);
       } finally {
-        setLoading(false);
+        if (isActive) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
-    }
+    };
 
     loadSettings();
+
+    return () => {
+      isActive = false;
+    };
   }, [user?.uid]);
 
   const handleToggle = async () => {
@@ -54,7 +72,7 @@ export default function PrepModeToggle() {
     }
   };
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
         <div className="animate-pulse" data-testid="prep-mode-loading">

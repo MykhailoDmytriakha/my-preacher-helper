@@ -3,8 +3,8 @@ import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/series/:id/sermons - add sermon to series
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const { id: seriesId } = params;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: seriesId } = await params;
 
   try {
     const { sermonId, position } = await request.json();
@@ -36,8 +36,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 // PUT /api/series/:id/sermons - reorder sermons in series
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const { id: seriesId } = params;
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: seriesId } = await params;
 
   try {
     const { sermonIds } = await request.json();
@@ -70,8 +70,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE /api/series/:id/sermons?sermonId=<sermonId> - remove sermon from series
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const { id: seriesId } = params;
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: seriesId } = await params;
 
   try {
     const { searchParams } = new URL(request.url);

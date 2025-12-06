@@ -17,6 +17,7 @@ interface TagsSectionProps {
 const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
   const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>({ requiredTags: [], customTags: [] });
+  const [loaded, setLoaded] = useState(false);
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
 
   useEffect(() => {
@@ -24,7 +25,9 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       try {
         if (user?.uid) {
           const tagsData = await getTags(user.uid);
+          console.log('TagsSection: fetched tags', tagsData);
           setTags(tagsData);
+          setLoaded(true);
         }
       } catch (error) {
         console.error('Error fetching tags:', error);

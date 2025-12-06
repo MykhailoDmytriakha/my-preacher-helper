@@ -3,8 +3,8 @@ import { seriesRepository } from '@repositories/series.repository';
 import { adminDb } from 'app/config/firebaseAdminConfig';
 
 // GET /api/series/:id
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   try {
     const series = await seriesRepository.fetchSeriesById(id);
@@ -21,8 +21,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 // PUT /api/series/:id - update series
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   try {
     const updateData = await request.json();
@@ -74,8 +74,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 // DELETE /api/series/:id - Delete a series
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   try {
     const series = await seriesRepository.fetchSeriesById(id);

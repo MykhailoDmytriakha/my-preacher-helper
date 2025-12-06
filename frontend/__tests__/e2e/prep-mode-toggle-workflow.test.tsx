@@ -136,7 +136,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'false');
               expect(screen.getByText('Preparation Mode (Beta)')).toBeInTheDocument();
             }
@@ -151,14 +151,13 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               fireEvent.click(toggle);
 
               await waitFor(() => {
                 expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', true);
+                expect(toggle).toHaveAttribute('aria-checked', 'true');
               });
-
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
             }
           },
           {
@@ -248,7 +247,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'true');
             }
           },
@@ -262,14 +261,13 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               fireEvent.click(toggle);
 
               await waitFor(() => {
                 expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', false);
+                expect(toggle).toHaveAttribute('aria-checked', 'false');
               });
-
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
             }
           },
           {
@@ -311,7 +309,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
               });
 
-              const toggle = screen.getByRole('switch');
+              const toggle = await screen.findByRole('switch');
               expect(toggle).toHaveAttribute('aria-checked', 'false');
 
               fireEvent.click(toggle);
@@ -319,10 +317,8 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               await waitFor(() => {
                 expect(alertSpy).toHaveBeenCalledWith('Failed to update setting');
                 expect(consoleSpy).toHaveBeenCalledWith('❌ PrepModeToggle: Error updating prep mode:', expect.any(Error));
+                expect(toggle).toHaveAttribute('aria-checked', 'false');
               });
-
-              // Toggle should revert to original state
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
             }
           },
           {

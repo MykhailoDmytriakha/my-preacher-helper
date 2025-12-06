@@ -71,9 +71,9 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   const handleAddMainPoint = useCallback(() => {
     const newNode = createNewNode();
+    setFocusedId(newNode.id);
     emit([...(tree || []), newNode]);
     setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-    setTimeout(() => setFocusedId(newNode.id), 0);
   }, [tree, emit]);
 
   const handleRemoveNode = useCallback((id: string) => {
@@ -107,17 +107,17 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   const handleAddChild = useCallback((parentId: string) => {
     const newNode = createNewNode();
+    setFocusedId(newNode.id);
     emit(addChildNode(tree, parentId, newNode));
     setExpand(prev => ({ ...prev, [parentId]: true }));
     setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-    setTimeout(() => setFocusedId(newNode.id), 0);
   }, [tree, emit]);
 
   const handleAddSibling = useCallback((siblingId: string) => {
     const newNode = createNewNode();
+    setFocusedId(newNode.id);
     emit(addSiblingNode(tree, siblingId, newNode));
     setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-    setTimeout(() => setFocusedId(newNode.id), 0);
   }, [tree, emit]);
 
   const handleSave = useCallback(async () => {
