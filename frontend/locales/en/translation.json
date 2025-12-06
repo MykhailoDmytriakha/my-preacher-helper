@@ -479,7 +479,9 @@
     "back": "Back",
     "close": "Close",
     "hours": "Hours",
-    "seconds": "Seconds"
+    "seconds": "Seconds",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "outline": {
     "introduction": "Introduction",

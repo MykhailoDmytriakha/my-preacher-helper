@@ -479,7 +479,9 @@
     "back": "Назад",
     "close": "Закрыть",
     "hours": "Часы",
-    "seconds": "Секунды"
+    "seconds": "Секунды",
+    "expand": "Развернуть",
+    "collapse": "Свернуть"
   },
   "outline": {
     "introduction": "Вступление",
