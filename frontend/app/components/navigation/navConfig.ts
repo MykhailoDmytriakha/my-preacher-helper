@@ -22,10 +22,10 @@ const dashboardMatcher = /^\/(dashboard|sermons)(\/|$)/;
 
 export const primaryNavItems: PrimaryNavItem[] = [
   {
-    key: 'library',
+    key: 'sermons',
     href: '/dashboard',
-    labelKey: 'navigation.library',
-    defaultLabel: 'Library',
+    labelKey: 'navigation.sermons',
+    defaultLabel: 'Sermons',
     icon: BookOpenIcon,
     matchers: [dashboardMatcher]
   },

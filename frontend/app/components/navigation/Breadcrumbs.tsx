@@ -129,17 +129,32 @@ export default function Breadcrumbs() {
       return [];
     }
 
-    const crumbs: BreadcrumbItem[] = [
-      {
-        label: t('navigation.library', { defaultValue: 'Library' }),
+    // Determine the root breadcrumb based on the first segment (context-dependent)
+    const firstSegment = segments[0];
+    const rootConfig = segmentLabels[firstSegment];
+    
+    const crumbs: BreadcrumbItem[] = [];
+    
+    // Add root breadcrumb based on context
+    if (rootConfig) {
+      crumbs.push({
+        label: t(rootConfig.labelKey, { defaultValue: rootConfig.defaultLabel }),
+        href: rootConfig.href
+      });
+    } else if (firstSegment === 'dashboard') {
+      // For dashboard sub-routes, use Sermons as root
+      crumbs.push({
+        label: t('navigation.sermons', { defaultValue: 'Sermons' }),
         href: '/dashboard'
-      }
-    ];
+      });
+    }
 
     let currentPath = '';
 
     segments.forEach((segment, index) => {
-      if (segment === 'dashboard') {
+      // Skip root segments that are already handled as the first breadcrumb
+      if (segment === 'dashboard' || (index === 0 && segmentLabels[segment])) {
+        currentPath += `/${segment}`;
         return;
       }
 

@@ -36,7 +36,7 @@ describe('Breadcrumbs', () => {
     jest.clearAllMocks();
   });
 
-  it('should show Library > ThoughtsBySection for structure page without sermonId', () => {
+  it('should not render for standalone structure page without context', () => {
     mockUsePathname.mockReturnValue('/structure');
     mockUseSearchParams.mockReturnValue({
       get: jest.fn().mockReturnValue(null),
@@ -46,11 +46,12 @@ describe('Breadcrumbs', () => {
 
     render(<Breadcrumbs />);
 
-    expect(screen.getByText('Library')).toBeInTheDocument();
-    expect(screen.getByText('ThoughtsBySection')).toBeInTheDocument();
+    // Single segment pages don't have enough crumbs to render
+    // (need root + at least one more segment)
+    expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
 
-  it('should show Library > Sermon Title > ThoughtsBySection for structure page with sermonId', () => {
+  it('should show Sermons > Sermon Title > ThoughtsBySection for sermon structure page', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
     mockUsePathname.mockReturnValue('/sermons/test-id/structure');
     mockUseSearchParams.mockReturnValue({
@@ -61,12 +62,12 @@ describe('Breadcrumbs', () => {
 
     render(<Breadcrumbs />);
 
-    expect(screen.getByText('Library')).toBeInTheDocument();
+    expect(screen.getByText('Sermons')).toBeInTheDocument();
     expect(screen.getByText('Test Sermon')).toBeInTheDocument();
     expect(screen.getByText('ThoughtsBySection')).toBeInTheDocument();
   });
 
-  it('should show Library > Sermon Title for sermons page', () => {
+  it('should show Sermons > Sermon Title for sermons detail page', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
     mockUsePathname.mockReturnValue('/sermons/test-id');
     mockUseSearchParams.mockReturnValue({
@@ -77,11 +78,11 @@ describe('Breadcrumbs', () => {
 
     render(<Breadcrumbs />);
 
-    expect(screen.getByText('Library')).toBeInTheDocument();
+    expect(screen.getByText('Sermons')).toBeInTheDocument();
     expect(screen.getByText('Test Sermon')).toBeInTheDocument();
   });
 
-  it('should show Library > Series Title for series page', () => {
+  it('should show Series > Series Title for series detail page', () => {
     const mockSeries = { id: 'test-series-id', title: 'Test Series' };
     mockUsePathname.mockReturnValue('/series/test-series-id');
     mockUseSearchParams.mockReturnValue({
@@ -92,7 +93,35 @@ describe('Breadcrumbs', () => {
 
     render(<Breadcrumbs />);
 
-    expect(screen.getByText('Library')).toBeInTheDocument();
+    expect(screen.getByText('Series')).toBeInTheDocument();
     expect(screen.getByText('Test Series')).toBeInTheDocument();
+  });
+
+  it('should show Studies as root for studies page', () => {
+    mockUsePathname.mockReturnValue('/studies');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+
+    render(<Breadcrumbs />);
+
+    // Single segment pages don't render breadcrumbs (need at least 2 crumbs)
+    expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('should show Settings as root for settings page', () => {
+    mockUsePathname.mockReturnValue('/settings');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+
+    render(<Breadcrumbs />);
+
+    // Single segment pages don't render breadcrumbs
+    expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
 });
