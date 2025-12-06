@@ -566,24 +566,27 @@ export const AudioRecorder = ({
         {/* Show cancel button only when recording */}
         {isRecording && (
           appliedVariant === "mini" ? (
-            // Combined button layout for mini variant with separate cancel control
-            <div className="relative w-full">
+            // Clean separated layout for mini variant - no overlapping elements
+            <div className="flex gap-2 w-full">
+              {/* Main stop button - takes most width */}
               <button
                 type="button"
                 onClick={stopRecording}
-                className="w-full px-4 py-3 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                className="flex-1 px-4 py-3 text-sm font-medium rounded-xl bg-rose-500 hover:bg-rose-600 text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 shadow-lg shadow-rose-500/25"
                 aria-label={t('audio.stopRecording')}
                 title={t('audio.stopRecording')}
               >
-                <div className="flex items-center justify-center w-full">
-                  <div className="relative mr-2">
-                    <MicFilledIcon className="w-5 h-5 animate-pulse" />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
+                <div className="flex items-center justify-center">
+                  {/* Recording indicator dot */}
+                  <div className="relative mr-2.5 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
+                    <div className="absolute w-2.5 h-2.5 bg-white rounded-full animate-ping opacity-75" />
                   </div>
-                  {t('audio.stopRecording')}
+                  <span className="font-semibold">{t('audio.stopRecording')}</span>
                 </div>
               </button>
 
+              {/* Cancel button - separate, clearly distinct */}
               <button
                 type="button"
                 onClick={(e) => {
@@ -591,19 +594,21 @@ export const AudioRecorder = ({
                   console.log('AudioRecorder: Mini variant Cancel button clicked');
                   cancelRecording();
                 }}
-                className="absolute right-0 top-0 h-full w-1/5 rounded-r-xl bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group focus:outline-none focus:ring-2 focus:ring-red-200"
+                className="px-3.5 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
                 aria-label={t('audio.cancelRecording')}
                 title={`${t('audio.cancelRecording')} (Esc)`}
               >
                 <svg 
-                  className="w-4 h-4 text-white group-hover:text-red-100 transition-colors" 
-                  fill="currentColor" 
-                  viewBox="0 0 20 20"
+                  className="w-5 h-5" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
                 >
                   <path 
-                    fillRule="evenodd" 
-                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
-                    clipRule="evenodd" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    d="M6 18L18 6M6 6l12 12" 
                   />
                 </svg>
               </button>
@@ -639,15 +644,29 @@ export const AudioRecorder = ({
         {/* Timer and inline progress — show only while actively recording */}
         {isRecording && (
           <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3 flex-1"}`}>
-            {/* MINI: keep compact timer chip with subtle overlay */}
+            {/* MINI: Compact timer with thin progress */}
             {appliedVariant === "mini" && (
               <div className="w-full">
-                <div className="text-sm px-3 py-2 font-medium font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg text-center relative overflow-hidden">
-                  <span className="relative z-10">{formatTime(recordingTime)} / {formatTime(maxDuration)}</span>
-                  <div 
-                    className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 transition-all duration-1000 ease-out"
-                    style={{ width: `${progressPercentage}%` }}
-                  />
+                {/* Single line: progress bar with time on top */}
+                <div className="relative">
+                  {/* Time display - centered above the bar */}
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <span className="text-sm font-semibold font-mono text-gray-700 dark:text-gray-200 tabular-nums">
+                      {formatTime(recordingTime)}
+                    </span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">/</span>
+                    <span className="text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                      {formatTime(maxDuration)}
+                    </span>
+                  </div>
+                  
+                  {/* Ultra-thin progress bar */}
+                  <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-rose-500 rounded-full transition-all duration-1000 ease-out"
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

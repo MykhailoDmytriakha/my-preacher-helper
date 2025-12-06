@@ -299,7 +299,6 @@ export default function AddStudyNoteModal({
                   onRecordingComplete={handleVoiceRecordingComplete}
                   isProcessing={isVoiceProcessing}
                   variant="mini"
-                  maxDuration={120}
                   hideKeyboardShortcuts
                 />
               </div>
