@@ -21,6 +21,9 @@
     },
     "app/api/sermons/[id]/plan/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/studies/analyze/route.ts": {
+      "maxDuration": 60
     }
   }
 } 
