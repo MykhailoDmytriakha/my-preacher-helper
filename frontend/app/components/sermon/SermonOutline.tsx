@@ -376,7 +376,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                 {totalThoughts} {t('structure.entries')}
               </span>
             )}
-            <ChevronDownIcon className={`ml-2 h-5 w-5 text-gray-500 dark:text-gray-400 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Actions: Focus mode link (same icon as ThoughtsBySection columns) */}
@@ -391,6 +390,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
               </svg>
             </Link>
+            <button
+              type="button"
+              onClick={() => toggleSection(sectionType)}
+              aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
+              className="p-1 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 rounded-full transition-colors text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            >
+              <ChevronDownIcon className={`h-5 w-5 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </div>
 
