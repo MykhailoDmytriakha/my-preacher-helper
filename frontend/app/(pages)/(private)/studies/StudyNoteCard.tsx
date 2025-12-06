@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   PencilIcon,
   SparklesIcon,
+  QuestionMarkCircleIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { StudyNote } from '@/models/models';
@@ -101,8 +102,12 @@ export default function StudyNoteCard({
         rounded-xl border bg-white shadow-sm transition-all duration-200
         dark:bg-gray-800
         ${isExpanded
-          ? 'border-emerald-200 dark:border-emerald-700'
-          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+          ? note.type === 'question'
+            ? 'border-amber-200 dark:border-amber-700'
+            : 'border-emerald-200 dark:border-emerald-700'
+          : note.type === 'question'
+            ? 'border-amber-100 dark:border-amber-900/50 hover:border-amber-200 dark:hover:border-amber-800'
+            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
         }
       `}
     >
@@ -114,46 +119,54 @@ export default function StudyNoteCard({
           className="flex flex-1 items-start gap-3 text-left"
           aria-expanded={isExpanded}
         >
-        {/* Chevron */}
-        <div className="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500">
-          {isExpanded ? (
-            <ChevronDownIcon className="h-5 w-5" />
-          ) : (
-            <ChevronRightIcon className="h-5 w-5" />
-          )}
-        </div>
-
-        {/* Content preview */}
-        <div className="min-w-0 flex-1">
-          {/* Title */}
-          <h4 className="text-base font-semibold text-gray-900 dark:text-gray-50 truncate">
-            {note.title || t('studiesWorkspace.untitled')}
-          </h4>
-
-          {/* Preview text (collapsed only) */}
-          {!isExpanded && (
-            <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-              <MarkdownDisplay content={note.content} compact />
-            </div>
-          )}
-
-          {/* Meta info */}
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-            <span className="inline-flex items-center gap-1">
-              <BookmarkIcon className="h-3.5 w-3.5" />
-              {note.scriptureRefs.length}
-            </span>
-            <span>•</span>
-            <span className="inline-flex items-center gap-1">
-              🏷️ {note.tags.length}
-            </span>
-            <span>•</span>
-            <span>{formatRelativeTime(note.updatedAt)}</span>
+          {/* Chevron */}
+          <div className="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500">
+            {isExpanded ? (
+              <ChevronDownIcon className="h-5 w-5" />
+            ) : (
+              <ChevronRightIcon className="h-5 w-5" />
+            )}
           </div>
-        </div>
 
-        {/* Analyze button for notes without metadata (collapsed only) */}
-          { !isExpanded && needsAnalysis && onAnalyze && (
+          {/* Content preview */}
+          <div className="min-w-0 flex-1">
+            {/* Title */}
+            <div className="flex items-center gap-2">
+              {note.type === 'question' && (
+                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
+                  <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
+                  {t('studiesWorkspace.type.question') || 'Question'}
+                </span>
+              )}
+              <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 truncate">
+                {note.title || t('studiesWorkspace.untitled')}
+              </h4>
+            </div>
+
+            {/* Preview text (collapsed only) */}
+            {!isExpanded && (
+              <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+                <MarkdownDisplay content={note.content} compact />
+              </div>
+            )}
+
+            {/* Meta info */}
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              <span className="inline-flex items-center gap-1">
+                <BookmarkIcon className="h-3.5 w-3.5" />
+                {note.scriptureRefs.length}
+              </span>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1">
+                🏷️ {note.tags.length}
+              </span>
+              <span>•</span>
+              <span>{formatRelativeTime(note.updatedAt)}</span>
+            </div>
+          </div>
+
+          {/* Analyze button for notes without metadata (collapsed only) */}
+          {!isExpanded && needsAnalysis && onAnalyze && (
             <span className="sr-only">{t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}</span>
           )}
         </button>

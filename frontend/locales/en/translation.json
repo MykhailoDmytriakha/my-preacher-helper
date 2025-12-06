@@ -1213,6 +1213,10 @@
     }
   },
   "studiesWorkspace": {
+    "type": {
+      "note": "Note",
+      "question": "Question"
+    },
     "newNote": "New note",
     "editNote": "Edit note",
     "titleLabel": "Title",

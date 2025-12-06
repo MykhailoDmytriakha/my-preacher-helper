@@ -1213,6 +1213,10 @@
     }
   },
   "studiesWorkspace": {
+    "type": {
+      "note": "Заметка",
+      "question": "Вопрос"
+    },
     "newNote": "Новая заметка",
     "editNote": "Редактировать заметку",
     "titleLabel": "Заголовок",

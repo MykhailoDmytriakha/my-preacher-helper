@@ -279,6 +279,8 @@ export interface StudyNote {
   materialIds?: string[];
   /** Optional links to existing sermons */
   relatedSermonIds?: string[];
+  /** Type of the note: standard note or a question to be answered later */
+  type?: 'note' | 'question';
 }
 
 export type StudyMaterialType = 'sermon' | 'study' | 'group' | 'guide';

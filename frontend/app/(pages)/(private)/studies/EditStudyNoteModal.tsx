@@ -48,6 +48,7 @@ export default function EditStudyNoteModal({
   const [content, setContent] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
+  const [type, setType] = useState<'note' | 'question'>('note');
 
   const [tagInput, setTagInput] = useState('');
   const [quickRefInput, setQuickRefInput] = useState('');
@@ -72,6 +73,7 @@ export default function EditStudyNoteModal({
       setContent(note.content);
       setTags(note.tags);
       setScriptureRefs(note.scriptureRefs);
+      setType(note.type || 'note');
       setTagInput('');
       setQuickRefInput('');
       setQuickRefError(null);
@@ -95,6 +97,7 @@ export default function EditStudyNoteModal({
         content,
         tags,
         scriptureRefs,
+        type,
       });
       onClose();
     } catch (error) {
@@ -197,9 +200,34 @@ export default function EditStudyNoteModal({
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50">
-            {t('studiesWorkspace.editNote')}
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50">
+              {t('studiesWorkspace.editNote')}
+            </h2>
+            {/* Type Toggle */}
+            <div className="flex items-center rounded-lg bg-gray-100 p-1 dark:bg-gray-700">
+              <button
+                type="button"
+                onClick={() => setType('note')}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${type === 'note'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-600 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+              >
+                {t('studiesWorkspace.type.note') || 'Note'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setType('question')}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-all ${type === 'question'
+                  ? 'bg-amber-100 text-amber-900 shadow-sm dark:bg-amber-900/40 dark:text-amber-100'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+              >
+                {t('studiesWorkspace.type.question') || 'Question'}
+              </button>
+            </div>
+          </div>
           <button
             onClick={handleClose}
             className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
