@@ -39,7 +39,7 @@ jest.mock('next/server', () => ({
 
 // Mock Firebase Admin - Use a factory that returns new mocks
 // We define the mock implementation inside the factory to avoid hoisting issues
-jest.mock('app/config/firebaseAdminConfig', () => {
+jest.mock('@/config/firebaseAdminConfig', () => {
   const updateFn = jest.fn();
   const docFn = jest.fn(() => ({ update: updateFn }));
   const collectionFn = jest.fn(() => ({ doc: docFn }));

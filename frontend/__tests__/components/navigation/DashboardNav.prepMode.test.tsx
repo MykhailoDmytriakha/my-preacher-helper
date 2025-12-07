@@ -89,26 +89,7 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
               expect(screen.getByText('Mode Toggle')).toBeInTheDocument();
             }
           },
-          {
-            name: 'shows toggle on sermon plan page when access granted',
-            run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
-              pathnameMock = '/sermons/test-sermon-id/plan';
-              render(<DashboardNav />);
-
-              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
-            }
-          },
-          {
-            name: 'shows toggle on structure page when access granted',
-            run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
-              pathnameMock = '/structure';
-              render(<DashboardNav />);
-
-              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
-            }
-          }
+          // Only sermon root should show toggle
         ],
         { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
       );

@@ -49,7 +49,7 @@ jest.mock('@clients/thought.structured', () => ({
   }),
 }));
 
-jest.mock('app/config/firebaseAdminConfig', () => ({
+jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: () => ({
       doc: () => ({

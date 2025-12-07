@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 
 // GET /api/sermons/:id
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {

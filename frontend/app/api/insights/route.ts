@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon } from '@/models/models';
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { generateSermonInsights } from '@clients/openAI.client';
 
 // POST /api/insights?sermonId=<id>

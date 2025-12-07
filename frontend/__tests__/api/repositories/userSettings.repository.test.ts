@@ -14,7 +14,7 @@ const mockCollection = jest.fn(() => ({
   doc: mockDocRef
 }));
 
-jest.doMock('app/config/firebaseAdminConfig', () => ({
+jest.doMock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: mockCollection
   }

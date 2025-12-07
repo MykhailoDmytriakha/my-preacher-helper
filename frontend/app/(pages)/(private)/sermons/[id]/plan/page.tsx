@@ -17,6 +17,8 @@ import { SwitchViewIcon } from "@/components/Icons";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
+import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
+import { PlanStyle } from "@/api/clients/openAI.client";
 
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
@@ -523,20 +525,20 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
               <span className="mt-1.5">•</span>
               <div className="flex-1 min-w-0">
                 <MarkdownDisplay content={thought.text} compact />
+                {thought.keyFragments && thought.keyFragments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {thought.keyFragments.map((fragment, index) => (
+                      <span
+                        key={index}
+                        className="inline-block px-2 py-0.5 text-xs rounded-full"
+                        style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
+                      >
+                        &quot;{fragment}&quot;
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              {thought.keyFragments && thought.keyFragments.length > 0 && (
-                <div className="mt-1 ml-2">
-                  {thought.keyFragments.map((fragment, index) => (
-                    <span
-                      key={index}
-                      className="inline-block mr-2 mb-1 px-2 py-0.5 text-xs rounded-full"
-                      style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
-                    >
-                      &quot;{fragment}&quot;
-                    </span>
-                  ))}
-                </div>
-              )}
             </li>
           ))}
         </ul>
@@ -616,6 +618,9 @@ export default function PlanPage() {
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
   // Currently generating outline point ID
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+
+  // Style for plan generation
+  const [planStyle, setPlanStyle] = useState<PlanStyle>('memory');
 
   // State to hold the combined generated content for each section
   const [combinedPlan, setCombinedPlan] = useState<{
@@ -1107,13 +1112,12 @@ export default function PlanPage() {
         return;
       }
 
-      // Call the API to generate content
-      const response = await fetch(`/api/sermons/${sermon.id}/plan?outlinePointId=${outlinePointId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      // Call the API
+      const queryParams = new URLSearchParams({
+        outlinePointId,
+        style: planStyle
       });
+      const response = await fetch(`/api/sermons/${sermon.id}/plan?${queryParams.toString()}`);
 
       if (!response.ok) {
         throw new Error(`Failed to generate content: ${response.status}`);
@@ -1202,14 +1206,14 @@ export default function PlanPage() {
   // Save the plan to the server
   // const savePlan = async () => {
   //   if (!sermon) return;
-  //   
+  //
   //   try {
   //     const planToSave: Plan = {
   //       introduction: { outline: combinedPlan.introduction },
   //       main: { outline: combinedPlan.main },
   //       conclusion: { outline: combinedPlan.conclusion },
   //     };
-  //     
+  //
   //     const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
   //       method: "PUT",
   //       headers: {
@@ -1217,11 +1221,11 @@ export default function PlanPage() {
   //       },
   //       body: JSON.stringify(planToSave),
   //     });
-  //     
+  //
   //     if (!response.ok) {
   //       throw new Error(`Failed to save plan: ${response.status}`);
   //     }
-  //     
+  //
   //       toast.success(t("plan.planSaved"));
   //   } catch (err) {
   //     console.error(err);
@@ -1664,16 +1668,16 @@ export default function PlanPage() {
             margin-top: 0.5em;
             margin-bottom: 0.5em;
           }
-          .markdown-content h1, 
-          .markdown-content h2, 
-          .markdown-content h3, 
-          .markdown-content h4, 
-          .markdown-content h5, 
+          .markdown-content h1,
+          .markdown-content h2,
+          .markdown-content h3,
+          .markdown-content h4,
+          .markdown-content h5,
           .markdown-content h6 {
             margin-top: 1em;
             margin-bottom: 0.5em;
           }
-          
+
           /* Visual markers for different heading levels */
           .markdown-content h2::before {
             content: "";
@@ -1685,7 +1689,7 @@ export default function PlanPage() {
             border-radius: 2px;
             vertical-align: text-top;
           }
-          
+
           /* Use section context to style bullets */
           /* Introduction bullets (h3) */
           .markdown-content.prose-introduction h3::before,
@@ -1716,7 +1720,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.conclusion.light};
             font-weight: bold;
           }
-          
+
           /* Default h3 bullets - only apply when no section class is present */
           .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
             content: "•";
@@ -1725,7 +1729,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.mainPart.base};
             font-weight: bold;
           }
-          
+
           /* Default h4 circles */
           .markdown-content h4::before {
             content: "○";
@@ -1734,7 +1738,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.conclusion.base};
             font-weight: bold;
           }
-          
+
           /* Section-specific styles for introduction section */
           .markdown-content.prose-introduction h2::before {
             background-color: ${SERMON_SECTION_COLORS.introduction.base};
@@ -1742,7 +1746,7 @@ export default function PlanPage() {
           .markdown-content.prose-introduction h4::before {
             color: ${SERMON_SECTION_COLORS.introduction.dark};
           }
-          
+
           /* Section-specific styles for main section */
           .markdown-content.prose-main h2::before {
             background-color: ${SERMON_SECTION_COLORS.mainPart.base};
@@ -1750,7 +1754,7 @@ export default function PlanPage() {
           .markdown-content.prose-main h4::before {
             color: ${SERMON_SECTION_COLORS.mainPart.dark};
           }
-          
+
           /* Section-specific styles for conclusion section */
           .markdown-content.prose-conclusion h2::before {
             background-color: ${SERMON_SECTION_COLORS.conclusion.base};
@@ -1776,19 +1780,19 @@ export default function PlanPage() {
           .preaching-mode {
             padding-top: 80px; /* Desktop: Account for sticky timer header */
           }
-          
+
           @media (max-width: 768px) {
             .preaching-mode {
               padding-top: 65px; /* Tablet: Slightly less padding */
             }
           }
-          
+
           @media (max-width: 640px) {
             .preaching-mode {
               padding-top: 50px; /* Mobile: Less padding for compact timer */
             }
           }
-          
+
           .preaching-content {
             max-width: 4xl;
             margin: 0 auto;
@@ -1910,16 +1914,16 @@ export default function PlanPage() {
             margin-top: 0.5em;
             margin-bottom: 0.5em;
           }
-          .markdown-content h1, 
-          .markdown-content h2, 
-          .markdown-content h3, 
-          .markdown-content h4, 
-          .markdown-content h5, 
+          .markdown-content h1,
+          .markdown-content h2,
+          .markdown-content h3,
+          .markdown-content h4,
+          .markdown-content h5,
           .markdown-content h6 {
             margin-top: 1em;
             margin-bottom: 0.5em;
           }
-          
+
           /* Visual markers for different heading levels */
           .markdown-content h2::before {
             content: "";
@@ -1931,7 +1935,7 @@ export default function PlanPage() {
             border-radius: 2px;
             vertical-align: text-top;
           }
-          
+
           /* Use section context to style bullets */
           /* Introduction bullets (h3) */
           .markdown-content.prose-introduction h3::before,
@@ -1962,7 +1966,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.conclusion.light};
             font-weight: bold;
           }
-          
+
           /* Default h3 bullets - only apply when no section class is present */
           .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
             content: "•";
@@ -1971,7 +1975,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.mainPart.base};
             font-weight: bold;
           }
-          
+
           /* Default h4 circles */
           .markdown-content h4::before {
             content: "○";
@@ -1980,7 +1984,7 @@ export default function PlanPage() {
             color: ${SERMON_SECTION_COLORS.conclusion.base};
             font-weight: bold;
           }
-          
+
           /* Section-specific styles for introduction section */
           .markdown-content.prose-introduction h2::before {
             background-color: ${SERMON_SECTION_COLORS.introduction.base};
@@ -1988,7 +1992,7 @@ export default function PlanPage() {
           .markdown-content.prose-introduction h4::before {
             color: ${SERMON_SECTION_COLORS.introduction.dark};
           }
-          
+
           /* Section-specific styles for main section */
           .markdown-content.prose-main h2::before {
             background-color: ${SERMON_SECTION_COLORS.mainPart.base};
@@ -1996,7 +2000,7 @@ export default function PlanPage() {
           .markdown-content.prose-main h4::before {
             color: ${SERMON_SECTION_COLORS.mainPart.dark};
           }
-          
+
           /* Section-specific styles for conclusion section */
           .markdown-content.prose-conclusion h2::before {
             background-color: ${SERMON_SECTION_COLORS.conclusion.base};
@@ -2022,19 +2026,19 @@ export default function PlanPage() {
           .preaching-mode {
             padding-top: 80px; /* Desktop: Account for sticky timer header */
           }
-          
+
           @media (max-width: 768px) {
             .preaching-mode {
               padding-top: 65px; /* Tablet: Slightly less padding */
             }
           }
-          
+
           @media (max-width: 640px) {
             .preaching-mode {
               padding-top: 50px; /* Mobile: Less padding for compact timer */
             }
           }
-          
+
           .preaching-content {
             max-width: 4xl;
             margin: 0 auto;
@@ -2215,11 +2219,11 @@ export default function PlanPage() {
           margin-top: 0.5em;
           margin-bottom: 0.5em;
         }
-        .markdown-content h1, 
-        .markdown-content h2, 
-        .markdown-content h3, 
-        .markdown-content h4, 
-        .markdown-content h5, 
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
         .markdown-content h6 {
           margin-top: 1em;
           margin-bottom: 0.5em;
@@ -2250,7 +2254,7 @@ export default function PlanPage() {
         .markdown-content p + p, .markdown-content ul + p, .markdown-content ol + p {
           margin-left: inherit;
         }
-        .markdown-content ul, 
+        .markdown-content ul,
         .markdown-content ol {
           margin-top: 0.5em;
           margin-bottom: 0.5em;
@@ -2277,7 +2281,7 @@ export default function PlanPage() {
         .markdown-content > *:first-child {
           margin-top: 0;
         }
-        
+
         /* Visual markers for different heading levels */
         .markdown-content h2::before {
           content: "";
@@ -2289,7 +2293,7 @@ export default function PlanPage() {
           border-radius: 2px;
           vertical-align: text-top;
         }
-        
+
         /* Use section context to style bullets */
         /* Introduction bullets (h3) */
         .markdown-content.prose-introduction h3::before,
@@ -2320,7 +2324,7 @@ export default function PlanPage() {
           color: ${SERMON_SECTION_COLORS.conclusion.light};
           font-weight: bold;
         }
-        
+
         /* Default h3 bullets - only apply when no section class is present */
         .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
           content: "•";
@@ -2444,8 +2448,16 @@ export default function PlanPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Introduction header */}
             <div ref={introductionSectionRef} data-section="introduction" className="lg:col-span-2">
-              <SectionHeader section="introduction" onSwitchPage={handleSwitchToStructure} />
-            </div>
+              <PlanStyleSelector
+                value={planStyle}
+                onChange={setPlanStyle}
+                disabled={isLoading || !!generatingId}
+              />
+
+              <SectionHeader
+                section="introduction"
+                onSwitchPage={handleSwitchToStructure}
+              /></div>
             {/* Intro Left & Right */}
             <div
               data-testid="plan-introduction-left-section"

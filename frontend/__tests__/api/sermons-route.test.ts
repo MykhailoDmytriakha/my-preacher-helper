@@ -8,7 +8,7 @@ interface MockRequest {
 }
 
 // Mock the adminDb to avoid actual Firestore calls
-jest.mock('app/config/firebaseAdminConfig', () => ({
+jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
   },
@@ -81,7 +81,7 @@ describe('Sermons API Route', () => {
     });
 
     // Apply the mocks
-    const { adminDb } = require('app/config/firebaseAdminConfig');
+    const { adminDb } = require('@/config/firebaseAdminConfig');
     adminDb.collection.mockImplementation(mockCollection);
 
     // Set up basic request object

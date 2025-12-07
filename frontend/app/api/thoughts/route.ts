@@ -8,7 +8,7 @@ import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
 const USE_STRUCTURED_OUTPUT = process.env.USE_STRUCTURED_OUTPUT === 'true';
 import { sermonsRepository } from '@repositories/sermons.repository';
 import { Sermon, Thought } from '@/models/models';
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import enTranslation from '@locales/en/translation.json';

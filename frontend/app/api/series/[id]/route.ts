@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { seriesRepository } from '@repositories/series.repository';
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 
 // GET /api/series/:id
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {

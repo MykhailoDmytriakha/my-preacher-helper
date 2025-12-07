@@ -1,7 +1,7 @@
 import 'openai/shims/node';
 import OpenAI from "openai";
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonDraft, BrainstormSuggestion, SectionHints } from "@/models/models";
-import { 
+import {
   thoughtSystemPrompt, createThoughtUserMessage,
   insightsSystemPrompt, createInsightsUserMessage,
   createSortingUserMessage,
@@ -125,9 +125,9 @@ function cleanPotentiallyInvalidJsonString(jsonString: string): string {
       return `: "${cleanedGroup}"`;
     });
   } catch (e) {
-     console.warn("JSON cleaning regex failed, using basic cleanup:", e);
-     // Basic heuristic cleanup as fallback (less reliable)
-     return jsonString.replace(/(?<!\\)"(?!\s*[:,\}\]])/g, '\\"');
+    console.warn("JSON cleaning regex failed, using basic cleanup:", e);
+    // Basic heuristic cleanup as fallback (less reliable)
+    return jsonString.replace(/(?<!\\)"(?!\s*[:,\}\]])/g, '\\"');
   }
 }
 
@@ -150,7 +150,7 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
     if (argumentsMatch && argumentsMatch[1]) {
       let jsonString = argumentsMatch[1].trim();
       // Clean the string before parsing
-      jsonString = cleanPotentiallyInvalidJsonString(jsonString); 
+      jsonString = cleanPotentiallyInvalidJsonString(jsonString);
       try {
         const parsed = JSON.parse(jsonString);
         // If the parsed content looks like a JSON Schema (e.g., has 'type' and/or 'properties'),
@@ -168,11 +168,11 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
         console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
         // Fall through if parsing still fails
       }
-    } 
-    
+    }
+
     // Second try: Look for a JSON object
     console.log("No <arguments> tags found or failed to parse, trying alternative extraction methods");
-    
+
     // Try to extract JSON from code blocks
     // If multiple code blocks exist, try the last one first as it often contains the final data
     const codeBlockMatches = [...responseContent.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
@@ -187,14 +187,14 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
         if (lastValidCharIndex > -1) {
           let openBraces = 0;
           let openBrackets = 0;
-          for(let i = 0; i <= lastValidCharIndex; i++) {
+          for (let i = 0; i <= lastValidCharIndex; i++) {
             if (codeBlockContent[i] === '{') openBraces++;
             else if (codeBlockContent[i] === '}') openBraces--;
             else if (codeBlockContent[i] === '[') openBrackets++;
             else if (codeBlockContent[i] === ']') openBrackets--;
           }
           if (openBraces >= 0 && openBrackets >= 0) {
-              codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
+            codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
           }
         }
 
@@ -208,15 +208,15 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
         // Fall through to try other extraction methods if parsing still fails
       }
     }
-    
+
     // Try to extract any JSON object/array in the response
     // Prefer the largest balanced block rather than the smallest non-greedy match
     const jsonMatches = [...responseContent.matchAll(/\{[\s\S]*\}|\[[\s\S]*\]/g)];
     // Choose the longest match which is more likely to be the outer structure
-    const jsonMatch = jsonMatches.length > 0 
-      ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest)) 
+    const jsonMatch = jsonMatches.length > 0
+      ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest))
       : null;
-    
+
     if (jsonMatch) {
       try {
         // Clean up the JSON string
@@ -249,7 +249,7 @@ function extractFunctionResponse<T>(response: OpenAI.Chat.ChatCompletion): T {
     // Use the renamed function here
     return extractStructuredResponseFromContent<T>(response.choices[0].message.content);
   }
-  
+
   // Add checks for standard OpenAI function/tool calls if needed in the future
   // else if (response.choices[0].message.function_call) { ... }
   // else if (response.choices[0].message.tool_calls) { ... }
@@ -275,8 +275,8 @@ function createMessagesArray(systemPrompt: string, userContent: string): Array<O
  * @returns The API call result
  */
 async function withOpenAILogging<T>(
-  apiCallFn: () => Promise<T>, 
-  operationName: string, 
+  apiCallFn: () => Promise<T>,
+  operationName: string,
   requestData: Record<string, unknown>,
   inputInfo: Record<string, unknown>,
   options: {
@@ -289,10 +289,10 @@ async function withOpenAILogging<T>(
     logFullResponse = true,
     logMaxLength = 2000
   } = options;
-  
+
   logger.info(operationName, "Starting operation");
   logger.info(operationName, "Input info", inputInfo);
-  
+
   // Truncate request data logging if it's too large
   const requestStr = JSON.stringify(requestData, null, 2);
   if (requestStr.length > logMaxLength && !logFullResponse) {
@@ -300,17 +300,17 @@ async function withOpenAILogging<T>(
   } else {
     logger.info(operationName, "Request data", requestData);
   }
-  
+
   const startTime = performance.now();
-  
+
   try {
     const response = await apiCallFn();
     const endTime = performance.now();
     const durationMs = endTime - startTime;
     const formattedDuration = formatDuration(durationMs);
-    
+
     logger.success(operationName, `Completed in ${formattedDuration}`);
-    
+
     // Truncate response logging if it's too large
     const responseStr = JSON.stringify(response, null, 2);
     if (responseStr.length > logMaxLength && !logFullResponse) {
@@ -318,9 +318,9 @@ async function withOpenAILogging<T>(
     } else {
       logger.info(operationName, "Raw response", response);
     }
-    
+
     let prettyResponse: unknown;
-    
+
     // Handle different response formats based on the operation
     const responseObj = response as Record<string, unknown>;
     if (responseObj.choices && Array.isArray(responseObj.choices) && responseObj.choices[0] && typeof responseObj.choices[0] === 'object' && responseObj.choices[0] !== null) {
@@ -345,7 +345,7 @@ async function withOpenAILogging<T>(
       // Default case
       prettyResponse = response;
     }
-    
+
     // Truncate pretty response logging if it's too large
     const prettyStr = JSON.stringify(prettyResponse, null, 2);
     if (prettyStr.length > logMaxLength && !logFullResponse) {
@@ -353,13 +353,13 @@ async function withOpenAILogging<T>(
     } else {
       logger.info(operationName, "Pretty response", prettyResponse);
     }
-    
+
     return response;
   } catch (error) {
     const endTime = performance.now();
     const durationMs = endTime - startTime;
     const formattedDuration = formatDuration(durationMs);
-    
+
     logger.error(operationName, `Failed after ${formattedDuration}`, error);
     throw error;
   }
@@ -377,25 +377,25 @@ export async function createTranscription(file: File | Blob): Promise<string> {
   // Log audio information for debugging (async now)
   await logAudioInfo(file, 'Transcription Input');
 
-    // Check for known format issues and attempt conversion if needed
-    if (hasKnownIssues(file.type)) {
-      console.warn(`⚠️ Audio format ${file.type} has known compatibility issues with OpenAI`);
-      console.warn(`⚠️ Note: Automatic conversion not yet implemented. File will be sent as-is.`);
-      console.warn(`⚠️ If transcription fails, this format incompatibility may be the cause.`);
-      
-      // TODO: Implement audio conversion here
-      // For now, we proceed with the original file but log the warning
-      // Future: Convert WebM+Opus to MP3 using Web Audio API or ffmpeg.wasm
-    }
+  // Check for known format issues and attempt conversion if needed
+  if (hasKnownIssues(file.type)) {
+    console.warn(`⚠️ Audio format ${file.type} has known compatibility issues with OpenAI`);
+    console.warn(`⚠️ Note: Automatic conversion not yet implemented. File will be sent as-is.`);
+    console.warn(`⚠️ If transcription fails, this format incompatibility may be the cause.`);
 
-    let fileToSend: File;
+    // TODO: Implement audio conversion here
+    // For now, we proceed with the original file but log the warning
+    // Future: Convert WebM+Opus to MP3 using Web Audio API or ffmpeg.wasm
+  }
 
-    if (file instanceof File) {
-      fileToSend = file;
-    } else {
-      // Convert Blob to File with proper naming
-      fileToSend = createAudioFile(file);
-    }
+  let fileToSend: File;
+
+  if (file instanceof File) {
+    fileToSend = file;
+  } else {
+    // Convert Blob to File with proper naming
+    fileToSend = createAudioFile(file);
+  }
 
   const inputInfo = {
     filename: fileToSend.name,
@@ -419,13 +419,13 @@ export async function createTranscription(file: File | Blob): Promise<string> {
       requestData,
       inputInfo
     );
-    
+
     console.log(`✅ Transcription successful: ${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}`);
-    
+
     return result.text;
   } catch (error) {
     console.error("❌ Error transcribing file:", error);
-    
+
     // Enhanced error logging for debugging
     if (error instanceof Error) {
       console.error("Error details:", {
@@ -436,13 +436,13 @@ export async function createTranscription(file: File | Blob): Promise<string> {
         fileName: fileToSend.name,
         hasKnownIssues: hasKnownIssues(fileToSend.type)
       });
-      
+
       // Add context to error message
       if (hasKnownIssues(fileToSend.type)) {
         throw new Error(`${error.message} (Note: ${fileToSend.type} format may have compatibility issues)`);
       }
     }
-    
+
     throw error;
   }
 }
@@ -519,7 +519,7 @@ export async function generateThought(
         typeof result.formattedText === "string" && // Renamed from 'text'
         result.formattedText.trim() !== '' && // Ensure formattedText is not empty
         Array.isArray(result.tags) &&
-        typeof result.meaningPreserved === "boolean" 
+        typeof result.meaningPreserved === "boolean"
       ) {
         if (result.meaningPreserved) {
           // Success! Meaning preserved according to AI
@@ -527,14 +527,14 @@ export async function generateThought(
           logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`); // Log original
           logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`); // Log formatted
           logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
-          
+
           // Apply force tag if provided
           let finalTags = result.tags;
           if (forceTag) {
             logger.info('GenerateThought', `Force tag "${forceTag}" applied. Overwriting tags: ${result.tags.join(", ")} -> [${forceTag}]`);
             finalTags = [forceTag];
           }
-          
+
           return {
             originalText: result.originalText,
             formattedText: result.formattedText, // Renamed from 'text'
@@ -568,10 +568,10 @@ export async function generateThought(
       };
       // Removed retry logic from catch block
     }
-    
+
     // If we reach here, it means meaningPreserved was false, add a delay before retrying
     if (attempts < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, 500 * attempts)); 
+      await new Promise(resolve => setTimeout(resolve, 500 * attempts));
     }
   }
 
@@ -594,33 +594,33 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
   // Extract sermon content using our helper function
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createInsightsUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating insights for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Insights',
       requestOptions,
       inputInfo
     );
-    
+
     return extractFunctionResponse<Insights>(response);
   } catch (error) {
     console.error("ERROR: Failed to generate sermon insights:", error);
@@ -636,33 +636,33 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
 export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createTopicsUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating topics for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Topics',
       requestOptions,
       inputInfo
     );
-    
+
     const result = extractFunctionResponse<{ topics: string[] }>(response);
     return result.topics || [];
   } catch (error) {
@@ -679,33 +679,33 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
 export async function generateSectionHints(sermon: Sermon): Promise<SectionHints | null> {
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating thoughts plan for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${planSystemPrompt}\n\n${createXmlFunctionDefinition(planFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Thoughts Plan',
       requestOptions,
       inputInfo
     );
-    
+
     const result = extractFunctionResponse<SectionHints>(response);
     return result || null;
   } catch (error) {
@@ -722,33 +722,33 @@ export async function generateSectionHints(sermon: Sermon): Promise<SectionHints
 export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createVersesUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating verse suggestions for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Verses',
       requestOptions,
       inputInfo
     );
-    
+
     const result = extractFunctionResponse<{ verses: VerseWithRelevance[] }>(response);
     return result.verses || [];
   } catch (error) {
@@ -775,7 +775,7 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       // Add the item to lookup maps, using just the first 4 chars of the ID as key
       const shortKey = item.id.slice(0, 4);
       itemsMapByKey[shortKey] = item;
-      
+
       // Remember which items already have an outline point assigned
       if (item.outlinePointId) {
         itemsWithExistingSermonPoints[shortKey] = item.outlinePointId;
@@ -789,39 +789,39 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         console.log(`  ${key} -> ${item.id.slice(0, 8)}`);
       });
     }
-    
+
     // Create user message for the AI model
     const userMessage = createSortingUserMessage(columnId, items, sermon, outlinePoints);
-    
+
     if (isDebugMode) {
       console.log("DEBUG MODE: User message for sorting:", userMessage);
     }
-    
+
     // For Claude models (o1-mini), use XML tags for function-like behavior
     const xmlFunctionPrompt = createXmlFunctionDefinition(sortingFunctionSchema);
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       columnId,
       itemCount: items.length,
       sermonTitle: sermon.title,
       outlinePointCount: outlinePoints.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Sort Items',
       requestOptions,
       inputInfo
     );
-    
+
     // Extract the response
-    let sortedData: { sortedItems: Array<{key: string, outlinePoint?: string, content?: string}> };
-    
+    let sortedData: { sortedItems: Array<{ key: string, outlinePoint?: string, content?: string }> };
+
     try {
       const content = response.choices[0].message.content || '';
       sortedData = extractStructuredResponseFromContent(content);
@@ -837,13 +837,13 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         console.log(`  [${index}] ${item.id.slice(0, 4)}: "${item.content.substring(0, 30)}..."`);
       });
     }
-    
+
     // Validate and extract keys from the AI response
     if (!sortedData.sortedItems || !Array.isArray(sortedData.sortedItems)) {
       console.error("Invalid response format from AI:", sortedData);
       return items; // Return original order if malformed
     }
-    
+
     const extractedKeys: string[] = [];
     sortedData.sortedItems.forEach((item: Record<string, unknown>, pos: number) => {
       if (item && typeof item.key === 'string') {
@@ -853,16 +853,16 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         }
       }
     });
-    
+
     // Map of item keys to AI-suggested outline points
     const outlinePointAssignments: Record<string, string> = {};
-    
+
     // Extract AI's suggestions
     const aiSortedKeys = sortedData.sortedItems
       .map((aiItem: Record<string, unknown>) => {
         if (aiItem && typeof aiItem.key === 'string') {
           const itemKey = aiItem.key.trim();
-          
+
           // Store the outline point assignment if available
           if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
             outlinePointAssignments[itemKey] = aiItem.outlinePoint;
@@ -870,17 +870,17 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
               console.log(`DEBUG: Assigned outline point "${aiItem.outlinePoint}" to item ${itemKey}`);
             }
           }
-          
+
           return itemsMapByKey[itemKey] ? itemKey : null;
         }
         return null;
       })
       .filter((key: string | null): key is string => key !== null);
-    
+
     // Create a new array with the sorted items
     const sortedItems: ThoughtInStructure[] = aiSortedKeys.map((key: string) => {
       const item = itemsMapByKey[key];
-      
+
       // Check if this item already had an outline point assigned
       if (itemsWithExistingSermonPoints[key]) {
         // Keep the existing outline point
@@ -889,59 +889,59 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         }
         return item;
       }
-      
+
       // Find matching outline point ID based on the AI-assigned outline text for unassigned items
       if (outlinePointAssignments[key] && outlinePoints.length > 0) {
         const aiAssignedOutlineText = outlinePointAssignments[key];
-        
+
         // First try exact match
-        let matchingSermonPoint = outlinePoints.find(op => 
+        let matchingSermonPoint = outlinePoints.find(op =>
           op.text.toLowerCase() === aiAssignedOutlineText.toLowerCase()
         );
-        
+
         // If no exact match, try substring matching
         if (!matchingSermonPoint) {
-          matchingSermonPoint = outlinePoints.find(op => 
+          matchingSermonPoint = outlinePoints.find(op =>
             op.text.toLowerCase().includes(aiAssignedOutlineText.toLowerCase()) ||
             aiAssignedOutlineText.toLowerCase().includes(op.text.toLowerCase())
           );
         }
-        
+
         // If still no match, try fuzzy matching
         if (!matchingSermonPoint && outlinePoints.length > 0) {
           // Find the closest match based on word overlap
           const aiWords = new Set(aiAssignedOutlineText.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-          
+
           let bestMatchScore = 0;
           let bestMatch: SermonPoint | undefined;
-          
+
           for (const op of outlinePoints) {
             const opWords = new Set(op.text.toLowerCase().split(/\s+/).filter(w => w.length > 3));
             let matchScore = 0;
-            
+
             // Count word overlaps
             for (const word of aiWords) {
               if (opWords.has(word)) matchScore++;
             }
-            
+
             if (matchScore > bestMatchScore) {
               bestMatchScore = matchScore;
               bestMatch = op;
             }
           }
-          
+
           // Only use if we have some word overlap
           if (bestMatchScore > 0) {
             matchingSermonPoint = bestMatch;
           }
         }
-        
+
         if (matchingSermonPoint) {
           // Create a new item with the assigned outline point
           if (isDebugMode) {
             console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
           }
-          
+
           // No need for section mapping since we don't want to show the section name
           return {
             ...item,
@@ -957,10 +957,10 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
           }
         }
       }
-      
+
       return item;
     });
-    
+
     // Check if all items were included in the sorted result
     const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));
     if (missingSortedKeys.length > 0) {
@@ -969,7 +969,7 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         sortedItems.push(itemsMapByKey[key]);
       });
     }
-    
+
     return sortedItems;
   } catch (error) {
     console.error("Error in sortItemsWithAI:", error);
@@ -980,20 +980,22 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
 /**
  * Generate a plan for a sermon
  * @param sermon The sermon to analyze
+ * @param style Optional style for the plan generation (default: 'memory')
  * @returns SermonDraft object with introduction, main, and conclusion, plus success flag
  */
-export async function generatePlanForSection(sermon: Sermon, section: string): Promise<{ plan: SermonDraft, success: boolean }> {
+export async function generatePlanForSection(sermon: Sermon, section: string, style: PlanStyle = 'memory'): Promise<{ plan: SermonDraft, success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
-  
+
   // Detect language - simple heuristic based on non-Latin characters
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
   const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
-  
+
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
     console.log(`DEBUG: Generating plan for ${section} section`);
-    
+    console.log(`DEBUG: Style=${style}`);
+
     // Log if outline structure exists for this section
     const sectionLower = section.toLowerCase();
     if (sermon.outline && sermon.outline[sectionLower as keyof typeof sermon.outline]) {
@@ -1003,20 +1005,30 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       console.log(`DEBUG: No outline points found for ${section} section`);
     }
   }
-  
+
   try {
     // For Claude models
-    const xmlFunctionPrompt = `${planSystemPrompt}\n\n${createXmlFunctionDefinition(planFunctionSchema)}`;
-    
+    // Inject style instructions and structured blocks instructions
+    const styleInstructions = getStyleInstructions(style);
+    const blocksInstructions = getStructuredBlocksInstructions();
+
+    const xmlFunctionPrompt = `${planSystemPrompt}
+
+${styleInstructions}
+
+${blocksInstructions}
+
+${createXmlFunctionDefinition(planFunctionSchema)}`;
+
     // Create user message
     const userMessage = createPlanUserMessage(sermon, section, sectionContent);
-    
+
     // Prepare request options
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     // Log operation info
     const inputInfo = {
       sermonId: sermon.id,
@@ -1024,11 +1036,12 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       section,
       contentLength: sectionContent.length,
       detectedLanguage,
-      hasOutlineStructure: sermon.outline && 
-                          sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] && 
-                          (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
+      style,
+      hasOutlineStructure: sermon.outline &&
+        sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] &&
+        (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
     };
-    
+
     // Make API call
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
@@ -1036,27 +1049,27 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       requestOptions,
       inputInfo
     );
-    
+
     // Extract response - AI returns full plan structure
     const result = extractFunctionResponse<{ introduction: string; main: string; conclusion: string }>(response);
-    
+
     // Debug: Log the extracted result
     console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result, null, 2));
-    
+
     // Format response to match SermonDraft interface - ensure all values are strings
     const plan: SermonDraft = {
       introduction: { outline: result?.introduction || '' },
       main: { outline: result?.main || '' },
       conclusion: { outline: result?.conclusion || '' }
     };
-    
+
     // Debug: Log the formatted plan
     console.log(`DEBUG: Formatted plan for ${section}:`, JSON.stringify(plan, null, 2));
-    
+
     // Validate that all outline values are strings
-    if (typeof plan.introduction.outline !== 'string' || 
-        typeof plan.main.outline !== 'string' || 
-        typeof plan.conclusion.outline !== 'string') {
+    if (typeof plan.introduction.outline !== 'string' ||
+      typeof plan.main.outline !== 'string' ||
+      typeof plan.conclusion.outline !== 'string') {
       console.error('ERROR: Invalid plan structure - outline values must be strings');
       const emptyPlan: SermonDraft = {
         introduction: { outline: '' },
@@ -1065,7 +1078,7 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
       };
       return { plan: emptyPlan, success: false };
     }
-    
+
     return { plan, success: true };
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for ${section} section:`, error);
@@ -1088,12 +1101,12 @@ export async function generatePlanForSection(sermon: Sermon, section: string): P
 function normalizeDirectionSuggestions(directions: unknown[]): DirectionSuggestion[] {
   return directions.map((direction: unknown) => {
     const dir = direction as Record<string, unknown>;
-    
+
     // If it already has area and suggestion, just return as is
     if (dir.area && dir.suggestion) {
       return dir as DirectionSuggestion;
     }
-    
+
     // If it has title/description format, convert to area/suggestion
     if (dir.title && dir.description) {
       return {
@@ -1103,7 +1116,7 @@ function normalizeDirectionSuggestions(directions: unknown[]): DirectionSuggesti
         ...(dir.examples ? { examples: dir.examples as string[] } : {})
       };
     }
-    
+
     // For any other format, try to extract something usable
     return {
       area: (dir.area || dir.title || 'Research Direction') as string,
@@ -1121,35 +1134,35 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
   // Extract sermon content using our helper function
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createDirectionsUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating direction suggestions for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Sermon Directions',
       requestOptions,
       inputInfo
     );
-    
+
     const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
-    
+
     // Normalize the directions before returning
     const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
     // Return the normalized directions (could be an empty array)
@@ -1171,13 +1184,73 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
  * @param keyFragments Array of key fragments to include in the prompt
  * @returns The generated content and success status
  */
+export type PlanStyle = 'memory' | 'narrative' | 'exegetical';
+
+export interface PlanContext {
+  previousPoint?: { text: string } | null;
+  nextPoint?: { text: string } | null;
+  section?: 'introduction' | 'main' | 'conclusion';
+}
+
+function getStyleInstructions(style: PlanStyle): string {
+  switch (style) {
+    case 'narrative':
+      return `STYLE: NARRATIVE FLOW
+- Focus on the story and connection between ideas. 
+- You may use complete sentences if they enhance the flow.
+- Ensure smooth transitions between points.
+- Tone should be engaging and storytelling-oriented.
+- Length: Main points can be slightly longer (up to 8-10 words) if needed for narrative flow.`;
+    case 'exegetical':
+      return `STYLE: EXEGETICAL DEEP DIVE
+- Focus on theological accuracy and scriptural depth.
+- Use precise theological terminology where appropriate.
+- Highlight Greek/Hebrew nuances if present in thoughts.
+- Structure should reflect the logical argument of the text.
+- Length: Main points can be descriptive (up to 8-10 words).`;
+    case 'memory':
+    default:
+      return `STYLE: MEMORY HOOKS (Default)
+- Focus on short, punchy phrases that stick in the mind.
+- STRICT LIMIT: Main points MUST be 3-6 words maximum.
+- Use alliteration or parallel structure if possible.
+- Optimized for quick glancing while preaching.`;
+  }
+}
+
+function getStructuredBlocksInstructions(): string {
+  return `STRUCTURED BLOCKS:
+You may include special content blocks if the THOUGHTS contain them. Format them exactly as follows on their own line:
+- [Illustration: ...summary of illustration...]
+- [Application: ...practical application...]
+- [Question: ...engaging question...]
+- [Quote: ...quote text - Author...]
+- [Definition: ...term definition...]
+
+Use these blocks ONLY if the content is explicitly present in the input THOUGHTS. Do not invent illustrations or quotes.`;
+}
+
+/**
+ * Generate plan content for a specific outline point based on related thoughts
+ * @param sermonTitle The title of the sermon
+ * @param sermonVerse The Bible verse for the sermon
+ * @param outlinePointText The text of the outline point
+ * @param relatedThoughtsTexts Array of texts from related thoughts
+ * @param sectionName The section name (introduction, main, conclusion)
+ * @param keyFragments Array of key fragments to include in the prompt
+ * @param context Optional context about adjacent points to improve flow
+ * @param style Optional style for the plan generation (default: 'memory')
+ * @returns The generated content and success status
+ */
 export async function generatePlanPointContent(
   sermonTitle: string,
   sermonVerse: string,
   outlinePointText: string,
   relatedThoughtsTexts: string[],
   sectionName: string,
-  keyFragments: string[] = []
+  keyFragments: string[] = [],
+  context?: PlanContext,
+  style: PlanStyle = 'memory'
 ): Promise<{ content: string; success: boolean }> {
   // Detect language — base primarily on THOUGHTS text to avoid
   // generating a different language than the thoughts themselves
@@ -1188,15 +1261,19 @@ export async function generatePlanPointContent(
   const detectedLanguage = isCyrillic
     ? "Cyrillic (likely Russian/Ukrainian)"
     : (hasNonLatinChars ? "non-English" : "English");
-  
+
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
     console.log(`DEBUG: Generating structured plan for outline point in ${sectionName} section`);
+    console.log(`DEBUG: Style=${style}`);
     if (keyFragments.length > 0) {
       console.log(`DEBUG: Including ${keyFragments.length} key fragments in the generation`);
     }
+    if (context) {
+      console.log(`DEBUG: context provided: prev=${!!context.previousPoint}, next=${!!context.nextPoint}`);
+    }
   }
-  
+
   try {
     // Construct the prompt for generating a structured plan for the outline point
     // Provide a language-specific directive and example to avoid mixed-language outputs
@@ -1207,11 +1284,13 @@ export async function generatePlanPointContent(
     const formatExample = isCyrillic
       ? `### **Краткий, ясный заголовок**
 *Короткая поддерживающая деталь*
+[Illustration: История о рыбаке]
 
 * Подпункт (1–2 слова)
 * Другой подпункт`
       : `### **Main Concept** 
 *Supporting detail or Bible verse*
+[Application: Challenge to the congregation]
 
 * Key subpoint
 * Another subpoint`;
@@ -1231,9 +1310,13 @@ FORMAT REQUIREMENTS:
 - Use **bold** for main concepts and key theological terms
 - Use *italic* for Bible references and supporting details
 - Use bullet points (*) for quick scanning
-- Keep main points to 3-6 words maximum
+- Keep main points to 3-6 words maximum (unless Style permits otherwise)
 - Use clear, memorable phrases that capture the essence
 - ThoughtsBySection for logical flow that's easy to follow during preaching
+
+${getStyleInstructions(style)}
+
+${getStructuredBlocksInstructions()}
 
 MANDATORY BIBLE VERSE REQUIREMENT: 
 CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
@@ -1254,7 +1337,7 @@ IMPORTANT:
 5. Organize ideas in a logical sequence that will help with sermon delivery.
 6. Include only the key ideas that come directly from the THOUGHTS.
 7. Format the response using Markdown:
-   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon.
+   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a clear, practical, and descriptive title that immediately tells the preacher what this section is about.
    - Use only a single level of bullet points (* ) for supporting details.
 8. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
 9. STRICT: Create EXACTLY the same number of main points (###) as the number of THOUGHTS provided (one heading per thought, in order). Do not add extra headings.
@@ -1262,6 +1345,7 @@ IMPORTANT:
 11. CRITICAL: Explain connections and applications only if they are already present in the THOUGHTS.
 12. CRITICAL: Include ALL Bible verses and quotes COMPLETELY ONLY IF they are explicitly present in the THOUGHTS. Do not invent new references.
 ${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments into your response as supporting details, NOT as the main content. Key fragments should complement and enhance the broader ideas from the thoughts, not dominate them.' : ''}
+${context?.previousPoint ? `14. Context Connection: Ensure the opening of this point flows naturally from the previous point context provided.` : ''}
 
 Your response should be a simple outline optimized for quick preaching reference.`;
 
@@ -1270,7 +1354,10 @@ Your response should be a simple outline optimized for quick preaching reference
 
 SERMON TITLE: ${sermonTitle}
 SCRIPTURE (TEXT BANK — use only when the same reference appears in THOUGHTS or OUTLINE POINT): ${sermonVerse}
+
+${context?.previousPoint ? `PREVIOUS POINT (Context Only): "${context.previousPoint.text}"` : ''}
 OUTLINE POINT: "${outlinePointText}"
+${context?.nextPoint ? `NEXT POINT (Context Only): "${context.nextPoint.text}"` : ''}
 
 ${keyFragments.length > 0 ? `==== SUPPORTING KEY FRAGMENTS ====
 The following key fragments should be naturally integrated as supporting details to enhance the broader ideas:
@@ -1284,7 +1371,7 @@ ${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).joi
 CRITICAL REQUIREMENTS FOR PREACHING:
 
 1. **MEMORY-FRIENDLY FORMAT**: 
-   - Each main point should be 3-6 words maximum
+   - Each main point should be short and catchy
    - Use **bold** for key concepts that trigger memory
    - Use *italic* for Bible references and supporting details
    - Create visual hierarchy for quick scanning
@@ -1314,6 +1401,7 @@ The preacher must be able to read the full verse directly from the plan without 
 
 THOUGHT FLOW REQUIREMENT:
 Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
+${context?.previousPoint ? `Specifically, ensure the first thought connects smoothly with the previous point "${context.previousPoint.text}".` : ''}
 
 LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the THOUGHTS. DO NOT translate.
 ${isCyrillic ? 'For Cyrillic languages, absolutely do not use Latin letters anywhere in the output.' : ''}
@@ -1327,7 +1415,7 @@ IMPORTANT INSTRUCTIONS:
 6. Add scripture references in *italic* and key theological concepts in **bold**, but only if they already exist in the THOUGHTS or the OUTLINE POINT TEXT.
 7. Make sure this plan fits within the ${sectionName} section of a sermon.
 8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
-9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title (3-6 words) that immediately tells the preacher what this section is about and how to use it in the sermon. The title should be actionable and specific.
+9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title that immediately tells the preacher what this section is about.
 10. CRITICAL: The order of the main points (###) and their content in your plan MUST strictly follow the order of the provided THOUGHTS above.
 11. STRICT: Do not add examples, claims, or Bible verses that were not mentioned in the THOUGHTS.
 12. If any content would require invention, write nothing for that part instead of inventing.
@@ -1344,7 +1432,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
       model: aiModel,
       messages: createMessagesArray(systemPrompt, userMessage)
     };
-    
+
     // Log operation info
     const inputInfo = {
       sermonTitle,
@@ -1353,9 +1441,11 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
       sectionName,
       thoughtsCount: relatedThoughtsTexts.length,
       keyFragmentsCount: keyFragments.length,
-      detectedLanguage
+      detectedLanguage,
+      hasContext: !!context,
+      style
     };
-    
+
     // Make API call
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
@@ -1363,7 +1453,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
       requestOptions,
       inputInfo
     );
-    
+
     // Extract the content from the response
     let content = response.choices[0]?.message?.content?.trim() || "";
 
@@ -1411,16 +1501,16 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
 export async function generateSermonPoints(sermon: Sermon, section: string): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
-  
+
   // Detect language - simple heuristic based on non-Latin characters
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
   const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
-  
+
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
     console.log(`DEBUG: Generating outline points for ${section} section`);
   }
-  
+
   try {
     // For Claude models
     const systemPrompt = `You are a helpful assistant for sermon preparation.
@@ -1458,7 +1548,7 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
       model: aiModel,
       messages: createMessagesArray(systemPrompt, userMessage)
     };
-    
+
     // Log operation info
     const inputInfo = {
       sermonId: sermon.id,
@@ -1467,7 +1557,7 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
       contentLength: sectionContent.length,
       detectedLanguage
     };
-    
+
     // Make API call
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
@@ -1475,21 +1565,21 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
       requestOptions,
       inputInfo
     );
-    
+
     // Extract the content from the response
     const content = response.choices[0]?.message?.content?.trim() || "";
-    
+
     if (!content) {
       return { outlinePoints: [], success: false };
     }
-    
+
     // Convert the content into outline points (one per line)
     const lines = content.split('\n').filter(line => line.trim().length > 0);
     const outlinePoints: SermonPoint[] = lines.map(line => ({
       id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       text: line.trim()
     }));
-    
+
     return { outlinePoints, success: outlinePoints.length > 0 };
   } catch (error) {
     console.error(`ERROR: Failed to generate outline points for ${section} section:`, error);
@@ -1506,42 +1596,42 @@ export async function generateBrainstormSuggestion(sermon: Sermon): Promise<Brai
   // Extract sermon content using our helper function
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createBrainstormUserMessage(sermon, sermonContent);
-  
+
   if (isDebugMode) {
     console.log("DEBUG: Generating brainstorm suggestion for sermon:", sermon.id);
   }
-  
+
   try {
     // For Claude models
     const xmlFunctionPrompt = `${brainstormSystemPrompt}\n\n${createXmlFunctionDefinition(brainstormFunctionSchema)}`;
-    
+
     const requestOptions = {
       model: aiModel,
       messages: createMessagesArray(xmlFunctionPrompt, userMessage)
     };
-    
+
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
-    
+
     const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
       () => aiAPI.chat.completions.create(requestOptions),
       'Generate Brainstorm Suggestion',
       requestOptions,
       inputInfo
     );
-    
+
     const result = extractFunctionResponse<{ suggestion: BrainstormSuggestion }>(response);
-    
+
     // Add an ID to the suggestion and normalize the type to lowercase
     const suggestion: BrainstormSuggestion = {
       ...result.suggestion,
       type: result.suggestion.type.toLowerCase() as BrainstormSuggestion['type'],
       id: `bs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
-    
+
     return suggestion;
   } catch (error) {
     console.error("ERROR: Failed to generate brainstorm suggestion:", error);

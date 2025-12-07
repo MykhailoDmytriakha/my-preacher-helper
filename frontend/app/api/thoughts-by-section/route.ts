@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 
 export async function PUT(request: Request) {
   try {

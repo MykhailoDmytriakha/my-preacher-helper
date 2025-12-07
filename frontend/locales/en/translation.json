@@ -527,6 +527,15 @@
   },
   "plan": {
     "pageTitle": "Sermon Plan",
+    "style": {
+      "label": "Generation Style",
+      "memory": "Memory Hooks",
+      "memoryDesc": "Short, punchy, 3-6 words",
+      "narrative": "Narrative Flow",
+      "narrativeDesc": "Story-driven, smooth transitions",
+      "exegetical": "Exegetical",
+      "exegeticalDesc": "Deep theological depth"
+    },
     "preachButton": "Preach",
     "customTime": "Custom Time",
     "selectDuration": "Select Duration",

@@ -128,6 +128,43 @@ export const UI_COLORS = {
   }
 };
 
+// Timer control palette (centralized to avoid hardcoded colors in components)
+export const TIMER_CONTROL_COLORS = {
+  surface: {
+    light: '#f8fafc',
+    dark: '#0f172a',
+  },
+  border: {
+    light: 'rgba(15, 23, 42, 0.08)',
+    dark: 'rgba(255, 255, 255, 0.08)',
+  },
+  divider: {
+    light: 'rgba(148, 163, 184, 0.35)',
+    dark: 'rgba(75, 85, 99, 0.6)',
+  },
+  play: {
+    start: SERMON_SECTION_COLORS.mainPart.light,
+    end: SERMON_SECTION_COLORS.mainPart.base,
+  },
+  pause: {
+    start: SERMON_SECTION_COLORS.introduction.light,
+    end: SERMON_SECTION_COLORS.introduction.base,
+  },
+  resume: {
+    start: SERMON_SECTION_COLORS.conclusion.light,
+    end: SERMON_SECTION_COLORS.conclusion.base,
+  },
+  stop: {
+    start: '#f43f5e', // Rose-500
+    end: '#e11d48',   // Rose-600
+  },
+  skip: {
+    start: '#a855f7', // Violet-500
+    end: '#7c3aed',   // Violet-600
+  },
+  disabled: 'rgba(148, 163, 184, 0.45)',
+} as const;
+
 // Navigation item accent palettes (keep navigation styling consistent across workspaces)
 export const NAV_ITEM_THEMES = {
   default: {

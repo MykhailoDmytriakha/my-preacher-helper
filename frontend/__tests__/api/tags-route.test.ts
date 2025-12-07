@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server';
 
 // Mock firebase admin and clients
-jest.mock('app/config/firebaseAdminConfig', () => ({
+jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
   },

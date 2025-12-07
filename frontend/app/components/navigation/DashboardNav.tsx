@@ -49,6 +49,7 @@ export default function DashboardNav() {
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
+  const isPlanPage = /^\/sermons\/[^/]+\/plan/.test(pathname || "");
   const isDashboard = pathname === '/dashboard';
   
   // Get current mode directly from URL params for immediate response
@@ -199,7 +200,7 @@ export default function DashboardNav() {
           <div className="flex-1" />
 
           {/* Center: Mode toggle (desktop) */}
-          {showWizardButton && isSermonRelated && (
+          {showWizardButton && isSermonRoot && !prepModeLoading && (
             <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
           )}
 

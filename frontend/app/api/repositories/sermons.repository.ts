@@ -1,4 +1,4 @@
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, SermonOutline, SermonDraft } from '@/models/models';
 
 /**
@@ -6,14 +6,14 @@ import { Sermon, SermonOutline, SermonDraft } from '@/models/models';
  */
 export class SermonsRepository {
   private readonly collection = "sermons";
-  
+
   async fetchSermonById(id: string) {
     console.log(`Firestore: fetching sermon ${id}`);
     try {
       // Use the Admin SDK to fetch the sermon
       const docRef = adminDb.collection("sermons").doc(id);
       const docSnap = await docRef.get();
-  
+
       if (!docSnap.exists) {
         console.error(`Sermon with id ${id} not found in Firestore`);
         throw new Error("Sermon not found");
@@ -43,7 +43,7 @@ export class SermonsRepository {
       throw error;
     }
   }
-  
+
   async deleteSermonById(id: string): Promise<void> {
     console.log(`Firestore: deleting sermon ${id}`);
     try {
@@ -91,7 +91,7 @@ export class SermonsRepository {
       // Update the outline field in the sermon document
       await docRef.update({ outline });
       console.log(`Sermon outline updated for sermon id ${sermonId}`);
-      
+
       return outline;
     } catch (error) {
       console.error(`Error updating sermon outline for sermon ${sermonId}:`, error);
@@ -102,25 +102,25 @@ export class SermonsRepository {
   async updateSermonPlan(sermonId: string, draft: SermonDraft): Promise<SermonDraft> {
     console.log(`Updating sermon draft for sermon ${sermonId}`);
     console.log(`Draft data to update:`, JSON.stringify(draft, null, 2));
-    
+
     // Validate plan structure before updating
     if (!draft || typeof draft !== 'object') {
       console.error('ERROR: Invalid draft data - draft is not an object');
       throw new Error('Invalid draft data');
     }
-    
+
     if (!draft.introduction || !draft.main || !draft.conclusion) {
       console.error('ERROR: Invalid draft structure - missing required sections');
       throw new Error('Invalid draft structure');
     }
-    
-    if (typeof draft.introduction.outline !== 'string' || 
-        typeof draft.main.outline !== 'string' || 
-        typeof draft.conclusion.outline !== 'string') {
+
+    if (typeof draft.introduction.outline !== 'string' ||
+      typeof draft.main.outline !== 'string' ||
+      typeof draft.conclusion.outline !== 'string') {
       console.error('ERROR: Invalid draft structure - outline values must be strings');
       throw new Error('Invalid draft structure - outline values must be strings');
     }
-    
+
     try {
       const docRef = adminDb.collection("sermons").doc(sermonId);
       const docSnap = await docRef.get();
@@ -133,11 +133,59 @@ export class SermonsRepository {
       // Update both the new draft field and legacy plan for backward compatibility
       await docRef.update({ draft, plan: draft });
       console.log(`Sermon draft updated for sermon id ${sermonId}`);
-      
+
       return draft;
     } catch (error) {
       console.error(`Error updating sermon plan for sermon ${sermonId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Fetches adjacent outline points (previous and next) for a given outline point.
+   * This is used to provide context for AI generation.
+   */
+  async fetchAdjacentOutlinePoints(sermonId: string, outlinePointId: string) {
+    console.log(`Fetching adjacent outline points for point ${outlinePointId} in sermon ${sermonId}`);
+    try {
+      const sermon = await this.fetchSermonById(sermonId);
+      if (!sermon || !sermon.outline) return null;
+
+      // Helper to find point in a specific section list
+      const findInList = (list: any[]) => list.findIndex(op => op.id === outlinePointId);
+
+      // Check each section
+      let section: 'introduction' | 'main' | 'conclusion' | null = null;
+      let index = -1;
+      let list: any[] = [];
+
+      if ((index = findInList(sermon.outline.introduction)) !== -1) {
+        section = 'introduction';
+        list = sermon.outline.introduction;
+      } else if ((index = findInList(sermon.outline.main)) !== -1) {
+        section = 'main';
+        list = sermon.outline.main;
+      } else if ((index = findInList(sermon.outline.conclusion)) !== -1) {
+        section = 'conclusion';
+        list = sermon.outline.conclusion;
+      }
+
+      if (!section) return null;
+
+      const previousPoint = index > 0 ? list[index - 1] : null;
+      const nextPoint = index < list.length - 1 ? list[index + 1] : null;
+
+      // If at boundary of a section, we could technically fetch from adjacent sections,
+      // but for now, let's stick to within-section context to keep it simple.
+
+      return {
+        previousPoint: previousPoint ? { text: previousPoint.text } : null,
+        nextPoint: nextPoint ? { text: nextPoint.text } : null,
+        section
+      };
+    } catch (error) {
+      console.error(`Error fetching adjacent points for ${outlinePointId}:`, error);
+      return null;
     }
   }
 

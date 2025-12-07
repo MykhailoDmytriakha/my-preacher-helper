@@ -22,13 +22,13 @@ const mockSeriesData = {
   updatedAt: '2024-01-01T11:00:00Z',
 };
 
-jest.mock('app/config/firebaseAdminConfig', () => ({
+jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
   },
 }));
 
-const { adminDb } = jest.requireMock('app/config/firebaseAdminConfig') as {
+const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock<unknown, unknown[]>;
   };

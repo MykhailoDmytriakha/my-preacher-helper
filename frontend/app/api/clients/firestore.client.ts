@@ -1,4 +1,4 @@
-import { adminDb } from "app/config/firebaseAdminConfig";
+import { adminDb } from "@/config/firebaseAdminConfig";
 import { Tag } from "@/models/models";
 
 // Define the mapping of required tag IDs to their translation keys

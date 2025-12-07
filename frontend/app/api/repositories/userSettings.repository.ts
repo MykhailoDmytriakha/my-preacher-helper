@@ -1,4 +1,4 @@
-import { adminDb } from 'app/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { UserSettings } from '@/models/models';
 
 /**
