@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act } from 'react-dom/test-utils';
 import '@testing-library/jest-dom';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 
@@ -19,7 +20,7 @@ class MockMediaRecorder {
   ondataavailable: ((event: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  state: string = 'inactive';
+  state: 'inactive' | 'recording' | 'paused' = 'inactive';
   mimeType: string = 'audio/webm';
 
   constructor(stream: MediaStream, options?: { mimeType: string }) {
@@ -27,6 +28,14 @@ class MockMediaRecorder {
   }
 
   start() {
+    this.state = 'recording';
+  }
+
+  pause() {
+    this.state = 'paused';
+  }
+
+  resume() {
     this.state = 'recording';
   }
 
@@ -109,6 +118,7 @@ describe('FocusRecorderButton', () => {
 
   afterEach(() => {
     jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   describe('Rendering', () => {
@@ -205,6 +215,45 @@ describe('FocusRecorderButton', () => {
         const cancelButton = screen.getByRole('button', { name: 'audio.cancelRecording' });
         expect(cancelButton).toBeInTheDocument();
       });
+    });
+
+    it('pauses the countdown when paused and resumes after resume', async () => {
+      jest.useFakeTimers();
+      const onRecordingComplete = jest.fn();
+      render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} maxDuration={10} />);
+
+      const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(recordButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'audio.pauseRecording' })).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      expect(screen.getByText('0:08')).toBeInTheDocument();
+
+      const pauseButton = screen.getByRole('button', { name: 'audio.pauseRecording' });
+      fireEvent.click(pauseButton);
+
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      expect(screen.getByText('0:08')).toBeInTheDocument();
+
+      const resumeButton = screen.getByRole('button', { name: 'audio.resumeRecording' });
+      fireEvent.click(resumeButton);
+
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      expect(screen.getByText('0:06')).toBeInTheDocument();
+
+      jest.useRealTimers();
     });
 
     it('should cancel recording when cancel button is clicked', async () => {

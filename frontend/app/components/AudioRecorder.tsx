@@ -41,6 +41,7 @@ export const AudioRecorder = ({
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isInitializing, setIsInitializing] = useState(false);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
@@ -137,10 +138,11 @@ export const AudioRecorder = ({
     }
     cleanup();
     setIsRecording(false);
+    setIsPaused(false); // Reset pause state on error
     setIsInitializing(false);
   }, [t, onError, cleanup]);
 
-  // Audio level monitoring
+  // Audio level monitoring - pause monitoring when recording is paused
   const monitorAudioLevel = useCallback(() => {
     if (!analyserRef.current) return;
 
@@ -155,10 +157,10 @@ export const AudioRecorder = ({
     const average = sum / bufferLength;
     setAudioLevel(Math.min(100, (average / 128) * 100));
 
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       animationFrameRef.current = requestAnimationFrame(monitorAudioLevel);
     }
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   // Start recording function
   const startRecording = useCallback(async () => {
@@ -285,6 +287,7 @@ export const AudioRecorder = ({
     try {
       mediaRecorder.current.stop();
       setIsRecording(false);
+      setIsPaused(false); // Reset pause state when stopping
     } catch (error) {
       handleError(error as Error, 'errors.audioProcessing');
     }
@@ -314,6 +317,7 @@ export const AudioRecorder = ({
       
       // Reset all state
       setIsRecording(false);
+      setIsPaused(false);
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
@@ -329,11 +333,54 @@ export const AudioRecorder = ({
       chunks.current = [];
       cleanup();
       setIsRecording(false);
+      setIsPaused(false);
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
     }
   }, [isRecording, cleanup]);
+
+  // Pause recording function
+  const pauseRecording = useCallback(() => {
+    console.log('AudioRecorder: pauseRecording called', { isRecording, isPaused, hasMediaRecorder: !!mediaRecorder.current });
+
+    if (!isRecording || isPaused || !mediaRecorder.current) {
+      console.log('AudioRecorder: Pause conditions not met - returning early');
+      return;
+    }
+
+    console.log('AudioRecorder: Pausing recording...');
+    
+    try {
+      mediaRecorder.current.pause();
+      setIsPaused(true);
+      console.log('AudioRecorder: Recording paused successfully');
+    } catch (error) {
+      console.error("Error pausing recording:", error);
+      handleError(error as Error, 'errors.audioProcessing');
+    }
+  }, [isRecording, isPaused, handleError]);
+
+  // Resume recording function
+  const resumeRecording = useCallback(() => {
+    console.log('AudioRecorder: resumeRecording called', { isRecording, isPaused, hasMediaRecorder: !!mediaRecorder.current });
+
+    if (!isRecording || !isPaused || !mediaRecorder.current) {
+      console.log('AudioRecorder: Resume conditions not met - returning early');
+      return;
+    }
+
+    console.log('AudioRecorder: Resuming recording...');
+    
+    try {
+      mediaRecorder.current.resume();
+      setIsPaused(false);
+      console.log('AudioRecorder: Recording resumed successfully');
+    } catch (error) {
+      console.error("Error resuming recording:", error);
+      handleError(error as Error, 'errors.audioProcessing');
+    }
+  }, [isRecording, isPaused, handleError]);
 
   // Retry transcription function
   const retryTranscription = useCallback(() => {
@@ -372,9 +419,9 @@ export const AudioRecorder = ({
     }
   }, [transcriptionError]);
 
-  // Timer effect
+  // Timer effect - pause timer when recording is paused
   useEffect(() => {
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => {
         setRecordingTime((prev) => {
           const newTime = prev + 1;
@@ -401,7 +448,7 @@ export const AudioRecorder = ({
         timerRef.current = null;
       }
     };
-  }, [isRecording, maxDuration, stopRecording, recordingTime, isProcessing]);
+  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -459,9 +506,10 @@ export const AudioRecorder = ({
   const recordingState = useMemo(() => {
     if (isProcessing) return 'processing';
     if (isInitializing) return 'initializing';
+    if (isRecording && isPaused) return 'paused';
     if (isRecording) return 'recording';
     return 'idle';
-  }, [isProcessing, isInitializing, isRecording]);
+  }, [isProcessing, isInitializing, isRecording, isPaused]);
 
   const appliedVariant = useMemo<"standard" | "mini">(() => {
     if (variant === "mini") {
@@ -486,6 +534,8 @@ export const AudioRecorder = ({
       case 'initializing':
         return `${baseStyles} ${scaleStyles} bg-yellow-500 hover:bg-yellow-600 text-white focus:ring-yellow-500 cursor-wait`;
       case 'recording':
+      case 'paused':
+        // Both recording and paused show red Stop button
         return `${baseStyles} ${scaleStyles} bg-red-500 hover:bg-red-600 text-white focus:ring-red-500 shadow-lg shadow-red-500/25`;
       default:
         return `${baseStyles} ${scaleStyles} bg-green-600 hover:bg-green-700 text-white focus:ring-green-500 shadow-lg hover:shadow-green-500/25`;
@@ -511,11 +561,13 @@ export const AudioRecorder = ({
           </div>
         );
       case 'recording':
+      case 'paused':
+        // Both recording and paused show Stop button
         return (
           <div className="flex items-center justify-center">
             <div className="relative mr-2">
-              <MicFilledIcon className="w-5 h-5 animate-pulse" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
+              <MicFilledIcon className={`w-5 h-5 ${isPaused ? '' : 'animate-pulse'}`} />
+              {!isPaused && <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>}
             </div>
             {t('audio.stopRecording')}
           </div>
@@ -539,8 +591,9 @@ export const AudioRecorder = ({
           <button
             type="button"
             onClick={() => {
-              console.log('AudioRecorder: Main button clicked', { isRecording });
+              console.log('AudioRecorder: Main button clicked', { isRecording, isPaused });
               if (isRecording) {
+                // Main button always stops recording (even when paused)
                 console.log('AudioRecorder: Calling stopRecording');
                 stopRecording();
               } else {
@@ -563,7 +616,7 @@ export const AudioRecorder = ({
 
         {/* Keyboard shortcuts tooltip removed: record button already shows this in title */}
         
-        {/* Show cancel button only when recording */}
+        {/* Show pause/stop/cancel buttons only when recording */}
         {isRecording && (
           appliedVariant === "mini" ? (
             // Clean separated layout for mini variant - no overlapping elements
@@ -579,11 +632,55 @@ export const AudioRecorder = ({
                 <div className="flex items-center justify-center">
                   {/* Recording indicator dot */}
                   <div className="relative mr-2.5 flex items-center justify-center">
-                    <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
-                    <div className="absolute w-2.5 h-2.5 bg-white rounded-full animate-ping opacity-75" />
+                    <div className={`w-2.5 h-2.5 bg-white rounded-full ${isPaused ? '' : 'animate-pulse'}`} />
+                    {!isPaused && <div className="absolute w-2.5 h-2.5 bg-white rounded-full animate-ping opacity-75" />}
                   </div>
                   <span className="font-semibold">{t('audio.stopRecording')}</span>
                 </div>
+              </button>
+
+              {/* Pause/Resume button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (isPaused) {
+                    console.log('AudioRecorder: Mini variant Resume button clicked');
+                    resumeRecording();
+                  } else {
+                    console.log('AudioRecorder: Mini variant Pause button clicked');
+                    pauseRecording();
+                  }
+                }}
+                className={`px-3.5 py-3 rounded-xl ${
+                  isPaused 
+                    ? 'bg-green-500 hover:bg-green-600 text-white' 
+                    : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                } transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus:ring-2 ${
+                  isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
+                } focus:ring-offset-2`}
+                aria-label={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+                title={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+              >
+                {isPaused ? (
+                  // Play/Resume icon
+                  <svg 
+                    className="w-5 h-5" 
+                    fill="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                ) : (
+                  // Pause icon
+                  <svg 
+                    className="w-5 h-5" 
+                    fill="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                )}
               </button>
 
               {/* Cancel button - separate, clearly distinct */}
@@ -594,7 +691,7 @@ export const AudioRecorder = ({
                   console.log('AudioRecorder: Mini variant Cancel button clicked');
                   cancelRecording();
                 }}
-                className="px-3.5 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                className="px-3.5 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
                 aria-label={t('audio.cancelRecording')}
                 title={`${t('audio.cancelRecording')} (Esc)`}
               >
@@ -614,19 +711,47 @@ export const AudioRecorder = ({
               </button>
             </div>
           ) : (
-            // Standard separate buttons for standard variant
-            <button
-              type="button"
-              onClick={() => {
-                console.log('AudioRecorder: Cancel button clicked');
-                cancelRecording();
-              }}
-              className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-              aria-label={t('audio.cancelRecording')}
-              title={`${t('audio.cancelRecording')} (Esc)`}
-            >
-              {t('audio.cancelRecording')}
-            </button>
+            // Standard variant - separate buttons
+            <div className="flex gap-2">
+              {/* Pause/Resume button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPaused) {
+                    console.log('AudioRecorder: Standard variant Resume button clicked');
+                    resumeRecording();
+                  } else {
+                    console.log('AudioRecorder: Standard variant Pause button clicked');
+                    pauseRecording();
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg border ${
+                  isPaused 
+                    ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-900/50' 
+                    : 'border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600 dark:hover:bg-yellow-900/50'
+                } transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 ${
+                  isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
+                } focus:ring-offset-2`}
+                aria-label={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+                title={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+              >
+                {isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+              </button>
+
+              {/* Cancel button */}
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('AudioRecorder: Cancel button clicked');
+                  cancelRecording();
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                aria-label={t('audio.cancelRecording')}
+                title={`${t('audio.cancelRecording')} (Esc)`}
+              >
+                {t('audio.cancelRecording')}
+              </button>
+            </div>
           )
         )}
 
@@ -663,7 +788,7 @@ export const AudioRecorder = ({
                   {/* Ultra-thin progress bar */}
                   <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-rose-500 rounded-full transition-all duration-1000 ease-out"
+                      className={`h-full rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-rose-500'} ${isPaused ? 'animate-pulse' : 'transition-all duration-1000 ease-out'}`}
                       style={{ width: `${progressPercentage}%` }}
                     />
                   </div>
@@ -676,11 +801,12 @@ export const AudioRecorder = ({
               <div className="flex-1 min-w-[200px]">
                 <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner h-4">
                   <div
-                    className="absolute inset-y-0 left-0 h-full transition-all duration-300 ease-out bg-gradient-to-r from-red-500 to-red-600"
+                    className={`absolute inset-y-0 left-0 h-full ${isPaused ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 animate-pulse' : 'transition-all duration-300 ease-out bg-gradient-to-r from-red-500 to-red-600'}`}
                     style={{ width: `${progressPercentage}%` }}
                   />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <span className="font-mono text-xs text-gray-800 dark:text-gray-200">
+                      {isPaused && <span className="mr-2 text-yellow-600 dark:text-yellow-400">⏸</span>}
                       {formatTime(recordingTime)} / {formatTime(maxDuration)}
                     </span>
                   </div>
@@ -715,8 +841,8 @@ export const AudioRecorder = ({
         </div>
       )}
 
-      {/* Audio level indicator (kept below) */}
-      {isRecording && audioLevel > 0 && (
+      {/* Audio level indicator (kept below) - hide when paused */}
+      {isRecording && !isPaused && audioLevel > 0 && (
         <div className="w-full">
           <div className="mt-3">
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

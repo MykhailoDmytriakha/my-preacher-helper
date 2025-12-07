@@ -234,6 +234,8 @@
   "audio": {
     "newRecording": "Новий запис",
     "stopRecording": "Зупинити запис",
+    "pauseRecording": "Пауза",
+    "resumeRecording": "Продовжити",
     "cancelRecording": "Скасувати запис",
     "processing": "Обробка...",
     "initializing": "Ініціалізація...",

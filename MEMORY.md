@@ -102,14 +102,25 @@
 
 ## 📝 Short-Term Memory
 
-**Current session:** Next.js 15.5.7 + React 19 upgrade, fixed API route param typings, cleaned prep-mode tests/build, resolved nested button hydration issue.
+**Current session:** Audio Recorder Pause/Resume feature implementation - added pause functionality to all audio recorder variants with UX improvements.
 
 **Recent changes:**
-- Upgraded deps: `next@15.5.7`, `react@19.2.1`, `react-dom@19.2.1`, `eslint-config-next@15.5.7`, `@hello-pangea/dnd@18.0.1`, `lucide-react@0.556.0`.
-- Fixed API routes requiring awaited params (Next 15): `app/api/sermons/[id]`, `/brainstorm`, `/plan`, `/generate-outline-points`, `app/api/series/[id]`, `/series/[id]/sermons`, `app/api/studies/materials/[id]`, `app/api/studies/notes/[id]` now use `params: Promise<{id}>` with `await`.
-- Resolved PrepModeToggle flakiness under React 19: stabilized loading flags and tests/e2e with `findByRole`/`waitFor`.
-- Fixed nested button hydration error in `StudyNoteCard`: header uses a single button row; analyze button sits alongside.
-- All tests green (`npm run test:fast`), build succeeds (`npm run build`).
+- **AudioRecorder (Standard & Mini variants):**
+  - Added `isPaused` state and `pauseRecording()`/`resumeRecording()` functions
+  - Main button = always Stop (sends recording), separate Pause/Resume button
+  - Fixed state reset: `setIsPaused(false)` in `stopRecording()`, `handleError()`, `cancelRecording()`
+  - Added hover effects: `hover:scale-110` (Mini), `hover:scale-105` (Standard)
+  - Visual feedback: progress bar turns yellow when paused, animations stop
+  
+- **FocusRecorderButton (Normal & Small sizes):**
+  - Added pause/resume with small button (top-left corner)
+  - Main circular button = always Stop, small buttons = Pause/Resume (left) + Cancel (right)
+  - Added hover effects: `hover:scale-125` for small buttons (better targeting)
+  - Button color: red when recording/paused, yellow→green for pause→resume transition
+  
+- **Translations:** Added `audio.pauseRecording` and `audio.resumeRecording` to en/ru/uk locales
+- **Documentation:** Created `AUDIO_RECORDER_PAUSE_FEATURE.md` with complete feature documentation
+- **All tests pass:** 40/40 tests green, no linter errors
 
 ---
 
@@ -146,6 +157,58 @@
 **Correct Solution:** Type handlers as `{ params: Promise<{ id: string }> }` and `const { id } = await params;` across GET/PUT/POST/DELETE.
 
 **Best Practice:** For all app router API routes, default to async params signature and `await params` to stay compatible with Next updates.
+
+---
+
+### Lesson: Audio Recorder Pause Feature - Research150 Prevents Multiple Iterations
+
+**Problem:**
+- Adding pause/resume functionality to AudioRecorder took multiple expensive iterations and bug fixes due to insufficient initial research and not following existing working patterns.
+- Issues encountered: wrong button behavior (main button changing function), state not resetting (isPaused staying true), poor UX (small buttons without hover feedback), and user confusion about which button does what.
+
+**Wrong Paths:**
+1. **First implementation:** Made main button change function on pause (Stop → Resume). This contradicted the working Mini variant pattern.
+2. **State management:** `stopRecording()` only reset `isRecording` but not `isPaused`, causing next recording to start in paused state.
+3. **UX oversight:** Small buttons (16px) had no hover effects, making them hard to target and causing accidental clicks.
+4. **Pattern inconsistency:** Each variant (standard/mini/focus) had different behaviors instead of following one proven pattern.
+
+**Root Cause:**
+- **Failed to apply Research150:** Did NOT read entire existing component before making changes. Mini variant ALREADY had the perfect pattern but wasn't used as reference.
+- **Ignored "Copy What Works" principle:** When there are multiple variants of a component, find the BEST working one and replicate its pattern. Mini variant was the gold standard but was discovered only after user testing.
+- **Incomplete state lifecycle thinking:** Added new state (`isPaused`) but didn't trace through ENTIRE lifecycle: start → pause → resume → stop → start again.
+- **UX as afterthought:** Didn't consider user interaction patterns (hover feedback, button sizing, visual clarity) during initial implementation.
+
+**Correct Solution:**
+1. **Pattern discovery:** User tested Mini variant and identified it as perfect - used it as template for all other variants.
+2. **Unified behavior:** Main button = ALWAYS Stop (sends recording), Separate button = Pause/Resume control.
+3. **Complete state reset:** Added `setIsPaused(false)` in ALL exit points: `stopRecording()`, `handleError()`, `cancelRecording()`.
+4. **UX enhancements:** Added `hover:scale-125` for small buttons (FocusRecorderButton), `hover:scale-110` for medium (Mini), `hover:scale-105` for large (Standard).
+
+**Best Practice:**
+1. **ALWAYS Research150 BEFORE implementing:** When adding functionality to existing components with variants, read ALL variants completely and identify the best-working one.
+2. **"Copy What Works" principle:** If one variant works perfectly (like Mini), use it as the template for others. Don't reinvent patterns.
+3. **Complete state lifecycle verification:** For any new state variable, trace through EVERY possible state transition path and ensure proper cleanup/reset at ALL exit points.
+4. **UX-first thinking:** Consider user interaction patterns DURING initial design, not as afterthought:
+   - Buttons <24px need hover effects (scale 110-125%)
+   - Visual feedback for state changes (color, animation, icons)
+   - Clear affordances (what's clickable, what happens when you click)
+5. **Test immediately after implementation:** Don't stack multiple changes. Implement → test with user → fix → test again. Each iteration should be complete.
+6. **Listen to user feedback patterns:** "Mini works perfect" = golden signal to replicate that pattern everywhere.
+
+**Attention Points:**
+- **Multi-variant components:** When component has standard/mini/micro variants, ALWAYS check if one variant already solves your problem perfectly - replicate its pattern.
+- **State management checklist:** For new state variables, verify reset in: normal exit, error handling, cancellation, timeout, and re-initialization.
+- **MediaRecorder API specifics:** `pause()` and `resume()` don't stop recording - `stop()` is the only way to send blob. Test that pause/resume doesn't trigger `onstop` handler.
+- **Small button UX (<24px):** MUST have hover effects (scale or highlight) + adequate spacing + z-index to prevent misclicks.
+- **Button hierarchy clarity:** In interfaces with multiple buttons, make primary action (Stop/Send) most prominent, secondary actions (Pause/Resume) clearly separate and visually distinct.
+- **Test ALL flows:** start → pause → resume → stop → start (clean state?), start → pause → stop (sends?), start → stop (baseline).
+
+**Lessons Extracted:**
+- Research150 isn't optional - it prevents expensive iterations
+- Working code in your codebase is often the best documentation
+- State lifecycle bugs are silent until user testing - trace manually
+- UX problems compound technical complexity - design for humans first
+- User's "this works perfectly" feedback = architectural pattern to replicate
 
 ---
 

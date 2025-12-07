@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen, fireEvent } from '@testing-library/react';
 import { act } from 'react-dom/test-utils';
 import '@testing-library/jest-dom';
 
@@ -25,6 +25,7 @@ class MockMediaRecorder {
   public onstop: VoidHandler = null;
   public onerror: VoidHandler = null;
   public mimeType: string;
+  public state: 'inactive' | 'recording' | 'paused' = 'inactive';
   private emittedChunk = false;
   static isTypeSupported = jest.fn().mockReturnValue(true);
 
@@ -33,6 +34,7 @@ class MockMediaRecorder {
   }
 
   start = (_timeslice?: number) => {
+    this.state = 'recording';
     // Immediately emit one non-empty chunk so onstop can build a Blob
     if (this.ondataavailable && !this.emittedChunk) {
       const blob = new Blob([new Uint8Array([1, 2, 3])], { type: this.mimeType });
@@ -41,40 +43,56 @@ class MockMediaRecorder {
     }
   };
 
+  pause = () => {
+    this.state = 'paused';
+  };
+
+  resume = () => {
+    this.state = 'recording';
+  };
+
   stop = () => {
+    this.state = 'inactive';
     if (this.onstop) this.onstop();
   };
 }
 
+const origMediaDevices = navigator.mediaDevices as any;
+const origMediaRecorder = (global as any).MediaRecorder;
+const origAudioContext = (global as any).AudioContext;
+
+beforeEach(() => {
+  jest.useFakeTimers();
+
+  // getUserMedia mock
+  (navigator as any).mediaDevices = {
+    getUserMedia: jest.fn().mockResolvedValue(new MockMediaStream()),
+  };
+
+  // MediaRecorder mock
+  (global as any).MediaRecorder = MockMediaRecorder;
+
+  // Optional AudioContext mock (component tolerates absence, but avoid console noise)
+  (global as any).AudioContext = function () {
+    return { createMediaStreamSource: () => ({}), createAnalyser: () => ({ fftSize: 0, frequencyBinCount: 1, getByteFrequencyData: () => {} }), close: () => Promise.resolve(), state: 'running' } as any;
+  } as any;
+
+  (global as any).requestAnimationFrame = jest.fn((cb: FrameRequestCallback) => {
+    cb(0);
+    return 0;
+  });
+  (global as any).cancelAnimationFrame = jest.fn();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+  (navigator as any).mediaDevices = origMediaDevices;
+  (global as any).MediaRecorder = origMediaRecorder;
+  (global as any).AudioContext = origAudioContext;
+  jest.clearAllMocks();
+});
+
 describe('AudioRecorder autoStart behavior', () => {
-  const origMediaDevices = navigator.mediaDevices as any;
-  const origMediaRecorder = (global as any).MediaRecorder;
-  const origAudioContext = (global as any).AudioContext;
-
-  beforeEach(() => {
-    jest.useFakeTimers();
-
-    // getUserMedia mock
-    (navigator as any).mediaDevices = {
-      getUserMedia: jest.fn().mockResolvedValue(new MockMediaStream()),
-    };
-
-    // MediaRecorder mock
-    (global as any).MediaRecorder = MockMediaRecorder;
-
-    // Optional AudioContext mock (component tolerates absence, but avoid console noise)
-    (global as any).AudioContext = function () {
-      return { createMediaStreamSource: () => ({}), createAnalyser: () => ({ fftSize: 0, frequencyBinCount: 1, getByteFrequencyData: () => {} }), close: () => Promise.resolve(), state: 'running' } as any;
-    } as any;
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-    (navigator as any).mediaDevices = origMediaDevices;
-    (global as any).MediaRecorder = origMediaRecorder;
-    (global as any).AudioContext = origAudioContext;
-    jest.clearAllMocks();
-  });
 
   it('autoStart fires once, stops at maxDuration, and does not restart', async () => {
     const onComplete = jest.fn();
@@ -114,6 +132,46 @@ describe('AudioRecorder autoStart behavior', () => {
     // Ensure no second start occurred
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AudioRecorder pause/resume behavior', () => {
+  it('pauses the timer while paused and resumes after resume', async () => {
+    jest.useFakeTimers();
+    const onComplete = jest.fn();
+
+    render(<AudioRecorder variant="standard" maxDuration={5} onRecordingComplete={onComplete} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'audio.stopRecording' })).toBeInTheDocument());
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('0:02 / 0:05')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.pauseRecording' }));
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('0:02 / 0:05')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.resumeRecording' }));
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('0:03 / 0:05')).toBeInTheDocument();
   });
 });
 

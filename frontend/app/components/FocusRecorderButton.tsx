@@ -25,6 +25,7 @@ export const FocusRecorderButton = ({
 }: FocusRecorderButtonProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -70,6 +71,7 @@ export const FocusRecorderButton = ({
     }
     cleanup();
     setIsRecording(false);
+    setIsPaused(false); // Reset pause state on error
     setIsInitializing(false);
   }, [t, onError, cleanup]);
 
@@ -159,6 +161,7 @@ export const FocusRecorderButton = ({
     try {
       mediaRecorder.current.stop();
       setIsRecording(false);
+      setIsPaused(false); // Reset pause state when stopping
     } catch (error) {
       handleError(error as Error, 'errors.audioProcessing');
     }
@@ -186,6 +189,7 @@ export const FocusRecorderButton = ({
       mediaRecorder.current.ondataavailable = null;
       mediaRecorder.current.stop();
       setIsRecording(false);
+      setIsPaused(false);
       setRecordingTime(0);
       cleanup();
       console.log('FocusRecorderButton: Recording canceled successfully');
@@ -193,13 +197,56 @@ export const FocusRecorderButton = ({
       console.error("FocusRecorderButton: Error canceling recording:", error);
       cleanup();
       setIsRecording(false);
+      setIsPaused(false);
       setRecordingTime(0);
     }
   }, [isRecording, cleanup]);
 
-  // Timer effect
+  // Pause recording function
+  const pauseRecording = useCallback(() => {
+    console.log('FocusRecorderButton: pauseRecording called', { isRecording, isPaused, hasMediaRecorder: !!mediaRecorder.current });
+
+    if (!isRecording || isPaused || !mediaRecorder.current) {
+      console.log('FocusRecorderButton: Pause conditions not met - returning early');
+      return;
+    }
+
+    console.log('FocusRecorderButton: Pausing recording...');
+    
+    try {
+      mediaRecorder.current.pause();
+      setIsPaused(true);
+      console.log('FocusRecorderButton: Recording paused successfully');
+    } catch (error) {
+      console.error("Error pausing recording:", error);
+      handleError(error as Error, 'errors.audioProcessing');
+    }
+  }, [isRecording, isPaused, handleError]);
+
+  // Resume recording function
+  const resumeRecording = useCallback(() => {
+    console.log('FocusRecorderButton: resumeRecording called', { isRecording, isPaused, hasMediaRecorder: !!mediaRecorder.current });
+
+    if (!isRecording || !isPaused || !mediaRecorder.current) {
+      console.log('FocusRecorderButton: Resume conditions not met - returning early');
+      return;
+    }
+
+    console.log('FocusRecorderButton: Resuming recording...');
+    
+    try {
+      mediaRecorder.current.resume();
+      setIsPaused(false);
+      console.log('FocusRecorderButton: Recording resumed successfully');
+    } catch (error) {
+      console.error("Error resuming recording:", error);
+      handleError(error as Error, 'errors.audioProcessing');
+    }
+  }, [isRecording, isPaused, handleError]);
+
+  // Timer effect - pause timer when recording is paused
   useEffect(() => {
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => {
         setRecordingTime((prev) => {
           const newTime = prev + 1;
@@ -226,7 +273,7 @@ export const FocusRecorderButton = ({
         timerRef.current = null;
       }
     };
-  }, [isRecording, maxDuration, stopRecording, recordingTime, isProcessing]);
+  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -250,6 +297,7 @@ export const FocusRecorderButton = ({
   const getButtonState = () => {
     if (isProcessing) return 'processing';
     if (isInitializing) return 'initializing';
+    if (isRecording && isPaused) return 'paused';
     if (isRecording) return 'recording';
     return 'idle';
   };
@@ -280,8 +328,9 @@ export const FocusRecorderButton = ({
       <button
         type="button"
         onClick={() => {
-          console.log('FocusRecorderButton: Main button clicked', { isRecording, isProcessing, isInitializing });
+          console.log('FocusRecorderButton: Main button clicked', { isRecording, isPaused, isProcessing, isInitializing });
           if (isRecording) {
+            // Main button always stops recording (even when paused)
             console.log('FocusRecorderButton: Calling stopRecording');
             stopRecording();
           } else if (!isProcessing && !isInitializing) {
@@ -297,6 +346,8 @@ export const FocusRecorderButton = ({
             ? 'bg-gray-400 hover:bg-green-500 focus:ring-green-400' 
             : buttonState === 'recording'
             ? 'bg-red-500 animate-pulse focus:ring-red-400 shadow-lg shadow-red-500/50'
+            : buttonState === 'paused'
+            ? 'bg-red-500 focus:ring-red-400 shadow-lg shadow-red-500/50'
             : buttonState === 'initializing'
             ? 'bg-yellow-500 focus:ring-yellow-400'
             : 'bg-blue-500 focus:ring-blue-400'
@@ -313,7 +364,7 @@ export const FocusRecorderButton = ({
         }
       >
         {/* Circular progress indicator */}
-        {buttonState === 'recording' && (
+        {(buttonState === 'recording' || buttonState === 'paused') && (
           <svg 
             className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
             viewBox="0 0 100 100"
@@ -335,15 +386,15 @@ export const FocusRecorderButton = ({
               strokeWidth="4"
               strokeDasharray={`${2 * Math.PI * 46}`}
               strokeDashoffset={`${2 * Math.PI * 46 * (1 - progressPercentage / 100)}`}
-              className="transition-all duration-1000 ease-linear"
+              className={buttonState === 'paused' ? '' : 'transition-all duration-1000 ease-linear'}
             />
           </svg>
         )}
 
         {/* Icon or timer */}
         <div className="relative z-10 flex items-center justify-center w-full h-full text-white">
-          {buttonState === 'recording' ? (
-            // Show countdown timer
+          {buttonState === 'recording' || buttonState === 'paused' ? (
+            // Show countdown timer for both recording and paused states
             <span className={`${sizeConfig.fontSize} font-mono font-bold`}>
               {formatTime(remainingTime)}
             </span>
@@ -360,8 +411,54 @@ export const FocusRecorderButton = ({
         </div>
       </button>
 
-      {/* Cancel button (top right) - only show when recording */}
-      {buttonState === 'recording' && (
+      {/* Pause/Resume button (top left) - only show when recording or paused */}
+      {(buttonState === 'recording' || buttonState === 'paused') && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isPaused) {
+              console.log('FocusRecorderButton: Resume button clicked');
+              resumeRecording();
+            } else {
+              console.log('FocusRecorderButton: Pause button clicked');
+              pauseRecording();
+            }
+          }}
+          className={`absolute -top-1 -left-1 ${sizeConfig.cancelSize} rounded-full ${
+            isPaused 
+              ? 'bg-green-500 hover:bg-green-600' 
+              : 'bg-yellow-500 hover:bg-yellow-600'
+          } shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 ${
+            isPaused ? 'focus:ring-green-400' : 'focus:ring-yellow-400'
+          } flex items-center justify-center group z-10`}
+          aria-label={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+          title={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
+        >
+          {isPaused ? (
+            // Play/Resume icon
+            <svg 
+              className={`${size === 'small' ? 'w-3 h-3' : 'w-4 h-4'} text-white`}
+              fill="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          ) : (
+            // Pause icon
+            <svg 
+              className={`${size === 'small' ? 'w-3 h-3' : 'w-4 h-4'} text-white`}
+              fill="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+            </svg>
+          )}
+        </button>
+      )}
+
+      {/* Cancel button (top right) - only show when recording or paused */}
+      {(buttonState === 'recording' || buttonState === 'paused') && (
         <button
           type="button"
           onClick={(e) => {
@@ -369,7 +466,7 @@ export const FocusRecorderButton = ({
             console.log('FocusRecorderButton: Cancel button (X) clicked');
             cancelRecording();
           }}
-          className={`absolute -top-1 -right-1 ${sizeConfig.cancelSize} rounded-full bg-white hover:bg-gray-100 shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-center group`}
+          className={`absolute -top-1 -right-1 ${sizeConfig.cancelSize} rounded-full bg-white hover:bg-gray-100 shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-center group z-10`}
           aria-label={t('audio.cancelRecording')}
           title={t('audio.cancelRecording')}
         >

@@ -234,6 +234,8 @@
   "audio": {
     "newRecording": "New Recording",
     "stopRecording": "Stop Recording",
+    "pauseRecording": "Pause Recording",
+    "resumeRecording": "Resume Recording",
     "cancelRecording": "Cancel Recording",
     "processing": "Processing...",
     "initializing": "Initializing...",
