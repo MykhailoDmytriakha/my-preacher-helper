@@ -102,4 +102,24 @@ describe('StudyNoteCard', () => {
 
     expect(onToggleExpand).toHaveBeenCalled();
   });
+
+  it('applies responsive classes to the title', () => {
+    const note = createTestNote({ id: 'note-4', title: 'A very long title that should wrap' });
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="en"
+        isExpanded={false}
+        onToggleExpand={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onAnalyze={jest.fn()}
+      />
+    );
+
+    const heading = screen.getByRole('heading', { name: 'A very long title that should wrap' });
+    expect(heading).toHaveClass('line-clamp-2');
+    expect(heading).toHaveClass('leading-tight');
+  });
 });

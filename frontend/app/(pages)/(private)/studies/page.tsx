@@ -247,7 +247,7 @@ export default function StudiesPage() {
           <SparklesIcon className="h-4 w-4" />
           {t('workspaces.studies.badge')}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-3">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">
               {t('workspaces.studies.title')}
@@ -260,7 +260,7 @@ export default function StudiesPage() {
           {/* Add button */}
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 md:w-auto"
           >
             <PlusIcon className="h-5 w-5" />
             {t('studiesWorkspace.newNote')}
@@ -290,8 +290,8 @@ export default function StudiesPage() {
       {/* Search and Filters */}
       <div className="space-y-3">
         {/* Search bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
@@ -302,11 +302,11 @@ export default function StudiesPage() {
           </div>
 
           {/* Filter toggles */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <select
               value={bookFilter}
               onChange={(e) => setBookFilter(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
             >
               <option value="">{t('studiesWorkspace.filterByBook')}</option>
               {bookList.map((book) => (
@@ -319,7 +319,7 @@ export default function StudiesPage() {
             <select
               value={tagFilter}
               onChange={(e) => setTagFilter(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
             >
               <option value="">{t('studiesWorkspace.filterByTag')}</option>
               {tagOptions.map((tag) => (
@@ -332,7 +332,7 @@ export default function StudiesPage() {
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 sm:w-auto"
               >
                 <XMarkIcon className="h-4 w-4" />
                 {t('common.clearFilters') || 'Clear'}

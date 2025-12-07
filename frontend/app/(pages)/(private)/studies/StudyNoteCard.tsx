@@ -138,7 +138,7 @@ export default function StudyNoteCard({
                   {t('studiesWorkspace.type.question') || 'Question'}
                 </span>
               )}
-              <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 truncate">
+              <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-2 leading-tight">
                 {note.title || t('studiesWorkspace.untitled')}
               </h4>
             </div>
@@ -192,7 +192,7 @@ export default function StudyNoteCard({
       {isExpanded && (
         <div className="border-t border-gray-100 dark:border-gray-700">
           {/* Full content */}
-          <div className="px-4 py-4 pl-12">
+          <div className="px-4 py-4 pl-4 sm:pl-12">
             <div className="text-sm text-gray-700 dark:text-gray-200">
               <MarkdownDisplay content={note.content} />
             </div>
@@ -200,7 +200,7 @@ export default function StudyNoteCard({
 
           {/* Scripture references */}
           {note.scriptureRefs.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 pl-12 dark:border-gray-700">
+            <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
               <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
                 <BookmarkIcon className="h-4 w-4 text-emerald-600" />
                 {t('studiesWorkspace.scriptureRefs')}
@@ -220,7 +220,7 @@ export default function StudyNoteCard({
 
           {/* Tags */}
           {note.tags.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 pl-12 dark:border-gray-700">
+            <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
               <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
                 🏷️ {t('studiesWorkspace.tags')}
               </div>
@@ -238,7 +238,7 @@ export default function StudyNoteCard({
           )}
 
           {/* Actions */}
-          <div className="border-t border-gray-100 px-4 py-3 pl-12 dark:border-gray-700">
+          <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <button

@@ -269,13 +269,13 @@ export default function AddStudyNoteModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <div className="flex items-center gap-4">
+        <div className="flex items-start justify-between border-b border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50">
               {t('studiesWorkspace.newNote')}
             </h2>
             {/* Type Toggle */}
-            <div className="flex items-center rounded-lg bg-gray-100 p-1 dark:bg-gray-700">
+            <div className="flex self-start items-center rounded-lg bg-gray-100 p-1 dark:bg-gray-700 sm:self-auto">
               <button
                 type="button"
                 onClick={() => setFormState(s => ({ ...s, type: 'note' }))}
@@ -307,7 +307,7 @@ export default function AddStudyNoteModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-6">
           {/* Main content area with voice input */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -580,7 +580,7 @@ export default function AddStudyNoteModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+        <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-6">
           <button
             type="button"
             onClick={handleClose}

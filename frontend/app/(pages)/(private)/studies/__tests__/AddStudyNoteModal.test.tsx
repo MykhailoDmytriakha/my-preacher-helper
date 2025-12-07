@@ -91,4 +91,20 @@ describe('AddStudyNoteModal', () => {
       ).not.toBeDisabled();
     });
   });
+  it('uses responsive layout classes for the header', () => {
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    // Find the header title "New Note"
+    const title = screen.getByText('studiesWorkspace.newNote');
+    // The immediate parent of the title is the flex container for title + toggle
+    const innerHeader = title.closest('div');
+    expect(innerHeader).toHaveClass('flex-col');
+    expect(innerHeader).toHaveClass('sm:flex-row');
+  });
 });

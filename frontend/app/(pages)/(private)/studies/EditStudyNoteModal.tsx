@@ -199,13 +199,13 @@ export default function EditStudyNoteModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <div className="flex items-center gap-4">
+        <div className="flex items-start justify-between border-b border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50">
               {t('studiesWorkspace.editNote')}
             </h2>
             {/* Type Toggle */}
-            <div className="flex items-center rounded-lg bg-gray-100 p-1 dark:bg-gray-700">
+            <div className="flex self-start items-center rounded-lg bg-gray-100 p-1 dark:bg-gray-700 sm:self-auto">
               <button
                 type="button"
                 onClick={() => setType('note')}
@@ -237,7 +237,7 @@ export default function EditStudyNoteModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-6">
           {/* Title */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
@@ -455,7 +455,7 @@ export default function EditStudyNoteModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+        <div className="flex items-center justify-between border-t border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-6">
           <div className="text-xs text-gray-400 dark:text-gray-500">
             {t('studiesWorkspace.createdAt')}: {new Date(note.createdAt).toLocaleDateString()}
           </div>
