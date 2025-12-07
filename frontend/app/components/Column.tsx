@@ -420,6 +420,117 @@ const UnassignedThoughtsDropTarget: React.FC<{
     );
   };
 
+// Introduction help popover (used in headers)
+const IntroductionInfo: React.FC<{
+  t: (key: string, options?: Record<string, unknown>) => string;
+  popoverAlignment?: 'left' | 'right';
+}> = ({ t, popoverAlignment = 'left' }) => {
+  const [showHint, setShowHint] = React.useState(false);
+  const hintRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!showHint) return;
+    const onDocClick = (e: MouseEvent | TouchEvent) => {
+      if (!hintRef.current) return;
+      const target = e.target as Node;
+      if (!hintRef.current.contains(target)) {
+        setShowHint(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick, true);
+    document.addEventListener('touchstart', onDocClick, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick, true);
+      document.removeEventListener('touchstart', onDocClick, true);
+    };
+  }, [showHint]);
+
+  return (
+    <div className="relative" ref={hintRef}>
+      <button
+        onClick={() => setShowHint((prev) => !prev)}
+        className="p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+        title={t('structure.introductionInfo.ariaLabel', { defaultValue: 'Introduction guidance' })}
+        aria-label={t('structure.introductionInfo.ariaLabel', { defaultValue: 'Introduction guidance' })}
+        aria-expanded={showHint}
+      >
+        <InformationCircleIcon className="h-5 w-5 text-white" />
+      </button>
+      {showHint && (
+        <div className={`absolute ${popoverAlignment === 'right' ? 'right-0' : 'left-0'} mt-2 z-50 w-[320px]`}>
+          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
+            <div className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
+              {t('structure.introductionInfo.title', { defaultValue: 'Introduction goals:' })}
+            </div>
+            <ul className="list-disc pl-4 space-y-1 text-gray-800 dark:text-gray-200">
+              <li>{t('structure.introductionInfo.readScripture', { defaultValue: 'Read the Scripture text' })}</li>
+              <li>{t('structure.introductionInfo.prayer', { defaultValue: 'Call to prayer so the seed is sown and received with faith' })}</li>
+              <li>{t('structure.introductionInfo.engage', { defaultValue: 'Engage listeners (connect the theme to their needs)' })}</li>
+              <li>{t('structure.introductionInfo.prepare', { defaultValue: 'Prepare listeners to grasp the main subject of the sermon' })}</li>
+              <li>{t('structure.introductionInfo.preview', { defaultValue: 'Give a brief overview of the sermon and set the theme' })}</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ConclusionInfo: React.FC<{
+  t: (key: string, options?: Record<string, unknown>) => string;
+  popoverAlignment?: 'left' | 'right';
+}> = ({ t, popoverAlignment = 'left' }) => {
+  const [showHint, setShowHint] = React.useState(false);
+  const hintRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!showHint) return;
+    const onDocClick = (e: MouseEvent | TouchEvent) => {
+      if (!hintRef.current) return;
+      const target = e.target as Node;
+      if (!hintRef.current.contains(target)) {
+        setShowHint(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick, true);
+    document.addEventListener('touchstart', onDocClick, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick, true);
+      document.removeEventListener('touchstart', onDocClick, true);
+    };
+  }, [showHint]);
+
+  return (
+    <div className="relative" ref={hintRef}>
+      <button
+        onClick={() => setShowHint((prev) => !prev)}
+        className="p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+        title={t('structure.conclusionInfo.ariaLabel', { defaultValue: 'Conclusion guidance' })}
+        aria-label={t('structure.conclusionInfo.ariaLabel', { defaultValue: 'Conclusion guidance' })}
+        aria-expanded={showHint}
+      >
+        <InformationCircleIcon className="h-5 w-5 text-white" />
+      </button>
+      {showHint && (
+        <div className={`absolute ${popoverAlignment === 'right' ? 'right-0' : 'left-0'} mt-2 z-50 w-[320px]`}>
+          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
+            <div className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
+              {t('structure.conclusionInfo.title', { defaultValue: 'Conclusion goals:' })}
+            </div>
+            <ul className="list-disc pl-4 space-y-1 text-gray-800 dark:text-gray-200">
+              <li>{t('structure.conclusionInfo.repeat', { defaultValue: 'Repeat the key points that were shared' })}</li>
+              <li>{t('structure.conclusionInfo.edify', { defaultValue: 'Offer an edifying word showing God’s love to the church' })}</li>
+              <li>{t('structure.conclusionInfo.apply', { defaultValue: 'Give application: what to do and how to apply the truths discussed' })}</li>
+              <li>{t('structure.conclusionInfo.call', { defaultValue: 'Call to repentance and action (not only hearers but doers)' })}</li>
+              <li>{t('structure.conclusionInfo.hammer', { defaultValue: '“Drive the nail” with the final clear phrases; you may end with “Thus says the Lord”; 1 Pet 4:11' })}</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function Column({
   id,
   title,
@@ -740,10 +851,16 @@ export default function Column({
           >
             {/* Column title */}
             <div className="p-5 border-b border-white dark:border-gray-600">
-              <div className="flex items-center">
+              <div className="flex items-center gap-2">
                 <h2 className="text-2xl font-bold text-white dark:text-gray-100">
                   {title}
                 </h2>
+                {id === 'introduction' && (
+                  <IntroductionInfo t={t} popoverAlignment="left" />
+                )}
+                {id === 'conclusion' && (
+                  <ConclusionInfo t={t} popoverAlignment="left" />
+                )}
               </div>
             </div>
 
@@ -1160,7 +1277,15 @@ export default function Column({
           style={headerBgStyle}
         >
           <h2 className="text-lg font-bold text-white flex items-center">
-            {title}
+            <span className="flex items-center gap-2">
+              {title}
+              {id === 'introduction' && (
+                <IntroductionInfo t={t} popoverAlignment="left" />
+              )}
+              {id === 'conclusion' && (
+                <ConclusionInfo t={t} popoverAlignment="left" />
+              )}
+            </span>
             <div
               className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white"
               onMouseEnter={() => setShowTooltip(true)}

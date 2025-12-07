@@ -339,6 +339,24 @@
     "introduction": "Introduction",
     "mainPart": "Main Part",
     "conclusion": "Conclusion",
+    "introductionInfo": {
+      "ariaLabel": "Introduction guidance",
+      "title": "Introduction goals:",
+      "readScripture": "Read the Scripture text",
+      "prayer": "Call to prayer so the seed is sown and received with faith",
+      "engage": "Engage listeners (connect the theme to their needs)",
+      "prepare": "Prepare listeners to grasp the main subject of the sermon",
+      "preview": "Give a brief overview of the sermon and set the theme"
+    },
+    "conclusionInfo": {
+      "ariaLabel": "Conclusion guidance",
+      "title": "Conclusion goals:",
+      "repeat": "Repeat the key points that were shared",
+      "edify": "Offer an edifying word showing God’s love to the church",
+      "apply": "Give application: what to do and how to apply the truths discussed",
+      "call": "Call to repentance and action (not only hearers but doers)",
+      "hammer": "“Drive the nail” with the final clear phrases; you may end with “Thus says the Lord”; 1 Pet 4:11"
+    },
     "preview": "Structure preview",
     "focusMode": "Focus Mode",
     "normalMode": "Normal Mode",
