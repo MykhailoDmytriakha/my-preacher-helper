@@ -103,255 +103,252 @@ const SermonPointPlaceholder: React.FC<{
   onAddThought,
   sectionTitle,
 }) => {
-  const { setNodeRef, isOver } = useDroppable({ 
-    id: `outline-point-${point.id}`, 
-    data: { container: containerId, outlinePointId: point.id } 
-  });
+    const { setNodeRef, isOver } = useDroppable({
+      id: `outline-point-${point.id}`,
+      data: { container: containerId, outlinePointId: point.id }
+    });
 
-  const pointItems = items.filter(item => item.outlinePointId === point.id);
-  const hasItems = pointItems.length > 0;
+    const pointItems = items.filter(item => item.outlinePointId === point.id);
+    const hasItems = pointItems.length > 0;
 
-  // Local info popover state
-  const [showHint, setShowHint] = React.useState(false);
-  const hintRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    function onDocClick(e: MouseEvent | TouchEvent) {
-      if (!hintRef.current) return;
-      const target = e.target as Node;
-      if (!hintRef.current.contains(target)) {
-        setShowHint(false);
+    // Local info popover state
+    const [showHint, setShowHint] = React.useState(false);
+    const hintRef = React.useRef<HTMLDivElement | null>(null);
+    React.useEffect(() => {
+      function onDocClick(e: MouseEvent | TouchEvent) {
+        if (!hintRef.current) return;
+        const target = e.target as Node;
+        if (!hintRef.current.contains(target)) {
+          setShowHint(false);
+        }
       }
-    }
-    if (showHint) {
-      document.addEventListener('mousedown', onDocClick, true);
-      document.addEventListener('touchstart', onDocClick, true);
-    }
-    return () => {
-      document.removeEventListener('mousedown', onDocClick, true);
-      document.removeEventListener('touchstart', onDocClick, true);
-    };
-  }, [showHint]);
-
-  // Color scheme based on section
-  const getPlaceholderColors = () => {
-    if (headerColor) {
-      return {
-        border: `border-2 border-opacity-30`,
-        bg: 'bg-gray-50 dark:bg-gray-800',
-        header: 'bg-gray-100 dark:bg-gray-700',
-        headerText: 'text-gray-700 dark:text-gray-200'
+      if (showHint) {
+        document.addEventListener('mousedown', onDocClick, true);
+        document.addEventListener('touchstart', onDocClick, true);
+      }
+      return () => {
+        document.removeEventListener('mousedown', onDocClick, true);
+        document.removeEventListener('touchstart', onDocClick, true);
       };
-    }
+    }, [showHint]);
 
-    switch (containerId) {
-      case 'introduction':
+    // Color scheme based on section
+    const getPlaceholderColors = () => {
+      if (headerColor) {
         return {
-          border: `border-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`,
-          bg: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
-          header: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
-          headerText: `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`
-        };
-      case 'main':
-        return {
-          border: `border-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`,
-          bg: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
-          header: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
-          headerText: `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`
-        };
-      case 'conclusion':
-        return {
-          border: `border-2 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`,
-          bg: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
-          header: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
-          headerText: `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`
-        };
-      default:
-        return {
-          border: 'border-2 border-gray-200 dark:border-gray-700',
+          border: `border-2 border-opacity-30`,
           bg: 'bg-gray-50 dark:bg-gray-800',
           header: 'bg-gray-100 dark:bg-gray-700',
           headerText: 'text-gray-700 dark:text-gray-200'
         };
-    }
-  };
+      }
 
-  const colors = getPlaceholderColors();
+      switch (containerId) {
+        case 'introduction':
+          return {
+            border: `border-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`,
+            bg: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
+            header: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
+            headerText: `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`
+          };
+        case 'main':
+          return {
+            border: `border-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`,
+            bg: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
+            header: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
+            headerText: `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`
+          };
+        case 'conclusion':
+          return {
+            border: `border-2 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`,
+            bg: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
+            header: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
+            headerText: `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`
+          };
+        default:
+          return {
+            border: 'border-2 border-gray-200 dark:border-gray-700',
+            bg: 'bg-gray-50 dark:bg-gray-800',
+            header: 'bg-gray-100 dark:bg-gray-700',
+            headerText: 'text-gray-700 dark:text-gray-200'
+          };
+      }
+    };
 
-  // Local state for audio recording (per outline point)
-  const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
-  const [audioError, setAudioError] = React.useState<string | null>(null);
+    const colors = getPlaceholderColors();
 
-  return (
-    <div 
-      className={`${colors.border} ${colors.bg} rounded-lg mb-4 transition-all duration-200 ${
-        isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
-      }`}
-      style={headerColor ? { borderColor: headerColor } : {}}
-    >
-      {/* SermonOutline point header */}
-      <div 
-        className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? 'bg-gray-100 dark:bg-gray-700' : colors.header}`}
-        style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
+    // Local state for audio recording (per outline point)
+    const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
+    const [audioError, setAudioError] = React.useState<string | null>(null);
+
+    return (
+      <div
+        className={`${colors.border} ${colors.bg} rounded-lg mb-4 transition-all duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
+          }`}
+        style={headerColor ? { borderColor: headerColor } : {}}
       >
-        <div className="flex items-center justify-between">
-          <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}>
-            {point.text}
-          </h4>
-          <div className="flex items-center gap-2">
-            {/* Toggle reviewed status button */}
-            {onToggleReviewed && (
-              <button
-                onClick={() => onToggleReviewed(point.id, !point.isReviewed)}
-                className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 ${
-                  point.isReviewed
+        {/* SermonOutline point header */}
+        <div
+          className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? 'bg-gray-100 dark:bg-gray-700' : colors.header}`}
+          style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
+        >
+          <div className="flex items-center justify-between">
+            <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}>
+              {point.text}
+            </h4>
+            <div className="flex items-center gap-2">
+              {/* Toggle reviewed status button */}
+              {onToggleReviewed && (
+                <button
+                  onClick={() => onToggleReviewed(point.id, !point.isReviewed)}
+                  className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 ${point.isReviewed
                     ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
                     : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-                title={point.isReviewed
-                  ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
-                  : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
-                }
-                aria-label={point.isReviewed
-                  ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
-                  : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
-                }
-              >
-                <CheckIcon className={`h-4 w-4 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
-              </button>
-            )}
-            {/* Quick help for outline point */}
-            <div className="relative" ref={hintRef}>
-              <button
-                onClick={() => setShowHint(v => !v)}
-                className="group p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-                title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
-                aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
-                aria-expanded={showHint}
-              >
-                <InformationCircleIcon className="h-5 w-5 text-blue-600 dark:text-blue-300 group-hover:text-blue-700 dark:group-hover:text-blue-200" />
-              </button>
-              {showHint && (
-                <div className="absolute right-0 mt-2 z-50 w-[300px]">
-                  <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
-                    <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
-                      {t('structure.outlineHelp.title', { defaultValue: 'Памятка для пункта' })}
+                    }`}
+                  title={point.isReviewed
+                    ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
+                    : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
+                  }
+                  aria-label={point.isReviewed
+                    ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
+                    : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
+                  }
+                >
+                  <CheckIcon className={`h-4 w-4 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
+                </button>
+              )}
+              {/* Quick help for outline point */}
+              <div className="relative" ref={hintRef}>
+                <button
+                  onClick={() => setShowHint(v => !v)}
+                  className="group p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+                  title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+                  aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+                  aria-expanded={showHint}
+                >
+                  <InformationCircleIcon className="h-5 w-5 text-blue-600 dark:text-blue-300 group-hover:text-blue-700 dark:group-hover:text-blue-200" />
+                </button>
+                {showHint && (
+                  <div className="absolute right-0 mt-2 z-50 w-[300px]">
+                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
+                      <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
+                        {t('structure.outlineHelp.title')}
+                      </div>
+                      <ul className="list-disc pl-4 space-y-1 text-gray-700 dark:text-gray-200">
+                        <li>{t('structure.outlineHelp.verse')}</li>
+                        <li>{t('structure.outlineHelp.explanation')}</li>
+                        <li>{t('structure.outlineHelp.illustration')}</li>
+                        <li>{t('structure.outlineHelp.argumentation')}</li>
+                        <li>{t('structure.outlineHelp.application')}</li>
+                      </ul>
                     </div>
-                    <ul className="list-disc pl-4 space-y-1 text-gray-700 dark:text-gray-200">
-                      <li>{t('structure.outlineHelp.explanation', { defaultValue: 'Объяснение: что говорит текст и что хотел автор — коротко и по сути.' })}</li>
-                      <li>{t('structure.outlineHelp.illustration', { defaultValue: 'Иллюстрация: образ/история, освещающая истину; после неё вновь озвучьте мысль.' })}</li>
-                      <li>{t('structure.outlineHelp.argumentation', { defaultValue: 'Аргументация: почему этому верить — контекст, параллели Писания, логика.' })}</li>
-                      <li>{t('structure.outlineHelp.application', { defaultValue: 'Применение: что делать и как — конкретный шаг, связанный с намерением автора.' })}</li>
-                    </ul>
                   </div>
-                </div>
+                )}
+              </div>
+              <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
+                {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
+              </span>
+              {/* Focus Recorder Button (per outline point) */}
+              {isFocusMode && onAddThought && (
+                <button
+                  onClick={() => onAddThought(containerId, point.id)}
+                  className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+                  title={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
+                  aria-label={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
+                >
+                  <PlusIcon className="h-4 w-4 text-white" />
+                </button>
+              )}
+              {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
+                <>
+                  {console.log('Column: Rendering FocusRecorderButton for outline point:', containerId)}
+                  <FocusRecorderButton
+                    size="small"
+                    onRecordingComplete={async (audioBlob) => {
+                      try {
+                        setIsRecordingAudio(true);
+                        setAudioError(null);
+                        const forceTag =
+                          containerId === 'introduction' ? getSectionLabel(t, 'introduction') :
+                            containerId === 'main' ? getSectionLabel(t, 'main') :
+                              containerId === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                                undefined;
+                        const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
+                        const newThought = await createAudioThoughtWithForceTag(
+                          audioBlob,
+                          sermonId!,
+                          forceTag || null,
+                          0,
+                          3,
+                          point.id
+                        );
+
+                        // Inform parent to append to UI under current section
+                        onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
+                        toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
+                      } catch (err) {
+                        console.error('Error recording audio for outline point:', err);
+                        const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
+                        setAudioError(String(msg));
+                        toast.error(String(msg));
+                      } finally {
+                        setIsRecordingAudio(false);
+                      }
+                    }}
+                    isProcessing={isRecordingAudio}
+                    maxDuration={90}
+                    onError={(err) => {
+                      setAudioError(err);
+                      setIsRecordingAudio(false);
+                    }}
+                  />
+                </>
               )}
             </div>
-            <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
-              {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
-            </span>
-            {/* Focus Recorder Button (per outline point) */}
-            {isFocusMode && onAddThought && (
-              <button
-                onClick={() => onAddThought(containerId, point.id)}
-                className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-                title={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
-                aria-label={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
-              >
-                <PlusIcon className="h-4 w-4 text-white" />
-              </button>
-            )}
-            {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
-              <>
-                {console.log('Column: Rendering FocusRecorderButton for outline point:', containerId)}
-                <FocusRecorderButton
-                size="small"
-                onRecordingComplete={async (audioBlob) => {
-                  try {
-                    setIsRecordingAudio(true);
-                    setAudioError(null);
-                    const forceTag =
-                      containerId === 'introduction' ? getSectionLabel(t, 'introduction') :
-                      containerId === 'main' ? getSectionLabel(t, 'main') :
-                      containerId === 'conclusion' ? getSectionLabel(t, 'conclusion') :
-                      undefined;
-                    const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
-                    const newThought = await createAudioThoughtWithForceTag(
-                      audioBlob,
-                      sermonId!,
-                      forceTag || null,
-                      0,
-                      3,
-                      point.id
-                    );
-
-                    // Inform parent to append to UI under current section
-                    onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
-                    toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
-                  } catch (err) {
-                    console.error('Error recording audio for outline point:', err);
-                    const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
-                    setAudioError(String(msg));
-                    toast.error(String(msg));
-                  } finally {
-                    setIsRecordingAudio(false);
-                  }
-                }}
-                isProcessing={isRecordingAudio}
-                maxDuration={90}
-                onError={(err) => {
-                  setAudioError(err);
-                  setIsRecordingAudio(false);
-                }}
-              />
-              </>
-            )}
           </div>
         </div>
-      </div>
 
-      {/* Drop zone for thoughts */}
-      <div 
-        ref={setNodeRef}
-        className={`min-h-[80px] p-4 transition-all ${
-          isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
-        }`}
-      >
-        {!hasItems ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-            {t('structure.dropThoughtsHere')}
-          </div>
-        ) : (
-          <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {pointItems.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  containerId={containerId}
-                  onEdit={onEdit}
-                  isHighlighted={isHighlighted(item.id)}
-                  highlightType={getHighlightType(item.id)}
-                  onKeep={onKeepItem}
-                  onRevert={onRevertItem}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  disabled={point.isReviewed}
-                />
-              ))}
-              
-              {/* Additional drop area at the end */}
-              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
-                isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
-              }`}>
-                {t('structure.dropThoughtsToAdd')}
-              </div>
+        {/* Drop zone for thoughts */}
+        <div
+          ref={setNodeRef}
+          className={`min-h-[80px] p-4 transition-all ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
+            }`}
+        >
+          {!hasItems ? (
+            <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+              {t('structure.dropThoughtsHere')}
             </div>
-          </SortableContext>
-        )}
+          ) : (
+            <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {pointItems.map((item) => (
+                  <SortableItem
+                    key={item.id}
+                    item={item}
+                    containerId={containerId}
+                    onEdit={onEdit}
+                    isHighlighted={isHighlighted(item.id)}
+                    highlightType={getHighlightType(item.id)}
+                    onKeep={onKeepItem}
+                    onRevert={onRevertItem}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    disabled={point.isReviewed}
+                  />
+                ))}
+
+                {/* Additional drop area at the end */}
+                <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+                  }`}>
+                  {t('structure.dropThoughtsToAdd')}
+                </div>
+              </div>
+            </SortableContext>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 // Component for rendering unassigned thoughts drop target
 const UnassignedThoughtsDropTarget: React.FC<{
@@ -365,72 +362,70 @@ const UnassignedThoughtsDropTarget: React.FC<{
   t: (key: string, options?: Record<string, unknown>) => string;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-}> = ({ 
-  items, 
-  containerId, 
-  onEdit, 
-  isHighlighted, 
-  getHighlightType, 
-  onKeepItem, 
-  onRevertItem, 
+}> = ({
+  items,
+  containerId,
+  onEdit,
+  isHighlighted,
+  getHighlightType,
+  onKeepItem,
+  onRevertItem,
   t,
   activeId,
-  onMoveToAmbiguous 
+  onMoveToAmbiguous
 }) => {
-  const { setNodeRef, isOver } = useDroppable({ 
-    id: `unassigned-${containerId}`, 
-    data: { container: containerId, outlinePointId: null } // null means unassigned
-  });
+    const { setNodeRef, isOver } = useDroppable({
+      id: `unassigned-${containerId}`,
+      data: { container: containerId, outlinePointId: null } // null means unassigned
+    });
 
-  return (
-    <div 
-      ref={setNodeRef}
-      className={`min-h-[80px] p-4 transition-all rounded-lg ${
-        isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : 'bg-gray-50 dark:bg-gray-800'
-      }`}
-    >
-      {items.length === 0 ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-          {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
-        </div>
-      ) : (
-        <SortableContext items={items} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4">
-            {items.map((item) => (
-              <SortableItem
-                key={item.id}
-                item={item}
-                containerId={containerId}
-                onEdit={onEdit}
-                isHighlighted={isHighlighted(item.id)}
-                highlightType={getHighlightType(item.id)}
-                onKeep={onKeepItem}
-                onRevert={onRevertItem}
-                activeId={activeId}
-                onMoveToAmbiguous={onMoveToAmbiguous}
-                disabled={false}
-              />
-            ))}
-            
-            {/* Additional drop area at the end for consistency */}
-            <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${
-              isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
-            }`}>
-              {t('structure.dropToUnassign')}
-            </div>
+    return (
+      <div
+        ref={setNodeRef}
+        className={`min-h-[80px] p-4 transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : 'bg-gray-50 dark:bg-gray-800'
+          }`}
+      >
+        {items.length === 0 ? (
+          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+            {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
           </div>
-        </SortableContext>
-      )}
-    </div>
-  );
-};
+        ) : (
+          <SortableContext items={items} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4">
+              {items.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  containerId={containerId}
+                  onEdit={onEdit}
+                  isHighlighted={isHighlighted(item.id)}
+                  highlightType={getHighlightType(item.id)}
+                  onKeep={onKeepItem}
+                  onRevert={onRevertItem}
+                  activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
+                  disabled={false}
+                />
+              ))}
 
-export default function Column({ 
-  id, 
-  title, 
-  items, 
-  headerColor, 
-  onEdit, 
+              {/* Additional drop area at the end for consistency */}
+              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+                }`}>
+                {t('structure.dropToUnassign')}
+              </div>
+            </div>
+          </SortableContext>
+        )}
+      </div>
+    );
+  };
+
+export default function Column({
+  id,
+  title,
+  items,
+  headerColor,
+  onEdit,
   outlinePoints: initialSermonPoints = [], // Rename prop for clarity
   showFocusButton = false,
   isFocusMode = false,
@@ -458,7 +453,7 @@ export default function Column({
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
-  
+
   // Basic state for outline points UI
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -466,25 +461,25 @@ export default function Column({
   const [newPointText, setNewPointText] = useState<string>('');
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
   const [isGeneratingSermonPoints, setIsGeneratingSermonPoints] = useState<boolean>(false);
-  
+
   // Refs for focus management
   const editInputRef = useRef<HTMLInputElement>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
 
   // State for responsive sidebar visibility on small screens
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  
+
   // Calculate counts for assigned and unassigned items
   const assignedItems = items.filter(item => item.outlinePointId).length;
   const unassignedItems = items.length - assignedItems;
-  
+
   // Calculate if this column has any highlighted items
   const hasHighlightedItems = items.some(item => item.id in highlightedItems);
-  
+
   // --- State for SermonOutline Point Editing (only relevant in focus mode) ---
   const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -553,7 +548,7 @@ export default function Column({
 
         // First fetch the current outline to avoid overwriting other sections
         const currentOutline = await getSermonOutline(sermonId);
-        
+
         // Create a merged outline that preserves other sections
         const outlineToSave: SermonOutline = {
           introduction: sectionType === 'introduction' ? updatedPoints : (currentOutline?.introduction || []),
@@ -605,7 +600,7 @@ export default function Column({
     setAddingNewPoint(false);
     triggerSaveOutline(updatedPoints);
   };
-  
+
   const handleStartEdit = (point: SermonPoint) => {
     setEditingPointId(point.id);
     setEditingText(point.text);
@@ -622,7 +617,7 @@ export default function Column({
       handleCancelEdit(); // Cancel if text is empty
       return;
     }
-    const updatedPoints = localSermonPoints.map(p => 
+    const updatedPoints = localSermonPoints.map(p =>
       p.id === editingPointId ? { ...p, text: editingText.trim() } : p
     );
     setLocalSermonPoints(updatedPoints);
@@ -648,7 +643,7 @@ export default function Column({
       triggerSaveOutline(updatedPoints);
     }
   };
-  
+
   // Оптимизированная версия handleDragEnd для @hello-pangea/dnd
   const handleDragEnd = (result: DropResult) => {
     const { source, destination } = result;
@@ -662,61 +657,61 @@ export default function Column({
     const updatedPoints = Array.from(localSermonPoints);
     const [removed] = updatedPoints.splice(source.index, 1);
     updatedPoints.splice(destination.index, 0, removed);
-    
+
     // Update state
     setLocalSermonPoints(updatedPoints);
-    
+
     // Save changes
     triggerSaveOutline(updatedPoints);
   };
 
   // Always use vertical list strategy regardless of focus mode
   const sortingStrategy = verticalListSortingStrategy;
-  
+
   // Background color for header based on id or custom color (use canonical palette hex)
   const headerBgStyle: React.CSSProperties | undefined = (() => {
     if (headerColor) return { backgroundColor: headerColor };
     const colors = id === 'main' ? SERMON_SECTION_COLORS.mainPart
       : id === 'introduction' ? SERMON_SECTION_COLORS.introduction
-      : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion
-      : undefined;
+        : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion
+          : undefined;
     return colors ? { backgroundColor: colors.base } : undefined;
   })();
-  
+
   // Border color based on id or custom color
   const borderColor = !headerColor
     ? (
       id === 'introduction' ? SERMON_SECTION_COLORS.introduction.border.split(' ')[0]
-      : id === 'main' ? SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]
-      : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]
-      : 'border-gray-200'
+        : id === 'main' ? SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]
+          : id === 'conclusion' ? SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]
+            : 'border-gray-200'
     )
     : "";
 
   // Add a new function to handle generating outline points
   const handleGenerateSermonPoints = async () => {
     if (!sermonId || !isFocusMode) return;
-    
+
     // Map id to the section name expected by API
     const sectionName = id === 'main' ? 'main' : id;
-    
+
     try {
       setIsGeneratingSermonPoints(true);
-      
+
       const newPoints = await generateSermonPointsForSection(sermonId, sectionName as 'introduction' | 'main' | 'conclusion');
-      
+
       if (newPoints.length === 0) {
         toast.error(t('structure.generateSermonPointsError', { defaultValue: 'Failed to generate outline points' }));
         return;
       }
-      
+
       // Add new points to existing ones (if there are any)
       const updatedPoints = [...localSermonPoints, ...newPoints];
-      
+
       // Update state and save
       setLocalSermonPoints(updatedPoints);
       triggerSaveOutline(updatedPoints);
-      
+
       toast.success(t('structure.outlinePointsGenerated', { defaultValue: 'SermonOutline points generated successfully', count: newPoints.length }));
     } catch (error) {
       console.error('Error generating outline points:', error);
@@ -739,7 +734,7 @@ export default function Column({
       <div className={`flex h-full gap-6 justify-center w-full ${className}`}>
         {/* Left sidebar - responsive: hidden on small screens, collapsible on medium, fixed on large */}
         <div className={`${isSidebarVisible ? 'block' : 'hidden'} md:block md:w-64 md:flex-shrink lg:w-72 lg:flex-shrink-0 sticky top-16 self-start max-h-[calc(100vh-4rem)] z-40`}>
-          <div 
+          <div
             className={`h-full rounded-lg shadow-lg flex flex-col ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
             style={headerBgStyle}
           >
@@ -751,7 +746,7 @@ export default function Column({
                 </h2>
               </div>
             </div>
-            
+
             {/* Action buttons */}
             <div className="p-5 border-b border-white dark:border-gray-600">
               <div className="space-y-3">
@@ -769,7 +764,7 @@ export default function Column({
                     </div>
                   </button>
                 )}
-                
+
                 {/* Audio Recorder for Focus Mode */}
                 {isFocusMode && sermonId && (
                   <div className="mt-3">
@@ -780,20 +775,20 @@ export default function Column({
                         try {
                           setIsRecordingAudio(true);
                           setAudioError(null);
-                          
+
                           // Determine the force tag based on column ID
                           const forceTag =
                             id === 'introduction' ? getSectionLabel(t, 'introduction') :
-                            id === 'main' ? getSectionLabel(t, 'main') :
-                            id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
-                            undefined;
-                          
+                              id === 'main' ? getSectionLabel(t, 'main') :
+                                id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                                  undefined;
+
                           // Import the service function dynamically to avoid circular dependencies
                           const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
                           const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag || null);
                           // Append newly created thought into the current section (UI + structure)
                           onAudioThoughtCreated?.(newThought, id as 'introduction' | 'main' | 'conclusion');
-                          
+
                           toast.success(`Запись добавлена в раздел "${forceTag}"`);
                         } catch (error) {
                           console.error('Error recording audio thought:', error);
@@ -813,18 +808,17 @@ export default function Column({
                     />
                   </div>
                 )}
-                
+
                 {onAiSort && (
                   <button
                     onClick={onAiSort}
                     disabled={isLoading}
-                    className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${
-                      isLoading ? `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}` : 
-                      id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} ${SERMON_SECTION_COLORS.introduction.hover} dark:${SERMON_SECTION_COLORS.introduction.darkHover} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} shadow-md` : 
-                      id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} ${SERMON_SECTION_COLORS.mainPart.hover} dark:${SERMON_SECTION_COLORS.mainPart.darkHover} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} shadow-md` : 
-                      id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} ${SERMON_SECTION_COLORS.conclusion.hover} dark:${SERMON_SECTION_COLORS.conclusion.darkHover} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} shadow-md` : 
-                      `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} hover:bg-gray-400 dark:hover:bg-gray-500 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} shadow-md`
-                    }`}
+                    className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${isLoading ? `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}` :
+                      id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} ${SERMON_SECTION_COLORS.introduction.hover} dark:${SERMON_SECTION_COLORS.introduction.darkHover} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} shadow-md` :
+                        id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} ${SERMON_SECTION_COLORS.mainPart.hover} dark:${SERMON_SECTION_COLORS.mainPart.darkHover} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} shadow-md` :
+                          id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} ${SERMON_SECTION_COLORS.conclusion.hover} dark:${SERMON_SECTION_COLORS.conclusion.darkHover} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} shadow-md` :
+                            `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} hover:bg-gray-400 dark:hover:bg-gray-500 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} shadow-md`
+                      }`}
                   >
                     {isLoading ? (
                       <>
@@ -852,14 +846,14 @@ export default function Column({
                     )}
                   </button>
                 )}
-                
+
                 {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
                 {isDiffModeActive && hasHighlightedItems && (
                   <div className="space-y-2 mt-3 pt-3 border-t border-white dark:border-gray-600 border-opacity-30 dark:border-opacity-30">
                     <h3 className="text-sm font-medium text-white dark:text-gray-100 mb-2">
                       {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
                     </h3>
-                    
+
                     {/* Accept all button */}
                     <button
                       onClick={() => onKeepAll?.(id)}
@@ -868,7 +862,7 @@ export default function Column({
                       <CheckIcon className="h-4 w-4 mr-2" />
                       {t('structure.acceptAllChanges', { defaultValue: 'Accept all remaining' })}
                     </button>
-                    
+
                     {/* Reject all button */}
                     <button
                       onClick={() => onRevertAll?.(id)}
@@ -879,10 +873,10 @@ export default function Column({
                     </button>
                   </div>
                 )}
-                
+
                 {getExportContent && sermonId && (
                   <div className="mt-4 flex justify-center">
-                    <ExportButtons 
+                    <ExportButtons
                       getExportContent={getExportContent}
                       sermonId={sermonId}
                       className="inline-flex"
@@ -892,21 +886,21 @@ export default function Column({
                 )}
               </div>
             </div>
-            
+
             {/* SermonOutline points - Now includes editing capabilities */}
             {isFocusMode && (
               <div className="p-5 flex-grow overflow-y-auto flex flex-col">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="text-lg font-semibold text-white dark:text-gray-100">{t('structure.outlinePoints')}</h3>
-                  
+
                   {/* Generate outline points button */}
                   {sermonId && (
                     <button
                       onClick={handleGenerateSermonPoints}
                       disabled={isGeneratingSermonPoints || localSermonPoints.length > 0}
                       className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localSermonPoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
-                      title={localSermonPoints.length > 0 
-                        ? t('structure.outlinePointsExist', { defaultValue: 'SermonOutline points already exist' }) 
+                      title={localSermonPoints.length > 0
+                        ? t('structure.outlinePointsExist', { defaultValue: 'SermonOutline points already exist' })
                         : t('structure.generateSermonPoints', { defaultValue: 'Generate outline points' })}
                     >
                       {isGeneratingSermonPoints ? (
@@ -924,8 +918,8 @@ export default function Column({
                 <DragDropContext onDragEnd={handleDragEnd}>
                   <Droppable droppableId={`outline-${id}`}>
                     {(provided) => (
-                      <ul 
-                        {...provided.droppableProps} 
+                      <ul
+                        {...provided.droppableProps}
                         ref={provided.innerRef}
                         className="space-y-2 flex-grow"
                       >
@@ -942,11 +936,11 @@ export default function Column({
                                 <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
                                   <Bars3Icon className="h-5 w-5" />
                                 </div>
-                                
+
                                 {/* Edit form or display */}
                                 {editingPointId === point.id ? (
                                   <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
-                                    <input 
+                                    <input
                                       type="text"
                                       value={editingText}
                                       onChange={(e) => setEditingText(e.target.value)}
@@ -987,7 +981,7 @@ export default function Column({
                           </Draggable>
                         ))}
                         {provided.placeholder}
-                        
+
                         {addingNewPoint ? (
                           <div ref={addInputRef} className="mt-2 flex items-center space-x-1">
                             <input
@@ -1023,7 +1017,7 @@ export default function Column({
             )}
           </div>
         </div>
-        
+
         {/* Right side content area (scrollable) - responsive width */}
         <SortableContext items={items} strategy={sortingStrategy}>
           <div
@@ -1156,18 +1150,18 @@ export default function Column({
       </div>
     );
   }
-  
+
   // Normal mode UI (non-focused)
   return (
     <div className={`flex flex-col ${className}`}>
-          <div className="relative mb-2 rounded-t-md">
-        <div 
+      <div className="relative mb-2 rounded-t-md">
+        <div
           className={`p-3 flex justify-between items-center`}
           style={headerBgStyle}
         >
           <h2 className="text-lg font-bold text-white flex items-center">
             {title}
-            <div 
+            <div
               className="ml-2 flex overflow-hidden rounded-full text-xs relative select-none cursor-default hover:ring-2 hover:ring-white"
               onMouseEnter={() => setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
@@ -1220,9 +1214,9 @@ export default function Column({
                             setAudioError(null);
                             const forceTag =
                               id === 'introduction' ? getSectionLabel(t, 'introduction') :
-                              id === 'main' ? getSectionLabel(t, 'main') :
-                              id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
-                              undefined;
+                                id === 'main' ? getSectionLabel(t, 'main') :
+                                  id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                                    undefined;
                             const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
                             const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag || null);
                             onAudioThoughtCreated?.(newThought, id as 'introduction' | 'main' | 'conclusion');
@@ -1299,7 +1293,7 @@ export default function Column({
                 <CheckIcon className="h-3 w-3 mr-1" />
                 {t('structure.acceptAll', { defaultValue: 'Accept all' })}
               </button>
-              
+
               {/* Reject all button */}
               <button
                 onClick={() => onRevertAll?.(id)}
@@ -1311,11 +1305,11 @@ export default function Column({
             </div>
           </div>
         )}
-        
+
         {/* SermonOutline points display */}
         {localSermonPoints && localSermonPoints.length > 0 && (
           <div className={`bg-opacity-80 p-2 text-sm font-normal text-white border-t border-white`}
-               style={headerBgStyle ? { ...headerBgStyle, opacity: 0.8 } : {}}>
+            style={headerBgStyle ? { ...headerBgStyle, opacity: 0.8 } : {}}>
             <ul className="list-disc pl-4 space-y-1">
               {localSermonPoints.map((point: SermonPoint) => (
                 <li key={point.id} className="flex items-center">
@@ -1331,7 +1325,7 @@ export default function Column({
           </div>
         )}
       </div>
-      
+
       <SortableContext items={items} strategy={sortingStrategy}>
         <div
           ref={setNodeRef}
@@ -1365,14 +1359,14 @@ export default function Column({
                   sectionTitle={title}
                 />
               ))}
-              
+
               {/* Show unassigned thoughts section if there are any */}
               {unassignedItemsForDisplay.length > 0 && (
                 <div className="mt-8">
-                                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
-                  <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
-                    {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
-                  </h4>
+                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
+                    <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
+                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                    </h4>
                     <UnassignedThoughtsDropTarget
                       items={unassignedItemsForDisplay}
                       containerId={id}
@@ -1388,14 +1382,14 @@ export default function Column({
                   </div>
                 </div>
               )}
-              
+
               {/* Always show drop target for unassigned thoughts, even if empty */}
               {unassignedItemsForDisplay.length === 0 && localSermonPoints.length > 0 && (
                 <div className="mt-8">
-                                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
-                  <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
-                    {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
-                  </h4>
+                  <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
+                    <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
+                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                    </h4>
                     <UnassignedThoughtsDropTarget
                       items={[]}
                       containerId={id}
@@ -1415,27 +1409,27 @@ export default function Column({
           ) : (
             /* Fallback: show all items in simple list if no outline points exist */
             items.length === 0 ? (
-            <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
-              {t('structure.noEntries')}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  containerId={id}
-                  onEdit={onEdit}
-                  isHighlighted={item.id in highlightedItems}
-                  highlightType={highlightedItems[item.id]?.type}
-                  onKeep={onKeepItem}
-                  onRevert={onRevertItem}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  disabled={false}
-                />
-              ))}
-            </div>
+              <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
+                {t('structure.noEntries')}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <SortableItem
+                    key={item.id}
+                    item={item}
+                    containerId={id}
+                    onEdit={onEdit}
+                    isHighlighted={item.id in highlightedItems}
+                    highlightType={highlightedItems[item.id]?.type}
+                    onKeep={onKeepItem}
+                    onRevert={onRevertItem}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    disabled={false}
+                  />
+                ))}
+              </div>
             )
           )}
           {/* Extra dummy element to always provide a drop target */}
