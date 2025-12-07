@@ -530,5 +530,112 @@ describe('analyzeStudyNote', () => {
       fromVerse: 16,
     });
   });
+  it('should deduplicate identical references', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Duplicate Test',
+      scriptureRefs: [
+        { book: 'Daniel', chapter: 1, fromVerse: 9, toVerse: 9 },
+        { book: 'Daniel', chapter: 1, fromVerse: 9, toVerse: 9 }, // Duplicate
+        { book: 'Daniel', chapter: 1, fromVerse: 9, toVerse: 9 }, // Duplicate
+        { book: 'Matthew', chapter: 5 },
+        { book: 'Matthew', chapter: 5 }, // Duplicate
+      ],
+      tags: ['Test'],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test duplication');
+
+    // Assert
+    expect(result.success).toBe(true);
+    // Should have 2 unique refs: Daniel 1:9 and Matthew 5
+    expect(result.data?.scriptureRefs).toHaveLength(2);
+
+    // Verify specific unique references exist
+    const danielRef = result.data?.scriptureRefs.find(r => r.book === 'Daniel');
+    expect(danielRef).toEqual({
+      book: 'Daniel',
+      chapter: 1,
+      fromVerse: 9,
+    });
+
+    const matthewRef = result.data?.scriptureRefs.find(r => r.book === 'Matthew');
+    expect(matthewRef).toEqual({
+      book: 'Matthew',
+      chapter: 5
+    });
+  });
+
+  it('should deduplicate identical tags', async () => {
+    // Arrange
+    const mockResponse = {
+      title: 'Tag Duplication Test',
+      scriptureRefs: [
+        { book: 'Daniel', chapter: 1 },
+      ],
+      tags: ['Даниил', 'компромиссы', 'Даниил', 'духовная жизнь', 'компромиссы'], // Duplicates
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    const result = await analyzeStudyNote('Test tag duplication');
+
+    // Assert
+    expect(result.success).toBe(true);
+    // Should have 3 unique tags: Даниил, компромиссы, духовная жизнь
+    expect(result.data?.tags).toHaveLength(3);
+    expect(result.data?.tags).toEqual(
+      expect.arrayContaining(['Даниил', 'компромиссы', 'духовная жизнь'])
+    );
+    // Verify no duplicates
+    const uniqueTags = new Set(result.data?.tags);
+    expect(uniqueTags.size).toBe(result.data?.tags.length);
+  });
+
+  it('should include CRITICAL book name mappings in prompt for Russian notes', async () => {
+    // Arrange
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: { 
+        title: 'Тест', 
+        scriptureRefs: [{ book: '2 Samuel', chapter: 7 }], 
+        tags: ['Давид'] 
+      },
+      refusal: null,
+      error: null,
+    });
+
+    // Act
+    await analyzeStudyNote('Во 2 Царств 7 главе...');
+
+    // Assert - verify prompt contains critical mappings
+    const callArgs = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
+    const systemPrompt = callArgs[0];
+    
+    // Check that prompt includes book name mapping table
+    expect(systemPrompt).toContain('CRITICAL BOOK NAME MAPPINGS');
+    expect(systemPrompt).toContain('1 Царств');
+    expect(systemPrompt).toContain('1 Samuel');
+    expect(systemPrompt).toContain('2 Samuel');
+    expect(systemPrompt).toContain('NOT "2 Kings"');
+    
+    // Check that prompt includes Psalm conversion rules
+    expect(systemPrompt).toContain('PSALM NUMBERING CONVERSION');
+    expect(systemPrompt).toContain('Septuagint → Hebrew');
+  });
 });
 

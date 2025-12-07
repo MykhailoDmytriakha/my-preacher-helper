@@ -102,6 +102,55 @@ SCRIPTURE REFERENCE RULES:
 - Extract ALL Bible references mentioned in the note (explicit or implied)
 - Book names MUST be in English: Genesis, Exodus, Matthew, John, Psalms, etc.
 - Use Hebrew/Protestant chapter numbering for Psalms
+- **PRIMARY RULE: EXTRACT ALL SCRIPTURE REFERENCES** - Your job is to find and return EVERY Scripture reference mentioned in the note
+  * Do NOT limit yourself to any arbitrary number (no "2-5" or "up to 10" limits)
+  * Short note with many citations? Return all of them.
+  * Long note with few references? Return those few.
+  * The note determines quantity, NOT arbitrary limits
+  * If the note mentions 1 passage - return 1
+  * If the note mentions 25 passages - return all 25
+- **CRITICAL: AVOID DUPLICATES** - Each scripture reference must be unique
+  * If the same verse/chapter would be returned multiple times, return it ONLY ONCE
+  * Return DIVERSE references when note discusses multiple sections
+- **COMPLETENESS OVER LIMITS** - Include every Scripture reference the note discusses, whether explicit citation or clear allusion
+
+**CRITICAL BOOK NAME MAPPINGS (Russian/Ukrainian → English):**
+When analyzing Russian or Ukrainian notes, you MUST use these mappings:
+
+Historical Books (MOST CRITICAL - numbering differs):
+  Russian               Ukrainian           English (RETURN THIS)
+  1 Царств         →    1 Самуїлова    →    1 Samuel
+  2 Царств         →    2 Самуїлова    →    2 Samuel
+  3 Царств         →    1 Царів        →    1 Kings
+  4 Царств         →    2 Царів        →    2 Kings
+  1 Паралипоменон  →    1 Хроніки      →    1 Chronicles
+  2 Паралипоменон  →    2 Хроніки      →    2 Chronicles
+
+Gospels (remove prefixes):
+  От Матфея        →    Від Матвія     →    Matthew
+  От Марка         →    Від Марка      →    Mark
+  От Луки          →    Від Луки       →    Luke
+  От Иоанна        →    Від Івана      →    John
+
+Epistles (remove prefixes):
+  К Римлянам       →    До Римлян      →    Romans
+  К Галатам        →    До Галатів     →    Galatians
+  К Евреям         →    До Євреїв      →    Hebrews
+  (and similar "К.../До..." patterns)
+
+**EXAMPLE:** If Russian text says "во 2 Царств 7 глава" → you MUST return { book: "2 Samuel", chapter: 7 }
+**NOT** { book: "2 Kings" } - that would be wrong!
+
+**PSALM NUMBERING CONVERSION (CRITICAL for Russian/Ukrainian notes):**
+- Storage format ALWAYS uses Hebrew/Protestant numbering (KJV, NIV, ESV)
+- When analyzing Russian/Ukrainian notes, users refer to Psalms using Septuagint/Orthodox numbering
+- YOU MUST CONVERT Septuagint → Hebrew before returning:
+  * Psalms 1-9 and 148-150: Same in both (no conversion needed)
+  * Psalms 10-147 (Septuagint) → add +1 to get Hebrew number
+  * Example: Russian user writes "Псалом 22" → return { book: "Psalms", chapter: 23 }
+  * Example: Russian user writes "Псалом 90" → return { book: "Psalms", chapter: 91 }
+- For English notes: use the number as-is (already Hebrew)
+
 - IMPORTANT: Extract MULTIPLE references when the note discusses different sections:
   * If a note discusses "the book of Ezekiel" AND mentions events in specific chapters, extract BOTH the book-level reference AND the chapter-specific references
   * Example: "Книга Иезекииля... видение славы в начале... слава отошла... в конце храм" should yield:
@@ -127,13 +176,129 @@ SCRIPTURE REFERENCE RULES:
   * and other well-known passages based on your biblical knowledge
 
 TAGGING RULES:
-- Suggest 2-5 relevant tags based on the content
+- **PRIMARY RULE: EXTRACT ALL RELEVANT THEMES** - Your job is to identify EVERY significant theme, topic, or concept in the note
+  * Do NOT limit yourself to any fixed number (no "2-5 tags" limit)
+  * The note content determines tag count, NOT arbitrary limits
+  * Simple note with one theme? Return 2-3 tags.
+  * Rich theological note with many themes? Return 10+ tags if needed.
+  * Completeness matters: capture all distinct themes the note discusses
+- **Each tag must be unique** - no duplicate tags
 - Tags should help categorize the note by theme, topic, or type
-- Common categories: theological themes, book names, concepts, study types
+- Common categories: theological themes, book names, concepts, study types, doctrines, biblical characters, events
+- Include both broad themes (e.g., "спасение") and specific topics (e.g., "оправдание верой")
+- Prefer specific, meaningful tags over generic ones
 
 TITLE RULES:
 - Create a concise, descriptive title (5-15 words)
 - Title should capture the main theme or insight of the note
+
+EXAMPLES:
+
+Example 1 - Russian note with Psalm reference:
+Input: "Псалом 22 говорит о Господе как пастыре..."
+Output:
+{
+  "title": "Господь - мой пастырь",
+  "scriptureRefs": [{ "book": "Psalms", "chapter": 23 }],  // 22 + 1 = 23 (Septuagint → Hebrew)
+  "tags": ["Псалтирь", "Пастырь", "провидение"]
+}
+
+Example 2 - Russian note with "Царств" (CRITICAL book name mapping):
+Input: "Во 2 Царств 7 главе Бог обещает Давиду вечное царство..."
+Output:
+{
+  "title": "Обетование Давиду о вечном царстве",
+  "scriptureRefs": [{ "book": "2 Samuel", "chapter": 7 }],  // NOT "2 Kings"! See mapping table.
+  "tags": ["Давид", "завет", "мессианское пророчество"]
+}
+
+Example 3 - Multiple unique references (NOT duplicates):
+Input: "Книга Даниила показывает верность Богу. В начале (глава 1) искушение компромисса, в главе 6 - львиный ров, в главах 7-12 - пророчества."
+Output:
+{
+  "title": "Верность Богу в книге Даниила",
+  "scriptureRefs": [
+    { "book": "Daniel" },                           // entire book context
+    { "book": "Daniel", "chapter": 1 },             // chapter 1 - compromise temptation
+    { "book": "Daniel", "chapter": 6 },             // chapter 6 - lions' den
+    { "book": "Daniel", "chapter": 7, "toChapter": 12 }  // chapters 7-12 - prophecies
+  ],  // Four UNIQUE references, NOT duplicates
+  "tags": ["Даниил", "верность", "пророчества", "испытания"]
+}
+
+Example 4 - Avoid duplicates when ranges overlap:
+Input: "В Матфея 5 Иисус учит о блаженствах. Нагорная проповедь в Матфея 5-7."
+Output:
+{
+  "title": "Нагорная проповедь и блаженства",
+  "scriptureRefs": [
+    { "book": "Matthew", "chapter": 5, "toChapter": 7 }  // ONE reference covering all
+  ],  // NOT [Matthew 5, Matthew 5-7] - chapter 5 is already included in 5-7 range
+  "tags": ["Нагорная проповедь", "блаженства", "учение Иисуса"]
+}
+
+Example 5 - Ukrainian note with book name variations:
+Input: "У 1 Самуїлова 17 розділ - Давид і Голіаф..."
+Output:
+{
+  "title": "Давид і Голіаф",
+  "scriptureRefs": [{ "book": "1 Samuel", "chapter": 17 }],  // "Самуїлова" → "Samuel"
+  "tags": ["Давид", "віра", "перемога"]
+}
+
+Example 6 - SHORT NOTE with MANY references (extract ALL, ignore length):
+Input: "Творение Богом: Быт 1:1, Пс 19:1, Пс 33:6, Ис 40:28, Иер 10:12, Ин 1:3, Деян 17:24, Кол 1:16, Евр 1:2, Откр 4:11"
+Output:
+{
+  "title": "Библейские свидетельства о творении Богом",
+  "scriptureRefs": [
+    { "book": "Genesis", "chapter": 1, "fromVerse": 1 },
+    { "book": "Psalms", "chapter": 20, "fromVerse": 1 },  // Пс 19 + 1 = 20 (Septuagint → Hebrew)
+    { "book": "Psalms", "chapter": 34, "fromVerse": 6 },  // Пс 33 + 1 = 34
+    { "book": "Isaiah", "chapter": 40, "fromVerse": 28 },
+    { "book": "Jeremiah", "chapter": 10, "fromVerse": 12 },
+    { "book": "John", "chapter": 1, "fromVerse": 3 },
+    { "book": "Acts", "chapter": 17, "fromVerse": 24 },
+    { "book": "Colossians", "chapter": 1, "fromVerse": 16 },
+    { "book": "Hebrews", "chapter": 1, "fromVerse": 2 },
+    { "book": "Revelation", "chapter": 4, "fromVerse": 11 }
+  ],  // 10 references in SHORT note - extracted ALL because they're all mentioned
+  "tags": ["творение", "Бог-Творец", "Слово Божье"]
+}
+
+Example 7 - LONG NOTE with many references and tags:
+Input: "Тема спасения проходит через всю Библию. В Бытие 3:15 первое обетование о Спасителе. Исход 12 - пасхальный агнец, прообраз Христа. Левит 16 - день искупления. Исаия 53 - страдающий Раб. Иезекииль 36:26 - новое сердце. Даниил 9:24-27 - пророчество о Мессии. В Новом Завете: Иоанна 3:16 - суть Евангелия, Римлянам 3:23-24 - оправдание верой, Римлянам 5:8 - любовь Божья, Ефесянам 2:8-9 - спасение по благодати, Филиппийцам 2:5-11 - смирение Христа, Евреям 9:12 - вечное искупление, 1 Петра 1:18-19 - искуплены кровью, Откровение 5:9 - песнь искупленных."
+Output:
+{
+  "title": "Библейская тема спасения от Бытия до Откровения",
+  "scriptureRefs": [
+    { "book": "Genesis", "chapter": 3, "fromVerse": 15 },
+    { "book": "Exodus", "chapter": 12 },
+    { "book": "Leviticus", "chapter": 16 },
+    { "book": "Isaiah", "chapter": 53 },
+    { "book": "Ezekiel", "chapter": 36, "fromVerse": 26 },
+    { "book": "Daniel", "chapter": 9, "fromVerse": 24, "toVerse": 27 },
+    { "book": "John", "chapter": 3, "fromVerse": 16 },
+    { "book": "Romans", "chapter": 3, "fromVerse": 23, "toVerse": 24 },
+    { "book": "Romans", "chapter": 5, "fromVerse": 8 },
+    { "book": "Ephesians", "chapter": 2, "fromVerse": 8, "toVerse": 9 },
+    { "book": "Philippians", "chapter": 2, "fromVerse": 5, "toVerse": 11 },
+    { "book": "Hebrews", "chapter": 9, "fromVerse": 12 },
+    { "book": "1 Peter", "chapter": 1, "fromVerse": 18, "toVerse": 19 },
+    { "book": "Revelation", "chapter": 5, "fromVerse": 9 }
+  ],  // 14 references - ALL mentioned passages extracted
+  "tags": [
+    "спасение",
+    "искупление",
+    "Мессия",
+    "благодать",
+    "вера",
+    "жертва Христа",
+    "оправдание",
+    "пророчества о Христе",
+    "прообразы Христа"
+  ]  // 9 tags - comprehensive coverage of long note's themes
+}
 
 Return ONLY the structured JSON response with title, scriptureRefs, and tags.`;
 }
@@ -295,17 +460,39 @@ export async function analyzeStudyNote(
         return normalizedRef;
       });
 
+    // Deduplicate references
+    const uniqueRefsMap = new Map<string, typeof validatedRefs[0]>();
+
+    for (const ref of validatedRefs) {
+      // Create a unique key for the reference
+      // Use a consistent format: Book:Chapter:FromVerse:ToVerse
+      // Note: optional fields might be undefined
+      const key = `${ref.book}|${ref.chapter ?? ''}|${ref.toChapter ?? ''}|${ref.fromVerse ?? ''}|${ref.toVerse ?? ''}`;
+
+      if (!uniqueRefsMap.has(key)) {
+        uniqueRefsMap.set(key, ref);
+      }
+    }
+
+    const uniqueRefs = Array.from(uniqueRefsMap.values());
+
+    // Deduplicate tags (case-sensitive, exact match)
+    const uniqueTags = Array.from(new Set(result.data.tags));
+
     logger.success('AnalyzeStudyNote', "Analysis completed", {
       title: result.data.title,
-      refsCount: validatedRefs.length,
-      tagsCount: result.data.tags.length,
+      refsCount: uniqueRefs.length,
+      originalRefsCount: result.data.scriptureRefs.length,
+      tagsCount: uniqueTags.length,
+      originalTagsCount: result.data.tags.length,
     });
 
     return {
       success: true,
       data: {
         ...result.data,
-        scriptureRefs: validatedRefs,
+        scriptureRefs: uniqueRefs,
+        tags: uniqueTags,
       },
       error: null,
     };
