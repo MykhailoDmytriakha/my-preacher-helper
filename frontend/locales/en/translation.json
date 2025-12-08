@@ -1243,6 +1243,11 @@
     }
   },
   "studiesWorkspace": {
+    "tabs": {
+      "all": "All",
+      "notes": "Notes",
+      "questions": "Questions"
+    },
     "type": {
       "note": "Note",
       "question": "Question"

@@ -1243,6 +1243,11 @@
     }
   },
   "studiesWorkspace": {
+    "tabs": {
+      "all": "Все",
+      "notes": "Заметки",
+      "questions": "Вопросы"
+    },
     "type": {
       "note": "Заметка",
       "question": "Вопрос"

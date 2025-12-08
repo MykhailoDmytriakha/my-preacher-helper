@@ -59,6 +59,17 @@ export default function StudiesPage() {
   const [bookFilter, setBookFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Type tabs
+  type NoteTabType = 'all' | 'notes' | 'questions';
+  const [activeTab, setActiveTab] = useState<NoteTabType>('all');
+
+  // Note counts by type (computed from all notes, not filtered)
+  const noteCounts = useMemo(() => ({
+    all: notes.length,
+    notes: notes.filter(n => n.type !== 'question').length,
+    questions: notes.filter(n => n.type === 'question').length,
+  }), [notes]);
+
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [allExpanded, setAllExpanded] = useState(false);
@@ -97,9 +108,16 @@ export default function StudiesPage() {
   const searchQuery = useMemo(() => search.trim(), [search]);
 
   // Filter notes
+  // Filter notes
   const filteredNotes = useMemo(() => {
     const query = searchQuery.toLowerCase();
     return notes
+      // Tab filter
+      .filter((note) => {
+        if (activeTab === 'notes') return note.type !== 'question';
+        if (activeTab === 'questions') return note.type === 'question';
+        return true; // 'all'
+      })
       .filter((note) => (tagFilter ? note.tags.includes(tagFilter) : true))
       .filter((note) =>
         bookFilter
@@ -111,10 +129,11 @@ export default function StudiesPage() {
         const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
           .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
           .join(' ')}`.toLowerCase();
+
         return haystack.includes(query);
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [notes, tagFilter, bookFilter, searchQuery]);
+  }, [notes, activeTab, tagFilter, bookFilter, searchQuery]);
 
   // Stable list of filtered note IDs for auto-expand effect
   const filteredNoteIds = useMemo(
@@ -313,6 +332,41 @@ export default function StudiesPage() {
           )}
         </div>
       </header>
+
+      {/* Type Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700">
+        {(['all', 'notes', 'questions'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`relative px-4 py-2.5 text-sm font-medium transition-colors
+              ${activeTab === tab
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
+          >
+            {t(`studiesWorkspace.tabs.${tab}`)}
+            {/* Show count in parentheses for non-question tabs */}
+            {tab !== 'questions' && (
+              <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                ({noteCounts[tab]})
+              </span>
+            )}
+
+            {/* Active tab indicator */}
+            {activeTab === tab && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
+            )}
+
+            {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
+            {tab === 'questions' && noteCounts.questions > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                {noteCounts.questions}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
       {/* Search and Filters */}
       <div className="space-y-3">
