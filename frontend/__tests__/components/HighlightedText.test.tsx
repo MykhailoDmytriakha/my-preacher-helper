@@ -93,6 +93,14 @@ describe('HighlightedText', () => {
         expect(mark).toHaveTextContent('Bible');
     });
 
+    it('highlights each word in a multi-word query regardless of order', () => {
+        render(<HighlightedText text="Жертва Адама" searchQuery="адама жертва" />);
+        const marks = screen.getAllByRole('mark');
+        expect(marks).toHaveLength(2);
+        expect(marks[0]).toHaveTextContent(/жертва/i);
+        expect(marks[1]).toHaveTextContent(/адама/i);
+    });
+
     it('handles Cyrillic text', () => {
         render(<HighlightedText text="Библия - это слово Божье" searchQuery="Библия" />);
         const mark = screen.getByRole('mark');

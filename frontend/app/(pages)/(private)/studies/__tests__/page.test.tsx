@@ -215,5 +215,32 @@ describe('StudiesPage', () => {
       expect(visibleCards[0]).toHaveTextContent(/Genesis question/i);
       expect(visibleCards[0]).not.toHaveTextContent(/Genesis study/i);
     });
+
+    it('matches multi-word searches regardless of order', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Жертва Адама' }),
+        createMockNote({ id: '2', title: 'Жертва' }),
+        createMockNote({ id: '3', title: 'Адама и Каина' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+      fireEvent.change(searchInput, { target: { value: 'адама жертва' } });
+
+      await waitFor(() => {
+        const visibleCards = screen.getAllByRole('article');
+        expect(visibleCards).toHaveLength(1);
+      });
+
+      expect(screen.getByRole('heading', { name: /Жертва Адама/i })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /^Жертва$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /Адама и Каина/i })).not.toBeInTheDocument();
+    });
   });
 });

@@ -18,6 +18,7 @@ interface HighlightedTextProps {
  * Works like Chrome's Ctrl+F find functionality:
  * - Case-insensitive matching
  * - Highlights all occurrences
+ * - Supports multi-word queries (AND search) by highlighting each token
  * - Yellow background by default
  * 
  * @example
@@ -30,22 +31,25 @@ function HighlightedText({
 }: HighlightedTextProps) {
     const parts = useMemo(() => {
         // If no query or empty text, return original text
-        if (!searchQuery?.trim() || !text) {
+        const tokens = searchQuery?.split(/\s+/).filter(Boolean) || [];
+        if (tokens.length === 0 || !text) {
             return [{ text, highlighted: false }];
         }
 
-        // Escape special regex characters in the query
-        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Escape special regex characters in each token
+        const escapedTokens = tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
         // Create case-insensitive regex
-        const regex = new RegExp(`(${escapedQuery})`, 'gi');
+        const regex = new RegExp(`(${escapedTokens.join('|')})`, 'gi');
+
+        const tokenSet = new Set(tokens.map((token) => token.toLowerCase()));
 
         // Split text by the query, keeping the matched parts
         const splitParts = text.split(regex);
 
         return splitParts.map((part) => ({
             text: part,
-            highlighted: part.toLowerCase() === searchQuery.toLowerCase(),
+            highlighted: tokenSet.has(part.toLowerCase()),
         }));
     }, [text, searchQuery]);
 

@@ -107,10 +107,15 @@ export default function StudiesPage() {
   // Trimmed search query for filtering and highlighting
   const searchQuery = useMemo(() => search.trim(), [search]);
 
+  // Tokenized search for multi-word matching (AND across tokens, order-agnostic)
+  const searchTokens = useMemo(
+    () => searchQuery.toLowerCase().split(/\s+/).filter(Boolean),
+    [searchQuery]
+  );
+
   // Filter notes
   // Filter notes
   const filteredNotes = useMemo(() => {
-    const query = searchQuery.toLowerCase();
     return notes
       // Tab filter
       .filter((note) => {
@@ -125,15 +130,15 @@ export default function StudiesPage() {
           : true
       )
       .filter((note) => {
-        if (!query) return true;
+        if (searchTokens.length === 0) return true;
         const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
           .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
           .join(' ')}`.toLowerCase();
 
-        return haystack.includes(query);
+        return searchTokens.every((token) => haystack.includes(token));
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [notes, activeTab, tagFilter, bookFilter, searchQuery]);
+  }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
   // Stable list of filtered note IDs for auto-expand effect
   const filteredNoteIds = useMemo(
