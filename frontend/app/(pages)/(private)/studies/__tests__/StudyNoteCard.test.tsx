@@ -122,4 +122,85 @@ describe('StudyNoteCard', () => {
     expect(heading).toHaveClass('line-clamp-2');
     expect(heading).toHaveClass('leading-tight');
   });
+
+  it('shows Edit button in header and calls onEdit when clicked', async () => {
+    const onEdit = jest.fn();
+    const note = createTestNote({ id: 'note-5', title: 'Card with header buttons' });
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="en"
+        isExpanded={false}
+        onToggleExpand={jest.fn()}
+        onEdit={onEdit}
+        onDelete={jest.fn()}
+        onAnalyze={jest.fn()}
+      />
+    );
+
+    const editButton = screen.getByRole('button', { name: 'common.edit' });
+    expect(editButton).toBeInTheDocument();
+
+    await userEvent.click(editButton);
+    expect(onEdit).toHaveBeenCalledWith(note);
+  });
+
+  it('shows Delete button in header and calls onDelete when clicked', async () => {
+    const onDelete = jest.fn();
+    const note = createTestNote({ id: 'note-6', title: 'Delete me' });
+
+    // Mock confirm to return true
+    const originalConfirm = window.confirm;
+    window.confirm = jest.fn(() => true);
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="en"
+        isExpanded={false}
+        onToggleExpand={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={onDelete}
+        onAnalyze={jest.fn()}
+      />
+    );
+
+    const deleteButton = screen.getByRole('button', { name: 'common.delete' });
+    expect(deleteButton).toBeInTheDocument();
+
+    await userEvent.click(deleteButton);
+    expect(window.confirm).toHaveBeenCalledWith('studiesWorkspace.deleteConfirm');
+    expect(onDelete).toHaveBeenCalledWith(note.id);
+
+    window.confirm = originalConfirm;
+  });
+
+  it('does not call onDelete when confirm is cancelled', async () => {
+    const onDelete = jest.fn();
+    const note = createTestNote({ id: 'note-7', title: 'Do not delete' });
+
+    const originalConfirm = window.confirm;
+    window.confirm = jest.fn(() => false);
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="en"
+        isExpanded={false}
+        onToggleExpand={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={onDelete}
+        onAnalyze={jest.fn()}
+      />
+    );
+
+    const deleteButton = screen.getByRole('button', { name: 'common.delete' });
+    await userEvent.click(deleteButton);
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    window.confirm = originalConfirm;
+  });
 });

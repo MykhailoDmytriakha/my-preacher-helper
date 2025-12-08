@@ -20,7 +20,7 @@ import { getTags } from '@/services/tag.service';
 import { getBooksForDropdown, BibleLocale } from './bibleData';
 import StudyNoteCard from './StudyNoteCard';
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
-import EditStudyNoteModal from './EditStudyNoteModal';
+import StudyNoteDrawer from './StudyNoteDrawer';
 
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
@@ -437,8 +437,8 @@ export default function StudiesPage() {
         bibleLocale={bibleLocale}
       />
 
-      {/* Edit Modal */}
-      <EditStudyNoteModal
+      {/* Edit Drawer */}
+      <StudyNoteDrawer
         note={editingNote}
         isOpen={editingNote !== null}
         onClose={() => setEditingNote(null)}

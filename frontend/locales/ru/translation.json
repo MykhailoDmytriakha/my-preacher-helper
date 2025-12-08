@@ -1354,6 +1354,14 @@
       "recording": "Запись...",
       "transcribing": "Обработка...",
       "error": "Ошибка записи. Попробуйте ещё раз."
+    },
+    "drawer": {
+      "sizeNarrow": "Узкая",
+      "sizeMedium": "Средняя",
+      "sizeFullscreen": "На весь экран",
+      "modeEdit": "Редактор",
+      "modePreview": "Просмотр",
+      "dragToResize": "Перетащите для изменения размера"
     }
   }
 }

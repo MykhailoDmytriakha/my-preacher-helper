@@ -1354,6 +1354,14 @@
       "recording": "Recording...",
       "transcribing": "Processing...",
       "error": "Recording failed. Please try again."
+    },
+    "drawer": {
+      "sizeNarrow": "Narrow",
+      "sizeMedium": "Medium",
+      "sizeFullscreen": "Fullscreen",
+      "modeEdit": "Edit",
+      "modePreview": "Preview",
+      "dragToResize": "Drag to resize"
     }
   }
 }

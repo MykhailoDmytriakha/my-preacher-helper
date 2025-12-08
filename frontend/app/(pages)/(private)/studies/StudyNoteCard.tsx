@@ -171,21 +171,53 @@ export default function StudyNoteCard({
           )}
         </button>
 
-        {!isExpanded && needsAnalysis && onAnalyze && (
+        {/* Action buttons in header - always visible */}
+        <div className="flex flex-shrink-0 items-center gap-1">
+          {/* AI Analyze button - only when needs analysis */}
+          {needsAnalysis && onAnalyze && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAnalyze(note);
+              }}
+              disabled={isAnalyzing}
+              className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+              title={t('studiesWorkspace.aiAnalyze.button')}
+            >
+              <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+              {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
+            </button>
+          )}
+
+          {/* Edit button */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onAnalyze(note);
+              onEdit(note);
             }}
-            disabled={isAnalyzing}
-            className="flex-shrink-0 inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-            title={t('studiesWorkspace.aiAnalyze.button')}
+            className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+            title={t('common.edit')}
           >
-            <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-            {t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}
+            <PencilIcon className="h-4 w-4" />
           </button>
-        )}
+
+          {/* Delete button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm(t('studiesWorkspace.deleteConfirm'))) {
+                onDelete(note.id);
+              }
+            }}
+            className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+            title={t('common.delete')}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Expanded content */}
