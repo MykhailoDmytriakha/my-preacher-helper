@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StudiesPage from '../page';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -241,6 +241,116 @@ describe('StudiesPage', () => {
       expect(screen.getByRole('heading', { name: /Жертва Адама/i })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: /^Жертва$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: /Адама и Каина/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Search rendering (snippets/tags/refs)', () => {
+    const changeSearch = async (value: string) => {
+      const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+      fireEvent.change(searchInput, { target: { value } });
+      await waitFor(() => expect(searchInput).toHaveValue(value));
+    };
+
+    it('shows content snippet when content matches token', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({
+          id: 'content-match',
+          title: 'Content Note',
+          content: 'Lorem alpha ipsum dolor sit amet.',
+        }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      await changeSearch('alpha');
+
+      // Card remains visible
+      expect(screen.getByRole('heading', { name: /Content Note/i })).toBeInTheDocument();
+      // Snippet contains the token
+      expect(screen.getByText(/alpha/i)).toBeInTheDocument();
+    });
+
+    it('shows tag chip when only tags match', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({
+          id: 'tag-match',
+          title: 'Tag Note',
+          content: 'No content hit here.',
+          tags: ['alpha-tag'],
+        }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      await changeSearch('alpha');
+
+      expect(screen.getByRole('heading', { name: /Tag Note/i })).toBeInTheDocument();
+      expect(screen.getByText(/alpha-tag/i)).toBeInTheDocument();
+    });
+
+    it('shows scripture ref chip when only refs match', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({
+          id: 'ref-match',
+          title: 'Ref Note',
+          content: 'No content hit here.',
+          scriptureRefs: [
+            { id: 'r1', book: 'Genesis', chapter: 1, fromVerse: 1 },
+          ],
+        }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      await changeSearch('Genesis 1:1');
+
+      const card = await screen.findByRole('article');
+      expect(within(card).getByRole('heading', { name: /Ref Note/i })).toBeInTheDocument();
+      expect(within(card).getByText(/Genesis/i)).toBeInTheDocument();
+      expect(within(card).getByText(/1:1/i)).toBeInTheDocument();
+    });
+
+    it('hides cards when nothing matches any field', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({
+          id: 'no-match',
+          title: 'Some Note',
+          content: 'Foo bar baz',
+          tags: ['tag1'],
+          scriptureRefs: [{ id: 'r1', book: 'Genesis', chapter: 1, fromVerse: 1 }],
+        }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      await changeSearch('nomatch');
+
+      // No cards should be visible
+      expect(screen.queryAllByRole('article')).toHaveLength(0);
+
+      // Header count should reflect zero matches
+      const matchingNotesLabels = screen.getAllByText(/matchingNotes/i);
+      expect(matchingNotesLabels[0]).toHaveTextContent('0');
     });
   });
 });

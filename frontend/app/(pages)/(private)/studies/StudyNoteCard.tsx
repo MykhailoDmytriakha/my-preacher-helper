@@ -1,6 +1,6 @@
 'use client';
 
-
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BookmarkIcon,
@@ -100,6 +100,72 @@ export default function StudyNoteCard({
     return `${bookName} ${chapter}:${verses}`;
   };
 
+  const escapedQuery = useMemo(
+    () => (searchQuery ? searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ''),
+    [searchQuery]
+  );
+
+  const searchTokens = useMemo(
+    () => (searchQuery ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean) : []),
+    [searchQuery]
+  );
+
+  const queryRegex = useMemo(() => {
+    if (!escapedQuery) return null;
+    try {
+      return new RegExp(escapedQuery, 'i');
+    } catch {
+      return null;
+    }
+  }, [escapedQuery]);
+
+  const contentMatches = useMemo(() => {
+    if (!searchTokens.length) return false;
+    const lowered = note.content?.toLowerCase() || '';
+    return searchTokens.some((token) => lowered.includes(token));
+  }, [note.content, searchTokens]);
+
+  const contentSnippets = useMemo(() => {
+    if (!contentMatches || !searchQuery) return [];
+    // Use the first token (or the full query) to build the snippet window
+    const token = searchTokens[0] || searchQuery;
+    return extractSearchSnippets(note.content, token, 300);
+  }, [contentMatches, note.content, searchQuery, searchTokens]);
+
+  const matchingTags = useMemo(
+    () =>
+      searchTokens.length === 0
+        ? []
+        : note.tags.filter((tag) => {
+            const lowered = tag.toLowerCase();
+            return searchTokens.some((token) => lowered.includes(token));
+          }),
+    [note.tags, searchTokens]
+  );
+
+  const matchingRefs = useMemo(
+    () =>
+      searchTokens.length === 0
+        ? []
+        : note.scriptureRefs.filter((ref) => {
+            const lowered = formatRef(ref).toLowerCase();
+            return searchTokens.some((token) => lowered.includes(token));
+          }),
+    [note.scriptureRefs, searchTokens]
+  );
+
+  const titleMatches = useMemo(
+    () => {
+      if (searchTokens.length === 0) return false;
+      const lowered = (note.title || '').toLowerCase();
+      return searchTokens.some((token) => lowered.includes(token));
+    },
+    [note.title, searchTokens]
+  );
+
+  const hasAnyMatch =
+    contentMatches || matchingTags.length > 0 || matchingRefs.length > 0 || titleMatches;
+
   return (
     <article
       className={`
@@ -160,7 +226,7 @@ export default function StudyNoteCard({
                 {searchQuery ? (
                   <div className="space-y-2">
                     {/* Content Snippets */}
-                    {extractSearchSnippets(note.content, searchQuery, 300).map((snippet, index) => (
+                    {contentSnippets.map((snippet, index) => (
                       <div key={index} className="relative">
                         {index > 0 && (
                           <div className="my-1 flex items-center justify-center text-gray-400">
@@ -174,58 +240,51 @@ export default function StudyNoteCard({
                     ))}
 
                     {/* Matching Tags (Collapsed View) */}
-                    {(() => {
-                      try {
-                        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(escapedQuery, 'i');
-                        const matchingTags = note.tags.filter(tag => regex.test(tag));
-
-                        if (matchingTags.length === 0) return null;
-
-                        return (
-                          <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
-                            {matchingTags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                              >
-                                <span className="mr-1 opacity-50">#</span>
-                                <HighlightedText text={tag} searchQuery={searchQuery} />
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      } catch (e) {
-                        return null;
-                      }
-                    })()}
+                    {matchingTags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
+                        {matchingTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                          >
+                            <span className="mr-1 opacity-50">#</span>
+                            <HighlightedText text={tag} searchQuery={searchQuery} />
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Matching Refs (Collapsed View) */}
-                    {(() => {
-                      try {
-                        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(escapedQuery, 'i');
-                        const matchingRefs = note.scriptureRefs.filter(ref => regex.test(formatRef(ref)));
+                    {matchingRefs.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
+                        {matchingRefs.map((ref) => (
+                          <span
+                            key={ref.id}
+                            className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                          >
+                            <BookmarkIcon className="mr-1 h-3 w-3" />
+                            <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                        if (matchingRefs.length === 0) return null;
+                    {/* Explain why the note matched when there is no content snippet */}
+                    {contentSnippets.length === 0 &&
+                      matchingTags.length === 0 &&
+                      matchingRefs.length === 0 &&
+                      titleMatches && (
+                        <div className="pl-3 text-xs text-gray-500 dark:text-gray-400">
+                          Match found in title.
+                        </div>
+                      )}
 
-                        return (
-                          <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
-                            {matchingRefs.map((ref) => (
-                              <span
-                                key={ref.id}
-                                className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-                              >
-                                <BookmarkIcon className="mr-1 h-3 w-3" />
-                                <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      } catch (e) {
-                        return null;
-                      }
-                    })()}
+                    {/* Defensive: if nothing matched, hint to user for debugging */}
+                    {searchQuery && !hasAnyMatch && (
+                      <div className="pl-3 text-xs text-amber-600 dark:text-amber-300">
+                        No match found in content, tags, refs, or title.
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="line-clamp-2">

@@ -12,7 +12,8 @@ export function extractSearchSnippets(
     query: string,
     contextChars: number = 100
 ): string[] {
-    if (!content || !query) return [content];
+    // If we don't have both inputs, there is nothing to extract
+    if (!content?.trim() || !query?.trim()) return [];
 
     const queryLen = query.length;
 
@@ -28,7 +29,8 @@ export function extractSearchSnippets(
         matchIndices.push(match.index);
     }
 
-    if (matchIndices.length === 0) return [content];
+    // Do not dump the entire content when there is no match
+    if (matchIndices.length === 0) return [];
 
     // Calculate ranges (start/end indices)
     const ranges: { start: number; end: number }[] = [];

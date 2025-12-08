@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 import {
@@ -113,7 +113,52 @@ export default function StudiesPage() {
     [searchQuery]
   );
 
-  // Filter notes
+  const matchesSearchTokens = useCallback(
+    (note: StudyNote) => {
+      if (searchTokens.length === 0) return true;
+
+      const tokens = searchTokens;
+      const title = (note.title || '').toLowerCase();
+      const content = (note.content || '').toLowerCase();
+
+      const tagsMatch = note.tags.some((tag) => {
+        const lowered = tag.toLowerCase();
+        return tokens.some((token) => lowered.includes(token));
+      });
+
+      const refsMatch = note.scriptureRefs.some((ref) => {
+        const bookName = getLocalizedBookName(ref.book, bibleLocale);
+
+        if (ref.chapter === undefined) {
+          const refText = bookName.toLowerCase();
+          return tokens.some((token) => refText.includes(token));
+        }
+
+        const chapter = ref.chapter;
+
+        if (ref.toChapter !== undefined) {
+          const refText = `${bookName} ${chapter}-${ref.toChapter}`.toLowerCase();
+          return tokens.some((token) => refText.includes(token));
+        }
+
+        if (ref.fromVerse === undefined) {
+          const refText = `${bookName} ${chapter}`.toLowerCase();
+          return tokens.some((token) => refText.includes(token));
+        }
+
+        const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
+        const refText = `${bookName} ${chapter}:${verses}`.toLowerCase();
+        return tokens.some((token) => refText.includes(token));
+      });
+
+      const contentMatch = tokens.some((token) => content.includes(token));
+      const titleMatch = tokens.some((token) => title.includes(token));
+
+      return contentMatch || tagsMatch || refsMatch || titleMatch;
+    },
+    [searchTokens, bibleLocale]
+  );
+
   // Filter notes
   const filteredNotes = useMemo(() => {
     return notes
@@ -140,10 +185,15 @@ export default function StudiesPage() {
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
+  const visibleNotes = useMemo(
+    () => filteredNotes.filter((note) => matchesSearchTokens(note)),
+    [filteredNotes, matchesSearchTokens]
+  );
+
   // Stable list of filtered note IDs for auto-expand effect
   const filteredNoteIds = useMemo(
-    () => filteredNotes.map((n) => n.id).join(','),
-    [filteredNotes]
+    () => visibleNotes.map((n) => n.id).join(','),
+    [visibleNotes]
   );
 
   // Auto-expand all matching notes when searching
@@ -194,7 +244,7 @@ export default function StudiesPage() {
       setExpandedNoteIds(new Set());
       setAllExpanded(false);
     } else {
-      setExpandedNoteIds(new Set(filteredNotes.map((n) => n.id)));
+      setExpandedNoteIds(new Set(visibleNotes.map((n) => n.id)));
       setAllExpanded(true);
     }
   };
@@ -431,16 +481,16 @@ export default function StudiesPage() {
         <div className="text-sm text-gray-600 dark:text-gray-400">
           {hasActiveFilters ? (
             <span>
-              {t('studiesWorkspace.matchingNotes')}: <strong>{filteredNotes.length}</strong>
+              {t('studiesWorkspace.matchingNotes')}: <strong>{visibleNotes.length}</strong>
             </span>
           ) : (
             <span>
-              {t('studiesWorkspace.allNotes')}: <strong>{filteredNotes.length}</strong>
+              {t('studiesWorkspace.allNotes')}: <strong>{visibleNotes.length}</strong>
             </span>
           )}
         </div>
 
-        {filteredNotes.length > 0 && (
+        {visibleNotes.length > 0 && (
           <button
             onClick={handleExpandAll}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -476,7 +526,7 @@ export default function StudiesPage() {
             />
           ))}
         </div>
-      ) : filteredNotes.length === 0 ? (
+      ) : visibleNotes.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-900">
           <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 dark:text-gray-600" />
           <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
@@ -496,7 +546,7 @@ export default function StudiesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredNotes.map((note) => (
+          {visibleNotes.map((note) => (
             <StudyNoteCard
               key={note.id}
               note={note}

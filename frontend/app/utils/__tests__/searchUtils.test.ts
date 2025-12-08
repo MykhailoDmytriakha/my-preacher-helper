@@ -56,4 +56,10 @@ describe('extractSearchSnippets (Character Based)', () => {
         const snippets = extractSearchSnippets(text, 'Start', 10);
         expect(snippets[0]).toMatch(/^Start matches/); // Should not have leading space or cut chars
     });
+
+    it('should return empty array when there are no matches', () => {
+        const text = "This note does not contain the query at all.";
+        const snippets = extractSearchSnippets(text, 'missing', 50);
+        expect(snippets).toEqual([]);
+    });
 });
