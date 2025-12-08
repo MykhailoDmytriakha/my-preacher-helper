@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import HighlightedText from '@/components/HighlightedText';
+import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 describe('HighlightedText', () => {
     it('renders text without highlight when query is empty', () => {
@@ -18,7 +19,8 @@ describe('HighlightedText', () => {
         render(<HighlightedText text="Hello World" searchQuery="World" />);
         const mark = screen.getByRole('mark');
         expect(mark).toHaveTextContent('World');
-        expect(mark).toHaveClass('bg-yellow-200');
+        expect(mark).toHaveClass(HIGHLIGHT_COLORS.bg);
+        expect(mark).toHaveClass(HIGHLIGHT_COLORS.text);
     });
 
     it('highlights multiple occurrences of query', () => {

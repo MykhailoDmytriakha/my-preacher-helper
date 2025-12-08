@@ -1,6 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
+import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 interface HighlightedTextProps {
     /** The text content to search within */
@@ -25,7 +26,7 @@ interface HighlightedTextProps {
 function HighlightedText({
     text,
     searchQuery,
-    highlightClassName = 'bg-yellow-200 dark:bg-yellow-700/70 rounded px-0.5',
+    highlightClassName = `${HIGHLIGHT_COLORS.bg} ${HIGHLIGHT_COLORS.darkBg} ${HIGHLIGHT_COLORS.text} ${HIGHLIGHT_COLORS.ring} ${HIGHLIGHT_COLORS.weight} rounded px-0.5`,
 }: HighlightedTextProps) {
     const parts = useMemo(() => {
         // If no query or empty text, return original text

@@ -105,6 +105,14 @@ describe('themeColors', () => {
               expect(UI_COLORS.button.switcher.gradient).toBe('from-amber-500 to-blue-500');
               expect(UI_COLORS.button.switcher.darkBorder).toBe('border-gray-700');
             }
+          },
+          {
+            name: 'highlight tokens',
+            run: () => {
+              expect(UI_COLORS.highlight.bg).toBe('bg-amber-0/95');
+              expect(UI_COLORS.highlight.darkBg).toBe('dark:bg-amber-0/100');
+              expect(UI_COLORS.highlight.text).toBe('text-amber-900 dark:text-amber-950');
+            }
           }
         ]
       );

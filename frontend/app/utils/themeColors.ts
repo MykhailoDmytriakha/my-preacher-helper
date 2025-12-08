@@ -79,6 +79,13 @@ export const UI_COLORS = {
     text: "text-green-800",
     darkText: "text-green-200",
   },
+  highlight: {
+    bg: "bg-amber-0/95",
+    darkBg: "dark:bg-amber-0/100",
+    text: "text-amber-900 dark:text-amber-950",
+    ring: "ring-2 ring-amber-300/90 dark:ring-amber-200/90",
+    weight: "font-semibold",
+  },
   button: {
     primary: {
       bg: "bg-violet-600",
@@ -127,6 +134,9 @@ export const UI_COLORS = {
     darkText: "text-gray-100",
   }
 };
+
+// Shared highlight token for search/result emphasis
+export const HIGHLIGHT_COLORS = UI_COLORS.highlight;
 
 // Timer control palette (centralized to avoid hardcoded colors in components)
 export const TIMER_CONTROL_COLORS = {

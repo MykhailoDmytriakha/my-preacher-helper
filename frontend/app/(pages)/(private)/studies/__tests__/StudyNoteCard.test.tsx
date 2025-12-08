@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StudyNoteCard from '../StudyNoteCard';
 import { StudyNote } from '@/models/models';
+import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
   const timestamp = new Date(Date.now()).toISOString();
@@ -226,7 +227,7 @@ describe('StudyNoteCard', () => {
 
       const mark = screen.getByRole('mark');
       expect(mark).toHaveTextContent('Bible');
-      expect(mark).toHaveClass('bg-yellow-200');
+      expect(mark).toHaveClass(HIGHLIGHT_COLORS.bg);
     });
 
     it('does not highlight when searchQuery is empty', () => {
