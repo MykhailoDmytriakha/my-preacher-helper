@@ -17,7 +17,7 @@ import {
 import { StudyNote } from '@/models/models';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { getTags } from '@/services/tag.service';
-import { getBooksForDropdown, BibleLocale } from './bibleData';
+import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import StudyNoteCard from './StudyNoteCard';
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
 import StudyNoteDrawer from './StudyNoteDrawer';
@@ -88,9 +88,12 @@ export default function StudiesPage() {
     );
   }, [availableTags, notes]);
 
+  // Trimmed search query for filtering and highlighting
+  const searchQuery = useMemo(() => search.trim(), [search]);
+
   // Filter notes
   const filteredNotes = useMemo(() => {
-    const query = search.toLowerCase().trim();
+    const query = searchQuery.toLowerCase();
     return notes
       .filter((note) => (tagFilter ? note.tags.includes(tagFilter) : true))
       .filter((note) =>
@@ -101,12 +104,31 @@ export default function StudiesPage() {
       .filter((note) => {
         if (!query) return true;
         const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-          .map((ref) => `${ref.book} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
+          .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
           .join(' ')}`.toLowerCase();
         return haystack.includes(query);
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [notes, tagFilter, bookFilter, search]);
+  }, [notes, tagFilter, bookFilter, searchQuery]);
+
+  // Stable list of filtered note IDs for auto-expand effect
+  const filteredNoteIds = useMemo(
+    () => filteredNotes.map((n) => n.id).join(','),
+    [filteredNotes]
+  );
+
+  // Auto-expand all matching notes when searching
+  useEffect(() => {
+    if (searchQuery) {
+      const ids = filteredNoteIds.split(',').filter(Boolean);
+      setExpandedNoteIds(new Set(ids));
+      setAllExpanded(true);
+    } else {
+      // Collapse all when search is cleared
+      setExpandedNoteIds(new Set());
+      setAllExpanded(false);
+    }
+  }, [searchQuery, filteredNoteIds]);
 
   // Stats
   const stats = useMemo(() => {
@@ -423,6 +445,7 @@ export default function StudiesPage() {
               onDelete={(noteId) => deleteNote(noteId)}
               onAnalyze={handleAnalyzeNote}
               isAnalyzing={analyzingNoteId === note.id}
+              searchQuery={searchQuery}
             />
           ))}
         </div>

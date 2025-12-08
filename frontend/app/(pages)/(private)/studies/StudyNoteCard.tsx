@@ -14,6 +14,7 @@ import {
 import { StudyNote } from '@/models/models';
 import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import HighlightedText from '@components/HighlightedText';
 
 interface StudyNoteCardProps {
   note: StudyNote;
@@ -24,6 +25,7 @@ interface StudyNoteCardProps {
   onDelete: (noteId: string) => void;
   onAnalyze?: (note: StudyNote) => void;
   isAnalyzing?: boolean;
+  searchQuery?: string;
 }
 
 export default function StudyNoteCard({
@@ -35,6 +37,7 @@ export default function StudyNoteCard({
   onDelete,
   onAnalyze,
   isAnalyzing = false,
+  searchQuery = '',
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
 
@@ -139,14 +142,21 @@ export default function StudyNoteCard({
                 </span>
               )}
               <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-2 leading-tight">
-                {note.title || t('studiesWorkspace.untitled')}
+                {searchQuery ? (
+                  <HighlightedText
+                    text={note.title || t('studiesWorkspace.untitled')}
+                    searchQuery={searchQuery}
+                  />
+                ) : (
+                  note.title || t('studiesWorkspace.untitled')
+                )}
               </h4>
             </div>
 
             {/* Preview text (collapsed only) */}
             {!isExpanded && (
               <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                <MarkdownDisplay content={note.content} compact />
+                <MarkdownDisplay content={note.content} compact searchQuery={searchQuery} />
               </div>
             )}
 
@@ -226,7 +236,7 @@ export default function StudyNoteCard({
           {/* Full content */}
           <div className="px-4 py-4 pl-4 sm:pl-12">
             <div className="text-sm text-gray-700 dark:text-gray-200">
-              <MarkdownDisplay content={note.content} />
+              <MarkdownDisplay content={note.content} searchQuery={searchQuery} />
             </div>
           </div>
 
@@ -243,7 +253,11 @@ export default function StudyNoteCard({
                     key={ref.id}
                     className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
                   >
-                    {formatRef(ref)}
+                    {searchQuery ? (
+                      <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
+                    ) : (
+                      formatRef(ref)
+                    )}
                   </span>
                 ))}
               </div>
@@ -262,7 +276,11 @@ export default function StudyNoteCard({
                     key={tag}
                     className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
                   >
-                    {tag}
+                    {searchQuery ? (
+                      <HighlightedText text={tag} searchQuery={searchQuery} />
+                    ) : (
+                      tag
+                    )}
                   </span>
                 ))}
               </div>

@@ -203,4 +203,153 @@ describe('StudyNoteCard', () => {
 
     window.confirm = originalConfirm;
   });
+
+  describe('Search Highlighting', () => {
+    it('highlights matching text in title when searchQuery is provided', () => {
+      const note = createTestNote({
+        id: 'note-search-1',
+        title: 'Study about the Bible and faith',
+        content: 'Some content here',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Bible"
+        />
+      );
+
+      const mark = screen.getByRole('mark');
+      expect(mark).toHaveTextContent('Bible');
+      expect(mark).toHaveClass('bg-yellow-200');
+    });
+
+    it('does not highlight when searchQuery is empty', () => {
+      const note = createTestNote({
+        id: 'note-search-2',
+        title: 'Study about the Bible',
+        content: 'Bible content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery=""
+        />
+      );
+
+      expect(screen.queryByRole('mark')).not.toBeInTheDocument();
+    });
+
+    it('highlights content in expanded view - title highlighting works in expanded state', () => {
+      const note = createTestNote({
+        id: 'note-search-3',
+        title: 'The Bible is important',
+        content: 'The Bible teaches us many things about faith',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={true}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Bible"
+        />
+      );
+
+      // Title should have highlight in expanded state too
+      const marks = screen.getAllByRole('mark');
+      expect(marks.length).toBeGreaterThanOrEqual(1);
+      expect(marks.some((m) => m.textContent === 'Bible')).toBe(true);
+    });
+
+    it('handles Cyrillic search queries', () => {
+      const note = createTestNote({
+        id: 'note-search-4',
+        title: 'Заметка о Библия', // Using exact word form
+        content: 'Библия учит нас',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="ru"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Библия"
+        />
+      );
+
+      // Title should have highlight
+      const marks = screen.getAllByRole('mark');
+      expect(marks.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('highlights tags when searchQuery matches', () => {
+      const note = createTestNote({
+        id: 'note-search-5',
+        title: 'Test Note',
+        content: 'Some content',
+        tags: ['faith', 'grace', 'hope'],
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={true}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="faith"
+        />
+      );
+
+      // Tag should be highlighted
+      const marks = screen.getAllByRole('mark');
+      expect(marks.some((m) => m.textContent === 'faith')).toBe(true);
+    });
+
+    it('highlights scripture references when searchQuery matches', () => {
+      const note = createTestNote({
+        id: 'note-search-6',
+        title: 'Test Note',
+        content: 'Some content',
+        scriptureRefs: [
+          { id: 'ref-1', book: 'Genesis', chapter: 1, fromVerse: 1 },
+        ],
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={true}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Genesis"
+        />
+      );
+
+      // Scripture reference should be highlighted
+      const marks = screen.getAllByRole('mark');
+      expect(marks.some((m) => m.textContent === 'Genesis')).toBe(true);
+    });
+  });
 });

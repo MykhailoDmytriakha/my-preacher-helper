@@ -1,13 +1,16 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import HighlightedText from '@components/HighlightedText';
 
 interface MarkdownDisplayProps {
     content: string;
     className?: string;
     compact?: boolean;
+    /** Optional search query to highlight within the content */
+    searchQuery?: string;
 }
 
 // Helper to transform [Type: Content] into code blocks for custom rendering
@@ -24,8 +27,19 @@ const formatStructuredBlocks = (text: string) => {
     });
 };
 
-const MarkdownDisplay = ({ content, className = '', compact = false }: MarkdownDisplayProps) => {
-    const processedContent = React.useMemo(() => formatStructuredBlocks(content), [content]);
+const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
+    const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
+
+    // Helper component to highlight text nodes
+    const TextHighlighter = useMemo(() => {
+        if (!searchQuery.trim()) return null;
+        return ({ children }: { children: React.ReactNode }) => {
+            if (typeof children === 'string') {
+                return <HighlightedText text={children} searchQuery={searchQuery} />;
+            }
+            return <>{children}</>;
+        };
+    }, [searchQuery]);
 
     return (
         <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
@@ -43,6 +57,37 @@ const MarkdownDisplay = ({ content, className = '', compact = false }: MarkdownD
                     h1: ({ ...props }) => <h3 {...props} className="text-lg font-bold mt-4 mb-2" />,
                     h2: ({ ...props }) => <h4 {...props} className="text-base font-bold mt-3 mb-2" />,
                     h3: ({ ...props }) => <h5 {...props} className="text-sm font-bold mt-2 mb-1" />,
+                    // Text node highlighting when search is active
+                    ...(TextHighlighter && {
+                        p: ({ children, ...props }) => (
+                            <p {...props}>
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </p>
+                        ),
+                        li: ({ children, ...props }) => (
+                            <li {...props}>
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </li>
+                        ),
+                        strong: ({ children, ...props }) => (
+                            <strong {...props}>
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </strong>
+                        ),
+                        em: ({ children, ...props }) => (
+                            <em {...props}>
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </em>
+                        ),
+                    }),
                     // Custom renderer for code blocks to handle our structured types
                     code: ({ node, inline, className, children, ...props }: any) => {
                         const match = /language-(\w+)/.exec(className || '');
@@ -90,7 +135,11 @@ const MarkdownDisplay = ({ content, className = '', compact = false }: MarkdownD
                                         <span>{title}</span>
                                     </div>
                                     <div className="text-gray-800 dark:text-gray-200">
-                                        {String(children).replace(/\n$/, '')}
+                                        {searchQuery ? (
+                                            <HighlightedText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} />
+                                        ) : (
+                                            String(children).replace(/\n$/, '')
+                                        )}
                                     </div>
                                 </div>
                             );
