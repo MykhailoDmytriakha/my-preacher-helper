@@ -183,10 +183,27 @@
 **Solution:** Use `getLocalizedBookName(ref.book, bibleLocale)` in search haystack.
 **Pattern:** Always search/filter by DISPLAYED values, not internal storage values. User searches for what they see.
 
+### Show "Why It Matched" (Empty Content, Matched Metadata)
+**Problem:** User searches for term (e.g. "77") found ONLY in tags/refs. Collapsed card shows just title and empty snippets (since content didn't match), confusing the user.
+**Solution:** If search matches metadata (tags, refs) but not content, explicitly display those matching metadata items in the collapsed view as "snippets".
+
 ### Highlighting Integration with ReactMarkdown
 **Challenge:** ReactMarkdown uses component overrides, need to wrap text nodes.
 **Solution:** Override `p`, `li`, `strong`, `em` components to wrap string children with `<HighlightedText>`.
 **Key:** Check `typeof child === 'string'` before wrapping, pass through non-string children unchanged.
+
+### Search Logic Stability (The Index Drift)
+**Problem:** Using `content.toLowerCase().indexOf()` produced wrong indices because `toLowerCase()` can change string length (special chars/unicode), causing highlights to "drift" off target in long documents.
+**Solution:** Use `RegExp` with ignore-case flag executing on the ORIGINAL string.
+**Pattern:** `regex.exec(originalContent)` is the only safe way to get standard indices.
+
+### Visual Snippet Visibility
+**Problem:** Increasing context size pushed the search match to line 5+, but CSS `line-clamp-4` hid it. User saw a snippet *without* the searched word.
+**Solution:** When displaying search snippets, disable or relax vertical truncation. Ensure the "center" of the snippet is always visible.
+
+### Comprehensive Highlighting (Don't Forget Headers)
+**Problem:** Implemented highlighting for standard text but ignored headers (`h1`-`h6`). User saw text unhighlighted in titles.
+**Solution:** Explicitly map ALL content blocks (`h1`-`h6`, `blockquote`) in Markdown renderer to the highlighter component.
 
 ---
 

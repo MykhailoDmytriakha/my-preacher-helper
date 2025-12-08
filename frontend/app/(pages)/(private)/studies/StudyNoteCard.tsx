@@ -15,6 +15,7 @@ import { StudyNote } from '@/models/models';
 import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import HighlightedText from '@components/HighlightedText';
+import { extractSearchSnippets } from '@/utils/searchUtils';
 
 interface StudyNoteCardProps {
   note: StudyNote;
@@ -155,8 +156,82 @@ export default function StudyNoteCard({
 
             {/* Preview text (collapsed only) */}
             {!isExpanded && (
-              <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                <MarkdownDisplay content={note.content} compact searchQuery={searchQuery} />
+              <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                {searchQuery ? (
+                  <div className="space-y-2">
+                    {/* Content Snippets */}
+                    {extractSearchSnippets(note.content, searchQuery, 300).map((snippet, index) => (
+                      <div key={index} className="relative">
+                        {index > 0 && (
+                          <div className="my-1 flex items-center justify-center text-gray-400">
+                            <span className="text-xs tracking-widest">...</span>
+                          </div>
+                        )}
+                        <div className="relative pl-3 border-l-2 border-emerald-100 dark:border-emerald-900/50">
+                          <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Matching Tags (Collapsed View) */}
+                    {(() => {
+                      try {
+                        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escapedQuery, 'i');
+                        const matchingTags = note.tags.filter(tag => regex.test(tag));
+
+                        if (matchingTags.length === 0) return null;
+
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
+                            {matchingTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                              >
+                                <span className="mr-1 opacity-50">#</span>
+                                <HighlightedText text={tag} searchQuery={searchQuery} />
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      } catch (e) {
+                        return null;
+                      }
+                    })()}
+
+                    {/* Matching Refs (Collapsed View) */}
+                    {(() => {
+                      try {
+                        const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escapedQuery, 'i');
+                        const matchingRefs = note.scriptureRefs.filter(ref => regex.test(formatRef(ref)));
+
+                        if (matchingRefs.length === 0) return null;
+
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
+                            {matchingRefs.map((ref) => (
+                              <span
+                                key={ref.id}
+                                className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              >
+                                <BookmarkIcon className="mr-1 h-3 w-3" />
+                                <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      } catch (e) {
+                        return null;
+                      }
+                    })()}
+                  </div>
+                ) : (
+                  <div className="line-clamp-2">
+                    <MarkdownDisplay content={note.content} compact />
+                  </div>
+                )}
               </div>
             )}
 

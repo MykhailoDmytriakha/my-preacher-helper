@@ -42,14 +42,17 @@ function HighlightedText({
         // Create case-insensitive regex
         const regex = new RegExp(`(${escapedTokens.join('|')})`, 'gi');
 
-        const tokenSet = new Set(tokens.map((token) => token.toLowerCase()));
+        // Match logic: verify if the part matches any of the tokens using the same regex logic
+        // This is safer than tokenSet.has(part.toLowerCase()) coverage cases where
+        // matching logic (regex) differs from string equality (e.g. unicode normalization, case folding)
+        const matchRegex = new RegExp(`^(${escapedTokens.join('|')})$`, 'i');
 
         // Split text by the query, keeping the matched parts
         const splitParts = text.split(regex);
 
         return splitParts.map((part) => ({
             text: part,
-            highlighted: tokenSet.has(part.toLowerCase()),
+            highlighted: matchRegex.test(part),
         }));
     }, [text, searchQuery]);
 

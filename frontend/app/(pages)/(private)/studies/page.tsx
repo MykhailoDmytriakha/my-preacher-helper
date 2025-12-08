@@ -147,17 +147,15 @@ export default function StudiesPage() {
   );
 
   // Auto-expand all matching notes when searching
+  // Auto-expand removed to allow Contextual Search Snippets to be visible in collapsed state.
+  // User can manually expand if they want to see the full note.
   useEffect(() => {
-    if (searchQuery) {
-      const ids = filteredNoteIds.split(',').filter(Boolean);
-      setExpandedNoteIds(new Set(ids));
-      setAllExpanded(true);
-    } else {
-      // Collapse all when search is cleared
+    if (!searchQuery) {
+      // Collapse all when search is cleared to reset view
       setExpandedNoteIds(new Set());
       setAllExpanded(false);
     }
-  }, [searchQuery, filteredNoteIds]);
+  }, [searchQuery]);
 
   // Stats
   const stats = useMemo(() => {

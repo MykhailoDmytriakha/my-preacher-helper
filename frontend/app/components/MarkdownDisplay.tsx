@@ -87,6 +87,35 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                                 )}
                             </em>
                         ),
+                        // Add highlighting for headings
+                        h1: ({ children, ...props }) => (
+                            <h3 {...props} className="text-lg font-bold mt-4 mb-2">
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </h3>
+                        ),
+                        h2: ({ children, ...props }) => (
+                            <h4 {...props} className="text-base font-bold mt-3 mb-2">
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </h4>
+                        ),
+                        h3: ({ children, ...props }) => (
+                            <h5 {...props} className="text-sm font-bold mt-2 mb-1">
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </h5>
+                        ),
+                        h4: ({ children, ...props }) => (
+                            <h6 {...props} className="text-xs font-bold mt-2 mb-1">
+                                {React.Children.map(children, (child) =>
+                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
+                                )}
+                            </h6>
+                        ),
                     }),
                     // Custom renderer for code blocks to handle our structured types
                     code: ({ node, inline, className, children, ...props }: any) => {

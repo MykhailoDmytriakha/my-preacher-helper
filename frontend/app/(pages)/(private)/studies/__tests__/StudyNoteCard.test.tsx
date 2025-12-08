@@ -352,5 +352,53 @@ describe('StudyNoteCard', () => {
       const marks = screen.getAllByRole('mark');
       expect(marks.some((m) => m.textContent === 'Genesis')).toBe(true);
     });
+
+    it('displays matching tags and references in COLLAPSED view when searchQuery matches', () => {
+      const note = createTestNote({
+        id: 'note-search-collapsed-items',
+        title: 'Collapsed Search Note',
+        content: 'No match in content',
+        tags: ['uniqueTag'],
+        scriptureRefs: [
+          { id: 'ref-coll', book: 'Exodus', chapter: 20, fromVerse: 1 },
+        ],
+      });
+
+      // 1. Search for TAG
+      const { unmount } = render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false} // Collapsed!
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="uniqueTag"
+        />
+      );
+
+      // Tag should be visible and highlighted
+      const tagMark = screen.getByRole('mark');
+      expect(tagMark).toHaveTextContent('uniqueTag');
+
+      unmount();
+
+      // 2. Search for REF
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false} // Collapsed!
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Exodus"
+        />
+      );
+
+      // Ref should be visible and highlighted
+      const refMark = screen.getByRole('mark');
+      expect(refMark).toHaveTextContent('Exodus');
+    });
   });
 });
