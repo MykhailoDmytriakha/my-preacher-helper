@@ -160,18 +160,20 @@
 
 ## 📝 Short-Term Memory
 
-**Current session:** Search Highlighting in Study Notes
+**Current session:** Studies search snippets UI polish
 
 **Recent changes:**
-- **HighlightedText.tsx:** New component for Chrome-style text highlighting
-- **page.tsx:** Auto-expand effect, localized book name search
-- **StudyNoteCard.tsx:** Highlighting for title, tags, scripture refs
-- **MarkdownDisplay.tsx:** Text node highlighting in markdown content
-- **Tests:** 1471 tests green across 188 suites
+- `StudyNoteCard.tsx`: Reworked search snippet presentation: removed section headers and title-match badge, kept only match count badge (now placed inline with the title). Content snippet section uses neutral surface/border, adds outer border to snippets, and increases spacing. Actions (AI/ edit / delete) moved inline with the title row; card header made keyboard-activatable (Enter/Space) without triggering when focusing buttons. Match-count badge no longer shown inside snippet block.
+- Translations unchanged in this pass; prior additions remain (`searchMatchesHeader`, etc.) though headers are visually hidden now.
+- Tests not re-run after the latest visual tweaks (previous full `npm run test` was green before this UI-only change).
 
 ---
 
 ## 🎓 Lessons & Patterns
+### Minimal Search Snippet UI
+**Problem:** Extra headers (“Search matches”, “Content snippets”, “Match in title”) created visual noise; user wanted only counts.
+**Correct Solution:** Keep a single match-count badge; place it inline with the title; remove text headers for snippet blocks while preserving counts; keep chips and snippets readable with neutral backgrounds and subtle borders.
+**Best Practice:** For search-result snippets, prioritize signal (counts) over labels—avoid redundant headings; ensure actions stay accessible and don’t steal the main click target.
 
 ### useEffect Infinite Loop Prevention
 **Problem:** Using `filteredNotes` (array) as useEffect dependency causes infinite loop because array is recreated on every render.

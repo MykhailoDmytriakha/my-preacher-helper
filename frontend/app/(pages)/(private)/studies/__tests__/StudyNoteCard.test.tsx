@@ -96,12 +96,40 @@ describe('StudyNoteCard', () => {
       />
     );
 
-    const heading = screen.getByRole('heading', { name: 'Header Note' });
-    const headerButton = heading.closest('button');
-    expect(headerButton).not.toBeNull();
-    await userEvent.click(headerButton as HTMLButtonElement);
+    const headerToggle = screen.getByRole('button', { name: /Header Note/i });
+    await userEvent.click(headerToggle);
 
     expect(onToggleExpand).toHaveBeenCalled();
+  });
+
+  it('supports keyboard toggle on the header and ignores nested buttons', async () => {
+    const onToggleExpand = jest.fn();
+    const onEdit = jest.fn();
+    const noteWithTitle = createTestNote({ id: 'note-3b', title: 'Keyboard Note' });
+
+    render(
+      <StudyNoteCard
+        note={noteWithTitle}
+        bibleLocale="en"
+        isExpanded={false}
+        onToggleExpand={onToggleExpand}
+        onEdit={onEdit}
+        onDelete={jest.fn()}
+        onAnalyze={jest.fn()}
+      />
+    );
+
+    const headerToggle = screen.getByRole('button', { name: /Keyboard Note/i });
+    headerToggle.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onToggleExpand).toHaveBeenCalledTimes(1);
+
+    const editButton = screen.getByRole('button', { name: 'common.edit' });
+    editButton.focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(onToggleExpand).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledWith(noteWithTitle);
   });
 
   it('applies responsive classes to the title', () => {
@@ -399,6 +427,79 @@ describe('StudyNoteCard', () => {
       // Ref should be visible and highlighted
       const refMark = screen.getByRole('mark');
       expect(refMark).toHaveTextContent('Exodus');
+    });
+
+    it('shows match count badge for combined matches when collapsed', () => {
+      const note = createTestNote({
+        id: 'note-search-count',
+        title: 'Genesis title',
+        content: 'Genesis body content once.',
+        tags: ['genesis-tag'],
+        scriptureRefs: [{ id: 'ref-2', book: 'Genesis', chapter: 1, fromVerse: 1 }],
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Genesis"
+        />
+      );
+
+      // 1 content snippet + 1 tag + 1 ref + 1 title match = 4 total signals
+      expect(
+        screen.getByText(/4.*(matchingNotes|matching notes)/i)
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to a content preview when only the title matches (no empty search box)', () => {
+      const note = createTestNote({
+        id: 'title-only-match',
+        title: 'Unique Title',
+        content: 'Body without search hits',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="Unique"
+        />
+      );
+
+      expect(screen.getByText(/Body without search hits/i)).toBeInTheDocument();
+    });
+
+    it('shows a no-match alert when nothing matches', () => {
+      const note = createTestNote({
+        id: 'no-match',
+        title: 'Some title',
+        content: 'Unrelated content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          searchQuery="missing"
+        />
+      );
+
+      expect(
+        screen.getByText(/studiesWorkspace\.noSearchMatches|No match found/i)
+      ).toBeInTheDocument();
     });
   });
 });

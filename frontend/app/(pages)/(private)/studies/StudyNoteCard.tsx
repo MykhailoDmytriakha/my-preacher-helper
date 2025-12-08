@@ -7,8 +7,9 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   PencilIcon,
-  SparklesIcon,
   QuestionMarkCircleIcon,
+  SparklesIcon,
+  TagIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { StudyNote } from '@/models/models';
@@ -16,6 +17,7 @@ import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bi
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import HighlightedText from '@components/HighlightedText';
 import { extractSearchSnippets } from '@/utils/searchUtils';
+import { UI_COLORS } from '@/utils/themeColors';
 
 interface StudyNoteCardProps {
   note: StudyNote;
@@ -28,6 +30,75 @@ interface StudyNoteCardProps {
   isAnalyzing?: boolean;
   searchQuery?: string;
 }
+
+const SNIPPET_CONTAINER_CLASS = [
+  'rounded-lg border px-3 py-3 space-y-3 shadow-sm',
+  UI_COLORS.neutral.bg,
+  `dark:${UI_COLORS.neutral.darkBg}`,
+  UI_COLORS.neutral.border,
+  `dark:${UI_COLORS.neutral.darkBorder}`,
+].join(' ');
+
+const MATCH_COUNT_BADGE = [
+  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+  UI_COLORS.accent.bg,
+  `dark:${UI_COLORS.accent.darkBg}`,
+  UI_COLORS.accent.text,
+  `dark:${UI_COLORS.accent.darkText}`,
+  'shadow-inner',
+].join(' ');
+
+const CONTENT_SECTION_CLASS = [
+  'space-y-2 rounded-md border px-3 py-2',
+  UI_COLORS.neutral.bg,
+  `dark:${UI_COLORS.neutral.darkBg}`,
+  UI_COLORS.neutral.border,
+  `dark:${UI_COLORS.neutral.darkBorder}`,
+].join(' ');
+
+const CONTENT_SNIPPET_CLASS = [
+  'rounded-md border border-l-4 px-3 py-2 shadow-sm bg-white/90 dark:bg-gray-900/40',
+  UI_COLORS.success.border,
+  `dark:${UI_COLORS.success.darkBorder}`,
+].join(' ');
+
+const METADATA_CARD_CLASS = [
+  'space-y-2 rounded-md border px-3 py-2',
+  UI_COLORS.neutral.bg,
+  `dark:${UI_COLORS.neutral.darkBg}`,
+  UI_COLORS.neutral.border,
+  `dark:${UI_COLORS.neutral.darkBorder}`,
+].join(' ');
+
+const TAG_CHIP_CLASS = [
+  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border',
+  UI_COLORS.neutral.bg,
+  `dark:${UI_COLORS.neutral.darkBg}`,
+  UI_COLORS.neutral.text,
+  `dark:${UI_COLORS.neutral.darkText}`,
+  UI_COLORS.neutral.border,
+  `dark:${UI_COLORS.neutral.darkBorder}`,
+].join(' ');
+
+const REF_CHIP_CLASS = [
+  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border',
+  UI_COLORS.success.bg,
+  `dark:${UI_COLORS.success.darkBg}`,
+  UI_COLORS.success.text,
+  `dark:${UI_COLORS.success.darkText}`,
+  UI_COLORS.success.border,
+  `dark:${UI_COLORS.success.darkBorder}`,
+].join(' ');
+
+const ALERT_CLASS = [
+  'rounded-md border px-3 py-2 text-xs font-medium',
+  UI_COLORS.danger.bg,
+  `dark:${UI_COLORS.danger.darkBg}`,
+  UI_COLORS.danger.text,
+  `dark:${UI_COLORS.danger.darkText}`,
+  UI_COLORS.danger.border,
+  `dark:${UI_COLORS.danger.darkBorder}`,
+].join(' ');
 
 export default function StudyNoteCard({
   note,
@@ -165,6 +236,10 @@ export default function StudyNoteCard({
 
   const hasAnyMatch =
     contentMatches || matchingTags.length > 0 || matchingRefs.length > 0 || titleMatches;
+  const totalMatchSignals =
+    contentSnippets.length + matchingTags.length + matchingRefs.length + (titleMatches ? 1 : 0);
+  const hasSearchDetails =
+    contentSnippets.length > 0 || matchingTags.length > 0 || matchingRefs.length > 0 || !hasAnyMatch;
 
   return (
     <article
@@ -181,12 +256,20 @@ export default function StudyNoteCard({
         }
       `}
     >
-      {/* Header row: left side is the expander button, right side may contain actions */}
+      {/* Header row: main content is clickable, actions live beside title */}
       <div className="flex w-full items-start gap-3 p-4">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onToggleExpand}
-          className="flex flex-1 items-start gap-3 text-left"
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const target = e.target as HTMLElement | null;
+            if (target?.closest('button')) return;
+            e.preventDefault();
+            onToggleExpand();
+          }}
+          className="flex flex-1 items-start gap-3 text-left cursor-pointer"
           aria-expanded={isExpanded}
         >
           {/* Chevron */}
@@ -218,74 +301,133 @@ export default function StudyNoteCard({
                   note.title || t('studiesWorkspace.untitled')
                 )}
               </h4>
+              {searchQuery && totalMatchSignals > 0 && !isExpanded && (
+                <span className={`${MATCH_COUNT_BADGE} shrink-0`}>
+                  {totalMatchSignals} {t('studiesWorkspace.matchingNotes')}
+                </span>
+              )}
+              <div className="ml-1 flex items-center gap-1">
+                {needsAnalysis && onAnalyze && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAnalyze(note);
+                    }}
+                    disabled={isAnalyzing}
+                    className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+                    title={t('studiesWorkspace.aiAnalyze.button')}
+                  >
+                    <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                    {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(note);
+                  }}
+                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  title={t('common.edit')}
+                >
+                  <PencilIcon className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(t('studiesWorkspace.deleteConfirm'))) {
+                      onDelete(note.id);
+                    }
+                  }}
+                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                  title={t('common.delete')}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Preview text (collapsed only) */}
             {!isExpanded && (
               <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                 {searchQuery ? (
-                  <div className="space-y-2">
-                    {/* Content Snippets */}
-                    {contentSnippets.map((snippet, index) => (
-                      <div key={index} className="relative">
-                        {index > 0 && (
-                          <div className="my-1 flex items-center justify-center text-gray-400">
-                            <span className="text-xs tracking-widest">...</span>
+                  hasSearchDetails ? (
+                    <div className={SNIPPET_CONTAINER_CLASS}>
+                      {contentSnippets.length > 0 && (
+                        <div className={CONTENT_SECTION_CLASS}>
+                          <div className="flex justify-end text-xs font-semibold text-gray-700 dark:text-gray-200">
+                            <span className={MATCH_COUNT_BADGE}>{contentSnippets.length}</span>
                           </div>
-                        )}
-                        <div className="relative pl-3 border-l-2 border-emerald-100 dark:border-emerald-900/50">
-                          <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Matching Tags (Collapsed View) */}
-                    {matchingTags.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
-                        {matchingTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                          >
-                            <span className="mr-1 opacity-50">#</span>
-                            <HighlightedText text={tag} searchQuery={searchQuery} />
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Matching Refs (Collapsed View) */}
-                    {matchingRefs.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2 pl-3 border-l-2 border-transparent">
-                        {matchingRefs.map((ref) => (
-                          <span
-                            key={ref.id}
-                            className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-                          >
-                            <BookmarkIcon className="mr-1 h-3 w-3" />
-                            <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Explain why the note matched when there is no content snippet */}
-                    {contentSnippets.length === 0 &&
-                      matchingTags.length === 0 &&
-                      matchingRefs.length === 0 &&
-                      titleMatches && (
-                        <div className="pl-3 text-xs text-gray-500 dark:text-gray-400">
-                          Match found in title.
+                          <div className="space-y-6">
+                            {contentSnippets.map((snippet, index) => (
+                              <div key={index} className={CONTENT_SNIPPET_CLASS}>
+                                <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 
-                    {/* Defensive: if nothing matched, hint to user for debugging */}
-                    {searchQuery && !hasAnyMatch && (
-                      <div className="pl-3 text-xs text-amber-600 dark:text-amber-300">
-                        No match found in content, tags, refs, or title.
-                      </div>
-                    )}
-                  </div>
+                      {(matchingTags.length > 0 || matchingRefs.length > 0) && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {matchingTags.length > 0 && (
+                            <div className={METADATA_CARD_CLASS}>
+                              <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                <div className="flex items-center gap-2">
+                                  <TagIcon className="h-4 w-4" />
+                                  <span>{t('studiesWorkspace.tags')}</span>
+                                </div>
+                                <span className={MATCH_COUNT_BADGE}>{matchingTags.length}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {matchingTags.map((tag) => (
+                                  <span key={tag} className={TAG_CHIP_CLASS}>
+                                    <span className="opacity-60">#</span>
+                                    <HighlightedText text={tag} searchQuery={searchQuery} />
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {matchingRefs.length > 0 && (
+                            <div className={METADATA_CARD_CLASS}>
+                              <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                <div className="flex items-center gap-2">
+                                  <BookmarkIcon className="h-4 w-4" />
+                                  <span>{t('studiesWorkspace.scriptureRefs')}</span>
+                                </div>
+                                <span className={MATCH_COUNT_BADGE}>{matchingRefs.length}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {matchingRefs.map((ref) => (
+                                  <span key={ref.id} className={REF_CHIP_CLASS}>
+                                    <BookmarkIcon className="mr-1 h-3 w-3" />
+                                    <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {searchQuery && !hasAnyMatch && (
+                        <div className={ALERT_CLASS}>
+                          {t('studiesWorkspace.noSearchMatches', {
+                            defaultValue: 'No match found in content, tags, references, or title.',
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="line-clamp-2">
+                      <MarkdownDisplay content={note.content} compact searchQuery={searchQuery} />
+                    </div>
+                  )
                 ) : (
                   <div className="line-clamp-2">
                     <MarkdownDisplay content={note.content} compact />
@@ -313,54 +455,6 @@ export default function StudyNoteCard({
           {!isExpanded && needsAnalysis && onAnalyze && (
             <span className="sr-only">{t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}</span>
           )}
-        </button>
-
-        {/* Action buttons in header - always visible */}
-        <div className="flex flex-shrink-0 items-center gap-1">
-          {/* AI Analyze button - only when needs analysis */}
-          {needsAnalysis && onAnalyze && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAnalyze(note);
-              }}
-              disabled={isAnalyzing}
-              className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-              title={t('studiesWorkspace.aiAnalyze.button')}
-            >
-              <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-              {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
-            </button>
-          )}
-
-          {/* Edit button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(note);
-            }}
-            className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-            title={t('common.edit')}
-          >
-            <PencilIcon className="h-4 w-4" />
-          </button>
-
-          {/* Delete button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(t('studiesWorkspace.deleteConfirm'))) {
-                onDelete(note.id);
-              }
-            }}
-            className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-            title={t('common.delete')}
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
         </div>
       </div>
 
