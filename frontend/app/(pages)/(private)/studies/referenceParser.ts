@@ -211,8 +211,9 @@ type ParsedReference = Omit<ScriptureReference, 'id'>;
  * @param locale - The user's locale for proper Psalm numbering conversion
  */
 export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedReference | null {
-  // Normalize separators
-  const normalized = raw.replace(/[:,.;]/g, ' ');
+  // Normalize separators and dash variants (e.g., en/em dash) to a standard hyphen
+  const dashNormalized = raw.replace(/[–—−‒‑﹘﹣]/g, '-');
+  const normalized = dashNormalized.replace(/[:,.;]/g, ' ');
 
   // First, split all tokens naively (splitting hyphens too)
   const allTokensNaive = normalized
@@ -230,7 +231,7 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
 
   // Count how many non-book tokens we'd have for format detection
   // This helps distinguish "book 5-7" (chapter range) from "book 4 5-6" (verse range)
-  const rangeMatch = raw.match(/(\d+)\s*-\s*(\d+)$/);
+  const rangeMatch = dashNormalized.match(/(\d+)\s*-\s*(\d+)$/);
   const hasRange = rangeMatch !== null;
 
   // Simpler approach: split first, then determine format

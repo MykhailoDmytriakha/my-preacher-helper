@@ -40,6 +40,21 @@ describe('referenceParser', () => {
     });
   });
 
+  it('parses en dash ranges with colon separators', () => {
+    expect(parseReferenceText('Исх 20:8–10')).toEqual({
+      book: 'Exodus',
+      chapter: 20,
+      fromVerse: 8,
+      toVerse: 10,
+    });
+    expect(parseReferenceText('1 Тим 2:9–10')).toEqual({
+      book: '1 Timothy',
+      chapter: 2,
+      fromVerse: 9,
+      toVerse: 10,
+    });
+  });
+
   it('returns null for truly malformed references', () => {
     // Non-numeric chapter/verse still returns null
     expect(parseReferenceText('Hebrews two nine')).toBeNull();
