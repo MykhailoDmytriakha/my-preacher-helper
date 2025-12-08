@@ -16,10 +16,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { StudyNote } from '@/models/models';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getTags } from '@/services/tag.service';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import StudyNoteCard from './StudyNoteCard';
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
+import EditStudyNoteModal from './EditStudyNoteModal';
 import StudyNoteDrawer from './StudyNoteDrawer';
 
 export default function StudiesPage() {
@@ -33,6 +35,9 @@ export default function StudiesPage() {
     updateNote,
     deleteNote,
   } = useStudyNotes();
+
+  // Responsive: use Modal on mobile, Drawer on desktop
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   // Get current locale for Bible data
   const bibleLocale: BibleLocale = useMemo(() => {
@@ -460,15 +465,26 @@ export default function StudiesPage() {
         bibleLocale={bibleLocale}
       />
 
-      {/* Edit Drawer */}
-      <StudyNoteDrawer
-        note={editingNote}
-        isOpen={editingNote !== null}
-        onClose={() => setEditingNote(null)}
-        onSave={handleUpdateNote}
-        availableTags={tagOptions}
-        bibleLocale={bibleLocale}
-      />
+      {/* Edit: Modal on mobile, Drawer on desktop */}
+      {isMobile ? (
+        <EditStudyNoteModal
+          note={editingNote}
+          isOpen={editingNote !== null}
+          onClose={() => setEditingNote(null)}
+          onSave={handleUpdateNote}
+          availableTags={tagOptions}
+          bibleLocale={bibleLocale}
+        />
+      ) : (
+        <StudyNoteDrawer
+          note={editingNote}
+          isOpen={editingNote !== null}
+          onClose={() => setEditingNote(null)}
+          onSave={handleUpdateNote}
+          availableTags={tagOptions}
+          bibleLocale={bibleLocale}
+        />
+      )}
     </section>
   );
 }
