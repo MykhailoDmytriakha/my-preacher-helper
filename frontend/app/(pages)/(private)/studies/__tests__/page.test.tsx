@@ -251,6 +251,44 @@ describe('StudiesPage', () => {
       await waitFor(() => expect(searchInput).toHaveValue(value));
     };
 
+    it('shows a clear search button and resets the query and results', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Alpha note' }),
+        createMockNote({ id: '2', title: 'Beta note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+      expect(
+        screen.queryByRole('button', { name: /clear search|studiesWorkspace\.clearSearch/i })
+      ).not.toBeInTheDocument();
+
+      fireEvent.change(searchInput, { target: { value: 'Alpha' } });
+
+      const clearButton = await screen.findByRole('button', {
+        name: /clear search|studiesWorkspace\.clearSearch/i,
+      });
+
+      await waitFor(() => {
+        const visibleCards = screen.getAllByRole('article');
+        expect(visibleCards).toHaveLength(1);
+        expect(visibleCards[0]).toHaveTextContent(/Alpha note/i);
+      });
+
+      await userEvent.click(clearButton);
+
+      await waitFor(() => expect(searchInput).toHaveValue(''));
+
+      const allCards = screen.getAllByRole('article');
+      expect(allCards).toHaveLength(2);
+    });
+
     it('shows content snippet when content matches token', async () => {
       const notes: StudyNote[] = [
         createMockNote({

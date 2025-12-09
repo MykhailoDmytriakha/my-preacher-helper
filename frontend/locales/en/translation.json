@@ -1284,6 +1284,7 @@
     "authHint": "Sign in to save your studies",
     "quickWins": "Wire your study flow",
     "searchPlaceholder": "Search notes, tags, or references...",
+    "clearSearch": "Clear search",
     "searchMatchesHeader": "Search matches",
     "contentMatches": "Content snippets",
     "titleMatch": "Match in title",

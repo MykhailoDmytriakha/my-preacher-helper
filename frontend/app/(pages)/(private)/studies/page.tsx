@@ -427,11 +427,22 @@ export default function StudiesPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                aria-label={t('studiesWorkspace.clearSearch')}
+              >
+                <XMarkIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('studiesWorkspace.clearSearch')}</span>
+              </button>
+            )}
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('studiesWorkspace.searchPlaceholder')}
-              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-28 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
 
