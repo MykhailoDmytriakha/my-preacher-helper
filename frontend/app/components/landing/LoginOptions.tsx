@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { GoogleIcon } from '@components/Icons';
+import { CheckIcon, GoogleIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
 
 interface LoginOptionsProps {
@@ -12,72 +12,62 @@ interface LoginOptionsProps {
 
 export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = false }: LoginOptionsProps) {
   const { t } = useTranslation();
+  const isDev = process.env.NODE_ENV === 'development';
   return (
-    <div className="flex flex-col gap-4 items-center p-8 rounded-2xl bg-white dark:bg-gray-800 shadow-lg w-full max-w-md border dark:border-gray-700">
-      <div className="text-center space-y-2 w-full">
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="flex w-full max-w-xl flex-col flex-wrap rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-lg shadow-blue-100 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:shadow-none">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
           <span suppressHydrationWarning={true}>
             {t('loginOptions.heading')}
           </span>
         </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            <span suppressHydrationWarning={true}>
+              {t('loginOptions.subheading')}
+            </span>
+          </p>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-center text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
+          <span suppressHydrationWarning={true}>{t('loginOptions.secureBadge')}</span>
+        </span>
       </div>
 
-      <div className="w-full space-y-3">
+      <div className="mt-5 grid w-full gap-3 sm:grid-cols-2">
         <button
-          className="w-full px-6 py-3 bg-gradient-to-r from-blue-200 to-green-200 dark:from-blue-900/50 dark:to-green-900/50 text-gray-900 dark:text-white rounded-lg hover:from-blue-700 hover:to-green-700 dark:hover:from-blue-900 dark:hover:to-green-900 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-75"
           onClick={onGoogleLogin}
           disabled={loading}
         >
           {loading ? (
-            <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
           ) : (
-            <GoogleIcon className="w-5 h-5" />
+            <GoogleIcon className="h-5 w-5" />
           )}
           <span suppressHydrationWarning={true}>
             {loading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.googleLogin')}
           </span>
         </button>
 
-        {/* <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500" suppressHydrationWarning={true}>
-              {t('loginOptions.or')}
-            </span>
-          </div>
-        </div> */}
-
-        {/* <button
-          className="w-full px-6 py-3 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={onGuestLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <div className="w-5 h-5 border-t-2 border-b-2 border-gray-600 rounded-full animate-spin"></div>
-          ) : (
-            <UserIcon className="w-5 h-5" />
-          )}
-          <span suppressHydrationWarning={true}>
-            {loading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.guestLogin')}
-          </span>
-        </button> */}
-
-        {process.env.NODE_ENV === 'development' && (
+        {isDev && (
           <button
-            className="w-full px-6 py-3 bg-yellow-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-yellow-400 dark:border-yellow-600 rounded-lg hover:bg-yellow-100 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-100/50 px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-amber-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 disabled:cursor-not-allowed disabled:opacity-75 dark:border-amber-300/80 dark:bg-amber-500/15 dark:text-white dark:hover:border-amber-300 dark:hover:bg-amber-500/25"
             onClick={onTestLogin}
             disabled={loading}
           >
             {loading && (
-              <div className="w-5 h-5 border-t-2 border-b-2 border-gray-600 rounded-full animate-spin"></div>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400/40 border-t-slate-700 dark:border-white/25 dark:border-t-white" />
             )}
             <span suppressHydrationWarning={true}>
               {loading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.testLogin')}
             </span>
           </button>
         )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-300">
+        <CheckIcon className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
+        <span suppressHydrationWarning={true}>{t('loginOptions.note')}</span>
       </div>
     </div>
   );

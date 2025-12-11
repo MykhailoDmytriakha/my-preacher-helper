@@ -8,9 +8,9 @@ const LandingHeader = () => {
   const { t } = useTranslation();
 
   return (
-    <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-center items-center py-4 relative">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent text-center">
+    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/70 backdrop-blur-xl shadow-sm shadow-blue-50 transition dark:border-white/10 dark:bg-slate-950/50 dark:shadow-none">
+      <div className="relative mx-auto flex max-w-7xl items-center justify-center px-4 py-4 sm:px-6 lg:px-8">
+        <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl dark:text-white">
           <span suppressHydrationWarning={true}>
             {t('landing.title')}
           </span>
