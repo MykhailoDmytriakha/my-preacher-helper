@@ -75,6 +75,8 @@
   "dashboard": {
     "mySermons": "Мої проповіді",
     "searchSermons": "Пошук проповідей...",
+    "searchInThoughts": "Шукати в думках",
+    "searchInTags": "Шукати в тегах",
     "newest": "Спочатку нові",
     "oldest": "Спочатку старі",
     "alphabetical": "За алфавітом",

@@ -75,6 +75,8 @@
   "dashboard": {
     "mySermons": "My Sermons",
     "searchSermons": "Search sermons...",
+    "searchInThoughts": "Search in thoughts",
+    "searchInTags": "Search in tags",
     "newest": "Newest first",
     "oldest": "Oldest first",
     "alphabetical": "Alphabetical",

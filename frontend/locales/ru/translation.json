@@ -75,6 +75,8 @@
   "dashboard": {
     "mySermons": "Мои проповеди",
     "searchSermons": "Поиск проповедей...",
+    "searchInThoughts": "Искать в мыслях",
+    "searchInTags": "Искать в тегах",
     "newest": "Сначала новые",
     "oldest": "Сначала старые",
     "alphabetical": "По алфавиту",

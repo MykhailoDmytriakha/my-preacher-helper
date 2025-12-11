@@ -17,6 +17,12 @@ jest.mock('react-i18next', () => ({
         'featureCards.structuringDescription': 'Organize your ideas into a cohesive sermon structure with AI assistance.',
         'featureCards.analysisTitle': 'Insightful Analysis',
         'featureCards.analysisDescription': 'Discover connections and themes in your material for deeper sermons.',
+        'featureCards.handOffTitle': 'Smooth Handoff',
+        'featureCards.handOffDescription': 'Share and switch perspectives without losing context.',
+        'featureCards.handOffBadge': 'Handoff',
+        'landing.valueCapture': 'Capture',
+        'landing.valueStructure': 'Structure',
+        'landing.valueDeliver': 'Deliver',
       };
       
       return translations[key] || key;
@@ -25,13 +31,14 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('FeatureCards Component', () => {
-  it('renders all three feature cards', () => {
+  it('renders all feature cards', () => {
     render(<FeatureCards />);
     
-    // Check if all three feature titles are displayed
+    // Check if all four feature titles are displayed
     expect(screen.getByText('Powerful Recording')).toBeInTheDocument();
     expect(screen.getByText('Smart Structuring')).toBeInTheDocument();
     expect(screen.getByText('Insightful Analysis')).toBeInTheDocument();
+    expect(screen.getByText('Smooth Handoff')).toBeInTheDocument();
   });
   
   it('displays all feature descriptions', () => {
@@ -41,42 +48,28 @@ describe('FeatureCards Component', () => {
     expect(screen.getByText('Capture sermon thoughts effortlessly with our intuitive interface.')).toBeInTheDocument();
     expect(screen.getByText('Organize your ideas into a cohesive sermon structure with AI assistance.')).toBeInTheDocument();
     expect(screen.getByText('Discover connections and themes in your material for deeper sermons.')).toBeInTheDocument();
+    expect(screen.getByText('Share and switch perspectives without losing context.')).toBeInTheDocument();
   });
   
-  it('renders three card containers with correct styling', () => {
+  it('renders card containers with correct styling', () => {
     render(<FeatureCards />);
     
-    // Check if we have three feature cards with expected class
-    const cards = document.querySelectorAll('.p-8.border.rounded-xl');
-    expect(cards).toHaveLength(3);
+    const cards = document.querySelectorAll('.rounded-2xl.border');
+    expect(cards).toHaveLength(4);
   });
   
-  it('renders all emoji icons', () => {
+  it('renders all icon containers', () => {
     render(<FeatureCards />);
     
-    // Find emoji containers
-    const emojiContainers = document.querySelectorAll('.w-12.h-12.rounded-lg');
-    expect(emojiContainers).toHaveLength(3);
-    
-    // Check if the emojis are present
-    expect(emojiContainers[0].textContent).toContain('🎙️');
-    expect(emojiContainers[1].textContent).toContain('✨');
-    expect(emojiContainers[2].textContent).toContain('🔍');
-  });
-  
-  it('uses gradient text for headings', () => {
-    render(<FeatureCards />);
-    
-    // Check if headings have gradient text class
-    const headings = document.querySelectorAll('.bg-gradient-to-r.bg-clip-text.text-transparent');
-    expect(headings).toHaveLength(3);
+    const iconContainers = document.querySelectorAll('.h-11.w-11.rounded-xl');
+    expect(iconContainers).toHaveLength(4);
   });
   
   it('renders in a responsive grid layout', () => {
     render(<FeatureCards />);
     
     // Check if the container has grid layout classes
-    const gridContainer = document.querySelector('.grid.md\\:grid-cols-3');
+    const gridContainer = document.querySelector('.grid.md\\:grid-cols-2');
     expect(gridContainer).toBeInTheDocument();
   });
 }); 

@@ -1,211 +1,186 @@
-# Project Memory
+# Project Memory (Learning Pipeline)
 
-## 🔄 Memory Management Rules
-- Maintain this file in the project root alongside AGENTS/agents rules.
-- Record new lessons after fixing UI/logic issues, then distill into Long-Term actionable advice.
-- Keep short-term notes focused on current session state.
+> **Принцип:** Memory — это не хранилище, а pipeline обучения.  
+> **Flow:** Lessons (сырые) → Short-Term (осмысление) → Long-Term (принципы)
 
 ---
 
-## 📚 Long-Term Memory (Actionable Guidelines)
+## 🆕 Lessons (Inbox) — Только что выучено
 
-### 🎨 UI/Layout Patterns
+> Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
+
+### 2025-12-11 Search snippets must include tags
+**Problem:** При поиске по тегам сниппеты показывали только текст мыслей или пустоту, теги выводились отдельно и были не видны, если совпадение было только по тегу.
+**Attempts:** Добавлял отдельные блоки для тегов → получалось два бордера; без текста сниппет не отображался.
+**Solution:** Собрал единый сниппет на мысль: текстовый фрагмент + все совпавшие теги в одном блоке; добавил fallback текста мысли при совпадении только по тегу; нормализовал переносы/пробелы, теги подсвечиваются внутри сниппета.
+**Why it worked:** Один контейнер объясняет “почему найдено” и по тексту, и по тегам; fallback гарантирует видимость матча; чистка whitespace убирает визуальный шум.
+**Principle:** Если совпадение только в тегах, всё равно показывай один сниппет с текстом и тегами вместе, чтобы причина совпадения была видна.
+
+### 2025-12-11 Inline highlight breaks words
+**Problem:** Подсветка внутри слова (e.g., “прим” в “примеров”) рвала слово переносом строки: `<mark>` создавал разрыв и ломал верстку сниппета.
+**Attempts:** Нормализовывал whitespace и убирал переносы внутри слова — улучшило, но разрывы оставались, когда браузер ставил перенос между `<mark>` и текстом.
+**Solution:** Добавил word-joiners вокруг `<mark>`, `white-space: nowrap` на подсвеченной части и `word-break: keep-all` на контейнере сниппета; сохранил очистку переносов внутри слов.
+**Why it worked:** Запретил браузеру разбивать слово между подсвеченной и непосвещенной частью и убрал скрытые переносы, поэтому слово осталось цельным.
+**Principle:** При подсветке части слова всегда запрещай переносы (joiner + nowrap/keep-all) и очищай переносы внутри слова, иначе подсветка ломает слово.
+
+### 2025-12-11 Landing tests must allow multiple headings
+**Problem:** Тест landing падал из-за ожидания одного h1/h2, тогда как страница имеет несколько заголовков (header + hero) и badge для welcome.
+**Attempts:** Переключал `getByRole` на `getAllByRole`, но оставался фейл на h2 (несколько заголовков).
+**Solution:** Проверяю наличие текста через `getAllByRole(...).some(...)` для h1 и через прямой `getByText` для welcome (badge/span), избегая жёсткой монополии на один заголовок.
+**Why it worked:** Тест адаптирован к реальной структуре страницы с множественными заголовками и не ломается при добавлении новых секций.
+**Principle:** Когда страница содержит несколько h1/h2, проверки должны быть tolerant: ищи нужный текст среди всех, либо проверяй текст напрямую, а не предполагая единственность заголовка.
+
+### 2025-12-11 Responsive toolbar keeps search primary
+**Problem:** После перестройки тулбара поле поиска сжималось — основной input стал короче селектов, визуально “уменьшился”.
+**Attempts:** Менял порядок элементов — не помогло; ограничение ширины оставалось.
+**Solution:** Убрал `max-width` ограничения для поиска, дал `flex-1` + `min-w` и вынес чекбоксы в отдельную строку под строкой поиска/селектов.
+**Why it worked:** Основной контрол получил гибкую ширину, а вторичные контролы не отнимают у него место на одной линии.
+**Principle:** В тулбаре поиска оставляй инпут гибким (`flex-1` без max-width), фильтры/чекбоксы — отдельно или в отдельных столбцах, чтобы не сжимать поиск.
+
+### 2025-12-11 Jest mocks must match component exports
+**Problem:** Тесты LoginOptions падали с “Element type is invalid” из-за отсутствия моков для используемой иконки и устаревших CSS ожиданий.
+**Attempts:** Перезапускал тесты — без изменений; проблема оставалась.
+**Solution:** Замокал все используемые иконки (включая CheckIcon) и обновил проверки классов до актуальных (`from-blue-600 to-purple-600`, `bg-amber-100/50 border-amber-400`).
+**Why it worked:** Компонент стал рендериться в тестах, а ассерты соответствуют реальным классам.
+**Principle:** При моках общих компонентов (иконки) мокай каждый экспорт, который использует компонент, и держи тестовые ожидания классов синхронизированными с версткой.
+
+---
+
+## 🔄 Short-Term Memory (Processing) — На осмыслении
+
+> Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
+
+### React State Dependencies (группа из 3+ lessons)
+
+**Related lessons:** useEffect Infinite Loop, Search Logic Stability, Highlighting Integration
+**Common pattern:** Проблемы возникают когда React dependencies нестабильны
+**Emerging principle:** 
+- Computed arrays/objects ВСЕГДА нестабильны — конвертировать в primitives
+- RegExp на original string безопаснее чем index manipulation
+- Override ALL content blocks in Markdown renderer, не только `p`
+**Confidence:** High (подтверждено многократно)
+
+### Search UX Patterns (группа)
+
+**Related lessons:** Search Must Match User's View, Show "Why It Matched", Visual Snippet Visibility
+**Common pattern:** Поиск должен работать с точки зрения ПОЛЬЗОВАТЕЛЯ
+**Emerging principle:**
+- Искать по ОТОБРАЖАЕМЫМ значениям, не по internal storage
+- Если match в metadata — показать metadata в результатах
+- Snippet должен ВСЕГДА показывать matched word (не обрезать CSS)
+**Confidence:** High
+
+---
+
+## 💎 Long-Term Memory (Knowledge Base) — Интернализированные принципы
+
+> Осмысленные, проверенные временем правила. Формат: "При X — ВСЕГДА делай Y"
+
+### 🎨 UI/Layout Principles
 
 **Collapsible Panels:**
-- When adding collapsible columns, ALWAYS sync both `grid-template-columns` AND `col-span` values together.
-- Bind chevron rotation to state (`rotate-180` when `showForm`), unify icon sizes across states.
-- Use `items-stretch` to maintain height parity between panels.
-
-**Grid Layout Safety:**
-- After any layout refactor, check for duplicate render issues.
-- Test collapsed AND expanded states for vertical alignment.
-
-**Modal → Drawer Migration:**
-- Primary benefit is MORE SPACE, not more features. Keep drawer simple.
-- Drawer widths: use text labels (`30%` | `50%` | `100%`), NOT abstract icons.
-- Include drag-to-resize handle on left edge.
-- Persist user's preferred size in `localStorage`.
+При добавлении collapsible columns — ВСЕГДА синхронизировать `grid-template-columns` И `col-span` вместе.
 
 **Long Content Components (10K+ words):**
-- ALL action buttons (Edit/Delete) MUST be in header — NEVER at bottom of scrollable content.
-- Consolidate related toggles into single header row.
-- Use sticky headers for forms inside scrollable containers.
+Все action buttons (Edit/Delete) ДОЛЖНЫ быть в header — НИКОГДА внизу scrollable content.
 
-### 🖱️ UX Consistency Rules
+**Modal → Drawer Migration:**
+Primary benefit — MORE SPACE. Drawer widths: text labels (`30%` | `50%` | `100%`), НЕ abstract icons.
+
+### 🖱️ UX Consistency Principles
 
 **Input Interactions:**
-- Sibling inputs (tags, references) MUST have identical interaction affordances.
-- ALWAYS provide both keyboard (Enter) AND clickable button for add actions.
-- After add: reset input, dedupe values, maintain focus.
+Sibling inputs (tags, references) ДОЛЖНЫ иметь идентичные interaction affordances. ВСЕГДА keyboard (Enter) + clickable button.
 
 **Clickable Cards:**
-- Use `onClick` + `router.push()` for card navigation (NOT nested `<Link>`).
-- Add `cursor-pointer` class, write tests that verify navigation URLs.
-- Check for nested interactive elements that could cause double navigation.
-- Action buttons (Edit/Delete) go in card header, visible without expanding.
-
-**Button Sizing & Feedback:**
-- Buttons <24px MUST have hover effects (`scale-110` to `scale-125`).
-- Visual feedback for state changes (color, animation, icons).
-- Clear affordances: user must know what's clickable and what happens on click.
+`onClick` + `router.push()` для navigation. Проверять nested interactive elements. Actions в header.
 
 **Text Labels vs Icons:**
-- For size/mode toggles: use TEXT (`30%`, `50%`, `100%`) unless icon is universal (✕, ←, ↺).
-- Abstract icons (⊡, ⤢) cause user confusion — avoid.
+Для size/mode toggles — TEXT labels. Abstract icons (⊡, ⤢) создают confusion.
 
-### 🔄 State Management Patterns
+### 🔄 State Management Principles
 
-**State Lifecycle Verification:**
-- For ANY new state variable, trace through ENTIRE lifecycle: init → all transitions → all exit points.
-- Verify reset in: normal exit, error handling, cancellation, timeout, re-initialization.
-- Common bug: `isPaused` not reset in `stopRecording()` → next recording starts paused.
+**State Lifecycle:**
+При добавлении ЛЮБОЙ state variable — trace через ВЕСЬ lifecycle: init → transitions → ALL exit points.
+Особенно проверять reset в: normal exit, error handling, cancellation, timeout.
 
-**Multi-Variant Components:**
-- When component has standard/mini/micro variants, find the BEST working one and replicate its pattern.
-- "Copy What Works" principle: if Mini variant works perfectly, use it as template for all.
-- Working code in codebase = best documentation.
+**useEffect Dependencies:**
+НИКОГДА не использовать computed arrays/objects как dependencies. Конвертировать в primitive string.
 
 ### 🧪 Testing Discipline
 
-**Post-Change Testing (CRITICAL):**
-- After ANY change (especially UI/text/accessibility), run test suite IMMEDIATELY.
-- New labels/aria/text → update ALL locales → run translation coverage tests.
-- Command: `npm run test` (never `npx jest` directly).
-- Create comprehensive test file for new components immediately (15+ tests).
+**Post-Change Testing:**
+После ЛЮБОГО изменения (UI/text/accessibility) — run test suite НЕМЕДЛЕННО.
+Command: `npm run test` (НЕ `npx jest`).
 
-**Test All Flows:**
-- For stateful components: test normal flow, edge cases, error states, re-initialization.
-- Example: start → pause → resume → stop → start (clean state?).
+### 🌍 Localization Principles
 
-### 🌍 Localization Best Practices
+**Multi-Locale Updates:**
+Перед редактированием ЛЮБОГО текста: `grep` key across ALL locales. Update ALL 3 (en/ru/uk) в одном commit.
 
-**Multi-Locale Updates (CRITICAL):**
-1. Before editing ANY text: `grep` the key across ALL `locales/` files.
-2. Update ALL 3 locales (en/ru/uk) together in same commit.
-3. Sync navigation description with workspace helper text.
-4. Keep functional meaning consistent, not just wording.
+### 🤖 AI Integration Principles
 
-**When Removing Keys:**
-- Search codebase for usage before deleting from translation files.
-- Remove from ALL locale files simultaneously.
+**Structured Output:**
+Zod schemas + `zodResponseFormat()` + `beta.chat.completions.parse()`. Eliminates fragile XML/regex parsing.
 
-### 🤖 AI Integration Guidelines
+**Scripture References:**
+Book names MUST be English for `referenceParser.ts` compatibility. Explicit per-field language rules in prompts.
 
-**Structured Output (PREFERRED):**
-- Location: `config/schemas/zod/*.zod.ts` for schemas.
-- Use `zodResponseFormat()` + `beta.chat.completions.parse()` for type-safe responses.
-- Eliminates fragile XML/regex parsing, provides automatic validation.
+### 🔍 Search & Highlighting Principles
 
-**AI Response Post-Processing:**
-- ALWAYS validate/normalize AI output before using.
-- Clean redundant data: if `toVerse === fromVerse`, remove `toVerse`.
+**Search Matching:**
+ВСЕГДА искать по DISPLAYED values, не internal storage. User searches what they see.
 
-**Multilingual AI Prompts:**
-- Detect input language via `/[\u0400-\u04FF]/` regex (Cyrillic).
-- Explicitly state per-field language rules: "Title in note's language, Scripture books ALWAYS in English".
-- Scripture book names MUST be English for `referenceParser.ts` compatibility.
+**Highlighting:**
+`regex.exec(originalContent)` — единственный safe way для indices. Map ALL content blocks в Markdown renderer.
 
-**Voice Input Pattern:**
-- Use existing `AudioRecorder` component with AI polishing.
-- Simple focused prompt: grammar, spelling, filler word removal.
-- Append polished text directly (skip preview step for faster UX).
+### 📱 Interactive Components
 
-### 🖱️ Interactive Components
-
-**Drag & Review UX:**
-- When items are locked, disable drag listeners and remove grab cursors.
-- Preserve normal pointer/touch behavior for locked items.
-
-**Audio Recorder (Pause/Resume):**
-- Main button = ALWAYS primary action (Stop/Send). Separate button for Pause/Resume.
-- Reset ALL state variables at ALL exit points.
-- MediaRecorder API: `pause()`/`resume()` don't send blob — only `stop()` does.
+**Audio Recorder:**
+Main button = ALWAYS primary action. Reset ALL state variables at ALL exit points.
 
 ### 🧭 Navigation & Architecture
 
-**Naming Consistency:**
-- Navigation labels MUST match actual page content semantically.
-- Breadcrumbs use context-aware roots based on URL segment.
-- Key files: `navConfig.ts`, `Breadcrumbs.tsx`, `locales/*/translation.json`.
-
-**Next.js 15 Compatibility:**
-- Route params MUST be awaited: `{ params: Promise<{ id: string }> }` and `const { id } = await params;`.
-- Apply to all app router API routes (GET/PUT/POST/DELETE).
-
-### 📊 Data Modeling Patterns
-
-**Discriminated Unions:**
-- When data has multiple valid configurations, use explicit `type`/`scope` field.
-- Example: `ScriptureReference.scope`: `book` | `chapter` | `chapter-range` | `verses`.
-- UI adapts fields based on type selection.
-
-### 🎯 Feature Development Process
-
-**Validate Before Implementing:**
-- For "nice-to-have" features, ask user BEFORE building: "Would you use X?"
-- User saying "Jira-like" is a concept, NOT a spec — clarify before coding.
-- "Remove it" is valid and valuable feedback — act on it immediately.
-
-**Iterate Quickly:**
-- Each feedback → fix → test cycle should be < 5 minutes.
-- Don't stack multiple changes — implement → test → fix → test again.
-- User feedback is faster than perfect implementation.
-
-**Research150 Before Implementing:**
-- Read ALL variants of existing components before adding functionality.
-- Find the best-working variant and replicate its pattern.
-- Prevents expensive multi-iteration implementations.
+**Next.js 15:**
+Route params MUST be awaited: `Promise<{ id: string }>` and `await params`.
 
 ---
 
-## 📝 Short-Term Memory
+## 🔧 Session State — Текущая работа
 
-**Current session:** Studies search snippets UI polish
+**Current task:** agents.mdc и MEMORY.md restructuring
+**Recent changes:** 
+- agents.mdc: Added Dynamic Framework Synthesis
+- agents.mdc: Added Lesson Recording Protocol with mandatory trigger
+- agents.mdc: Rebuilt Memory Architecture as Learning Pipeline
+- agents.mdc: Added Frameworks as Personality Documentation
+- MEMORY.md: Restructured with new pipeline format
 
-**Recent changes:**
-- `StudyNoteCard.tsx`: Reworked search snippet presentation: removed section headers and title-match badge, kept only match count badge (now placed inline with the title). Content snippet section uses neutral surface/border, adds outer border to snippets, and increases spacing. Actions (AI/ edit / delete) moved inline with the title row; card header made keyboard-activatable (Enter/Space) without triggering when focusing buttons. Match-count badge no longer shown inside snippet block.
-- Translations unchanged in this pass; prior additions remain (`searchMatchesHeader`, etc.) though headers are visually hidden now.
-- Tests not re-run after the latest visual tweaks (previous full `npm run test` was green before this UI-only change).
+**Open questions:** None currently
 
 ---
 
-## 🎓 Lessons & Patterns
-### Minimal Search Snippet UI
-**Problem:** Extra headers (“Search matches”, “Content snippets”, “Match in title”) created visual noise; user wanted only counts.
-**Correct Solution:** Keep a single match-count badge; place it inline with the title; remove text headers for snippet blocks while preserving counts; keep chips and snippets readable with neutral backgrounds and subtle borders.
-**Best Practice:** For search-result snippets, prioritize signal (counts) over labels—avoid redundant headings; ensure actions stay accessible and don’t steal the main click target.
+## 📋 Memory Management Rules
 
-### useEffect Infinite Loop Prevention
-**Problem:** Using `filteredNotes` (array) as useEffect dependency causes infinite loop because array is recreated on every render.
-**Solution:** Create stable primitive (string) from array: `filteredNoteIds = filteredNotes.map(n => n.id).join(',')`. Use this primitive as dependency instead.
-**Pattern:** When useEffect depends on computed array/object, convert to primitive string for stable comparison.
+### Pipeline Processing
 
-### Search Must Match User's View
-**Problem:** Search was matching internal data (English book names in DB) instead of what user sees (localized names).
-**Solution:** Use `getLocalizedBookName(ref.book, bibleLocale)` in search haystack.
-**Pattern:** Always search/filter by DISPLAYED values, not internal storage values. User searches for what they see.
+1. **New lessons** → записывать в Lessons (Inbox) СРАЗУ
+2. **3+ похожих lessons** → группировать в Short-Term для осмысления
+3. **Extracted principle** → переместить в Long-Term
+4. **Processed lessons** → архивировать или удалять
 
-### Show "Why It Matched" (Empty Content, Matched Metadata)
-**Problem:** User searches for term (e.g. "77") found ONLY in tags/refs. Collapsed card shows just title and empty snippets (since content didn't match), confusing the user.
-**Solution:** If search matches metadata (tags, refs) but not content, explicitly display those matching metadata items in the collapsed view as "snippets".
+### Session Start Checklist
 
-### Highlighting Integration with ReactMarkdown
-**Challenge:** ReactMarkdown uses component overrides, need to wrap text nodes.
-**Solution:** Override `p`, `li`, `strong`, `em` components to wrap string children with `<HighlightedText>`.
-**Key:** Check `typeof child === 'string'` before wrapping, pass through non-string children unchanged.
+- [ ] Read Long-Term Memory (мои интернализированные знания)
+- [ ] Check Lessons (Inbox) — есть ли необработанные?
+- [ ] If 3+ similar lessons → process to Short-Term
+- [ ] Load Session State from previous session
 
-### Search Logic Stability (The Index Drift)
-**Problem:** Using `content.toLowerCase().indexOf()` produced wrong indices because `toLowerCase()` can change string length (special chars/unicode), causing highlights to "drift" off target in long documents.
-**Solution:** Use `RegExp` with ignore-case flag executing on the ORIGINAL string.
-**Pattern:** `regex.exec(originalContent)` is the only safe way to get standard indices.
+### Session End Checklist
 
-### Visual Snippet Visibility
-**Problem:** Increasing context size pushed the search match to line 5+, but CSS `line-clamp-4` hid it. User saw a snippet *without* the searched word.
-**Solution:** When displaying search snippets, disable or relax vertical truncation. Ensure the "center" of the snippet is always visible.
-
-### Comprehensive Highlighting (Don't Forget Headers)
-**Problem:** Implemented highlighting for standard text but ignored headers (`h1`-`h6`). User saw text unhighlighted in titles.
-**Solution:** Explicitly map ALL content blocks (`h1`-`h6`, `blockquote`) in Markdown renderer to the highlighter component.
+- [ ] "Были ли solved problems?" → If yes, записал ли lessons?
+- [ ] Update Session State for next session
+- [ ] Commit MEMORY.md changes if significant
 
 ---
 

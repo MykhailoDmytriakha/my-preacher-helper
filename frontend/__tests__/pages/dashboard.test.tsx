@@ -8,7 +8,19 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="dashboard-nav">Mocked Nav</div>);
 jest.mock('@/components/dashboard/DashboardStats', () => ({ sermons }: { sermons: any[] }) => <div data-testid="dashboard-stats">Mocked Stats ({sermons.length})</div>);
 jest.mock('@/components/AddSermonModal', () => ({ onNewSermonCreated }: { onNewSermonCreated: any }) => <button data-testid="add-sermon-modal-trigger">Mocked Add Sermon</button>);
-jest.mock('@/components/dashboard/SermonCard', () => ({ sermon }: { sermon: any }) => <div data-testid={`sermon-card-${sermon.id}`}>{sermon.title}</div>);
+jest.mock('@/components/dashboard/SermonCard', () => ({
+  sermon,
+  searchSnippets,
+}: { sermon: any; searchSnippets?: { type: string; value: string }[] }) => (
+  <div data-testid={`sermon-card-${sermon.id}`}>
+    <span>{sermon.title}</span>
+    {searchSnippets?.map((snippet: any, idx: number) => (
+      <div key={idx} data-testid={`sermon-snippet-${sermon.id}-${idx}`}>
+        {[snippet.text, ...(snippet.tags || [])].filter(Boolean).join(' ')}
+      </div>
+    ))}
+  </div>
+));
 jest.mock('@/components/skeletons/DashboardStatsSkeleton', () => ({
   DashboardStatsSkeleton: () => <div data-testid="dashboard-stats-skeleton">Stats Skeleton</div>
 }));
@@ -31,7 +43,9 @@ const mockSermons = [
     title: 'Sermon 1', 
     date: '2023-01-01', 
     verse: 'John 3:16', 
-    thoughts: [],
+    thoughts: [
+      { id: 't1', text: 'Love and faith', tags: ['agape'], date: '2023-01-01' }
+    ],
     isPreached: false,
     seriesId: 'series-1' 
   },
@@ -40,7 +54,9 @@ const mockSermons = [
     title: 'Sermon 2', 
     date: '2023-01-08', 
     verse: 'Romans 8:28', 
-    thoughts: [],
+    thoughts: [
+      { id: 't2', text: 'Hope in suffering', tags: ['пример'], date: '2023-01-08' }
+    ],
     isPreached: true 
   },
   { 
@@ -77,6 +93,8 @@ jest.mock('react-i18next', () => ({
       const translations: { [key: string]: string } = {
         'dashboard.mySermons': 'My Sermons',
         'dashboard.searchSermons': 'Search sermons...',
+        'dashboard.searchInThoughts': 'Search in thoughts',
+        'dashboard.searchInTags': 'Search in tags',
         'dashboard.newest': 'Newest',
         'dashboard.oldest': 'Oldest',
         'dashboard.alphabetical': 'Alphabetical',
@@ -185,6 +203,53 @@ describe('Dashboard Page', () => {
 
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
       expect(screen.queryByTestId('sermon-card-3')).not.toBeInTheDocument();
+    });
+
+    it('matches by thought text', async () => {
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('All'));
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      fireEvent.change(searchInput, { target: { value: 'Hope' } });
+
+      expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
+      expect(screen.queryByTestId('sermon-card-1')).not.toBeInTheDocument();
+    });
+
+    it('matches by thought tags', async () => {
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('All'));
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      fireEvent.change(searchInput, { target: { value: 'пример' } });
+
+      expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
+      expect(screen.queryByTestId('sermon-card-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('sermon-card-3')).not.toBeInTheDocument();
+    });
+
+    it('shows snippet for thought match', async () => {
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('All'));
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      fireEvent.change(searchInput, { target: { value: 'Hope' } });
+
+      expect(screen.getByTestId('sermon-snippet-2-0')).toHaveTextContent('Hope in suffering');
+    });
+
+    it('shows snippet for tag match', async () => {
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('All'));
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      fireEvent.change(searchInput, { target: { value: 'agape' } });
+
+      expect(screen.getByTestId('sermon-snippet-1-0')).toHaveTextContent('agape');
     });
   });
 

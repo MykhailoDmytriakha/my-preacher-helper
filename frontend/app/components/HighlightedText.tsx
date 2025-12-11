@@ -68,6 +68,7 @@ function HighlightedText({
                     <mark
                         key={index}
                         className={highlightClassName}
+                        style={{ whiteSpace: 'nowrap' }}
                     >
                         {part.text}
                     </mark>

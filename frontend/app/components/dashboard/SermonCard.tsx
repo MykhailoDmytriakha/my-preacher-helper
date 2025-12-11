@@ -10,6 +10,9 @@ import { getExportContent } from "@/utils/exportContent";
 import { DocumentIcon } from "@components/Icons";
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 import { List, MessageSquareText, CheckCircle2, Calendar } from "lucide-react";
+import HighlightedText from "../HighlightedText";
+import { ThoughtSnippet } from "@/utils/sermonSearch";
+import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 
 interface SermonCardProps {
   sermon: Sermon;
@@ -19,6 +22,8 @@ interface SermonCardProps {
   isMultiSelectMode?: boolean;
   selectedSermonIds?: Set<string>;
   onToggleSermonSelection?: (sermonId: string) => void;
+  searchQuery?: string;
+  searchSnippets?: ThoughtSnippet[];
 }
 
 export default function SermonCard({
@@ -28,7 +33,9 @@ export default function SermonCard({
   onUpdate,
   isMultiSelectMode = false,
   selectedSermonIds = new Set(),
-  onToggleSermonSelection
+  onToggleSermonSelection,
+  searchQuery = "",
+  searchSnippets = []
 }: SermonCardProps) {
   const { t } = useTranslation();
 
@@ -100,7 +107,7 @@ export default function SermonCard({
                 ? 'text-gray-800 dark:text-gray-100 group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
                 : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
             }`}>
-              {sermon.title}
+              <HighlightedText text={sermon.title} searchQuery={searchQuery} />
             </h3>
           </Link>
 
@@ -110,8 +117,48 @@ export default function SermonCard({
               href={`/sermons/${sermon.id}`}
               className="block text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-2 italic hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
-              {sermon.verse}
+              <HighlightedText text={sermon.verse} searchQuery={searchQuery} />
             </Link>
+          )}
+
+          {searchSnippets.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {searchSnippets.map((snippet, idx) => (
+                <div
+                  key={`${sermon.id}-snippet-${idx}`}
+                  className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col gap-2"
+                >
+                  {snippet.text && (
+                    <span style={{ wordBreak: 'keep-all' }}>
+                      <HighlightedText text={snippet.text} searchQuery={searchQuery} />
+                    </span>
+                  )}
+                  {snippet.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {snippet.tags.map((tag) => {
+                        const { className, style } = getTagStyle(tag);
+                        const iconInfo = getStructureIcon(tag);
+                        return (
+                          <span
+                            key={tag}
+                            style={style}
+                            className={`${className} text-xs px-2 py-0.5`}
+                          >
+                            {iconInfo && (
+                              <span
+                                className={iconInfo.className}
+                                dangerouslySetInnerHTML={{ __html: iconInfo.svg }}
+                              />
+                            )}
+                            <HighlightedText text={tag} searchQuery={searchQuery} />
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Badges & Metadata */}

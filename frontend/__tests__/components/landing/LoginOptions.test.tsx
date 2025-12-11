@@ -7,6 +7,7 @@ import LoginOptions from '@/components/landing/LoginOptions';
 jest.mock('@components/Icons', () => ({
   GoogleIcon: () => <div data-testid="google-icon" />,
   UserIcon: () => <div data-testid="user-icon" />,
+  CheckIcon: () => <div data-testid="check-icon" />,
 }));
 
 // Mock the i18n module
@@ -108,8 +109,8 @@ describe('LoginOptions Component', () => {
     const mainContainer = container.firstChild;
     expect(mainContainer).toHaveClass('flex');
     expect(mainContainer).toHaveClass('flex-col');
-    expect(mainContainer).toHaveClass('bg-white');
-    expect(mainContainer).toHaveClass('dark:bg-gray-800');
+    expect(mainContainer).toHaveClass('bg-white/90');
+    expect(mainContainer).toHaveClass('dark:bg-white/5');
     expect(mainContainer).toHaveClass('rounded-2xl');
   });
   
@@ -124,12 +125,12 @@ describe('LoginOptions Component', () => {
     // Check Google button styling
     const googleButton = screen.getByText('Continue with Google').closest('button');
     expect(googleButton).toHaveClass('bg-gradient-to-r');
-    expect(googleButton).toHaveClass('from-blue-200');
-    expect(googleButton).toHaveClass('to-green-200');
+    expect(googleButton).toHaveClass('from-blue-600');
+    expect(googleButton).toHaveClass('to-purple-600');
     
     // Check Test button styling
     const testButton = screen.getByText('Test Login (Dev Only)').closest('button');
-    expect(testButton).toHaveClass('bg-yellow-50');
-    expect(testButton).toHaveClass('border-yellow-400');
+    expect(testButton).toHaveClass('bg-amber-100/50');
+    expect(testButton).toHaveClass('border-amber-400');
   });
 }); 

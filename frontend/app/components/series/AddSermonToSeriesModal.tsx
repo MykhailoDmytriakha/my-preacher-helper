@@ -6,6 +6,7 @@ import { Sermon } from '@/models/models';
 import { XMarkIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { formatDate } from '@utils/dateFormatter';
 
 interface AddSermonToSeriesModalProps {
@@ -32,11 +33,13 @@ export default function AddSermonToSeriesModal({
 
   const filteredSermons = useMemo(() => {
     if (!searchQuery.trim()) return availableSermons;
-    const query = searchQuery.toLowerCase();
-    return availableSermons.filter(
-      (sermon) =>
-        sermon.title.toLowerCase().includes(query) ||
-        sermon.verse.toLowerCase().includes(query)
+    const tokens = tokenizeQuery(searchQuery);
+    return availableSermons.filter((sermon) =>
+      matchesSermonQuery(sermon, tokens, {
+        searchInTitleVerse: true,
+        searchInThoughts: true,
+        searchInTags: true,
+      })
     );
   }, [availableSermons, searchQuery]);
 

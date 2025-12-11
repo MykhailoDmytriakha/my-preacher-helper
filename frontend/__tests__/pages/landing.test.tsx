@@ -75,20 +75,17 @@ describe('Landing Page UI Smoke Test', () => {
   });
 
   it('renders the main heading', async () => {
-    // Check for the main title
+    // Page has multiple h1 (hero + header); assert at least one contains the key
     await waitFor(() => {
-      const heading = screen.getByRole('heading', { level: 1 });
-      expect(heading).toBeInTheDocument();
-      expect(heading.textContent).toContain('landing.title');
+      const headings = screen.getAllByRole('heading', { level: 1 });
+      expect(headings.some((h) => h.textContent?.includes('landing.title'))).toBe(true);
     });
   });
 
-  it('renders the welcome heading', async () => {
-    // Check for the welcome heading
+  it('renders the welcome text', async () => {
+    // Welcome text lives in a badge/span, not necessarily an h2
     await waitFor(() => {
-      const heading = screen.getByRole('heading', { level: 2 });
-      expect(heading).toBeInTheDocument();
-      expect(heading.textContent).toContain('landing.welcome');
+      expect(screen.getByText('landing.welcome')).toBeInTheDocument();
     });
   });
 
