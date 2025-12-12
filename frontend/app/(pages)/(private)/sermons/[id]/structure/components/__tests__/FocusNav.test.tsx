@@ -1,7 +1,10 @@
-import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { FocusNav } from '../FocusNav'
+import React from 'react'
+
 import { getFocusModeUrl } from '@/utils/urlUtils'
+
+import { FocusNav } from '../FocusNav'
+
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({

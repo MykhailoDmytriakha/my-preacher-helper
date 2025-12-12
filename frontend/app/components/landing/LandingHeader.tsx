@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+
 import LanguageSwitcher from '@/components/navigation/LanguageSwitcher'; 
 import '@locales/i18n';
 

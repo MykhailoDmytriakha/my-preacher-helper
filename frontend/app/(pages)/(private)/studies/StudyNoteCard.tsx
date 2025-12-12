@@ -1,7 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   BookmarkIcon,
   ChevronDownIcon,
@@ -12,12 +10,17 @@ import {
   TagIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
+import { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { StudyNote } from '@/models/models';
-import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
-import MarkdownDisplay from '@components/MarkdownDisplay';
-import HighlightedText from '@components/HighlightedText';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { UI_COLORS } from '@/utils/themeColors';
+import HighlightedText from '@components/HighlightedText';
+import MarkdownDisplay from '@components/MarkdownDisplay';
+
+import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
+
 
 interface StudyNoteCardProps {
   note: StudyNote;
@@ -130,22 +133,22 @@ export default function StudyNoteCard({
   // Check if note needs AI analysis (no title, no refs, no tags)
   const needsAnalysis = !note.title && note.scriptureRefs.length === 0 && note.tags.length === 0;
 
-  // Get display chapter for Psalms (convert Hebrew to Septuagint for ru/uk)
-  const getDisplayChapter = (book: string, chapter: number) => {
-    if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-      return psalmHebrewToSeptuagint(chapter);
-    }
-    return chapter;
-  };
-
   // Format scripture reference for display
-  const formatRef = (ref: {
+  const formatRef = useCallback((ref: {
     book: string;
     chapter?: number;
     toChapter?: number;
     fromVerse?: number;
     toVerse?: number
   }) => {
+    // Get display chapter for Psalms (convert Hebrew to Septuagint for ru/uk)
+    const getDisplayChapter = (book: string, chapter: number) => {
+      if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
+        return psalmHebrewToSeptuagint(chapter);
+      }
+      return chapter;
+    };
+
     const bookName = getLocalizedBookName(ref.book, bibleLocale);
 
     // Book-only reference
@@ -169,26 +172,13 @@ export default function StudyNoteCard({
     // Verse or verse range
     const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
     return `${bookName} ${chapter}:${verses}`;
-  };
-
-  const escapedQuery = useMemo(
-    () => (searchQuery ? searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ''),
-    [searchQuery]
-  );
+  }, [bibleLocale]);
 
   const searchTokens = useMemo(
     () => (searchQuery ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean) : []),
     [searchQuery]
   );
 
-  const queryRegex = useMemo(() => {
-    if (!escapedQuery) return null;
-    try {
-      return new RegExp(escapedQuery, 'i');
-    } catch {
-      return null;
-    }
-  }, [escapedQuery]);
 
   const contentMatches = useMemo(() => {
     if (!searchTokens.length) return false;
@@ -222,7 +212,7 @@ export default function StudyNoteCard({
             const lowered = formatRef(ref).toLowerCase();
             return searchTokens.some((token) => lowered.includes(token));
           }),
-    [note.scriptureRefs, searchTokens]
+    [note.scriptureRefs, searchTokens, formatRef]
   );
 
   const titleMatches = useMemo(

@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import TextareaAutosize from 'react-textarea-autosize';
-import { SermonPoint, SermonOutline } from '@/models/models';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
+
+import { SermonPoint, SermonOutline } from '@/models/models';
 import "@locales/i18n";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 

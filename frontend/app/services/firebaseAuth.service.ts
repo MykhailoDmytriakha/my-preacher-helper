@@ -8,8 +8,9 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
-import app from "@/config/firebaseConfig";
 import { toast } from "sonner";
+
+import app from "@/config/firebaseConfig";
 import { updateUserProfile } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
 export const auth = getAuth(app);

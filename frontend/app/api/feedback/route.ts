@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/config/firebaseAdminConfig';
 import nodemailer from 'nodemailer';
+
+import { adminDb } from '@/config/firebaseAdminConfig';
 
 // Define types for better code safety
 interface FeedbackData {

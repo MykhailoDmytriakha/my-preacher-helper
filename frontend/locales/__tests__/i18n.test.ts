@@ -1,5 +1,4 @@
 import { i18n } from '@locales/i18n';
-import { DEFAULT_LANGUAGE } from '@locales/constants';
 
 describe('i18n Configuration', () => {
   beforeEach(() => {

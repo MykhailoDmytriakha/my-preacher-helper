@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Thought, SermonOutline, SermonPoint } from '@/models/models';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { Thought, SermonOutline, SermonPoint } from '@/models/models';
 
 const STRUCTURE_SECTIONS: Record<string, string> = {
   'introduction': 'Вступление',

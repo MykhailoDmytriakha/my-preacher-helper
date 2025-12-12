@@ -1,9 +1,14 @@
 import React, { useRef, useEffect, useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ViewFilter, StructureFilter, SortOrder } from '@hooks/useThoughtFiltering';
+
+import { getSectionLabel } from '@/lib/sections';
 import { STRUCTURE_TAGS } from '@lib/constants';
 import { normalizeStructureTag } from '@utils/tagUtils';
-import { getSectionLabel } from '@/lib/sections';
+
+// CSS class constants to avoid duplicate strings
+const DISABLED_LABEL_CLASSES = 'opacity-50 cursor-not-allowed';
+
+import type { ViewFilter, StructureFilter, SortOrder } from '@hooks/useThoughtFiltering';
 
 interface ThoughtFilterControlsProps {
   isOpen: boolean;
@@ -59,9 +64,9 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
   // and avoid closing when interacting inside the menu.
   useEffect(() => {
     function isInside(event: Event): boolean {
-      const path = (event as any).composedPath?.() as EventTarget[] | undefined;
+      const path = event.composedPath?.() ?? [];
       const targetNode = event.target as Node | null;
-      if (path && path.length) {
+      if (path.length) {
         const insideFilter = !!(filterRef.current && path.includes(filterRef.current));
         const insideButton = !!(buttonRef.current && path.includes(buttonRef.current));
         if (insideFilter || insideButton) return true;
@@ -74,7 +79,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
           const inAnyMenu = allMenus.some(el => path.includes(el) || (!!targetNode && el.contains(targetNode)));
           const inAnyButton = allButtons.some(el => path.includes(el) || (!!targetNode && el.contains(targetNode)));
           if (inAnyMenu || inAnyButton) return true;
-        } catch (_err) {
+        } catch {
           // swallow query errors silently
         }
       }
@@ -84,25 +89,22 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
       return false;
     }
 
-    function handlePointerDown(event: PointerEvent | MouseEvent | TouchEvent) {
+    function handlePointerDown(event: Event) {
       if (!isOpen) return;
-      const target = event.target as HTMLElement | null;
-      const path = (event as any).composedPath?.() as EventTarget[] | undefined;
-      const inside = isInside(event);
-      if (!inside) {
+      if (!isInside(event)) {
         setIsOpen(false);
       }
     }
 
     // Capture phase ensures reliable outside detection across browsers
-    document.addEventListener('pointerdown', handlePointerDown as any, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
     // Fallbacks for environments without Pointer Events
-    document.addEventListener('mousedown', handlePointerDown as any, true);
-    document.addEventListener('touchstart', handlePointerDown as any, true);
+    document.addEventListener('mousedown', handlePointerDown, true);
+    document.addEventListener('touchstart', handlePointerDown, true);
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown as any, true);
-      document.removeEventListener('mousedown', handlePointerDown as any, true);
-      document.removeEventListener('touchstart', handlePointerDown as any, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('mousedown', handlePointerDown, true);
+      document.removeEventListener('touchstart', handlePointerDown, true);
     };
   }, [filterRef, buttonRef, isOpen, setIsOpen]);
 
@@ -170,7 +172,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             )}
           </h3>
           <div className="mt-2 space-y-2">
-            <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
               <input
                 type="radio"
                 name={`structureFilter-${uid}`}
@@ -184,7 +186,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             </label>
             {/* Use STRUCTURE_TAGS constants */}
             {[STRUCTURE_TAGS.INTRODUCTION, STRUCTURE_TAGS.MAIN_BODY, STRUCTURE_TAGS.CONCLUSION].map(tag => (
-              <label key={tag} className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <label key={tag} className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
                 <input
                   type="radio"
                   name={`structureFilter-${uid}`}
@@ -215,7 +217,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
             </label>
-            <label className={`flex items-center ${!hasStructureTags ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
               <input
                 type="radio"
                 name={`sortOrder-${uid}`}

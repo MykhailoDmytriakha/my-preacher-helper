@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import ColorPickerModal from '@/components/ColorPickerModal';
 import '@testing-library/jest-dom';
 
@@ -86,11 +87,6 @@ describe('ColorPickerModal Component', () => {
     // Click on a different color (first button)
     fireEvent.click(allColorButtons[0]);
     
-    // Get the selected color value
-    const selectedColorValue = window.getComputedStyle(allColorButtons[0]).backgroundColor;
-    
-    // Check that the color preview changed
-    const colorPreview = screen.getByText(/#[0-9A-F]{6}/i).previousSibling;
     
     // Clicking the Save button should use the new color
     const saveButton = screen.getByText('Save');

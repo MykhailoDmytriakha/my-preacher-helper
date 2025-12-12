@@ -1,5 +1,5 @@
-import React from 'react';
 import { render } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Mock i18n once for these tests
@@ -76,6 +76,7 @@ import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import SettingsPage from '@/(pages)/(private)/settings/page';
+
 import { TestProviders } from '../../test-utils/test-providers';
 
 // Helper that asserts private page does not add global shell classes

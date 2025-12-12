@@ -1,5 +1,23 @@
 import { Sermon, Thought } from "@/models/models";
 
+// Common tag words to avoid duplicate strings
+const TAG_MAIN = "main";
+const TAG_MAIN_PART = "main part";
+const TAG_OSNOVNAYA_CHAST = "основная часть";
+const TAG_ZAKLYUCHENIE = "заключение";
+
+// Tag constants for section identification
+const SECTION_TAGS = {
+  INTRO: ["вступление", "introduction", "вступ"] as readonly string[],
+  MAIN: [TAG_OSNOVNAYA_CHAST, TAG_MAIN, TAG_MAIN_PART] as readonly string[],
+  CONCLUSION: [TAG_ZAKLYUCHENIE, "conclusion", "заключ"] as readonly string[],
+};
+
+// Helper function to check if a tag matches any of the intro tags
+const isIntroTag = (tag: string) => SECTION_TAGS.INTRO.includes(tag.toLowerCase());
+const isMainTag = (tag: string) => SECTION_TAGS.MAIN.includes(tag.toLowerCase());
+const isConclusionTag = (tag: string) => SECTION_TAGS.CONCLUSION.includes(tag.toLowerCase());
+
 /**
  * Helper flag for debug mode access across helper functions
  */
@@ -79,12 +97,8 @@ export function extractSermonContent(sermon: Sermon): string {
       
       // If we couldn't resolve any IDs to content, try to find thoughts by tag
       if (introContent.length === 0) {
-        const introThoughts = sermon.thoughts?.filter(t => 
-          t.tags?.some(tag => 
-            tag.toLowerCase() === "вступление" || 
-            tag.toLowerCase() === "introduction" || 
-            tag.toLowerCase() === "вступ"
-          ) && !usedThoughtIds.has(t.id)
+        const introThoughts = sermon.thoughts?.filter(t =>
+          t.tags?.some(tag => isIntroTag(tag)) && !usedThoughtIds.has(t.id)
         ) || [];
         
         introContent = introThoughts.map(t => {
@@ -98,7 +112,7 @@ export function extractSermonContent(sermon: Sermon): string {
       }
     }
     
-    // For main part
+    // For TAG_MAIN_PART
     if (sermon.structure.main && sermon.structure.main.length > 0) {
       sermonContent += "\n\nMain Part:";
       let mainContent: string[] = [];
@@ -122,8 +136,8 @@ export function extractSermonContent(sermon: Sermon): string {
       if (mainContent.length === 0) {
         const mainThoughts = sermon.thoughts?.filter(t => 
           t.tags?.some(tag => 
-            tag.toLowerCase() === "основная часть" || 
-            tag.toLowerCase() === "main part" || 
+            tag.toLowerCase() === TAG_OSNOVNAYA_CHAST || 
+            tag.toLowerCase() === "TAG_MAIN_PART" || 
             tag.toLowerCase() === "основна частина"
           ) && !usedThoughtIds.has(t.id)
         ) || [];
@@ -163,7 +177,7 @@ export function extractSermonContent(sermon: Sermon): string {
       if (conclusionContent.length === 0) {
         const conclusionThoughts = sermon.thoughts?.filter(t => 
           t.tags?.some(tag => 
-            tag.toLowerCase() === "заключение" || 
+            tag.toLowerCase() === TAG_ZAKLYUCHENIE || 
             tag.toLowerCase() === "conclusion" || 
             tag.toLowerCase() === "закінчення" || 
             tag.toLowerCase() === "заключення"
@@ -454,12 +468,8 @@ export function extractSectionContent(sermon: Sermon, section: string): string {
           
           // If we couldn't resolve any IDs to content, try to find thoughts by tag
           if (introContent.length === 0) {
-            const introThoughts = sermon.thoughts?.filter(t => 
-              t.tags?.some(tag => 
-                tag.toLowerCase() === "вступление" || 
-                tag.toLowerCase() === "introduction" || 
-                tag.toLowerCase() === "вступ"
-              ) && !usedThoughtIds.has(t.id)
+            const introThoughts = sermon.thoughts?.filter(t =>
+              t.tags?.some(tag => isIntroTag(tag)) && !usedThoughtIds.has(t.id)
             ) || [];
             
             introContent = introThoughts.map(t => {
@@ -498,8 +508,8 @@ export function extractSectionContent(sermon: Sermon, section: string): string {
           if (mainContent.length === 0) {
             const mainThoughts = sermon.thoughts?.filter(t => 
               t.tags?.some(tag => 
-                tag.toLowerCase() === "основная часть" || 
-                tag.toLowerCase() === "main part" || 
+                tag.toLowerCase() === TAG_OSNOVNAYA_CHAST || 
+                tag.toLowerCase() === "TAG_MAIN_PART" || 
                 tag.toLowerCase() === "основна частина"
               ) && !usedThoughtIds.has(t.id)
             ) || [];
@@ -540,7 +550,7 @@ export function extractSectionContent(sermon: Sermon, section: string): string {
           if (conclusionContent.length === 0) {
             const conclusionThoughts = sermon.thoughts?.filter(t => 
               t.tags?.some(tag => 
-                tag.toLowerCase() === "заключение" || 
+                tag.toLowerCase() === TAG_ZAKLYUCHENIE || 
                 tag.toLowerCase() === "conclusion" || 
                 tag.toLowerCase() === "закінчення" || 
                 tag.toLowerCase() === "заключення"
@@ -570,33 +580,20 @@ export function extractSectionContent(sermon: Sermon, section: string): string {
     // Filter thoughts by relevant tags for the section
     switch (sectionLower) {
       case 'introduction':
-        sectionThoughts = sermon.thoughts.filter(t => 
-          t.tags?.some(tag => 
-            tag.toLowerCase() === "вступление" || 
-            tag.toLowerCase() === "introduction" || 
-            tag.toLowerCase() === "вступ"
-          )
+        sectionThoughts = sermon.thoughts.filter(t =>
+          t.tags?.some(tag => isIntroTag(tag))
         );
         break;
       
       case 'main':
-        sectionThoughts = sermon.thoughts.filter(t => 
-          t.tags?.some(tag => 
-            tag.toLowerCase() === "основная часть" || 
-            tag.toLowerCase() === "main part" || 
-            tag.toLowerCase() === "основна частина"
-          )
+        sectionThoughts = sermon.thoughts.filter(t =>
+          t.tags?.some(tag => isMainTag(tag))
         );
         break;
       
       case 'conclusion':
-        sectionThoughts = sermon.thoughts.filter(t => 
-          t.tags?.some(tag => 
-            tag.toLowerCase() === "заключение" || 
-            tag.toLowerCase() === "conclusion" || 
-            tag.toLowerCase() === "закінчення" || 
-            tag.toLowerCase() === "заключення"
-          )
+        sectionThoughts = sermon.thoughts.filter(t =>
+          t.tags?.some(tag => isConclusionTag(tag))
         );
         break;
     }

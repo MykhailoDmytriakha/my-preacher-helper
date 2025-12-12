@@ -1,4 +1,5 @@
 import { getExportContent } from '@/utils/exportContent';
+
 import type { Sermon, Thought } from '@/models/models';
 
 describe('exportContent tag normalization', () => {

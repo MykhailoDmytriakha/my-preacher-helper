@@ -1,4 +1,3 @@
-import React from 'react';
 import '@testing-library/jest-dom';
 
 // Mock next/navigation redirect

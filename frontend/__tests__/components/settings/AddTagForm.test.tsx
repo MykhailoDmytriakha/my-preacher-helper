@@ -1,6 +1,7 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import AddTagForm from '@components/settings/AddTagForm';
 
@@ -11,7 +12,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock ColorPickerModal - Revised Mock Logic
-const actualColorPickerModal = jest.requireActual('@components/ColorPickerModal');
 const mockOnOkInternal = jest.fn();
 const mockOnCancelInternal = jest.fn();
 

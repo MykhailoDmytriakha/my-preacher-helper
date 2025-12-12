@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Import the sermon detail layout component
@@ -61,7 +61,7 @@ describe('Sermon Detail Layout', () => {
   });
 
   it('should handle text children correctly', () => {
-    const { container } = render(
+    render(
       <SermonAreaLayout>
         Simple sermon text content
       </SermonAreaLayout>
@@ -132,7 +132,7 @@ describe('Sermon Detail Layout', () => {
     
     // All props should be preserved
     expect(button).toHaveClass('sermon-btn-class');
-    expect(button).not.toBeDisabled();
+    expect(button).toBeEnabled();
     expect(button).toHaveTextContent('Edit Sermon');
     expect(button).toHaveAttribute('data-sermon-id', '123');
   });

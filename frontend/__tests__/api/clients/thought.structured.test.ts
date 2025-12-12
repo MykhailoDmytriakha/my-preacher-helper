@@ -4,9 +4,9 @@
  * These tests verify the new structured output implementation
  * for generating thoughts from transcriptions.
  */
-import { generateThoughtStructured, GenerateThoughtResult } from '@clients/thought.structured';
-import * as structuredOutput from '@clients/structuredOutput';
 import { Sermon } from '@/models/models';
+import * as structuredOutput from '@clients/structuredOutput';
+import { generateThoughtStructured } from '@clients/thought.structured';
 
 // Mock the structuredOutput module
 jest.mock('@clients/structuredOutput', () => ({

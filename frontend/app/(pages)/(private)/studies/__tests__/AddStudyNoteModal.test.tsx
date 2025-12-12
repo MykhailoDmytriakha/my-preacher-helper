@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
 import AddStudyNoteModal from '../AddStudyNoteModal';
 
 const baseProps = {
@@ -88,7 +89,7 @@ describe('AddStudyNoteModal', () => {
         screen.getByRole('button', {
           name: 'studiesWorkspace.aiAnalyze.button',
         })
-      ).not.toBeDisabled();
+      ).toBeEnabled();
     });
   });
   it('uses responsive layout classes for the header', () => {

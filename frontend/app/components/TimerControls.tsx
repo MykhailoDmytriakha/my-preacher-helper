@@ -1,12 +1,17 @@
 "use client";
 
+import { Pause, Play, Square, SkipForward } from 'lucide-react';
 import React, { CSSProperties, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pause, Play, Square, SkipForward } from 'lucide-react';
+
 import { SERMON_SECTION_COLORS, TIMER_CONTROL_COLORS } from '../utils/themeColors';
 
+// CSS class constants
+const CSS_CLASSES = {
+  DISABLED: 'is-disabled',
+} as const;
+
 interface TimerControlsProps {
-  isRunning: boolean;
   isPaused: boolean;
   status?: 'idle' | 'running' | 'paused' | 'finished';
   currentPhase?: 'introduction' | 'main' | 'conclusion' | 'finished';
@@ -19,7 +24,6 @@ interface TimerControlsProps {
 }
 
 const TimerControls: React.FC<TimerControlsProps> = ({
-  isRunning,
   isPaused,
   status = 'idle',
   currentPhase = 'introduction',
@@ -95,7 +99,7 @@ const TimerControls: React.FC<TimerControlsProps> = ({
           disabled={buttonDisabled}
           className={`control-button pause-resume-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${
             showResumeButton ? 'resume' : 'pause'
-          } ${buttonDisabled ? 'is-disabled' : ''}`}
+          } ${buttonDisabled ? CSS_CLASSES.DISABLED : ''}`}
           title={buttonTitle}
           aria-label={buttonTitle}
         >
@@ -112,7 +116,7 @@ const TimerControls: React.FC<TimerControlsProps> = ({
         <button
           onClick={onStop}
           disabled={status === 'idle'}
-          className={`control-button stop-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${status === 'idle' ? 'is-disabled' : ''}`}
+          className={`control-button stop-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${status === 'idle' ? CSS_CLASSES.DISABLED : ''}`}
           title={t("plan.timer.stop") || "Stop"}
           aria-label={t("plan.timer.stop") || "Stop"}
         >
@@ -125,7 +129,7 @@ const TimerControls: React.FC<TimerControlsProps> = ({
         <button
           onClick={onSkip}
           disabled={status === 'idle' || status === 'finished' || currentPhase === 'conclusion'}
-          className={`control-button skip-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${(status === 'idle' || status === 'finished' || currentPhase === 'conclusion') ? 'is-disabled' : ''}`}
+          className={`control-button skip-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${(status === 'idle' || status === 'finished' || currentPhase === 'conclusion') ? CSS_CLASSES.DISABLED : ''}`}
           title={t("plan.timer.skip") || "Skip to next phase"}
           aria-label={t("plan.timer.skip") || "Skip to next phase"}
         >

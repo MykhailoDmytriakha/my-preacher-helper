@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAuth } from '@/providers/AuthProvider';
-import { initializeLanguageFromDB } from '@/../../frontend/locales/getInitialLang';
 import { useTranslation } from 'react-i18next';
+
+import { initializeLanguageFromDB } from '@/../../frontend/locales/getInitialLang';
+import { useAuth } from '@/providers/AuthProvider';
 import { getCookieLanguage } from '@/services/userSettings.service';
 
 /**

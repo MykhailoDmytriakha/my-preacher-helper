@@ -2,9 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
+
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
 import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+
+// Error translation key constant to avoid duplicate strings
+const ERROR_AUDIO_PROCESSING = 'errors.audioProcessing';
 
 interface FocusRecorderButtonProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -142,7 +146,7 @@ export const FocusRecorderButton = ({
       };
 
       mediaRecorder.current.onerror = () => {
-        handleError(new Error('MediaRecorder error'), 'errors.audioProcessing');
+        handleError(new Error('MediaRecorder error'), ERROR_AUDIO_PROCESSING);
       };
 
       mediaRecorder.current.start(100); // Collect data every 100ms
@@ -163,7 +167,7 @@ export const FocusRecorderButton = ({
       setIsRecording(false);
       setIsPaused(false); // Reset pause state when stopping
     } catch (error) {
-      handleError(error as Error, 'errors.audioProcessing');
+      handleError(error as Error, ERROR_AUDIO_PROCESSING);
     }
   }, [isRecording, handleError]);
 
@@ -219,7 +223,7 @@ export const FocusRecorderButton = ({
       console.log('FocusRecorderButton: Recording paused successfully');
     } catch (error) {
       console.error("Error pausing recording:", error);
-      handleError(error as Error, 'errors.audioProcessing');
+      handleError(error as Error, ERROR_AUDIO_PROCESSING);
     }
   }, [isRecording, isPaused, handleError]);
 
@@ -240,7 +244,7 @@ export const FocusRecorderButton = ({
       console.log('FocusRecorderButton: Recording resumed successfully');
     } catch (error) {
       console.error("Error resuming recording:", error);
-      handleError(error as Error, 'errors.audioProcessing');
+      handleError(error as Error, ERROR_AUDIO_PROCESSING);
     }
   }, [isRecording, isPaused, handleError]);
 

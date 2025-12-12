@@ -1,5 +1,5 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -36,10 +36,10 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { ExegeticalPlanModule } from '@/components/sermon/prep/exegeticalPlan';
+
 import type { ExegeticalPlanNode } from '@/models/models';
 
 describe('ExegeticalPlanModule', () => {
-  const mockOnChange = jest.fn();
   const mockOnSave = jest.fn();
   const mockOnSaveAuthorIntent = jest.fn();
 
@@ -103,7 +103,7 @@ describe('ExegeticalPlanModule', () => {
               const input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
               fireEvent.change(input, { target: { value: 'Modified' } });
               expect(input.value).toBe('Modified');
-              expect(screen.getByRole('button', { name: /Save/i })).not.toBeDisabled();
+              expect(screen.getByRole('button', { name: /Save/i })).toBeEnabled();
             }
           },
           {

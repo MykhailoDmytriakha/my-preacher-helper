@@ -1,6 +1,8 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import AddSermonModal from '@/components/AddSermonModal';
+
 import { TestProviders } from '../../test-utils/test-providers';
 
 // Mock translations

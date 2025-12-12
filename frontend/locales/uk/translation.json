@@ -747,6 +747,12 @@
     "clearAll": "Очистити все",
     "start": "Старт"
   },
+  "homiletic": {
+    "actions": {
+      "save": "Зберегти",
+      "cancel": "Скасувати"
+    }
+  },
   "wizard": {
     "previewButton": "Режим підготовки",
     "previewButtonTitle": "Попередній перегляд кроків підготовки",

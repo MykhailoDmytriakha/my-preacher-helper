@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     // Use the Admin SDK to add a document to Firestore - this bypasses security rules
-    const sermonData: any = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
+    const sermonData: Partial<Sermon> = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
     if (seriesId) {
       sermonData.seriesId = seriesId;
     }

@@ -1,17 +1,18 @@
 "use client";
 
+import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
-import { createSermon } from '@services/sermon.service';
-import { auth } from '@services/firebaseAuth.service';
-import { Sermon } from '@/models/models';
-import { PlusIcon } from "@components/Icons";
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+
 import { useSeries } from '@/hooks/useSeries';
+import { Sermon } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { PlusIcon } from "@components/Icons";
+import { auth } from '@services/firebaseAuth.service';
 import { addSermonToSeries } from '@services/series.service';
+import { createSermon } from '@services/sermon.service';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;

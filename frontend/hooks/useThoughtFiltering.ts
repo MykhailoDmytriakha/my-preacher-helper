@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { Thought, Sermon, SermonOutline, SermonPoint } from '@/models/models';
-import { STRUCTURE_TAGS } from '@lib/constants'; // Use new @lib alias
+
 import { normalizeStructureTag } from '@utils/tagUtils';
+
+import type { Thought, Sermon, SermonOutline, SermonPoint } from '@/models/models';
 
 export type SortOrder = 'date' | 'structure';
 export type ViewFilter = 'all' | 'missingTags';
@@ -159,8 +160,9 @@ export function useThoughtFiltering({
     structureFilter,
     tagFilters,
     sortOrder,
-    hasStructureTags, 
-    sermonStructure, 
+    hasStructureTags,
+    sermonStructure,
+    sermonOutline, // Depend on prop used in sorting logic
   ]);
 
   // Calculate activeCount separately (use direct prop)

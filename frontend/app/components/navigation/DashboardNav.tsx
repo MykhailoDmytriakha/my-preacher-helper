@@ -2,20 +2,21 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
-import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
-import MobileMenu from "@/components/navigation/MobileMenu";
+import "@locales/i18n";
+
 import FeedbackModal from "@/components/navigation/FeedbackModal";
+import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
+import MobileMenu from "@/components/navigation/MobileMenu";
+import { primaryNavItems, isNavItemActive } from "@/components/navigation/navConfig";
+import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
-import "@locales/i18n";
-import ModeToggle from './ModeToggle';
-import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
-import { getNavItemTheme } from '@/utils/themeColors';
+import { getNavItemTheme } from "@/utils/themeColors";
 
+import ModeToggle from "./ModeToggle";
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
@@ -49,7 +50,6 @@ export default function DashboardNav() {
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
-  const isPlanPage = /^\/sermons\/[^/]+\/plan/.test(pathname || "");
   const isDashboard = pathname === '/dashboard';
   
   // Get current mode directly from URL params for immediate response

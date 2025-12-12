@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
-import { seriesRepository } from '@repositories/series.repository';
+
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { seriesRepository } from '@repositories/series.repository';
+
+// Error messages
+const ERROR_MESSAGES = {
+  SERIES_NOT_FOUND: 'Series not found',
+} as const;
 
 // GET /api/series/:id
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -10,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const series = await seriesRepository.fetchSeriesById(id);
 
     if (!series) {
-      return NextResponse.json({ error: 'Series not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 404 });
     }
 
     return NextResponse.json(series);
@@ -30,7 +36,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // Validate the series exists first
     const existingSeries = await seriesRepository.fetchSeriesById(id);
     if (!existingSeries) {
-      return NextResponse.json({ error: 'Series not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 404 });
     }
 
     // Validate status if provided
@@ -80,7 +86,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const series = await seriesRepository.fetchSeriesById(id);
     if (!series) {
-      return NextResponse.json({ message: 'Series not found' }, { status: 200 });
+      return NextResponse.json({ message: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 200 });
     }
 
     // Clear series references from sermons before deleting the series

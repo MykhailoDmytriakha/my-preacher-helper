@@ -1,7 +1,9 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
+
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
-import type { Thought, Sermon } from '@/models/models';
 import { STRUCTURE_TAGS } from '@lib/constants';
+
+import type { Thought, Sermon } from '@/models/models';
 
 // Mock Data
 const mockThoughts: Thought[] = [

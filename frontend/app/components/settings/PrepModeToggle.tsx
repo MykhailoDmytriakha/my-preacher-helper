@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { useAuth } from '@/hooks/useAuth';
 import { getUserSettings, updatePrepModeAccess } from '@/services/userSettings.service';
-import { useTranslation } from 'react-i18next';
 
 export default function PrepModeToggle() {
   const { t } = useTranslation();

@@ -1,17 +1,22 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
-import { createTranscription, generateThought } from "@clients/openAI.client";
-import { generateThoughtStructured } from "@clients/thought.structured";
+import { v4 as uuidv4 } from 'uuid';
+
+import { adminDb } from '@/config/firebaseAdminConfig';
+import { Sermon, Thought } from '@/models/models';
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
+import { createTranscription, generateThought } from '@clients/openAI.client';
+import { generateThoughtStructured } from '@clients/thought.structured';
+import { sermonsRepository } from '@repositories/sermons.repository';
+
+// Error messages
+const ERROR_MESSAGES = {
+  SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
+} as const;
 
 // Feature flag for structured output
 // Set to 'true' to use new structured output implementation
 const USE_STRUCTURED_OUTPUT = process.env.USE_STRUCTURED_OUTPUT === 'true';
-import { sermonsRepository } from '@repositories/sermons.repository';
-import { Sermon, Thought } from '@/models/models';
-import { adminDb } from '@/config/firebaseAdminConfig';
-import { FieldValue } from 'firebase-admin/firestore';
-import { v4 as uuidv4 } from 'uuid';
-import enTranslation from '@locales/en/translation.json';
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -26,7 +31,7 @@ export async function POST(request: Request) {
       const body = await request.json();
       const { sermonId, thought } = body;
       if (!sermonId || !thought) {
-        return NextResponse.json({ error: 'sermonId and thought are required' }, { status: 400 });
+        return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
       }
       console.log("Thoughts route: Manual thought:", thought);
       console.log("Will not apply AI to manual thought");
@@ -207,7 +212,7 @@ export async function DELETE(request: Request) {
     const body = await request.json();
     const { sermonId, thought } = body;
     if (!sermonId || !thought) {
-      return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
     }
     console.log("Thoughts route: Deleting thought:", thought);
 
@@ -234,7 +239,7 @@ export async function PUT(request: Request) {
 
     if (!sermonId || !updatedThoughtNew) {
       console.error("Thoughts route: Missing sermonId or thought");
-      return NextResponse.json({ error: "sermonId and thought are required" }, { status: 400 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
     }
     if (!updatedThoughtNew.id) {
       console.error("Thoughts route: Missing thought.id");

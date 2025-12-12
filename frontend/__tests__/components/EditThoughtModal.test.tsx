@@ -1,7 +1,8 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import EditThoughtModal from '@/components/EditThoughtModal';
-import { SermonOutline, Thought } from '@/models/models';
+import { SermonOutline } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -203,7 +204,7 @@ describe('EditThoughtModal Component', () => {
     fireEvent.change(textArea, { target: { value: 'Updated thought content' } });
     
     // Save button should be enabled now
-    expect(saveButton).not.toBeDisabled();
+    expect(saveButton).toBeEnabled();
   });
 
   test('filters outline points based on containerSection', () => {
@@ -224,7 +225,6 @@ describe('EditThoughtModal Component', () => {
 
   test('tag containers use overflow-x-hidden (no horizontal scrollbar)', () => {
     render(<EditThoughtModal {...mockProps} />);
-    const lists = screen.getAllByText(/Tags|Available tags/i);
     // Find the nearest container with role list or div wrapper
     const wrappers = document.querySelectorAll('div');
     // Expect at least one container to have overflow-x-hidden (selected tags list)

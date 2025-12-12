@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
+
 import { Tag } from '@/models/models';
+import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
 
 // GET api/tags?userId=123
 export async function GET(request: Request) {

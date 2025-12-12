@@ -1,7 +1,9 @@
 import { renderHook, act } from '@testing-library/react';
-import { useFocusMode } from '../useFocusMode';
 import { useRouter, usePathname } from 'next/navigation';
+
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import { useFocusMode } from '../useFocusMode';
 
 // Mock Next.js navigation
 jest.mock('next/navigation', () => ({

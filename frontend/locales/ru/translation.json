@@ -747,6 +747,12 @@
     "clearAll": "Очистить все",
     "start": "Старт"
   },
+  "homiletic": {
+    "actions": {
+      "save": "Сохранить",
+      "cancel": "Отмена"
+    }
+  },
   "wizard": {
     "previewButton": "Режим подготовки",
     "previewButtonTitle": "Предпросмотр шагов подготовки",

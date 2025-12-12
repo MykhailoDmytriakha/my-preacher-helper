@@ -105,14 +105,13 @@ export const calculateGroupPosition = (
   let movedIndex: number;
   if (typeof target === 'string') {
     movedIndex = items.findIndex(item => item.id === target);
-    if (movedIndex === -1) {
-      return -1; // Item not found
-    }
   } else {
     movedIndex = target;
-    if (movedIndex < 0 || movedIndex >= items.length) {
-      return -1; // Invalid index
-    }
+  }
+
+  // Validate the index
+  if (movedIndex === -1 || movedIndex < 0 || movedIndex >= items.length) {
+    return -1; // Item not found or invalid index
   }
 
   // If no groupKey provided, use the item's current group

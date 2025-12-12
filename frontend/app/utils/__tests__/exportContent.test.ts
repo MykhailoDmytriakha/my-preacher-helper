@@ -1,5 +1,5 @@
+import { Sermon } from '@/models/models';
 import { getExportContent } from '@/utils/exportContent';
-import { Sermon, Thought, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the tagUtils module
@@ -69,13 +69,6 @@ describe('exportContent', () => {
       ambiguous: ['thought4']
     },
     userId: 'user1'
-  };
-
-  const mockStructure: ThoughtsBySection = {
-    introduction: ['thought1'],
-    main: ['thought2'],
-    conclusion: ['thought3'],
-    ambiguous: ['thought4']
   };
 
   beforeEach(() => {

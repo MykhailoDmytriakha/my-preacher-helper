@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
 

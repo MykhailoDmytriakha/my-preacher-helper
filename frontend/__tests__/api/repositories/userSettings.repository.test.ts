@@ -1,7 +1,6 @@
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock Firebase Admin
-const mockDoc = jest.fn();
 const mockGet = jest.fn();
 const mockSet = jest.fn();
 const mockUpdate = jest.fn();

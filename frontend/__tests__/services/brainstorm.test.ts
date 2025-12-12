@@ -1,4 +1,5 @@
 import fetchMock from 'jest-fetch-mock';
+
 import { BrainstormSuggestion } from '@/models/models';
 
 // Mock the fetch API
@@ -227,7 +228,7 @@ describe('brainstorm.service', () => {
       await generateBrainstormSuggestion(mockSermonId);
 
       // Assert
-      const [url, options] = fetchMock.mock.calls[0];
+      const [, options] = fetchMock.mock.calls[0];
       expect(options).toEqual({
         method: 'POST',
         headers: {
@@ -275,7 +276,7 @@ describe('brainstorm.service', () => {
       // Act
       try {
         await generateBrainstormSuggestion(mockSermonId);
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
 

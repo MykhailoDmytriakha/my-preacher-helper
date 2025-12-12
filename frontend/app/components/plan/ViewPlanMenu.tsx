@@ -1,16 +1,17 @@
-import React from "react";
-import { useTranslation } from "react-i18next";
 import { BookOpen, ChevronDown, ScrollText } from "lucide-react";
+import React from "react";
 import ReactDOM from "react-dom/client";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getPlanMarkdownStyles } from './markdownStyles';
+
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+
+import { getPlanMarkdownStyles } from './markdownStyles';
 
 
 interface ViewPlanMenuProps {
-  sermonTitle: string;
   sermonId: string;
   combinedPlan: {
     introduction: string;
@@ -47,7 +48,6 @@ const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
 };
 
 const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
-  sermonTitle,
   sermonId,
   combinedPlan,
   sectionMenuRef,

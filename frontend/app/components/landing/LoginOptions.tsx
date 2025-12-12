@@ -1,8 +1,9 @@
 "use client";
 
 import React from 'react';
-import { CheckIcon, GoogleIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
+
+import { CheckIcon, GoogleIcon } from '@components/Icons';
 
 interface LoginOptionsProps {
   onGoogleLogin: () => void;

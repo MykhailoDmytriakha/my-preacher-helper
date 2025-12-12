@@ -1,10 +1,10 @@
 "use client";
 
+import { XMarkIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Sermon } from '@/models/models';
-import { XMarkIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
+
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { formatDate } from '@utils/dateFormatter';
@@ -45,7 +45,11 @@ export default function AddSermonToSeriesModal({
 
   const handleToggleSermon = (sermonId: string) => {
     const next = new Set(selectedSermonIds);
-    next.has(sermonId) ? next.delete(sermonId) : next.add(sermonId);
+    if (next.has(sermonId)) {
+      next.delete(sermonId);
+    } else {
+      next.add(sermonId);
+    }
     setSelectedSermonIds(next);
   };
 

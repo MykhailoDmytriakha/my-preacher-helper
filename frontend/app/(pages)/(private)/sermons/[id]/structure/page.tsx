@@ -1,28 +1,37 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import Column from "@/components/Column";
-import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
-import EditThoughtModal from "@/components/EditThoughtModal";
-import { updateThought, deleteThought } from "@/services/thought.service";
-import { updateStructure } from "@/services/structure.service";
+import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
-import "@locales/i18n";
 import { toast } from 'sonner';
+
 import CardContent from "@/components/CardContent";
+import Column from "@/components/Column";
+import EditThoughtModal from "@/components/EditThoughtModal";
+import { useSermonStructureData } from "@/hooks/useSermonStructureData";
+import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
+import { updateStructure } from "@/services/structure.service";
+import { updateThought, deleteThought } from "@/services/thought.service";
+import "@locales/i18n";
 import { getExportContent } from "@/utils/exportContent";
 import { getSectionLabel } from "@lib/sections";
-import { useSermonStructureData } from "@/hooks/useSermonStructureData";
-import { isStructureChanged } from "./utils/structure";
-import { useStructureDnd } from "./hooks/useStructureDnd";
+
+import { AmbiguousSection } from "./components/AmbiguousSection";
+import { FocusNav } from "./components/FocusNav";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
-import { FocusNav } from "./components/FocusNav";
-import { AmbiguousSection } from "./components/AmbiguousSection";
+import { useStructureDnd } from "./hooks/useStructureDnd";
+import { isStructureChanged } from "./utils/structure";
+
+// Translation key constants
+const TRANSLATION_KEYS = {
+  ERRORS: {
+    SAVING_ERROR: 'errors.savingError',
+  },
+} as const;
 
 interface UseSermonStructureDataReturn {
   sermon: Sermon | null;
@@ -113,7 +122,6 @@ function StructurePageContent() {
 
   // AI sorting diff hook
   const {
-    preSortState,
     highlightedItems,
     isDiffModeActive,
     isSorting,
@@ -135,6 +143,13 @@ function StructurePageContent() {
     debouncedSaveStructure,
   });
 
+  const columnTitles = useMemo((): Record<string, string> => ({
+    introduction: getSectionLabel(t, 'introduction'),
+    main: getSectionLabel(t, 'main'),
+    conclusion: getSectionLabel(t, 'conclusion'),
+    ambiguous: getSectionLabel(t, 'ambiguous'),
+  }), [t]);
+
   // DnD hook
   const {
     sensors: dndSensors,
@@ -148,13 +163,7 @@ function StructurePageContent() {
     containersRef,
     sermon,
     setSermon,
-    outlinePoints,
-    columnTitles: {
-      introduction: getSectionLabel(t, 'introduction'),
-      main: getSectionLabel(t, 'main'),
-      conclusion: getSectionLabel(t, 'conclusion'),
-      ambiguous: getSectionLabel(t, 'ambiguous'),
-    },
+    columnTitles,
     debouncedSaveThought,
   });
 
@@ -170,13 +179,6 @@ function StructurePageContent() {
     
     return () => clearTimeout(safetyTimeout);
   }, [dndActiveId]);
-
-  const columnTitles: Record<string, string> = {
-    introduction: getSectionLabel(t, 'introduction'),
-    main: getSectionLabel(t, 'main'),
-    conclusion: getSectionLabel(t, 'conclusion'),
-    ambiguous: getSectionLabel(t, 'ambiguous'),
-  };
 
   const handleEdit = (item: Item) => {
     setEditingItem(item);
@@ -268,9 +270,9 @@ function StructurePageContent() {
       debouncedSaveStructure(sermon.id, newStructure);
     } catch (e) {
       console.error('Error handling audio thought creation:', e);
-      toast.error(t('errors.savingError'));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
     }
-  }, [allowedTags, columnTitles, debouncedSaveStructure, sermon, t]);
+  }, [allowedTags, columnTitles, debouncedSaveStructure, sermon, t, setContainers, setSermon]);
 
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
@@ -569,7 +571,7 @@ function StructurePageContent() {
           try {
               await updateStructure(sermonId, newStructure);
           } catch {
-              toast.error(t('errors.savingError') || "Error saving structure changes after deleting item.");
+              toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR) || "Error saving structure changes after deleting item.");
           }
       }
 
@@ -631,7 +633,7 @@ function StructurePageContent() {
       }));
     } catch (error) {
       console.error('Error updating outline point review status:', error);
-      toast.error(t('errors.savingError'));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
     }
   };
 

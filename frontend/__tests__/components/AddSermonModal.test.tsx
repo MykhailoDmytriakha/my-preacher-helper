@@ -1,8 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import AddSermonModal from '@/components/AddSermonModal';
 import { createSermon } from '@/services/sermon.service';
-import { auth } from '@/services/firebaseAuth.service';
+
 import { TestProviders } from '../../test-utils/test-providers';
 import '@testing-library/jest-dom';
 

@@ -1,11 +1,16 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useSermonStructureData } from './useSermonStructureData';
+import { TFunction } from 'i18next';
+import { toast } from 'sonner';
+
+import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
+import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
-import { getSermonOutline } from '@/services/outline.service';
-import { toast } from 'sonner';
-import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
-import { TFunction } from 'i18next';
+
+import { useSermonStructureData } from './useSermonStructureData';
+
+
+
 
 // Mocks
 jest.mock('@/services/sermon.service');

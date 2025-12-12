@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+
 import { seriesRepository } from '@repositories/series.repository';
-import { Series } from '@/models/models';
 
 // GET /api/series?userId=<uid>
 export async function GET(request: Request) {

@@ -1,8 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import EditSermonModal from '@/components/EditSermonModal';
-import { updateSermon } from '@/services/sermon.service';
 import { Sermon } from '@/models/models';
+import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
 // Mock dependencies
@@ -113,7 +114,7 @@ describe('EditSermonModal Component', () => {
     });
     
     // Now should be enabled
-    expect(screen.getByText('Save')).not.toBeDisabled();
+    expect(screen.getByText('Save')).toBeEnabled();
   });
 
   test('handles API errors gracefully', async () => {
@@ -166,7 +167,7 @@ describe('EditSermonModal Component', () => {
     
     // After the promise resolves, buttons should be enabled again
     await waitFor(() => {
-      expect(screen.getByText('Cancel')).not.toBeDisabled();
+      expect(screen.getByText('Cancel')).toBeEnabled();
     });
   });
 }); 

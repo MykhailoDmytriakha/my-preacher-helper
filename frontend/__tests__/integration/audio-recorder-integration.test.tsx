@@ -1,6 +1,5 @@
+import { render, screen } from '@testing-library/react';
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { DndContext } from '@dnd-kit/core';
 import '@testing-library/jest-dom';
 
 // Mock the necessary dependencies
@@ -100,7 +99,7 @@ describe('AudioRecorder Integration Tests', () => {
 
   it('should render AudioRecorder with mini variant', () => {
     // Test that the mock AudioRecorder renders correctly
-    const { getByTestId } = render(
+    render(
       <div>
         <div data-testid="audio-recorder-component" className="space-y-2">
           <div className="flex flex-col gap-2">
@@ -112,11 +111,11 @@ describe('AudioRecorder Integration Tests', () => {
       </div>
     );
 
-    const audioRecorder = getByTestId('audio-recorder-component');
+    const audioRecorder = screen.getByTestId('audio-recorder-component');
     expect(audioRecorder).toBeInTheDocument();
     expect(audioRecorder).toHaveClass('space-y-2');
-    
-    const recordButton = getByTestId('record-button');
+
+    const recordButton = screen.getByTestId('record-button');
     expect(recordButton).toHaveClass('min-w-full', 'px-3', 'py-2', 'text-sm');
   });
 
@@ -128,7 +127,7 @@ describe('AudioRecorder Integration Tests', () => {
       'conclusion': 'Заключение',
     };
 
-    Object.entries(sectionToForceTag).forEach(([sectionId, expectedForceTag]) => {
+    Object.entries(sectionToForceTag).forEach(([, expectedForceTag]) => {
       expect(expectedForceTag).toBeDefined();
       expect(typeof expectedForceTag).toBe('string');
       expect(expectedForceTag.length).toBeGreaterThan(0);

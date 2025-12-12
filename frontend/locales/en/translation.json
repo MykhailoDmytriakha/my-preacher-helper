@@ -747,6 +747,12 @@
     "clearAll": "Clear All",
     "start": "Start"
   },
+  "homiletic": {
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
   "wizard": {
     "previewButton": "Preparation Mode",
     "previewButtonTitle": "Preview preparation steps",

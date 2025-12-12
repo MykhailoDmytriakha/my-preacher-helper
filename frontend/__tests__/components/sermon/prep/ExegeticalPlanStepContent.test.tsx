@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 jest.mock('@locales/i18n', () => ({}));
@@ -92,7 +92,7 @@ describe('ExegeticalPlanStepContent', () => {
     
     // Save button should now be enabled
     const saveButton = screen.getByRole('button', { name: /buttons.save/i });
-    expect(saveButton).not.toBeDisabled();
+    expect(saveButton).toBeEnabled();
     expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
   });
 
@@ -108,7 +108,7 @@ describe('ExegeticalPlanStepContent', () => {
     fireEvent.click(deleteBtns[1]); // Delete child (first is root)
 
     // Save button should now be enabled
-    expect(saveButton).not.toBeDisabled();
+    expect(saveButton).toBeEnabled();
     expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
   });
 });

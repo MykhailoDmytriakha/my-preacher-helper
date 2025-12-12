@@ -1,9 +1,12 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 import fetchMock from 'jest-fetch-mock';
 import { toast } from 'sonner';
+
+import BrainstormModule from '@/components/sermon/BrainstormModule';
 import { BrainstormSuggestion } from '@/models/models';
+import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Enable fetch mocking
@@ -61,10 +64,8 @@ jest.mock('@/services/brainstorm.service', () => ({
   generateBrainstormSuggestion: jest.fn(),
 }));
 
-import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
 
 // Import the actual component after mocking dependencies
-import BrainstormModule from '@/components/sermon/BrainstormModule';
 
 // Type the mocked function
 const mockGenerateBrainstormSuggestion = generateBrainstormSuggestion as jest.MockedFunction<typeof generateBrainstormSuggestion>;
@@ -84,12 +85,6 @@ const resetScenarioState = () => {
   process.env.NEXT_PUBLIC_API_BASE = 'http://localhost:3000';
 };
 
-// Helper function - no longer needed with new single-state design
-// Keeping for backwards compatibility but it's now a no-op
-const expandBrainstormModule = async () => {
-  // New design doesn't have expand/collapse - the generate button is always visible when there's no suggestion
-  // This function is kept to avoid breaking existing tests
-};
 
 describe('BrainstormModule', () => {
   beforeEach(() => {

@@ -1,6 +1,7 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import { act } from 'react-dom/test-utils';
+
 import '@testing-library/jest-dom';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 

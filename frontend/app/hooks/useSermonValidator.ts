@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import type { Sermon } from "@/models/models";
+
 import { normalizeStructureTag } from "@/utils/tagUtils";
+
+import type { Sermon } from "@/models/models";
 
 /**
  * Hook to validate if a sermon's thoughts are properly structured

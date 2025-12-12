@@ -1,8 +1,10 @@
+import { motion } from 'framer-motion';
+import { Sparkles, BookOpen, ScrollText } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, BookOpen, ScrollText } from 'lucide-react';
+
 import { PlanStyle } from '@/api/clients/openAI.client';
-import { motion } from 'framer-motion';
+
 
 interface PlanStyleSelectorProps {
     value: PlanStyle;

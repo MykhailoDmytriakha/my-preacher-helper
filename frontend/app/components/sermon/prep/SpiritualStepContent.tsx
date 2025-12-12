@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
 import { BookOpen, Sparkles, Wrench, AlertTriangle } from 'lucide-react';
+import React from 'react';
+
 import { UI_COLORS } from '@/utils/themeColors';
+
 import type { Preparation } from '@/models/models';
 
 interface SpiritualStepContentProps {

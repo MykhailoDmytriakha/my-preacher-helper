@@ -1,17 +1,17 @@
 'use client';
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
-import FeatureCards from '@/components/landing/FeatureCards';
-import LoginOptions from '@/components/landing/LoginOptions';
-import LandingHeader from '@/components/landing/LandingHeader';
-import LandingFooter from '@/components/landing/LandingFooter';
-import { useTranslation } from 'react-i18next';
-import '@locales/i18n';
-import PublicRoute from '@/components/PublicRoute';
-import { signInWithGoogle } from '@/services/firebaseAuth.service';
-import { auth } from '@/services/firebaseAuth.service';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import FeatureCards from '@/components/landing/FeatureCards';
+import LandingFooter from '@/components/landing/LandingFooter';
+import LandingHeader from '@/components/landing/LandingHeader';
+import LoginOptions from '@/components/landing/LoginOptions';
+import PublicRoute from '@/components/PublicRoute';
+import '@locales/i18n';
+import { auth, signInWithGoogle } from '@/services/firebaseAuth.service';
+import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
 
 export default function Home() {
   const router = useRouter();

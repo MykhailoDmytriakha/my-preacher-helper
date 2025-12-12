@@ -1,10 +1,15 @@
 'use client';
 
+import { Lightbulb, BookText, ListChecks, Check, X } from 'lucide-react';
 import React from 'react';
-import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
-import { Lightbulb, BookText, ListChecks, Check, X } from 'lucide-react';
+
+import { UI_COLORS } from '@/utils/themeColors';
+
+// Module-level constants to avoid duplicate strings
+const MAIN_IDEA_SAVE_FALLBACK = "Save";
+const MAIN_IDEA_CANCEL_FALLBACK = "Cancel";
 
 interface MainIdeaStepContentProps {
   initialContextIdea?: string;
@@ -24,6 +29,10 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
   onSaveArgumentation,
 }) => {
   const { t } = useTranslation();
+
+  // Title functions to avoid duplicate strings
+  const getSaveTitle = () => t('actions.save') || MAIN_IDEA_SAVE_FALLBACK;
+  const getCancelTitle = () => t('actions.cancel') || MAIN_IDEA_CANCEL_FALLBACK;
 
   const [contextDraft, setContextDraft] = React.useState<string>(initialContextIdea || '');
   const [textDraft, setTextDraft] = React.useState<string>(initialTextIdea || '');
@@ -106,7 +115,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   onClick={handleSaveContext}
                   disabled={isSavingContext}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={t('actions.save') || 'Save'}
+                  title={getSaveTitle()}
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -114,7 +123,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   type="button"
                   onClick={() => setContextDraft(initialContextIdea || '')}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={t('actions.cancel') || 'Cancel'}
+                  title={getCancelTitle()}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -151,7 +160,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   onClick={handleSaveText}
                   disabled={isSavingText}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={t('actions.save') || 'Save'}
+                  title={getSaveTitle()}
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -159,7 +168,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   type="button"
                   onClick={() => setTextDraft(initialTextIdea || '')}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={t('actions.cancel') || 'Cancel'}
+                  title={getCancelTitle()}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -205,7 +214,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   onClick={handleSaveArgumentation}
                   disabled={isSavingArgumentation}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={t('actions.save') || 'Save'}
+                  title={getSaveTitle()}
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -213,7 +222,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
                   type="button"
                   onClick={() => setArgumentationDraft(initialArgumentation || '')}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={t('actions.cancel') || 'Cancel'}
+                  title={getCancelTitle()}
                 >
                   <X className="w-4 h-4" />
                 </button>

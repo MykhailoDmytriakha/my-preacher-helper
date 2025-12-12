@@ -1,5 +1,8 @@
-import { UserSettings } from '@/models/models';
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../frontend/locales/constants';
+import { UserSettings } from '@/models/models';
+
+// Constants for repeated strings
+const USER_SETTINGS_API_URL = '/api/user/settings';
 
 /**
  * Get user language preference - optimized approach
@@ -68,7 +71,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
     }
     
     // For authenticated users, also update DB (source of truth)
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -108,7 +111,7 @@ export async function updateUserProfile(
     if (Object.keys(updates).length === 0) return;
     
     // Update settings through API without specifying language
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -147,7 +150,7 @@ export async function initializeUserSettings(
     if (displayName !== undefined) payload.displayName = displayName;
     
     // Create settings through API
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -224,7 +227,7 @@ export async function updatePrepModeAccess(userId: string, enabled: boolean): Pr
   try {
     if (!userId) return;
 
-    const response = await fetch('/api/user/settings', {
+    const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import { Sermon, Thought } from '@/models/models';
 
@@ -38,7 +39,7 @@ jest.mock('@/utils/themeColors', () => ({
 const MockStructurePreview: React.FC<{
   sermon: Sermon;
   animateEntry?: boolean;
-}> = ({ sermon, animateEntry = false }) => {
+}> = ({ sermon }) => {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
 
   // Helper function to find thought text by ID

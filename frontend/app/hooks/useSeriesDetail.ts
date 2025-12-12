@@ -1,19 +1,26 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+
 import { getSeriesById } from "@services/series.service";
-import { getSermonById } from "@services/sermon.service";
 import {
   addSermonToSeries,
   removeSermonFromSeries,
   reorderSermons as reorderSermonsAPI,
   updateSeries,
 } from "@services/series.service";
+import { getSermonById } from "@services/sermon.service";
+
 import type { Series, Sermon } from "@/models/models";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 type SeriesDetailPayload = {
   series: Series;
   sermons: Sermon[];
 };
+
+// Query key constants
+const QUERY_KEYS = {
+  SERIES_DETAIL: "series-detail",
+} as const;
 
 export function useSeriesDetail(seriesId: string) {
   const queryClient = useQueryClient();
@@ -26,7 +33,7 @@ export function useSeriesDetail(seriesId: string) {
     error,
     refetch,
   } = useQuery<SeriesDetailPayload | null>({
-    queryKey: ["series-detail", seriesId],
+    queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId],
     enabled: !!seriesId,
     staleTime: 60 * 1000,
     queryFn: async () => {
@@ -55,7 +62,7 @@ export function useSeriesDetail(seriesId: string) {
 
   const updateDetailCache = useCallback(
     (updater: (payload: SeriesDetailPayload) => SeriesDetailPayload) => {
-      queryClient.setQueryData<SeriesDetailPayload | null>(["series-detail", seriesId], (old) =>
+      queryClient.setQueryData<SeriesDetailPayload | null>([QUERY_KEYS.SERIES_DETAIL, seriesId], (old) =>
         old ? updater(old) : old
       );
     },
@@ -181,7 +188,7 @@ export function useSeriesDetail(seriesId: string) {
         queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
       } catch (e: unknown) {
         if (previous) {
-          queryClient.setQueryData(["series-detail", seriesId], previous);
+          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
         }
         const errorObj = e instanceof Error ? e : new Error(String(e));
         setMutationError(errorObj);
@@ -214,7 +221,7 @@ export function useSeriesDetail(seriesId: string) {
         queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
       } catch (e: unknown) {
         if (previous) {
-          queryClient.setQueryData(["series-detail", seriesId], previous);
+          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
         }
         const errorObj = e instanceof Error ? e : new Error(String(e));
         setMutationError(errorObj);
@@ -252,7 +259,7 @@ export function useSeriesDetail(seriesId: string) {
         await reorderSermonsAPI(series.id, sermonIds);
       } catch (e: unknown) {
         if (previous) {
-          queryClient.setQueryData(["series-detail", seriesId], previous);
+          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
         }
         const errorObj = e instanceof Error ? e : new Error(String(e));
         setMutationError(errorObj);

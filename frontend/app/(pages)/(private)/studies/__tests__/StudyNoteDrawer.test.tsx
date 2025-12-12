@@ -2,8 +2,10 @@
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import StudyNoteDrawer from '../StudyNoteDrawer';
+
 import { StudyNote } from '@/models/models';
+
+import StudyNoteDrawer from '../StudyNoteDrawer';
 
 // Mock createPortal to render drawer inline for testing
 jest.mock('react-dom', () => ({

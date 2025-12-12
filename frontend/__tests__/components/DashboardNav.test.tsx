@@ -1,7 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
+
 import { User } from 'firebase/auth';
 
 // Mock key dependencies

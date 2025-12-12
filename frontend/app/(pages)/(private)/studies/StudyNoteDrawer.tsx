@@ -1,8 +1,5 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 import {
     ArrowPathIcon,
     BookmarkIcon,
@@ -12,13 +9,27 @@ import {
     TagIcon,
     XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+
 import { StudyNote, ScriptureReference } from '@/models/models';
+
+import { BibleLocale } from './bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 import { parseReferenceText } from './referenceParser';
 import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
 import TagCatalogModal from './TagCatalogModal';
-import { BibleLocale } from './bibleData';
+
+// CSS class constants
+const ACTIVE_BUTTON_LIGHT_CLASSES = 'bg-white text-gray-900 shadow-sm';
+const ACTIVE_BUTTON_DARK_CLASSES = 'dark:bg-gray-600 dark:text-white';
+const ACTIVE_BUTTON_CLASSES = `${ACTIVE_BUTTON_LIGHT_CLASSES} ${ACTIVE_BUTTON_DARK_CLASSES}`;
+const INACTIVE_BUTTON_CLASSES = 'text-gray-500 hover:text-gray-700 dark:text-gray-400';
+
+// Common inactive button style used in multiple places
+const INACTIVE_TAB_CLASSES = 'text-gray-500 hover:text-gray-700 dark:text-gray-400';
 
 const makeId = () =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -84,7 +95,7 @@ export default function StudyNoteDrawer({
         if (size !== 'medium' || !customWidth) {
             setCustomWidth(null);
         }
-    }, [size]);
+    }, [size, customWidth]);
 
     // ─────────────────────────────────────────────────────────────
     // FORM STATE (migrated from EditStudyNoteModal)
@@ -333,8 +344,8 @@ export default function StudyNoteDrawer({
                                 type="button"
                                 onClick={() => handleSizeChange('narrow')}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${size === 'narrow'
-                                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-600 dark:text-white'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                    ? ACTIVE_BUTTON_CLASSES
+                                    : INACTIVE_BUTTON_CLASSES
                                     }`}
                             >
                                 30%
@@ -343,8 +354,8 @@ export default function StudyNoteDrawer({
                                 type="button"
                                 onClick={() => handleSizeChange('medium')}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${size === 'medium' && !customWidth
-                                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-600 dark:text-white'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                    ? ACTIVE_BUTTON_CLASSES
+                                    : INACTIVE_BUTTON_CLASSES
                                     }`}
                             >
                                 50%
@@ -353,8 +364,8 @@ export default function StudyNoteDrawer({
                                 type="button"
                                 onClick={() => handleSizeChange('fullscreen')}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${size === 'fullscreen'
-                                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-600 dark:text-white'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                    ? ACTIVE_BUTTON_CLASSES
+                                    : INACTIVE_TAB_CLASSES
                                     }`}
                             >
                                 100%
@@ -373,8 +384,8 @@ export default function StudyNoteDrawer({
                                 type="button"
                                 onClick={() => setType('note')}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${type === 'note'
-                                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-600 dark:text-white'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                    ? ACTIVE_BUTTON_CLASSES
+                                    : INACTIVE_TAB_CLASSES
                                     }`}
                             >
                                 {t('studiesWorkspace.type.note') || 'Note'}
@@ -384,7 +395,7 @@ export default function StudyNoteDrawer({
                                 onClick={() => setType('question')}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${type === 'question'
                                     ? 'bg-amber-100 text-amber-900 shadow-sm dark:bg-amber-900/40 dark:text-amber-100'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                    : INACTIVE_TAB_CLASSES
                                     }`}
                             >
                                 {t('studiesWorkspace.type.question') || 'Question'}

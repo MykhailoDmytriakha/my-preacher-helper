@@ -215,7 +215,7 @@ jest.mock('../../app/components/SortableItem', () => {
 
 // Mock ExportButtons component
 jest.mock('../../app/components/ExportButtons', () => {
-  const MockExportButtons = (props: any) => {
+  const MockExportButtons = () => {
     return React.createElement('div', { 'data-testid': 'export-buttons-container' },
       React.createElement('button', { key: 'txt' }, 'Export TXT'),
       React.createElement('button', { key: 'pdf' }, 'Export PDF'),
@@ -242,11 +242,14 @@ jest.mock('@/components/Icons', () => ({
   SwitchViewIcon: (props: any) => <svg {...props} data-testid="switch-view-icon" />
 }));
 
-import React from 'react';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
-import { runScenarios } from '../../test-utils/scenarioRunner';
-import Column from '../../app/components/Column';
+import React from 'react';
+
 import { Item } from '@/models/models';
+
+import Column from '../../app/components/Column';
+import { runScenarios } from '../../test-utils/scenarioRunner';
+
 import '@testing-library/jest-dom';
 
 describe('Column Component', () => {
@@ -381,16 +384,7 @@ describe('Column Component', () => {
 
   // New tests for outline point operations in focus mode
   describe('SermonOutline Point Operations in Focus Mode', () => {
-    const mockSermonPoints = {
-      introduction: [
-        { id: 'point1', text: 'Existing outline point' }
-      ],
-      mainPart: [],
-      conclusion: []
-    };
-    
     const mockToggleFocus = jest.fn();
-    const mockSermonId = 'sermon-123';
     const { getSermonOutline, updateSermonOutline } = require('@/services/outline.service');
     const { toast } = require('sonner');
     

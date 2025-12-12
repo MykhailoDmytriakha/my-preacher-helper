@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import LoginOptions from '@/components/landing/LoginOptions';
 
@@ -31,7 +32,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock the process.env.NODE_ENV check used in the component
-const originalNodeEnv = process.env.NODE_ENV;
 
 describe('LoginOptions Component', () => {
   // Default props with mock functions
@@ -76,7 +76,7 @@ describe('LoginOptions Component', () => {
   // Since we can't directly modify NODE_ENV, we'll just test the component
   // as it behaves in the current environment
   it('conditionally renders test login button based on NODE_ENV', () => {
-    const { rerender } = render(<LoginOptions {...defaultProps} />);
+    render(<LoginOptions {...defaultProps} />);
     
     // In test environment, the button should be rendered
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {

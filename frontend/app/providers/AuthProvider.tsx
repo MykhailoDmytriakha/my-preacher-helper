@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, onAuthStateChanged, IdTokenResult } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+
 import { auth } from '@/services/firebaseAuth.service';
 
 interface AuthContextType {
@@ -38,6 +39,11 @@ type RestoredUser = Pick<User, 'uid' | 'email' | 'displayName' | 'isAnonymous' |
   photoURL: null;
   providerId: 'firebase';
 };
+
+// Local storage keys
+const STORAGE_KEYS = {
+  FIREBASE_AUTH_USER: 'firebase:authUser',
+} as const;
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -99,9 +105,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           timestamp: Date.now(),
         };
         
-        localStorage.setItem('firebase:authUser', JSON.stringify(authData));
+        localStorage.setItem(STORAGE_KEYS.FIREBASE_AUTH_USER, JSON.stringify(authData));
       } else {
-        localStorage.removeItem('firebase:authUser');
+        localStorage.removeItem(STORAGE_KEYS.FIREBASE_AUTH_USER);
       }
     } catch (error) {
       console.error('Error syncing auth state:', error);
@@ -110,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Function to handle localStorage changes from other tabs
   const handleStorageChange = useCallback((e: StorageEvent) => {
-    if (e.key !== 'firebase:authUser') return;
+    if (e.key !== STORAGE_KEYS.FIREBASE_AUTH_USER) return;
 
     try {
       if (e.newValue) {
@@ -153,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Check saved Firebase state
-      const firebaseAuthData = localStorage.getItem('firebase:authUser');
+      const firebaseAuthData = localStorage.getItem(STORAGE_KEYS.FIREBASE_AUTH_USER);
       if (firebaseAuthData) {
         const authData: StoredAuthData = JSON.parse(firebaseAuthData);
         const isDataValid = Date.now() - authData.timestamp < 60000; // 1 minute
@@ -166,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return true;
         } else {
           console.log('Firebase auth data expired, removing');
-          localStorage.removeItem('firebase:authUser');
+          localStorage.removeItem(STORAGE_KEYS.FIREBASE_AUTH_USER);
         }
       }
 

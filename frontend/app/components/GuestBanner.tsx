@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
+
 import { auth, checkGuestExpiration } from "@services/firebaseAuth.service";
 
 export function GuestBanner() {

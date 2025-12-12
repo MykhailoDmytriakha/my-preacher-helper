@@ -1,5 +1,10 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { Sermon, SermonOutline, SermonDraft } from '@/models/models';
+import { Sermon, SermonOutline, SermonDraft, SermonPoint } from '@/models/models';
+
+// Error message constants
+const ERROR_MESSAGES = {
+  SERMON_NOT_FOUND: "Sermon not found",
+} as const;
 
 /**
  * Repository for user settings database operations
@@ -16,7 +21,7 @@ export class SermonsRepository {
 
       if (!docSnap.exists) {
         console.error(`Sermon with id ${id} not found in Firestore`);
-        throw new Error("Sermon not found");
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
       const rawData = docSnap.data() as Sermon;
       const normalized: Sermon = {
@@ -30,10 +35,10 @@ export class SermonsRepository {
         normalized.structure = rawData.structure || hydratedStructure;
       }
 
-      const hydratedDraft = (rawData as any).draft || (rawData as any).plan;
+      const hydratedDraft = rawData.draft || rawData.plan;
       if (hydratedDraft) {
         normalized.draft = hydratedDraft;
-        normalized.plan = (rawData as any).plan || hydratedDraft;
+        normalized.plan = rawData.plan || hydratedDraft;
       }
 
       console.log(`Sermon retrieved: with id ${normalized.id} and title ${normalized.title}`);
@@ -65,7 +70,7 @@ export class SermonsRepository {
 
       if (!docSnap.exists) {
         console.error(`Sermon with id ${sermonId} not found in Firestore`);
-        throw new Error("Sermon not found");
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
 
       const sermon = docSnap.data() as Sermon;
@@ -85,7 +90,7 @@ export class SermonsRepository {
 
       if (!docSnap.exists) {
         console.error(`Sermon with id ${sermonId} not found in Firestore`);
-        throw new Error("Sermon not found");
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
 
       // Update the outline field in the sermon document
@@ -127,7 +132,7 @@ export class SermonsRepository {
 
       if (!docSnap.exists) {
         console.error(`Sermon with id ${sermonId} not found in Firestore`);
-        throw new Error("Sermon not found");
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
 
       // Update both the new draft field and legacy plan for backward compatibility
@@ -152,12 +157,12 @@ export class SermonsRepository {
       if (!sermon || !sermon.outline) return null;
 
       // Helper to find point in a specific section list
-      const findInList = (list: any[]) => list.findIndex(op => op.id === outlinePointId);
+      const findInList = (list: SermonPoint[]) => list.findIndex(op => op.id === outlinePointId);
 
       // Check each section
       let section: 'introduction' | 'main' | 'conclusion' | null = null;
       let index = -1;
-      let list: any[] = [];
+      let list: SermonPoint[] = [];
 
       if ((index = findInList(sermon.outline.introduction)) !== -1) {
         section = 'introduction';
@@ -198,7 +203,7 @@ export class SermonsRepository {
 
       if (!docSnap.exists) {
         console.error(`Sermon with id ${sermonId} not found in Firestore`);
-        throw new Error("Sermon not found");
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
 
       // Prepare update data

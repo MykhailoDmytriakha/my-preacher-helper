@@ -67,7 +67,7 @@ describe('Prep Mode Translation Coverage', () => {
                 { name: 'Ukrainian', translations: ukTranslations }
               ];
 
-              languages.forEach(({ name, translations }) => {
+              languages.forEach(({ translations }) => {
                 const title = translations.settings?.prepMode?.title;
                 const description = translations.settings?.prepMode?.description;
 
@@ -129,8 +129,7 @@ describe('Prep Mode Translation Coverage', () => {
             run: () => {
               const languages = [enTranslations, ruTranslations, ukTranslations];
 
-              languages.forEach((translations, index) => {
-                const langName = ['English', 'Russian', 'Ukrainian'][index];
+              languages.forEach((translations) => {
 
                 // Check that settings.prepMode exists and has the right structure
                 expect(translations.settings).toBeDefined();

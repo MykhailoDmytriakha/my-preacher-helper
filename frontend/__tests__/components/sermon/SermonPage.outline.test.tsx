@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import { SermonOutline as SermonOutlineType, Sermon } from '@/models/models';
 
@@ -11,8 +12,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 // Remove mockSetSermon and useSermon mock setup
-// const mockSetSermon = jest.fn(); 
-const mockGetSortedThoughts = jest.fn().mockReturnValue([]);
+// const mockSetSermon = jest.fn();
 // const mockRefreshSermon = jest.fn();
 const mockSermonData: Sermon = {
   id: 'sermon-123',

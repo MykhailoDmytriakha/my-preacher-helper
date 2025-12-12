@@ -1,10 +1,10 @@
 "use client";
 
+import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Series } from '@/models/models';
-import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
+
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 

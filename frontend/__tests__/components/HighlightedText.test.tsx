@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+
 import HighlightedText from '@/components/HighlightedText';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 

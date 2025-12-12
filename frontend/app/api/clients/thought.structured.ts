@@ -11,11 +11,12 @@
  * - Automatic validation
  * - Cleaner, more maintainable code
  */
-import { Sermon } from "@/models/models";
 import { thoughtSystemPrompt, createThoughtUserMessage } from "@/config/prompts";
 import { ThoughtResponseSchema, ThoughtResponse } from "@/config/schemas/zod";
-import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
+import { Sermon } from "@/models/models";
+
 import { logger } from "./openAIHelpers";
+import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 

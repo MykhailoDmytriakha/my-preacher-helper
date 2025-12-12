@@ -1,5 +1,6 @@
-import type { Config } from 'jest'
 import nextJest from 'next/jest.js'
+
+import type { Config } from 'jest'
 
 // Use nextJest to configure the Jest environment for Next.js
 const createJestConfig = nextJest({

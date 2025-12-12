@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 jest.mock('@locales/i18n', () => ({}));
@@ -180,7 +180,7 @@ describe('MainIdeaStepContent', () => {
     // Resolve the save promise
     resolveSave!();
     await waitFor(() => {
-      expect(saveButton).not.toBeDisabled();
+      expect(saveButton).toBeEnabled();
     });
   });
 

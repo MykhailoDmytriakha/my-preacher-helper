@@ -1,6 +1,6 @@
 import 'openai/shims/node';
 import OpenAI from "openai";
-import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonDraft, BrainstormSuggestion, SectionHints } from "@/models/models";
+
 import {
   thoughtSystemPrompt, createThoughtUserMessage,
   insightsSystemPrompt, createInsightsUserMessage,
@@ -21,8 +21,11 @@ import {
   planFunctionSchema,
   brainstormFunctionSchema
 } from "@/config/schemas";
-import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonDraft, BrainstormSuggestion, SectionHints } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+
+import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+
 
 // const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -47,23 +50,29 @@ const gemini = new OpenAI({
 const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
 const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
 
+type JsonSchema = {
+  type?: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+};
+
 // Create XML function definition for Claude/Gemini-style prompts using JSON Schema
 // Correctly interprets the function.parameters JSON Schema and asks the model
 // to return an arguments object that CONFORMS to that schema (not the schema itself).
-function createXmlFunctionDefinition(functionSchema: Record<string, unknown>): string {
-  const schema = functionSchema.function as Record<string, unknown>;
-  const parametersSchema = schema.parameters as Record<string, unknown>;
+function createXmlFunctionDefinition(functionSchema: { function: { name?: string; parameters?: JsonSchema } }): string {
+  const schema = functionSchema.function;
+  const parametersSchema = schema.parameters;
 
   // parametersSchema follows JSON Schema: { type: 'object', properties: { ... }, required: [...] }
-  const properties = (parametersSchema && (parametersSchema as any).properties) || {};
+  const properties = parametersSchema?.properties ?? {};
 
   let xmlDefinition = `
 <function name="${schema.name as string}">
   <parameters>`;
 
   // List each top-level argument (actual properties of the JSON Schema)
-  for (const [propName, propSchema] of Object.entries(properties as Record<string, any>)) {
-    const p = propSchema as Record<string, unknown>;
+  for (const [propName, propSchema] of Object.entries(properties)) {
+    const p = propSchema ?? {};
     xmlDefinition += `
     <parameter name="${propName}" type="${(p.type as string) || 'object'}">
       ${(p.description as string) || ''}
@@ -82,9 +91,8 @@ Your response should be structured as follows:
 `;
 
   // Provide an arguments template for each property
-  for (const [propName, propSchema] of Object.entries(properties as Record<string, any>)) {
-    const p = propSchema as Record<string, unknown>;
-    const t = (p.type as string) || 'object';
+  for (const [propName, propSchema] of Object.entries(properties)) {
+    const t = propSchema.type || 'object';
     if (t === 'array') {
       xmlDefinition += `  "${propName}": [],\n`;
     } else if (t === 'object') {
@@ -141,7 +149,7 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         return JSON.parse(trimmed) as T;
       }
-    } catch (_) {
+    } catch {
       // Ignore and continue with other extraction strategies
     }
 
@@ -1481,7 +1489,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
         if (keepingBlock) kept.push(line);
       }
       content = kept.join("\n");
-    } catch (_) {
+    } catch {
       // If anything goes wrong, return the original content
     }
 

@@ -1,21 +1,21 @@
 "use client";
 
-import React, { useCallback, useMemo, memo } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import React, { memo, useCallback, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
 // Utils imports
+import MarkdownDisplay from '@components/MarkdownDisplay';
 import { formatDate } from "@utils/dateFormatter";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 // Components
-import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
-import MarkdownDisplay from '@components/MarkdownDisplay';
 import SermonPointSelector from './SermonPointSelector';
-import { motion, AnimatePresence } from 'framer-motion';
+import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
 
 // Type imports
-import type { Thought, SermonOutline } from "@/models/models";
+import type { SermonOutline, Thought } from "@/models/models";
 
 // Icons imports
 

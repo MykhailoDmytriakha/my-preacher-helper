@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslation } from "react-i18next";
+
 import FeedbackForm from "@/components/navigation/FeedbackForm";
 import "@locales/i18n";
 

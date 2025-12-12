@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { studiesRepository } from '@repositories/studies.repository';
+
 import { StudyNote } from '@/models/models';
+import { studiesRepository } from '@repositories/studies.repository';
 
 function filterNotes(notes: StudyNote[], params: URLSearchParams) {
   let result = [...notes];

@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import useSermon from '@/hooks/useSermon';
-import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
+import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import useSermon from '@/hooks/useSermon';
 
 // Mock the hooks
 jest.mock('next/navigation', () => ({

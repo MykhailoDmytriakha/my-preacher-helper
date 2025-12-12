@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+
 import { getSermonById } from "@services/sermon.service";
+
 import type { Sermon, Thought } from "@/models/models";
 
 function useSermon(sermonId: string) {

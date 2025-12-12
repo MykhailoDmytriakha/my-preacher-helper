@@ -1,22 +1,27 @@
 // This is the SermonHeader component created to refactor the header UI from the sermon page
 'use client';
 
+import { Menu, Transition } from '@headlessui/react';
+import { EllipsisVerticalIcon, PlusIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ScrollText } from 'lucide-react';
+import Link from 'next/link';
 import React, { useState } from 'react';
-import { formatDate } from '@utils/dateFormatter';
-import { getExportContent } from '@utils/exportContent';
-import type { Sermon, Series } from '@/models/models';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
+import SeriesSelector from '@/components/series/SeriesSelector';
+import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
-import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
-import { useTranslation } from 'react-i18next';
-import { EllipsisVerticalIcon, PlusIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { ScrollText } from 'lucide-react';
-import { Menu, Transition } from '@headlessui/react';
-import SeriesSelector from '@/components/series/SeriesSelector';
-import Link from 'next/link';
-import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
-import { toast } from 'sonner';
+import { formatDate } from '@utils/dateFormatter';
+import { getExportContent } from '@utils/exportContent';
+
+import type { Sermon, Series } from '@/models/models';
+
+
+
 
 export interface SermonHeaderProps {
   sermon: Sermon;
@@ -33,6 +38,10 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Use direct translation calls to avoid duplicate string warnings
+  const removeFromSeriesTranslationKey = 'workspaces.series.actions.removeFromSeries';
+  const processingButtonClasses = 'opacity-50 cursor-not-allowed';
+
   const handleStartPreaching = () => {
     window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
   };
@@ -48,7 +57,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   };
 
   const handleRemoveFromSeries = async () => {
-    if (window.confirm(t('workspaces.series.actions.removeFromSeries') + '?')) {
+    if (window.confirm(t(removeFromSeriesTranslationKey) + '?')) {
       setIsProcessing(true);
       try {
         if (sermon.seriesId) {
@@ -227,7 +236,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                               title={t('workspaces.series.actions.moveToDifferentSeries')}
                               className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
                                 active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              } ${isProcessing ? processingButtonClasses : ''}`}
                             >
                               <ArrowPathIcon className="h-4 w-4" />
                               {t('workspaces.series.actions.moveToDifferentSeries')}
@@ -239,13 +248,13 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                             <button
                               onClick={handleRemoveFromSeries}
                               disabled={isProcessing}
-                              title={t('workspaces.series.actions.removeFromSeries')}
+                              title={t(removeFromSeriesTranslationKey)}
                               className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${
                                 active ? 'bg-red-50 dark:bg-red-950' : ''
-                              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              } ${isProcessing ? processingButtonClasses : ''}`}
                             >
                               <XMarkIcon className="h-4 w-4" />
-                              {t('workspaces.series.actions.removeFromSeries')}
+                              {t(removeFromSeriesTranslationKey)}
                             </button>
                           )}
                         </Menu.Item>

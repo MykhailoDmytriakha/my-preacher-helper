@@ -1,6 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
+
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 interface HighlightedTextProps {

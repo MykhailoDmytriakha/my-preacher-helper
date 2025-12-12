@@ -1,25 +1,34 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import DigitalTimerDisplay from './DigitalTimerDisplay';
-import TimerControls from './TimerControls';
-import CustomTimePicker from './CustomTimePicker';
+
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 import { TimerPhase } from '@/types/TimerState';
 
+import CustomTimePicker from './CustomTimePicker';
+import DigitalTimerDisplay from './DigitalTimerDisplay';
+import TimerControls from './TimerControls';
+
+// Common button styles for navigation buttons
+const NAV_BUTTON_BASE_CLASS = "inline-flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white hover:shadow-lg active:scale-95 transition-all duration-200 shadow-md h-12";
+const NAV_BUTTON_BLUE = `${NAV_BUTTON_BASE_CLASS} bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700`;
+const NAV_BUTTON_GRAY = `${NAV_BUTTON_BASE_CLASS} bg-gradient-to-br from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800`;
+const NAV_BUTTON_RED = `${NAV_BUTTON_BASE_CLASS} bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700`;
+
+// Translation keys and default values constants
+const TRANSLATION_BACK_TO_PLAN = "actions.backToPlan";
+const DEFAULT_BACK_TO_PLAN = "Back to Plan";
+const TRANSLATION_BACK_TO_SERMON = "actions.backToSermon";
+const DEFAULT_BACK_TO_SERMON = "Back to Sermon";
+const TRANSLATION_EXIT_PREACHING_MODE = "plan.exitPreachingMode";
+const DEFAULT_EXIT_PREACHING_MODE = "Exit Preaching Mode";
+
 // Error Boundary for Timer Components
 const TimerErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hasError, setHasError] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [hasError] = useState(false);
   const { t } = useTranslation();
-
-  const handleError = useCallback((error: Error) => {
-    console.error('Timer Error:', error);
-    setError(error);
-    setHasError(true);
-  }, []);
 
   if (hasError) {
     return (
@@ -56,14 +65,12 @@ const TimerErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children 
 
 // Inline Timer Presets Component
 interface InlineTimerPresetsProps {
-  currentDuration: number;
   onSelectDuration: (durationSeconds: number) => void;
   onOpenCustomPicker: () => void;
   onClose: () => void;
 }
 
 const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
-  currentDuration,
   onSelectDuration,
   onOpenCustomPicker,
   onClose
@@ -148,9 +155,7 @@ interface PreachingTimerProps {
   className?: string;
   sermonId?: string;
   onExitPreaching?: () => void;
-  onTimerFinished?: () => void; // Called when timer finishes naturally
   onSetDuration?: (durationSeconds: number) => void; // Called when user selects new duration
-  onSwitchToDurationSelector?: () => void; // Called when user wants to go back to main duration selector
   onTimerStateChange?: (timerState: {
     currentPhase: TimerPhase;
     phaseProgress: number;
@@ -165,9 +170,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   className = '',
   sermonId,
   onExitPreaching,
-  onTimerFinished,
   onSetDuration,
-  onSwitchToDurationSelector,
   onTimerStateChange,
 }) => {
 
@@ -199,7 +202,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         timeRemaining: progress.timeRemaining,
       });
     }
-  }, [timerState.currentPhase, progress?.phaseProgress, progress?.totalProgress, progress?.timeRemaining, onTimerStateChange]);
+  }, [timerState.currentPhase, progress, onTimerStateChange]);
 
   // State for duration pickers
   const [showInlinePresets, setShowInlinePresets] = useState(false);
@@ -219,9 +222,9 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   }, [settings.totalDuration, selectedDuration]);
 
   // Comprehensive logging for modal state debugging
-  const logModalState = useCallback((action: string, details?: any) => {
+  const logModalState = useCallback(() => {
     // Debug logging removed
-  }, [showInlinePresets, showCustomPicker, pendingCustomPickerOpen, timerState, initialDuration]);
+  }, []);
 
   // Periodic logging every 5 seconds
   useEffect(() => {
@@ -381,23 +384,23 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
             {sermonId && (
               <Link
                 href={`/sermons/${sermonId}/plan`}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 hover:shadow-lg active:scale-95 transition-all duration-200 shadow-md h-12"
+                className={NAV_BUTTON_BLUE}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToPlan", { defaultValue: "Back to Plan" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_PLAN, { defaultValue: DEFAULT_BACK_TO_PLAN })}</span>
               </Link>
             )}
             {sermonId && (
               <Link
                 href={`/sermons/${sermonId}`}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 hover:shadow-lg active:scale-95 transition-all duration-200 shadow-md h-12"
+                className={NAV_BUTTON_GRAY}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToSermon", { defaultValue: "Back to Sermon" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_SERMON, { defaultValue: DEFAULT_BACK_TO_SERMON })}</span>
               </Link>
             )}
             {onExitPreaching && (
@@ -409,9 +412,9 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                   }
                   onExitPreaching();
                 }}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:shadow-lg active:scale-95 transition-all duration-200 shadow-md h-12"
+                className={NAV_BUTTON_RED}
               >
-                <span>{t("plan.exitPreachingMode", { defaultValue: "Exit Preaching Mode" })}</span>
+                <span>{t(TRANSLATION_EXIT_PREACHING_MODE, { defaultValue: DEFAULT_EXIT_PREACHING_MODE })}</span>
               </button>
             )}
           </div>
@@ -433,11 +436,8 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           <div className="flex items-center gap-3">
             {(() => {
               // Рассчитываем hasTime на основе локального состояния или настроек таймера
-              const hasTimeCalculated = selectedDuration > 0 || settings.totalDuration > 0;
-
               return (
                 <TimerControls
-                  isRunning={timerState.isRunning}
                   isPaused={timerState.isPaused}
                   status={timerState.status}
                   currentPhase={timerState.currentPhase}
@@ -465,7 +465,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToPlan", { defaultValue: "Back to Plan" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_PLAN, { defaultValue: DEFAULT_BACK_TO_PLAN })}</span>
               </Link>
             )}
             {sermonId && (
@@ -476,7 +476,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToSermon", { defaultValue: "Back to Sermon" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_SERMON, { defaultValue: DEFAULT_BACK_TO_SERMON })}</span>
               </Link>
             )}
             {onExitPreaching && (
@@ -484,7 +484,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                 onClick={onExitPreaching}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:shadow-lg active:scale-95 transition-all duration-200 shadow-md"
               >
-                <span>{t("plan.exitPreachingMode", { defaultValue: "Exit Preaching Mode" })}</span>
+                <span>{t(TRANSLATION_EXIT_PREACHING_MODE, { defaultValue: DEFAULT_EXIT_PREACHING_MODE })}</span>
               </button>
             )}
           </div>
@@ -503,7 +503,6 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
               />
             </div>
             <TimerControls
-              isRunning={timerState.isRunning}
               isPaused={timerState.isPaused}
               status={timerState.status}
               currentPhase={timerState.currentPhase}
@@ -529,7 +528,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToPlan", { defaultValue: "Back to Plan" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_PLAN, { defaultValue: DEFAULT_BACK_TO_PLAN })}</span>
               </Link>
             )}
             {sermonId && (
@@ -540,7 +539,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <span>{t("actions.backToSermon", { defaultValue: "Back to Sermon" })}</span>
+                <span>{t(TRANSLATION_BACK_TO_SERMON, { defaultValue: DEFAULT_BACK_TO_SERMON })}</span>
               </Link>
             )}
             {onExitPreaching && (
@@ -575,7 +574,6 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           {/* Timer Controls */}
           <div className="flex justify-center">
             <TimerControls
-              isRunning={timerState.isRunning}
               isPaused={timerState.isPaused}
               status={timerState.status}
               currentPhase={timerState.currentPhase}
@@ -593,7 +591,6 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
       {/* Inline Timer Presets */}
       {showInlinePresets && (
         <InlineTimerPresets
-          currentDuration={settings.totalDuration}
           onSelectDuration={handleSelectDuration}
           onOpenCustomPicker={handleOpenCustomPicker}
           onClose={handleCloseInlinePresets}

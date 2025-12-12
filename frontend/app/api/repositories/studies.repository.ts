@@ -1,7 +1,8 @@
-import { adminDb } from '@/config/firebaseAdminConfig';
 import { FieldValue } from 'firebase-admin/firestore';
+
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { StudyMaterial, StudyNote } from '@/models/models';
-import { v4 as uuidv4 } from 'uuid';
+
 
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
@@ -50,7 +51,7 @@ export class StudiesRepository {
       updatedAt: now,
     };
     // Do not persist derived/extraneous fields
-    const { materialIds, relatedSermonIds, ...persistable } = note as any;
+    const { materialIds, relatedSermonIds, ...persistable } = note;
 
     const docRef = await adminDb.collection(NOTES_COLLECTION).add(persistable);
     return {
@@ -74,7 +75,7 @@ export class StudiesRepository {
     merged.isDraft = computeDraft(merged);
 
     // Never persist derived fields
-    const { isDraft, materialIds, relatedSermonIds, ...persistable } = merged as any;
+    const { ...persistable } = merged;
 
     await adminDb.collection(NOTES_COLLECTION).doc(id).set(persistable, { merge: true });
     return merged;

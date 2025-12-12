@@ -1,6 +1,21 @@
+import { render, screen } from '@testing-library/react';
 import React from 'react';
-import { render } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+// Mock window.matchMedia for JSDOM
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(), // deprecated
+    removeListener: jest.fn(), // deprecated
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
 
 // Router mocks
 jest.mock('next/navigation', () => ({
@@ -38,9 +53,9 @@ import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
 describe('Sermon plan container width', () => {
   it('does not use min-h-screen and keeps page container lightweight', async () => {
-    const { container, findByTestId } = render(<SermonPlanPage />);
+    render(<SermonPlanPage />);
     // Root should have data-testid and no min-h-screen
-    const root = await findByTestId('sermon-plan-page-container');
+    const root = await screen.findByTestId('sermon-plan-page-container');
     expect(root).toBeInTheDocument();
     expect((root as HTMLElement).className).not.toMatch(/min-h-screen/);
   });

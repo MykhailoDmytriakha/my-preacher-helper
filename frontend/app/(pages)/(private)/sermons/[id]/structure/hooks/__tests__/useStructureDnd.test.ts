@@ -1,15 +1,16 @@
 import { renderHook, act } from '@testing-library/react';
-import { useStructureDnd } from '../useStructureDnd';
+
+import { Item, Sermon, SermonPoint } from '@/models/models';
 import { updateStructure } from '@/services/structure.service';
-import { Item, Sermon, SermonPoint, Thought } from '@/models/models';
-import { toast } from 'sonner';
+
+import { useStructureDnd } from '../useStructureDnd';
+
 
 // Mock services
 jest.mock('@/services/structure.service');
 jest.mock('sonner');
 
 const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
-const mockToast = toast as jest.Mocked<typeof toast>;
 
 describe('useStructureDnd', () => {
   const mockSermon: Sermon = {

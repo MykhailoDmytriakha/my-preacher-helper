@@ -1,8 +1,15 @@
 "use client";
 
+import { X } from 'lucide-react';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+
+// Translation key constants
+const TRANSLATION_KEYS = {
+  HOURS: 'common.hours',
+  MINUTES: 'common.minutes',
+  SECONDS: 'common.seconds',
+} as const;
 
 interface CustomTimePickerProps {
   initialHours?: number;
@@ -30,7 +37,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
   const mountTimeRef = useRef<number>(Date.now());
   const closeAttemptsRef = useRef<number>(0);
 
-  const renderId = React.useRef(Math.random().toString(36).substr(2, 9));
   const [hours, setHours] = useState(initialHours);
   const [minutes, setMinutes] = useState(initialMinutes);
   const [seconds, setSeconds] = useState(initialSeconds);
@@ -45,6 +51,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
   const secondsArray = Array.from({ length: 60 }, (_, i) => i); // 0-59
 
   const ITEM_HEIGHT = 32; // Height of each item in pixels
+  const SCROLL_SNAP_TYPE = 'y mandatory';
+  const WEBKIT_OVERFLOW_SCROLLING = 'touch';
 
   // Scroll to center selected value
   const scrollToValue = useCallback((
@@ -67,7 +75,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     scrollToValue(hoursRef, hours);
     scrollToValue(minutesRef, minutes);
     scrollToValue(secondsRef, seconds);
-  }, []); // Only on mount
+  }, [hours, minutes, seconds, scrollToValue]); // Only on mount
 
   // Handle scroll and update selected value
   const handleScroll = useCallback((
@@ -180,11 +188,11 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     closeAttemptsRef.current = 0;
 
     // Global mouse event listeners to track all mouse activity
-    const handleGlobalMouseDown = (e: MouseEvent) => {
+    const handleGlobalMouseDown = () => {
       // Track global mouse activity
     };
 
-    const handleGlobalMouseUp = (e: MouseEvent) => {
+    const handleGlobalMouseUp = () => {
       // Track global mouse activity
     };
 
@@ -244,8 +252,6 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onMouseDown={(e) => {
-        const timeSinceMount = Date.now() - mountTimeRef.current;
-
         // Enable backdrop click to close functionality
         // Close modal when clicking outside the content area
         if (isBackdropActive && e.target === e.currentTarget) {
@@ -253,10 +259,10 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
           return;
         }
       }}
-      onMouseUp={(e) => {
+      onMouseUp={() => {
         // Handle mouse up on backdrop
       }}
-      onClick={(e) => {
+      onClick={() => {
         // Handle click on backdrop
       }}
       role="dialog"
@@ -317,7 +323,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
             {/* Hours Wheel */}
             <div className="wheel-container flex flex-col items-center">
               <label className="wheel-label text-xs text-gray-500 dark:text-gray-400 mb-2">
-                {t("common.hours", { defaultValue: "Hours" })}
+                {t(TRANSLATION_KEYS.HOURS, { defaultValue: "Hours" })}
               </label>
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
@@ -326,8 +332,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
                   onScroll={hoursScrollHandler}
                   style={{ 
-                    scrollSnapType: 'y mandatory',
-                    WebkitOverflowScrolling: 'touch'
+                    scrollSnapType: SCROLL_SNAP_TYPE,
+                    WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
                   }}
                   role="listbox"
                   aria-label={t("common.hours", { defaultValue: "Hours" })}
@@ -342,7 +348,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
             {/* Minutes Wheel */}
             <div className="wheel-container flex flex-col items-center">
               <label className="wheel-label text-xs text-gray-500 dark:text-gray-400 mb-2">
-                {t("common.minutes", { defaultValue: "Minutes" })}
+                {t(TRANSLATION_KEYS.MINUTES, { defaultValue: "Minutes" })}
               </label>
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
@@ -351,8 +357,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
                   onScroll={minutesScrollHandler}
                   style={{ 
-                    scrollSnapType: 'y mandatory',
-                    WebkitOverflowScrolling: 'touch'
+                    scrollSnapType: SCROLL_SNAP_TYPE,
+                    WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
                   }}
                   role="listbox"
                   aria-label={t("common.minutes", { defaultValue: "Minutes" })}
@@ -367,7 +373,7 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
             {/* Seconds Wheel */}
             <div className="wheel-container flex flex-col items-center">
               <label className="wheel-label text-xs text-gray-500 dark:text-gray-400 mb-2">
-                {t("common.seconds", { defaultValue: "Seconds" })}
+                {t(TRANSLATION_KEYS.SECONDS, { defaultValue: "Seconds" })}
               </label>
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
@@ -376,8 +382,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
                   onScroll={secondsScrollHandler}
                   style={{ 
-                    scrollSnapType: 'y mandatory',
-                    WebkitOverflowScrolling: 'touch'
+                    scrollSnapType: SCROLL_SNAP_TYPE,
+                    WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
                   }}
                   role="listbox"
                   aria-label={t("common.seconds", { defaultValue: "Seconds" })}

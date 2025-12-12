@@ -1,7 +1,8 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import React from 'react';
+
 import SermonOutline from '@/components/sermon/SermonOutline';
-import { SermonOutline as SermonOutlineType, Sermon } from '@/models/models';
+import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock translations (simplified)
@@ -12,7 +13,7 @@ jest.mock('react-i18next', () => ({
 // Mock DND
 jest.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Droppable: ({ children, renderClone }: { children: any; renderClone?: any }) => children({ innerRef: jest.fn(), droppableProps: {}, placeholder: null }),
+  Droppable: ({ children }: { children: any }) => children({ innerRef: jest.fn(), droppableProps: {}, placeholder: null }),
   Draggable: ({ children }: { children: any }) => children({ innerRef: jest.fn(), draggableProps: {}, dragHandleProps: {} }, { isDragging: false, isDropAnimating: false, draggingOver: null })
 }));
 
@@ -277,7 +278,7 @@ describe('SermonOutline Component', () => {
     });
     
     // The sections should be expanded by default because they have content
-    let introSection = screen.getByTestId('outline-section-introduction');
+    const introSection = screen.getByTestId('outline-section-introduction');
     let introPoints = within(introSection).queryByText('Introduction point 1');
     expect(introPoints).toBeInTheDocument();
     

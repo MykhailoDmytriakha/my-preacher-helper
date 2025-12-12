@@ -1,10 +1,12 @@
+/* eslint import/order: off */
 import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
+
+import LanguageInitializer from "./components/navigation/LanguageInitializer";
+import { AuthProvider } from "./providers/AuthProvider";
+import { QueryProvider } from "./providers/QueryProvider";
+import { TextScaleProvider } from "./providers/TextScaleProvider";
 import "./globals.css";
-import { AuthProvider } from './providers/AuthProvider';
-import { TextScaleProvider } from './providers/TextScaleProvider';
-import { QueryProvider } from './providers/QueryProvider';
-import LanguageInitializer from './components/navigation/LanguageInitializer';
 
 const interSans = Inter({
   variable: "--font-inter-sans",

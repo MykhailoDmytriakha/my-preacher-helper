@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Import the settings layout component
@@ -61,7 +61,7 @@ describe('Settings Section Layout', () => {
   });
 
   it('should handle text children correctly', () => {
-    const { container } = render(
+    render(
       <SettingsSectionLayout>
         Simple settings text content
       </SettingsSectionLayout>
@@ -120,7 +120,7 @@ describe('Settings Section Layout', () => {
     
     // All props should be preserved
     expect(button).toHaveClass('settings-btn-class');
-    expect(button).not.toBeDisabled();
+    expect(button).toBeEnabled();
     expect(button).toHaveTextContent('Save Settings');
     expect(button).toHaveAttribute('data-settings-id', '123');
   });

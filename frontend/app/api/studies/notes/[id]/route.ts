@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
+
 import { studiesRepository } from '@repositories/studies.repository';
+
+// Error messages
+const ERROR_MESSAGES = {
+  USER_NOT_AUTHENTICATED: 'User not authenticated',
+} as const;
 
 function getUserId(request: Request): string | null {
   return new URL(request.url).searchParams.get('userId');
@@ -8,7 +14,7 @@ function getUserId(request: Request): string | null {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
 
   try {
     const note = await studiesRepository.getNote(id);
@@ -24,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
     const updates = await request.json();
     const existing = await studiesRepository.getNote(id);
@@ -47,7 +53,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
     const existing = await studiesRepository.getNote(id);
     if (!existing) return NextResponse.json({ success: true });

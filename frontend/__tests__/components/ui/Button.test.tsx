@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import { Button } from '@/components/ui/Button';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -123,14 +124,14 @@ describe('Button Component', () => {
             name: 'disabled false',
             run: () => {
               render(<Button {...defaultProps} disabled={false} />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).not.toBeDisabled();
+              expect(screen.getByRole('button', { name: 'Test Button' })).toBeEnabled();
             }
           },
           {
             name: 'disabled undefined defaults to enabled',
             run: () => {
               render(<Button {...defaultProps} />);
-              expect(screen.getByRole('button', { name: 'Test Button' })).not.toBeDisabled();
+              expect(screen.getByRole('button', { name: 'Test Button' })).toBeEnabled();
             }
           }
         ],

@@ -8,6 +8,7 @@ import {
   addSiblingNode,
   areTreesEqual
 } from '@/components/sermon/prep/exegeticalPlan/treeUtils';
+
 import type { ExegeticalPlanNode } from '@/models/models';
 
 describe('treeUtils', () => {

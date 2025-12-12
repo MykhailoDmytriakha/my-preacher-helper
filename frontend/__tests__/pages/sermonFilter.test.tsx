@@ -1,31 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
-
-// Define mock data types
-interface Thought {
-  id: string;
-  text: string;
-  tags: string[];
-  date: string;
-}
-
-interface ThoughtsBySection {
-  introduction: string[];
-  main: string[];
-  conclusion: string[];
-  ambiguous: string[];
-}
-
-interface Sermon {
-  id: string;
-  title: string;
-  verse: string;
-  date: string;
-  userId: string;
-  thoughts: Thought[];
-  structure?: ThoughtsBySection;
-}
 
 // Create a mock SermonPage component that includes the filter functionality
 // This is simplified but includes the key elements we need to test

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+
 import SeriesCard from '@/components/series/SeriesCard';
 import { Series } from '@/models/models';
 

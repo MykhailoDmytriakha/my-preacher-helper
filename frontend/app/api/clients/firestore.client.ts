@@ -1,22 +1,29 @@
 import { adminDb } from "@/config/firebaseAdminConfig";
 import { Tag } from "@/models/models";
 
+// Translation key constants
+const TAG_TRANSLATION_KEYS = {
+  INTRODUCTION: "tags.introduction",
+  MAIN_PART: "tags.mainPart",
+  CONCLUSION: "tags.conclusion",
+} as const;
+
 // Define the mapping of required tag IDs to their translation keys
 export const REQUIRED_TAG_TRANSLATIONS = {
   // Standard lowercase versions
-  "intro": "tags.introduction",
-  "main": "tags.mainPart",
-  "conclusion": "tags.conclusion",
-  
+  "intro": TAG_TRANSLATION_KEYS.INTRODUCTION,
+  "main": TAG_TRANSLATION_KEYS.MAIN_PART,
+  "conclusion": TAG_TRANSLATION_KEYS.CONCLUSION,
+
   // Capitalized versions
-  "Intro": "tags.introduction",
-  "Main": "tags.mainPart",
-  "Conclusion": "tags.conclusion",
-  
+  "Intro": TAG_TRANSLATION_KEYS.INTRODUCTION,
+  "Main": TAG_TRANSLATION_KEYS.MAIN_PART,
+  "Conclusion": TAG_TRANSLATION_KEYS.CONCLUSION,
+
   // Russian versions
-  "Вступление": "tags.introduction",
-  "Основная часть": "tags.mainPart", 
-  "Заключение": "tags.conclusion"
+  "Вступление": TAG_TRANSLATION_KEYS.INTRODUCTION,
+  "Основная часть": TAG_TRANSLATION_KEYS.MAIN_PART,
+  "Заключение": TAG_TRANSLATION_KEYS.CONCLUSION
 };
 
 // Standard required tag IDs (lowercase canonical versions)

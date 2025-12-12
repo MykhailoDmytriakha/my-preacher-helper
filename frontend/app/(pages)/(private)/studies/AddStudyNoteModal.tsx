@@ -1,9 +1,5 @@
 'use client';
 
-import { useState, useMemo, KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
-import dynamic from 'next/dynamic';
 import {
   ArrowPathIcon,
   BookmarkIcon,
@@ -13,13 +9,19 @@ import {
   TagIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import dynamic from 'next/dynamic';
+import { useState, KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+
 import { ScriptureReference } from '@/models/models';
+
+import { BibleLocale } from './bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 import { parseReferenceText } from './referenceParser';
 import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
 import TagCatalogModal from './TagCatalogModal';
-import { BibleLocale } from './bibleData';
 
 // Dynamic import AudioRecorder (client-side only)
 const AudioRecorder = dynamic(

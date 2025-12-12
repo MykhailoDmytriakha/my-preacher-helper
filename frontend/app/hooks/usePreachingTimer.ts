@@ -1,31 +1,29 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+
+import {
+  UsePreachingTimerReturn
+} from '@/types/TimerProps';
 import {
   TimerState,
   TimerPhase,
-  TimerStatus,
   TimerSettings,
   DEFAULT_TIMER_SETTINGS,
   TIMER_PHASE_COLORS
 } from '@/types/TimerState';
 import {
-  UsePreachingTimerReturn
-} from '@/types/TimerProps';
-import {
-  triggerScreenBlink,
-  triggerTextHighlight,
-  cancelVisualEffects
+  triggerScreenBlink
 } from '@/utils/visualEffects';
 
 export const usePreachingTimer = (
   initialSettings?: Partial<TimerSettings>
 ): UsePreachingTimerReturn => {
   // Merge default settings with provided settings
-  const settings: TimerSettings = {
+  const settings: TimerSettings = useMemo(() => ({
     ...DEFAULT_TIMER_SETTINGS,
     ...initialSettings
-  };
+  }), [initialSettings]);
 
   // Load saved timer duration from localStorage
   const loadSavedDuration = (): number => {
@@ -76,7 +74,6 @@ export const usePreachingTimer = (
 
   // Refs for interval management
   const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Calculate current phase and progress
   const calculateCurrentPhase = useCallback((elapsedSeconds: number): TimerPhase => {
@@ -236,7 +233,7 @@ export const usePreachingTimer = (
         intervalRef.current = null;
       }
     };
-  }, [timerState.isRunning, timerState.isPaused, timerState.startTime, calculateCurrentPhase, triggerCompletionBlink]);
+  }, [timerState.isRunning, timerState.isPaused, timerState.startTime, timerState.totalDuration, calculateCurrentPhase, triggerCompletionBlink]);
 
   // Timer actions
   const start = useCallback(() => {
@@ -326,18 +323,15 @@ export const usePreachingTimer = (
       }
 
       let newPhase: TimerPhase;
-      let newTimeRemaining: number;
       let elapsedAtPhaseStart: number; // How much time should have elapsed when new phase starts
 
       switch (actualCurrentPhase) {
         case 'introduction':
           newPhase = 'main';
-          newTimeRemaining = mainDuration; // Set to full main duration
           elapsedAtPhaseStart = introDuration; // Main starts after introduction (20% of total)
           break;
         case 'main':
           newPhase = 'conclusion';
-          newTimeRemaining = Math.floor(totalDuration * 0.2); // Set to full conclusion duration (20%)
           elapsedAtPhaseStart = introDuration + mainDuration; // Conclusion starts after intro + main (80% of total)
           break;
         case 'conclusion':
@@ -480,7 +474,7 @@ export const usePreachingTimer = (
     introductionRatio: settings.introductionRatio,
     mainRatio: settings.mainRatio,
     conclusionRatio: settings.conclusionRatio,
-    updateSettings: (newSettings: Partial<TimerSettings>) => {
+    updateSettings: () => {
       // This would update settings and recalculate durations
       // TODO: Implement settings persistence
     }

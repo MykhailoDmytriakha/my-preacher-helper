@@ -8,10 +8,10 @@ export class SeriesRepository {
   /**
    * Filters out undefined values from an object as Firestore doesn't accept them
    */
-  private filterUndefinedValues(obj: Record<string, any>): Record<string, any> {
+  private filterUndefinedValues<T extends Record<string, unknown>>(obj: T): T {
     return Object.fromEntries(
-      Object.entries(obj).filter(([_, value]) => value !== undefined)
-    );
+      Object.entries(obj).filter(([, value]) => value !== undefined)
+    ) as T;
   }
   private readonly collection = "series";
 

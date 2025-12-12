@@ -1,6 +1,7 @@
-import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { i18n } from '@locales/i18n';
+
+import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
 
 // Debug flag
 const DEBUG_EXPORT = false;

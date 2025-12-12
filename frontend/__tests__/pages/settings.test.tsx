@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import SettingsPage from '@/(pages)/(private)/settings/page';
 import '@testing-library/jest-dom';
 
@@ -288,11 +289,9 @@ describe('Settings Page', () => {
       render(<SettingsPage />);
 
       // Switch to tags section
-      await waitFor(() => {
-        const tagsNavs = screen.getAllByTestId('nav-tags');
-        expect(tagsNavs.length).toBeGreaterThan(0);
-        fireEvent.click(tagsNavs[0]);
-      });
+      const tagsNavs = await screen.findAllByTestId('nav-tags');
+      expect(tagsNavs.length).toBeGreaterThan(0);
+      fireEvent.click(tagsNavs[0]);
 
       await waitFor(() => {
         const tagsSections = screen.getAllByTestId('tags-section');

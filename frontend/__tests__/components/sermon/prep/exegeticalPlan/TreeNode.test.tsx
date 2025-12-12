@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 jest.mock('@locales/i18n', () => ({}));
@@ -18,6 +18,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import TreeNode from '@/components/sermon/prep/exegeticalPlan/TreeNode';
+
 import type { ExegeticalPlanNode } from '@/models/models';
 
 describe('TreeNode', () => {

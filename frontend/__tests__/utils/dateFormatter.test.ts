@@ -1,6 +1,7 @@
-import { formatDate } from '@utils/dateFormatter';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+import { formatDate } from '@utils/dateFormatter';
 
 // Mock date-fns to control its behavior
 jest.mock('date-fns', () => ({

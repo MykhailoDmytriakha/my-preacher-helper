@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sermonsRepository } from '@repositories/sermons.repository';
-import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
+
 import { SermonDraft } from '@/models/models';
+import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
+
+// Error message constants
+const ERROR_MESSAGES = {
+  UNKNOWN_ERROR: 'Unknown error occurred',
+  SERMON_NOT_FOUND: 'Sermon not found',
+} as const;
 
 // Use the SermonDraft interface from models.ts
 
@@ -45,7 +52,7 @@ export async function GET(
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Generate the plan for the specified section (only pass style when provided)
@@ -110,14 +117,14 @@ export async function GET(
       await sermonsRepository.updateSermonPlan(id, updatedPlan);
       console.log(`Saved ${section} plan to database for sermon ${id}`);
     } catch (saveError: unknown) {
-      const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error occurred';
+      const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error(`Error saving plan to database: ${errorMessage}`);
       // Continue and return the plan even if saving fails
     }
 
     return NextResponse.json(normalizedPlan);
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorMessage = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR;
     console.error(`Error generating plan for section ${section}:`, error);
     return NextResponse.json(
       { error: 'Failed to generate plan', details: errorMessage },
@@ -132,7 +139,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Create a full plan object with empty sections initially
@@ -188,7 +195,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
         "Successfully generated introduction plan" :
         "Failed to generate introduction plan");
     } catch (introError: unknown) {
-      const errorMessage = introError instanceof Error ? introError.message : 'Unknown error occurred';
+      const errorMessage = introError instanceof Error ? introError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error("Failed to generate introduction plan:", introError);
       fullPlan.introduction = { outline: `Error generating introduction: ${errorMessage}` };
       fullPlan.sectionStatuses.introduction = false;
@@ -218,7 +225,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
         "Successfully generated main plan" :
         "Failed to generate main plan");
     } catch (mainError: unknown) {
-      const errorMessage = mainError instanceof Error ? mainError.message : 'Unknown error occurred';
+      const errorMessage = mainError instanceof Error ? mainError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error("Failed to generate main plan:", mainError);
       fullPlan.main = { outline: `Error generating main part: ${errorMessage}` };
       fullPlan.sectionStatuses.main = false;
@@ -248,7 +255,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
         "Successfully generated conclusion plan" :
         "Failed to generate conclusion plan");
     } catch (conclusionError: unknown) {
-      const errorMessage = conclusionError instanceof Error ? conclusionError.message : 'Unknown error occurred';
+      const errorMessage = conclusionError instanceof Error ? conclusionError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error("Failed to generate conclusion plan:", conclusionError);
       fullPlan.conclusion = { outline: `Error generating conclusion: ${errorMessage}` };
       fullPlan.sectionStatuses.conclusion = false;
@@ -319,7 +326,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
       await sermonsRepository.updateSermonPlan(sermonId, planToStore);
       console.log(`Saved full plan to database for sermon ${sermonId}`);
     } catch (saveError: unknown) {
-      const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error occurred';
+      const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error(`Error saving full plan to database: ${errorMessage}`);
       // Continue and return the plan even if saving fails
     }
@@ -356,7 +363,7 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Find the outline point in the sermon structure
@@ -459,7 +466,7 @@ export async function PUT(
     // Get the sermon to confirm it exists
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Parse the request body to get the plan

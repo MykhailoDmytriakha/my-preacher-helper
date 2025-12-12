@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSermon, updateSermon } from "@services/sermon.service";
-import { Sermon } from "@/models/models";
-import { DotsVerticalIcon } from "@components/Icons";
-import EditSermonModal from "@components/EditSermonModal";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+
+import { Sermon } from "@/models/models";
+import EditSermonModal from "@components/EditSermonModal";
+import { DotsVerticalIcon } from "@components/Icons";
+import { deleteSermon, updateSermon } from "@services/sermon.service";
+
 import "@locales/i18n";
 
 interface OptionMenuProps {

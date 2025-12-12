@@ -1,7 +1,8 @@
 "use client";
 
-import { Sermon } from "@/models/models";
 import { useTranslation } from "react-i18next";
+
+import { Sermon } from "@/models/models";
 import { DocumentIcon, PencilIcon, ChevronIcon } from "@components/Icons";
 
 interface DashboardStatsProps {

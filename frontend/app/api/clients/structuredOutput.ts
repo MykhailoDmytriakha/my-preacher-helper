@@ -12,8 +12,9 @@
  */
 import 'openai/shims/node';
 import OpenAI from "openai";
-import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
+import { z } from "zod";
+
 import { logger, formatDuration } from "./openAIHelpers";
 
 // Environment configuration

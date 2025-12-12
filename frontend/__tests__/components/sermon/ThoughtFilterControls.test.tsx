@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
@@ -36,7 +36,7 @@ describe('ThoughtFilterControls', () => {
     const buttonRef = React.createRef<HTMLButtonElement>();
 
     // Render an outside area and the trigger button the menu expects
-    const { container } = render(
+    render(
       <div>
         <div data-testid="outside" />
         <button ref={buttonRef} data-testid="thought-filter-button">Toggle</button>

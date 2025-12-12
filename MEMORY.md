@@ -9,40 +9,7 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
-### 2025-12-11 Search snippets must include tags
-**Problem:** При поиске по тегам сниппеты показывали только текст мыслей или пустоту, теги выводились отдельно и были не видны, если совпадение было только по тегу.
-**Attempts:** Добавлял отдельные блоки для тегов → получалось два бордера; без текста сниппет не отображался.
-**Solution:** Собрал единый сниппет на мысль: текстовый фрагмент + все совпавшие теги в одном блоке; добавил fallback текста мысли при совпадении только по тегу; нормализовал переносы/пробелы, теги подсвечиваются внутри сниппета.
-**Why it worked:** Один контейнер объясняет “почему найдено” и по тексту, и по тегам; fallback гарантирует видимость матча; чистка whitespace убирает визуальный шум.
-**Principle:** Если совпадение только в тегах, всё равно показывай один сниппет с текстом и тегами вместе, чтобы причина совпадения была видна.
-
-### 2025-12-11 Inline highlight breaks words
-**Problem:** Подсветка внутри слова (e.g., “прим” в “примеров”) рвала слово переносом строки: `<mark>` создавал разрыв и ломал верстку сниппета.
-**Attempts:** Нормализовывал whitespace и убирал переносы внутри слова — улучшило, но разрывы оставались, когда браузер ставил перенос между `<mark>` и текстом.
-**Solution:** Добавил word-joiners вокруг `<mark>`, `white-space: nowrap` на подсвеченной части и `word-break: keep-all` на контейнере сниппета; сохранил очистку переносов внутри слов.
-**Why it worked:** Запретил браузеру разбивать слово между подсвеченной и непосвещенной частью и убрал скрытые переносы, поэтому слово осталось цельным.
-**Principle:** При подсветке части слова всегда запрещай переносы (joiner + nowrap/keep-all) и очищай переносы внутри слова, иначе подсветка ломает слово.
-
-### 2025-12-11 Landing tests must allow multiple headings
-**Problem:** Тест landing падал из-за ожидания одного h1/h2, тогда как страница имеет несколько заголовков (header + hero) и badge для welcome.
-**Attempts:** Переключал `getByRole` на `getAllByRole`, но оставался фейл на h2 (несколько заголовков).
-**Solution:** Проверяю наличие текста через `getAllByRole(...).some(...)` для h1 и через прямой `getByText` для welcome (badge/span), избегая жёсткой монополии на один заголовок.
-**Why it worked:** Тест адаптирован к реальной структуре страницы с множественными заголовками и не ломается при добавлении новых секций.
-**Principle:** Когда страница содержит несколько h1/h2, проверки должны быть tolerant: ищи нужный текст среди всех, либо проверяй текст напрямую, а не предполагая единственность заголовка.
-
-### 2025-12-11 Responsive toolbar keeps search primary
-**Problem:** После перестройки тулбара поле поиска сжималось — основной input стал короче селектов, визуально “уменьшился”.
-**Attempts:** Менял порядок элементов — не помогло; ограничение ширины оставалось.
-**Solution:** Убрал `max-width` ограничения для поиска, дал `flex-1` + `min-w` и вынес чекбоксы в отдельную строку под строкой поиска/селектов.
-**Why it worked:** Основной контрол получил гибкую ширину, а вторичные контролы не отнимают у него место на одной линии.
-**Principle:** В тулбаре поиска оставляй инпут гибким (`flex-1` без max-width), фильтры/чекбоксы — отдельно или в отдельных столбцах, чтобы не сжимать поиск.
-
-### 2025-12-11 Jest mocks must match component exports
-**Problem:** Тесты LoginOptions падали с “Element type is invalid” из-за отсутствия моков для используемой иконки и устаревших CSS ожиданий.
-**Attempts:** Перезапускал тесты — без изменений; проблема оставалась.
-**Solution:** Замокал все используемые иконки (включая CheckIcon) и обновил проверки классов до актуальных (`from-blue-600 to-purple-600`, `bg-amber-100/50 border-amber-400`).
-**Why it worked:** Компонент стал рендериться в тестах, а ассерты соответствуют реальным классам.
-**Principle:** При моках общих компонентов (иконки) мокай каждый экспорт, который использует компонент, и держи тестовые ожидания классов синхронизированными с версткой.
+*(Empty - lessons processed 2024-12-13)*
 
 ---
 
@@ -50,24 +17,15 @@
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
 
-### React State Dependencies (группа из 3+ lessons)
+### Component Prop Cleanup Pattern (for next processing)
 
-**Related lessons:** useEffect Infinite Loop, Search Logic Stability, Highlighting Integration
-**Common pattern:** Проблемы возникают когда React dependencies нестабильны
+**Related lessons:** Timer components cleanup, unused variables batch
+**Common pattern:** When removing unused props, must update multiple locations
 **Emerging principle:** 
-- Computed arrays/objects ВСЕГДА нестабильны — конвертировать в primitives
-- RegExp на original string безопаснее чем index manipulation
-- Override ALL content blocks in Markdown renderer, не только `p`
-**Confidence:** High (подтверждено многократно)
-
-### Search UX Patterns (группа)
-
-**Related lessons:** Search Must Match User's View, Show "Why It Matched", Visual Snippet Visibility
-**Common pattern:** Поиск должен работать с точки зрения ПОЛЬЗОВАТЕЛЯ
-**Emerging principle:**
-- Искать по ОТОБРАЖАЕМЫМ значениям, не по internal storage
-- Если match в metadata — показать metadata в результатах
-- Snippet должен ВСЕГДА показывать matched word (не обрезать CSS)
+- Update TypeScript interface
+- Update component destructuring  
+- Update all call sites
+- Run tests to catch missed usages
 **Confidence:** High
 
 ---
@@ -75,6 +33,74 @@
 ## 💎 Long-Term Memory (Knowledge Base) — Интернализированные принципы
 
 > Осмысленные, проверенные временем правила. Формат: "При X — ВСЕГДА делай Y"
+
+### 🔧 ESLint & Linting Principles
+
+**Duplicate Strings → Constants:**
+При ESLint sonarjs/no-duplicate-string — создавать константы в начале файла. Для 3+ повторений → обязательно константа.
+
+**Cognitive Complexity → Helper Functions:**
+При cognitive complexity > 20 — выделять helper functions. Каждая функция = single responsibility. НЕ менять business logic при рефакторинге.
+
+**Jest Mock String Literals (CRITICAL):**
+`jest.mock()` выполняется во время **module loading phase**, ДО выполнения JS кода. Строковые литералы в `jest.mock()` ОБЯЗАТЕЛЬНЫ — константы вызывают "Cannot access before initialization". Принять дублирование как framework constraint.
+
+**Translation Key Coverage:**
+При добавлении новых `t()` ключей — ОБЯЗАТЕЛЬНО добавлять во ВСЕ языковые файлы (en/ru/uk) сразу. Иначе упадут translation coverage tests.
+
+**Framework Constraints Win:**
+Когда ESLint правила конфликтуют с framework requirements (Jest mocks, Testing Library) — framework constraints имеют приоритет. Принять некоторые warnings как acceptable.
+
+**Circular Constant References:**
+При replace_all ВСЕГДА проверять результат на self-reference: `const X = X` — НЕПРАВИЛЬНО. `const X = 'value'` — ПРАВИЛЬНО.
+
+### 🔄 React Hooks Principles
+
+**useEffect Dependencies — Primitives Only:**
+НИКОГДА не использовать computed arrays/objects как dependencies. Конвертировать в primitive string (IDs join).
+
+**State Transition Effects:**
+Для effects на state transitions — использовать useRef для tracking previous value. Guard execution: `if (prevRef.current && !current)`.
+
+**Missing Imports Break Runtime:**
+ESLint может пропустить missing hook imports, но runtime сломается. При добавлении useMemo/useCallback — ВСЕГДА проверять импорты.
+
+**useCallback for Function Dependencies:**
+Если функция используется в dependency array — оборачивать в useCallback. Или перемещать внутрь эффекта.
+
+### 🔍 Search & Highlighting Principles
+
+**Search Matching — User's View:**
+ВСЕГДА искать по DISPLAYED values, не internal storage. User searches what they see.
+
+**Snippets Show WHY Matched:**
+Если match только в tags — показывать tags в snippet. Один контейнер для text + tags. Fallback текста при tag-only match.
+
+**Inline Highlights — No Word Breaks:**
+При подсветке части слова — добавлять word-joiners, `white-space: nowrap` на mark, `word-break: keep-all` на container. Иначе слово разорвётся.
+
+**Highlighting Implementation:**
+`regex.exec(originalContent)` — единственный safe way для indices. Map ALL content blocks в Markdown renderer.
+
+### 🧪 Testing Principles
+
+**Jest Mocks — Match ALL Exports:**
+При моках компонентов с иконками — мокать КАЖДЫЙ используемый экспорт. "Element type is invalid" = missing mock.
+
+**Browser APIs Need Mocks:**
+JSDOM не реализует window.matchMedia, ResizeObserver. При тестировании responsive компонентов — ОБЯЗАТЕЛЬНО добавлять mock с полным интерфейсом.
+
+**Test Class Expectations — Keep Synced:**
+При изменении CSS классов в компонентах — обновлять тестовые ожидания. Классы в assertions должны соответствовать реальной верстке.
+
+**Testing Library waitFor:**
+`waitFor()` только для проверок условий, НИКОГДА для actions. Использовать `findAllByTestId()` + `fireEvent.click()`.
+
+**Modern Catch Blocks:**
+Catch block без параметров: `} catch {` вместо `} catch (_error) {`. Eliminates unused variable warnings.
+
+**ESLint Fixes → Run Tests:**
+После ЛЮБЫХ ESLint исправлений — НЕМЕДЛЕННО запускать тесты. ESLint fixes могут ломать функциональность.
 
 ### 🎨 UI/Layout Principles
 
@@ -86,6 +112,12 @@
 
 **Modal → Drawer Migration:**
 Primary benefit — MORE SPACE. Drawer widths: text labels (`30%` | `50%` | `100%`), НЕ abstract icons.
+
+**Toolbar Search — Stay Flexible:**
+В тулбаре поиска — input с `flex-1` без max-width. Фильтры/чекбоксы отдельно или в другой row, чтобы не сжимать поиск.
+
+**Multiple Headings in Tests:**
+Страницы могут иметь несколько h1/h2. Использовать `getAllByRole(...).some(...)` или `getByText` вместо единственного `getByRole`.
 
 ### 🖱️ UX Consistency Principles
 
@@ -104,14 +136,19 @@ Sibling inputs (tags, references) ДОЛЖНЫ иметь идентичные i
 При добавлении ЛЮБОЙ state variable — trace через ВЕСЬ lifecycle: init → transitions → ALL exit points.
 Особенно проверять reset в: normal exit, error handling, cancellation, timeout.
 
-**useEffect Dependencies:**
-НИКОГДА не использовать computed arrays/objects как dependencies. Конвертировать в primitive string.
+### 🏗️ Build & TypeScript Principles
 
-### 🧪 Testing Discipline
+**Systematic Build Debugging:**
+При множественных TypeScript ошибках — фиксить систематически:
+1. Понять API каждого проблемного места
+2. Предпочесть working code над perfect typing
+3. Тестировать каждое изменение отдельно
 
-**Post-Change Testing:**
-После ЛЮБОГО изменения (UI/text/accessibility) — run test suite НЕМЕДЛЕННО.
-Command: `npm run test` (НЕ `npx jest`).
+**DnD Types:**
+`dragHandleProps` может быть null — добавлять `| null` к типам.
+
+**StudyNote Creation:**
+Исключать server-only поля (id, createdAt, updatedAt) при создании объектов.
 
 ### 🌍 Localization Principles
 
@@ -126,19 +163,6 @@ Zod schemas + `zodResponseFormat()` + `beta.chat.completions.parse()`. Eliminate
 **Scripture References:**
 Book names MUST be English for `referenceParser.ts` compatibility. Explicit per-field language rules in prompts.
 
-### 🔍 Search & Highlighting Principles
-
-**Search Matching:**
-ВСЕГДА искать по DISPLAYED values, не internal storage. User searches what they see.
-
-**Highlighting:**
-`regex.exec(originalContent)` — единственный safe way для indices. Map ALL content blocks в Markdown renderer.
-
-### 📱 Interactive Components
-
-**Audio Recorder:**
-Main button = ALWAYS primary action. Reset ALL state variables at ALL exit points.
-
 ### 🧭 Navigation & Architecture
 
 **Next.js 15:**
@@ -148,13 +172,12 @@ Route params MUST be awaited: `Promise<{ id: string }>` and `await params`.
 
 ## 🔧 Session State — Текущая работа
 
-**Current task:** agents.mdc и MEMORY.md restructuring
-**Recent changes:** 
-- agents.mdc: Added Dynamic Framework Synthesis
-- agents.mdc: Added Lesson Recording Protocol with mandatory trigger
-- agents.mdc: Rebuilt Memory Architecture as Learning Pipeline
-- agents.mdc: Added Frameworks as Personality Documentation
-- MEMORY.md: Restructured with new pipeline format
+**Current task:** MEMORY.md processing — lessons consolidated
+**Recent changes:**
+- Processed 30+ lessons from Inbox
+- Extracted principles to Long-Term Memory
+- Grouped related patterns
+- Cleaned up processed lessons
 
 **Open questions:** None currently
 

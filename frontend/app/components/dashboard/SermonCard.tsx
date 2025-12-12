@@ -1,18 +1,20 @@
 "use client";
 
-import Link from "next/link";
-import { Sermon, Series } from "@/models/models";
-import { formatDate } from "@utils/dateFormatter";
-import { useTranslation } from "react-i18next";
-import OptionMenu from "@/components/dashboard/OptionMenu";
-import ExportButtons from "@components/ExportButtons";
-import { getExportContent } from "@/utils/exportContent";
-import { DocumentIcon } from "@components/Icons";
-import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 import { List, MessageSquareText, CheckCircle2, Calendar } from "lucide-react";
-import HighlightedText from "../HighlightedText";
+import Link from "next/link";
+import { useTranslation } from "react-i18next";
+
+import OptionMenu from "@/components/dashboard/OptionMenu";
+import { Sermon, Series } from "@/models/models";
+import { getExportContent } from "@/utils/exportContent";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
+import ExportButtons from "@components/ExportButtons";
+import { formatDate } from "@utils/dateFormatter";
+
+import HighlightedText from "../HighlightedText";
+
+import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
 interface SermonCardProps {
   sermon: Sermon;

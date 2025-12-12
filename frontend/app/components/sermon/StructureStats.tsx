@@ -1,14 +1,16 @@
 "use client";
 
-import React from "react";
-import { useRouter } from "next/navigation";
-import type { Sermon } from "@/models/models";
-import { useTranslation } from 'react-i18next';
-import "@locales/i18n";
-import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
-import { getFocusModeUrl } from "@/utils/urlUtils";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import React from "react";
+import { useTranslation } from "react-i18next";
+import "@locales/i18n";
+
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getFocusModeButtonColors } from "@/utils/themeColors";
+import { getFocusModeUrl } from "@/utils/urlUtils";
+
+import type { Sermon } from "@/models/models";
 
 interface StructureStatsProps {
   sermon: Sermon;
@@ -25,8 +27,12 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   totalThoughts,
   hasInconsistentThoughts = false,
 }) => {
-  const router = useRouter();
   const { t } = useTranslation();
+
+  // Use direct translation calls to avoid duplicate string warnings
+  const structureEntriesTranslationKey = 'structure.entries';
+  const structureRecommendedTranslationKey = 'structure.recommended';
+  const structureFocusModeTranslationKey = 'structure.focusMode';
 
   const intro = tagCounts["Вступление"] || 0;
   const main = tagCounts["Основная часть"] || 0;
@@ -59,7 +65,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${introPercentage}%` : "0%",
                 backgroundColor: introColor,
               }}
-              data-tooltip={`${t('tags.introduction')}: ${intro} ${t('structure.entries')}`}
+              data-tooltip={`${t('tags.introduction')}: ${intro} ${t(structureEntriesTranslationKey)}`}
             />
             <div
               className="transition-all duration-500"
@@ -67,7 +73,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${mainPercentage}%` : "0%",
                 backgroundColor: mainColor,
               }}
-              data-tooltip={`${t('tags.mainPart')}: ${main} ${t('structure.entries')}`}
+              data-tooltip={`${t('tags.mainPart')}: ${main} ${t(structureEntriesTranslationKey)}`}
             />
             <div
               className="transition-all duration-500"
@@ -75,7 +81,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                 backgroundColor: conclusionColor,
               }}
-              data-tooltip={`${t('tags.conclusion')}: ${conclusion} ${t('structure.entries')}`}
+              data-tooltip={`${t('tags.conclusion')}: ${conclusion} ${t(structureEntriesTranslationKey)}`}
             />
           </div>
         </div>
@@ -84,14 +90,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.introduction')}&rdquo; <br />
-              {t('structure.recommended', { percent: 20 })}
+              {t(structureRecommendedTranslationKey, { percent: 20 })}
             </span>
             <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('introduction', sermon.id)}
                 className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors`}
               >
-                {t('structure.focusMode')}
+                {t(structureFocusModeTranslationKey)}
               </Link>
             </div>
           </div>
@@ -101,14 +107,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.mainPart')}&rdquo;
               <br />
-              {t('structure.recommended', { percent: 60 })}
+              {t(structureRecommendedTranslationKey, { percent: 60 })}
             </span>
             <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('main', sermon.id)}
                 className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors`}
               >
-                {t('structure.focusMode')}
+                {t(structureFocusModeTranslationKey)}
               </Link>
             </div>
           </div>
@@ -117,14 +123,14 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               &ldquo;{t('tags.conclusion')}&rdquo; <br />
-              {t('structure.recommended', { percent: 20 })}
+              {t(structureRecommendedTranslationKey, { percent: 20 })}
             </span>
             <div className="mt-auto pt-2">
               <Link
                 href={getFocusModeUrl('conclusion', sermon.id)}
                 className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors`}
               >
-                {t('structure.focusMode')}
+                {t(structureFocusModeTranslationKey)}
               </Link>
             </div>
           </div>
@@ -145,7 +151,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
 const StructurePlanToggle: React.FC<{
   sermonId: string;
   hasInconsistentThoughts: boolean;
-  t: (key: string, options?: any) => string;
+  t: (key: string, options?: Record<string, unknown>) => string;
 }> = ({ sermonId, hasInconsistentThoughts, t }) => {
   const router = useRouter();
   

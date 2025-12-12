@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sermonsRepository } from '@repositories/sermons.repository';
+
 import { Sermon } from '@/models/models';
 import { generateBrainstormSuggestion } from '@clients/openAI.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/sermons/:id/brainstorm
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

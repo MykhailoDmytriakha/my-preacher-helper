@@ -4,7 +4,7 @@
  * These tests verify the AI-powered transcription polishing
  * that removes filler words and fixes grammar.
  */
-import { polishTranscription, PolishTranscriptionResult } from '@clients/polishTranscription.structured';
+import { polishTranscription } from '@clients/polishTranscription.structured';
 import * as structuredOutput from '@clients/structuredOutput';
 
 // Mock the structuredOutput module

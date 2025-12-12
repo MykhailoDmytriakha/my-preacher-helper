@@ -2,8 +2,10 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 import TreeNode from './TreeNode';
+
 import type { ExegeticalPlanNode } from '@/models/models';
 
 interface TreeBuilderProps {

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { TextScaleControls } from './TextScaleControls';
 import { Type } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+
+import { TextScaleControls } from './TextScaleControls';
 
 interface FloatingTextScaleControlsProps {
   className?: string;

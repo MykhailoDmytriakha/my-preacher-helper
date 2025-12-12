@@ -108,7 +108,7 @@ function handleDragEnd(
   }
 
   // Prepare a local copy of containers from the ref
-  let updatedContainers = { ...containersRef.current };
+  const updatedContainers = { ...containersRef.current };
 
   if (activeContainer === overContainer) {
     // Same container logic (simplified for tests)

@@ -4,8 +4,8 @@
  * These tests verify the AI-powered study note analysis
  * that extracts title, scripture refs, and tags.
  */
-import { analyzeStudyNote, AnalyzeStudyNoteResult } from '@clients/studyNote.structured';
 import * as structuredOutput from '@clients/structuredOutput';
+import { analyzeStudyNote } from '@clients/studyNote.structured';
 
 // Mock the structuredOutput module
 jest.mock('@clients/structuredOutput', () => ({

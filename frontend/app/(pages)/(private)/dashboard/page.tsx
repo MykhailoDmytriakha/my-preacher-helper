@@ -1,19 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import AddSermonModal from "@components/AddSermonModal";
-import { Sermon } from "@/models/models";
-import DashboardStats from "@components/dashboard/DashboardStats";
-import CreateSeriesModal from "@/components/series/CreateSeriesModal";
 import { useTranslation } from "react-i18next";
-import { ChevronIcon } from "@components/Icons";
+
+import SermonCard from "@/components/dashboard/SermonCard";
+import CreateSeriesModal from "@/components/series/CreateSeriesModal";
+import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
+import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
 import { useSeries } from "@/hooks/useSeries";
+import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
-import SermonCard from "@/components/dashboard/SermonCard";
-import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
-import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import { getThoughtSnippets, matchesSermonQuery, tokenizeQuery, ThoughtSnippet } from "@/utils/sermonSearch";
+import AddSermonModal from "@components/AddSermonModal";
+import DashboardStats from "@components/dashboard/DashboardStats";
+import { ChevronIcon } from "@components/Icons";
+
+// Tab styling constants
+const TAB_BASE_CLASSES = "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors";
+const TAB_INACTIVE_CLASSES = "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300";
+const BADGE_INACTIVE_CLASSES = "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -30,7 +36,6 @@ export default function DashboardPage() {
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "inSeries" | "standalone">("all");
   const [activeTab, setActiveTab] = useState<"active" | "preached" | "all">("active");
-  const [isMobileSearchVisible, setIsMobileSearchVisible] = useState(false);
 
   // Multi-select state
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -197,10 +202,10 @@ export default function DashboardPage() {
           <button
             onClick={() => setActiveTab("active")}
             className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+              ${TAB_BASE_CLASSES}
               ${activeTab === "active"
                 ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
+                : TAB_INACTIVE_CLASSES
               }
             `}
           >
@@ -208,7 +213,7 @@ export default function DashboardPage() {
             <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
               activeTab === "active"
                 ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
-                : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
+                : BADGE_INACTIVE_CLASSES
             }`}>
               {loading ? "-" : sermons.filter(s => !s.isPreached).length}
             </span>
@@ -216,10 +221,10 @@ export default function DashboardPage() {
           <button
             onClick={() => setActiveTab("preached")}
             className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+              ${TAB_BASE_CLASSES}
               ${activeTab === "preached"
                 ? "border-purple-500 text-purple-600 dark:text-purple-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
+                : TAB_INACTIVE_CLASSES
               }
             `}
           >
@@ -227,7 +232,7 @@ export default function DashboardPage() {
             <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
               activeTab === "preached"
                 ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
-                : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
+                : BADGE_INACTIVE_CLASSES
             }`}>
               {loading ? "-" : sermons.filter(s => s.isPreached).length}
             </span>
@@ -235,10 +240,10 @@ export default function DashboardPage() {
           <button
             onClick={() => setActiveTab("all")}
             className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
+              ${TAB_BASE_CLASSES}
               ${activeTab === "all"
                 ? "border-green-500 text-green-600 dark:text-green-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
+                : TAB_INACTIVE_CLASSES
               }
             `}
           >
@@ -246,7 +251,7 @@ export default function DashboardPage() {
             <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
               activeTab === "all"
                 ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
-                : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300"
+                : BADGE_INACTIVE_CLASSES
             }`}>
               {loading ? "-" : sermons.length}
             </span>
@@ -286,7 +291,7 @@ export default function DashboardPage() {
             <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
               <select
                 value={sortOption}
-                onChange={(e) => setSortOption(e.target.value as any)}
+                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
                 className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200 
                           dark:border-gray-700 dark:bg-gray-800 bg-white
                           focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -303,7 +308,7 @@ export default function DashboardPage() {
             <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
               <select
                 value={seriesFilter}
-                onChange={(e) => setSeriesFilter(e.target.value as any)}
+                onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
                 className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200
                           dark:border-gray-700 dark:bg-gray-800 bg-white
                           focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"

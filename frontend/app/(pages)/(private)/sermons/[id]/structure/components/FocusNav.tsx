@@ -1,8 +1,9 @@
-import React from "react";
 import Link from "next/link";
+import React from "react";
 import { useTranslation } from 'react-i18next';
-import { getFocusModeUrl } from "@/utils/urlUtils";
+
 import { getFocusModeButtonColors } from "@/utils/themeColors";
+import { getFocusModeUrl } from "@/utils/urlUtils";
 
 interface FocusNavProps {
   sermon: { id: string; title: string };

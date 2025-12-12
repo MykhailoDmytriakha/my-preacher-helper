@@ -1,14 +1,15 @@
 "use client";
 
-import React from "react";
-import { SermonPoint, Thought } from "@/models/models";
-import { useTranslation } from "react-i18next";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { Key, Sparkles, Save, FileText, Pencil } from "lucide-react";
+import React from "react";
+import { useTranslation } from "react-i18next";
 import TextareaAutosize from "react-textarea-autosize";
+
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
+import { SermonPoint, Thought } from "@/models/models";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 interface SermonPointCardProps {
   outlinePoint: SermonPoint;

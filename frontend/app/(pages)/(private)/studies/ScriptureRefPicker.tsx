@@ -1,10 +1,11 @@
 'use client';
 
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+
 import { ScriptureReference } from '@/models/models';
-import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
+
 import {
   getBooksForDropdown,
   getChapterCount,
@@ -13,11 +14,18 @@ import {
   psalmHebrewToSeptuagint,
   psalmSeptuagintToHebrew,
 } from './bibleData';
+import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
 /**
  * Reference scope determines the level of specificity.
  */
-type ReferenceScope = 'book' | 'chapter' | 'chapter-range' | 'verses';
+// Reference scope constants to avoid duplicate strings
+const REFERENCE_SCOPE_BOOK = 'book';
+const REFERENCE_SCOPE_CHAPTER = 'chapter';
+const REFERENCE_SCOPE_CHAPTER_RANGE = 'chapter-range';
+const REFERENCE_SCOPE_VERSES = 'verses';
+
+type ReferenceScope = typeof REFERENCE_SCOPE_BOOK | typeof REFERENCE_SCOPE_CHAPTER | typeof REFERENCE_SCOPE_CHAPTER_RANGE | typeof REFERENCE_SCOPE_VERSES;
 
 interface ScriptureRefPickerProps {
   /** Initial reference to edit, or undefined for new entry */
@@ -34,11 +42,11 @@ interface ScriptureRefPickerProps {
  * Detect scope from an existing reference.
  */
 function detectScope(ref?: ScriptureReference): ReferenceScope {
-  if (!ref) return 'verses'; // Default for new refs
-  if (ref.chapter === undefined) return 'book';
-  if (ref.toChapter !== undefined) return 'chapter-range';
-  if (ref.fromVerse === undefined) return 'chapter';
-  return 'verses';
+  if (!ref) return REFERENCE_SCOPE_VERSES; // Default for new refs
+  if (ref.chapter === undefined) return REFERENCE_SCOPE_BOOK;
+  if (ref.toChapter !== undefined) return REFERENCE_SCOPE_CHAPTER_RANGE;
+  if (ref.fromVerse === undefined) return REFERENCE_SCOPE_CHAPTER;
+  return REFERENCE_SCOPE_VERSES;
 }
 
 /**
@@ -130,7 +138,7 @@ export default function ScriptureRefPicker({
 
   // Ensure toChapter >= chapter for chapter ranges
   useEffect(() => {
-    if (scope === 'chapter-range' && toChapter < chapter) {
+    if (scope === REFERENCE_SCOPE_CHAPTER_RANGE && toChapter < chapter) {
       setToChapter(chapter);
     }
   }, [scope, chapter, toChapter]);
@@ -174,13 +182,13 @@ export default function ScriptureRefPicker({
 
     const ref: Omit<ScriptureReference, 'id'> = { book };
 
-    if (scope === 'book') {
+    if (scope === REFERENCE_SCOPE_BOOK) {
       // Book-only reference
       // ref stays as { book }
-    } else if (scope === 'chapter') {
+    } else if (scope === REFERENCE_SCOPE_CHAPTER) {
       // Single chapter reference
       ref.chapter = convertChapter(chapter);
-    } else if (scope === 'chapter-range') {
+    } else if (scope === REFERENCE_SCOPE_CHAPTER_RANGE) {
       // Chapter range
       ref.chapter = convertChapter(chapter);
       if (toChapter > chapter) {
@@ -208,9 +216,9 @@ export default function ScriptureRefPicker({
   // Validation based on scope
   const isValid = useMemo(() => {
     if (!book) return false;
-    if (scope === 'book') return true;
-    if (scope === 'chapter') return chapter > 0 && chapter <= maxChapters;
-    if (scope === 'chapter-range') {
+    if (scope === REFERENCE_SCOPE_BOOK) return true;
+    if (scope === REFERENCE_SCOPE_CHAPTER) return chapter > 0 && chapter <= maxChapters;
+    if (scope === REFERENCE_SCOPE_CHAPTER_RANGE) {
       return chapter > 0 && chapter <= maxChapters && toChapter >= chapter && toChapter <= maxChapters;
     }
     // verses scope
@@ -219,10 +227,10 @@ export default function ScriptureRefPicker({
 
   // Scope labels for UI
   const scopeLabels: Record<ReferenceScope, string> = {
-    book: t('studiesWorkspace.scopeBook') || 'Entire Book',
-    chapter: t('studiesWorkspace.scopeChapter') || 'Chapter',
-    'chapter-range': t('studiesWorkspace.scopeChapterRange') || 'Chapter Range',
-    verses: t('studiesWorkspace.scopeVerses') || 'Verse(s)',
+    [REFERENCE_SCOPE_BOOK]: t('studiesWorkspace.scopeBook') || 'Entire Book',
+    [REFERENCE_SCOPE_CHAPTER]: t('studiesWorkspace.scopeChapter') || 'Chapter',
+    [REFERENCE_SCOPE_CHAPTER_RANGE]: t('studiesWorkspace.scopeChapterRange') || 'Chapter Range',
+    [REFERENCE_SCOPE_VERSES]: t('studiesWorkspace.scopeVerses') || 'Verse(s)',
   };
 
   return (
@@ -256,7 +264,7 @@ export default function ScriptureRefPicker({
             {t('studiesWorkspace.referenceScope') || 'Reference Type'}
           </label>
           <div className="flex flex-wrap gap-1">
-            {(['book', 'chapter', 'chapter-range', 'verses'] as ReferenceScope[]).map((s) => (
+            {([REFERENCE_SCOPE_BOOK, REFERENCE_SCOPE_CHAPTER, REFERENCE_SCOPE_CHAPTER_RANGE, REFERENCE_SCOPE_VERSES] as ReferenceScope[]).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -292,11 +300,11 @@ export default function ScriptureRefPicker({
         </div>
 
         {/* Chapter selector - shown for chapter, chapter-range, and verses scopes */}
-        {scope !== 'book' && (
+        {scope !== REFERENCE_SCOPE_BOOK && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                {scope === 'chapter-range'
+                {scope === REFERENCE_SCOPE_CHAPTER_RANGE
                   ? (t('studiesWorkspace.fromChapter') || 'From Chapter')
                   : t('studiesWorkspace.chapter')
                 }
@@ -316,7 +324,7 @@ export default function ScriptureRefPicker({
             </div>
 
             {/* To chapter - only for chapter-range scope */}
-            {scope === 'chapter-range' && (
+            {scope === REFERENCE_SCOPE_CHAPTER_RANGE && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {t('studiesWorkspace.toChapter') || 'To Chapter'}
@@ -339,7 +347,7 @@ export default function ScriptureRefPicker({
         )}
 
         {/* Verse selectors - only for verses scope */}
-        {scope === 'verses' && (
+        {scope === REFERENCE_SCOPE_VERSES && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">

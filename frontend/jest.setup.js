@@ -19,6 +19,9 @@ if (process.env.NODE_ENV === 'test') {
 // Set React to development mode for better error messages
 process.env.NODE_ENV = 'development';
 
+// Constants for duplicate strings to satisfy SonarJS
+const REACT_DOM_CLIENT = 'react-dom/client';
+
 // Polyfill Web Fetch API primitives for Next route tests (Node/Jest)
 try {
   const undici = require('undici');
@@ -28,7 +31,7 @@ try {
   globalThis.Headers = globalThis.Headers || undici.Headers;
   globalThis.Request = globalThis.Request || undici.Request;
   globalThis.Response = globalThis.Response || undici.Response;
-} catch (_) {
+} catch {
   // ignore if undici not available; jsdom may already provide these
 }
 
@@ -127,7 +130,7 @@ jest.mock('react-dom/client', () => {
       }
 
       // Use React 18's ReactDOM to create an actual root
-      const ReactDOMClient = jest.requireActual('react-dom/client');
+      const ReactDOMClient = jest.requireActual(REACT_DOM_CLIENT);
       const root = ReactDOMClient.createRoot(validContainer);
       
       // Store the root for reuse
@@ -151,7 +154,7 @@ jest.mock('react-dom/client', () => {
 // Mock for React's createPortal - helps testing-library find portal content
 jest.mock('react-dom', () => {
   const originalModule = jest.requireActual('react-dom');
-  const clientModule = jest.requireActual('react-dom/client');
+  const clientModule = jest.requireActual(REACT_DOM_CLIENT);
 
   // Reuse a single portal root per container to avoid duplicate content on re-renders
   const rootsMap = new Map(); // container -> { root, portalElement }
@@ -311,7 +314,6 @@ jest.mock('i18next', () => {
 // jest.mock('@locales/i18n', () => {}, { virtual: true });
 
 // Mock Date.now globally to prevent React Query timer issues in tests
-const originalDateNow = Date.now;
 Date.now = jest.fn(() => new Date('2023-01-01').getTime()); 
 
 // Optimized Firebase mocks - shared mock user for consistency and performance

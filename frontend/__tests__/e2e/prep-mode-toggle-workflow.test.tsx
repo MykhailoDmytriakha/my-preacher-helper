@@ -1,6 +1,9 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
+import DashboardNav from '@/components/navigation/DashboardNav';
+import PrepModeToggle from '@/components/settings/PrepModeToggle';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock all external dependencies
@@ -96,8 +99,6 @@ jest.mock('next/link', () => ({
 }));
 
 // Import components after mocks
-import PrepModeToggle from '@/components/settings/PrepModeToggle';
-import DashboardNav from '@/components/navigation/DashboardNav';
 
 describe('Prep Mode Toggle - End-to-End Workflow', () => {
   const resetScenario = () => {
@@ -137,7 +138,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
               expect(screen.getByText('Preparation Mode (Beta)')).toBeInTheDocument();
             }
           },
@@ -248,7 +249,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
+              expect(toggle).toBeChecked();
             }
           },
           {
@@ -310,7 +311,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
 
               fireEvent.click(toggle);
 
@@ -393,7 +394,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               expect(heading).toBeInTheDocument();
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
+              expect(toggle).toBeChecked();
             }
           }
         ],

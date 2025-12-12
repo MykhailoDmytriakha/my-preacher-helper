@@ -1,6 +1,8 @@
 import { renderHook } from '@testing-library/react';
-import { useOutlineStats } from '../useOutlineStats';
+
 import { Item, Sermon, SermonPoint } from '@/models/models';
+
+import { useOutlineStats } from '../useOutlineStats';
 
 describe('useOutlineStats', () => {
   const mockSermon: Sermon = {

@@ -1,8 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
-import { Sermon, Insights, VerseWithRelevance, DirectionSuggestion, Plan, SectionHints } from '@/models/models';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
+import { Sermon, Insights, Plan, SectionHints } from '@/models/models';
 import * as insightsService from '@/services/insights.service';
 import * as planService from '@/services/plan.service';
 
@@ -519,7 +520,7 @@ describe('KnowledgeSection Component', () => {
     
     try {
       // Render with sermon that has enough thoughts
-      const { getByText } = render(
+      render(
         <KnowledgeSection
           sermon={{
             id: 'test-sermon',
@@ -539,7 +540,7 @@ describe('KnowledgeSection Component', () => {
       });
       
       // Click generate button
-      fireEvent.click(getByText('Generate Insights'));
+      fireEvent.click(screen.getByText('Generate Insights'));
       
       // Wait for API error to be processed
       await waitFor(() => {

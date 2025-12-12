@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import { runScenarios } from '@test-utils/scenarioRunner';

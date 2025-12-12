@@ -1,9 +1,9 @@
-import { runScenarios } from '@test-utils/scenarioRunner';
 import {
   getUserSettings,
   updatePrepModeAccess,
   hasPrepModeAccess
 } from '@/services/userSettings.service';
+import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock fetch globally
 const mockFetch = jest.fn();

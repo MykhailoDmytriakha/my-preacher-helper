@@ -1,8 +1,9 @@
 import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { getInitialLanguage } from './getInitialLang';
+
 import { DEFAULT_LANGUAGE } from './constants';
 import enTranslation from './en/translation.json';
+import { getInitialLanguage } from './getInitialLang';
 import ruTranslation from './ru/translation.json';
 import ukTranslation from './uk/translation.json';
 

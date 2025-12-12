@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Sermon, SermonPoint, Thought, SermonDraft } from "@/models/models";
 import { toast } from "sonner";
+
+import { Sermon, SermonPoint, Thought, SermonDraft } from "@/models/models";
 
 interface UsePlanOptions {
   sermon: Sermon | null;

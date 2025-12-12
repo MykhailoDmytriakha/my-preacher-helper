@@ -1,9 +1,9 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { sortItemsWithAI } from "@/services/sortAI.service";
-import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
-import { dedupeIds } from "../utils/structure";
 
 interface UseAiSortingDiffProps {
   containers: Record<string, Item[]>;
@@ -14,6 +14,63 @@ interface UseAiSortingDiffProps {
   debouncedSaveThought: (sermonId: string, thought: Thought) => void;
   debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
 }
+
+// Helper function to collect thought updates from highlighted items
+const collectThoughtUpdates = (
+  highlightedItems: Record<string, { type: 'assigned' | 'moved' }>,
+  containers: Record<string, Item[]>,
+  sermon: Sermon | null
+): Array<{id: string, outlinePointId?: string}> => {
+  const thoughtUpdates: Array<{id: string, outlinePointId?: string}> = [];
+
+  for (const itemId of Object.keys(highlightedItems)) {
+    for (const items of Object.values(containers)) {
+      if (!Array.isArray(items)) continue;
+
+      const item = items.find(i => i.id === itemId);
+      if (item && item.outlinePointId && sermon) {
+        const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
+        if (thought && thought.outlinePointId !== item.outlinePointId) {
+          thoughtUpdates.push({
+            id: itemId,
+            outlinePointId: item.outlinePointId
+          });
+        }
+      }
+    }
+  }
+
+  return thoughtUpdates;
+};
+
+// Helper function to process thought updates
+const processThoughtUpdates = (
+  thoughtUpdates: Array<{id: string, outlinePointId?: string}>,
+  sermon: Sermon,
+  debouncedSaveThought: (sermonId: string, thought: Thought) => void,
+  sermonId: string
+): void => {
+  for (const update of thoughtUpdates) {
+    const thought = sermon.thoughts.find((t: Thought) => t.id === update.id);
+    if (thought) {
+      const updatedThought: Thought = {
+        ...thought,
+        outlinePointId: update.outlinePointId
+      };
+      debouncedSaveThought(sermonId, updatedThought);
+    }
+  }
+};
+
+// Helper function to create new structure from containers
+const createStructureFromContainers = (containers: Record<string, Item[]>): ThoughtsBySection => {
+  return {
+    introduction: containers.introduction.map((item) => item.id),
+    main: containers.main.map((item) => item.id),
+    conclusion: containers.conclusion.map((item) => item.id),
+    ambiguous: containers.ambiguous.map((item) => item.id),
+  };
+};
 
 export const useAiSortingDiff = ({
   containers,
@@ -300,73 +357,38 @@ export const useAiSortingDiff = ({
   // Handler for accepting all remaining changes
   const handleKeepAll = useCallback(() => {
     if (!highlightedItems || Object.keys(highlightedItems).length === 0) return;
-    
-    // Create a list of all thoughts that need to be updated
-    const thoughtUpdates: Array<{id: string, outlinePointId?: string}> = [];
-    
-    // Check for outline point assignments
-    for (const itemId of Object.keys(highlightedItems)) {
-      // Find the item in the containers
-      for (const items of Object.values(containers)) {
-        if (!Array.isArray(items)) continue;
-        
-        const item = items.find(i => i.id === itemId);
-        if (item && item.outlinePointId && sermon) {
-          const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-          if (thought && thought.outlinePointId !== item.outlinePointId) {
-            // Add to updates list
-            thoughtUpdates.push({
-              id: itemId,
-              outlinePointId: item.outlinePointId
-            });
-          }
-        }
-      }
-    }
-    
+
+    // Collect thought updates from highlighted items
+    const thoughtUpdates = collectThoughtUpdates(highlightedItems, containers, sermon);
+
     // Process thought updates
-    if (thoughtUpdates.length > 0 && sermon) {
-      for (const update of thoughtUpdates) {
-        const thought = sermon.thoughts.find((t: Thought) => t.id === update.id);
-        if (thought) {
-          const updatedThought: Thought = {
-            ...thought,
-            outlinePointId: update.outlinePointId
-          };
-          
-          // Save the thought with debouncing
-          debouncedSaveThought(sermonId!, updatedThought);
-        }
-      }
+    if (thoughtUpdates.length > 0 && sermon && sermonId) {
+      processThoughtUpdates(thoughtUpdates, sermon, debouncedSaveThought, sermonId);
     }
-    
-    // Save the current structure
-    const newStructure: ThoughtsBySection = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
+
+    // Create and save new structure
+    const newStructure = createStructureFromContainers(containers);
     debouncedSaveStructure(sermonId!, newStructure);
-    
+
     // Clear highlighted items and exit diff mode
     setHighlightedItems({});
     setIsDiffModeActive(false);
     setPreSortState(null);
-    
+
     // Show confirmation toast
     toast.success(t('structure.aiSortChangesAccepted', {
       defaultValue: 'All AI suggestions accepted.'
     }));
   }, [
-    highlightedItems, 
-    containers, 
-    sermon, 
-    sermonId, 
-    debouncedSaveThought, 
-    debouncedSaveStructure, 
+    highlightedItems,
+    containers,
+    sermon,
+    sermonId,
+    debouncedSaveThought,
+    debouncedSaveStructure,
+    setHighlightedItems,
+    setIsDiffModeActive,
+    setPreSortState,
     t
   ]);
 

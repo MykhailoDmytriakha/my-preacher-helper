@@ -2,15 +2,16 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Thought, SermonOutline } from '@/models/models';
-import { createManualThought } from '@services/thought.service';
-import { getSermonById } from '@services/sermon.service';
-import { getTags } from '@services/tag.service';
-import { PlusIcon } from '@components/Icons';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 import { toast } from 'sonner';
+
+import { Thought, SermonOutline } from '@/models/models';
+import { PlusIcon } from '@components/Icons';
+import { getSermonById } from '@services/sermon.service';
+import { getTags } from '@services/tag.service';
+import { createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 interface AddThoughtManualProps {

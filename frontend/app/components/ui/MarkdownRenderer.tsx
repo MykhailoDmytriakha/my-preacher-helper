@@ -2,8 +2,9 @@
 
 import React from "react";
 import ReactMarkdown from "react-markdown";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 interface MarkdownRendererProps {
   markdown: string;

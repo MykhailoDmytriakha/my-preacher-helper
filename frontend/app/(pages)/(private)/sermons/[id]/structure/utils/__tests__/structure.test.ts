@@ -1,6 +1,7 @@
-import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition } from '../structure';
 import { Item, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition } from '../structure';
 
 describe('ThoughtsBySection Utilities', () => {
   describe('isStructureChanged', () => {

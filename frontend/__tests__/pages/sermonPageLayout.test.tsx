@@ -1,5 +1,5 @@
+import { render, screen } from '@testing-library/react';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock the sermon data
@@ -58,7 +58,7 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: any) => key,
+    t: (key: string) => key,
   }),
 }));
 
@@ -76,7 +76,7 @@ jest.mock('@/hooks/useSermon', () => ({
 jest.mock('@/components/sermon/StructureStats', () => {
   return {
     __esModule: true,
-    default: ({ sermon }: { sermon: Sermon }) => (
+    default: ({}: { sermon: Sermon }) => (
       <div data-testid="structure-stats">ThoughtsBySection Stats Mock</div>
     ),
   };
@@ -121,28 +121,28 @@ const MockSermonPage = () => {
 
 describe('Sermon Page Layout', () => {
   it('renders StructurePreview component when sermon has structure', () => {
-    const { getByTestId } = render(<MockSermonPage />);
-    
+    render(<MockSermonPage />);
+
     // Should render all components
-    expect(getByTestId('structure-stats')).toBeInTheDocument();
-    expect(getByTestId('structure-preview')).toBeInTheDocument();
-    expect(getByTestId('knowledge-section')).toBeInTheDocument();
-    expect(getByTestId('sermon-outline')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-stats')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('knowledge-section')).toBeInTheDocument();
+    expect(screen.getByTestId('sermon-outline')).toBeInTheDocument();
   });
 
   it('does not render StructurePreview component when sermon has no structure', () => {
     // Modify the mockSermon to have no structure
     const originalStructure = mockSermon.structure;
     mockSermon.structure = undefined;
-    
-    const { getByTestId, queryByTestId } = render(<MockSermonPage />);
-    
+
+    render(<MockSermonPage />);
+
     // Should render all components except StructurePreview
-    expect(getByTestId('structure-stats')).toBeInTheDocument();
-    expect(queryByTestId('structure-preview')).not.toBeInTheDocument();
-    expect(getByTestId('knowledge-section')).toBeInTheDocument();
-    expect(getByTestId('sermon-outline')).toBeInTheDocument();
-    
+    expect(screen.getByTestId('structure-stats')).toBeInTheDocument();
+    expect(screen.queryByTestId('structure-preview')).not.toBeInTheDocument();
+    expect(screen.getByTestId('knowledge-section')).toBeInTheDocument();
+    expect(screen.getByTestId('sermon-outline')).toBeInTheDocument();
+
     // Restore the original structure
     mockSermon.structure = originalStructure;
   });

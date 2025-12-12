@@ -1,5 +1,4 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock the components and hooks

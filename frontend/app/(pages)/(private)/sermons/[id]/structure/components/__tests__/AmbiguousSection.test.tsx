@@ -1,7 +1,10 @@
-import React from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { AmbiguousSection } from '../AmbiguousSection';
+import React from 'react';
+
 import { Item } from '@/models/models';
+
+import { AmbiguousSection } from '../AmbiguousSection';
+
 
 // Mock SortableItem component
 jest.mock('@/components/SortableItem', () => {

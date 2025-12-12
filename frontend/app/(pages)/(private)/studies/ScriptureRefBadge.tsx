@@ -1,11 +1,13 @@
 'use client';
 
+import { XMarkIcon } from '@heroicons/react/20/solid';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XMarkIcon } from '@heroicons/react/20/solid';
+
 import { ScriptureReference } from '@/models/models';
-import { formatScriptureRef } from './bookAbbreviations';
+
 import { BibleLocale } from './bibleData';
+import { formatScriptureRef } from './bookAbbreviations';
 
 interface ScriptureRefBadgeProps {
   reference: ScriptureReference;

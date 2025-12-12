@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
 import { X, CornerDownRight, ArrowDown } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 import type { TreeNodeProps } from './types';
 

@@ -1,5 +1,6 @@
-import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import React from 'react'
+
 import '@testing-library/jest-dom'
 import StructureStats from '../../app/components/sermon/StructureStats'
 import { Sermon } from '../../app/models/models'
@@ -183,7 +184,7 @@ describe('StructureStats Component', () => {
 
     expect(structureButton).toBeDisabled()
     expect(structureButton).toHaveClass('text-gray-400', 'cursor-not-allowed')
-    expect(planButton).not.toBeDisabled()
+    expect(planButton).toBeEnabled()
   })
 
   it('maintains accessibility, translations, and layout helpers', () => {

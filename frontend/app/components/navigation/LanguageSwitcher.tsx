@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { updateUserLanguage } from '@/services/userSettings.service';
+
 import { useAuth } from '@/hooks/useAuth';
+import { updateUserLanguage } from '@/services/userSettings.service';
 
 // List of supported languages
 const SUPPORTED_LANGUAGES = [

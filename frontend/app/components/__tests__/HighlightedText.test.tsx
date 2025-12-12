@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import React from 'react';
+
 import HighlightedText from '../HighlightedText';
 
 // Mock the themeColors constant to avoid import issues

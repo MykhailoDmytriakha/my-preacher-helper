@@ -1,10 +1,11 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 import { useTranslation } from 'react-i18next';
+
+import LanguageSwitcher from '@/components/navigation/LanguageSwitcher';
 import { useAuth } from '@/hooks/useAuth';
 import { updateUserLanguage } from '@/services/userSettings.service';
-import LanguageSwitcher from '@/components/navigation/LanguageSwitcher';
 
 // Mock the dependencies
 jest.mock('react-i18next', () => ({
@@ -214,7 +215,7 @@ describe('LanguageSwitcher Component', () => {
     );
     
     if (handleClickOutsideCall) {
-      const [_, handler] = handleClickOutsideCall;
+      const [, handler] = handleClickOutsideCall;
       // Simulate a click inside
       handler({ target: document.body });
       

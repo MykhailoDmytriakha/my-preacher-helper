@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import type { ExegeticalPlanModuleProps } from './types';
-import type { ExegeticalPlanNode } from '@/models/models';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+
+import AuthorIntentSection from './AuthorIntentSection';
 import BlockDiagramSection from './BlockDiagramSection';
 import InstructionSection from './InstructionSection';
 import TreeBuilder from './TreeBuilder';
-import AuthorIntentSection from './AuthorIntentSection';
 import {
   createNewNode,
   syncDraftTitles,
@@ -17,9 +16,11 @@ import {
   areTreesEqual
 } from './treeUtils';
 
+import type { ExegeticalPlanModuleProps } from './types';
+import type { ExegeticalPlanNode } from '@/models/models';
+
 const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   value = [],
-  onChange,
   onSave,
   saving,
   authorIntent = '',
@@ -36,6 +37,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [authorIntentDraft, setAuthorIntentDraft] = useState<string>(authorIntent || '');
   const [isSavingAuthorIntent, setIsSavingAuthorIntent] = useState<boolean>(false);
+  const prevSavingRef = useRef<boolean>(saving);
 
   useEffect(() => {
     setAuthorIntentDraft(authorIntent || '');
@@ -43,14 +45,18 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   // Sync with external value after successful save
   useEffect(() => {
-    if (!saving && value && value.length > 0) {
+    const wasSaving = prevSavingRef.current;
+    prevSavingRef.current = saving;
+
+    // Only sync when transitioning from saving to not saving
+    if (wasSaving && !saving && value && value.length > 0) {
       const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
       if (!areTreesEqual(currentTreeWithDrafts, value)) {
         setTree(value);
         setDraftTitles(syncDraftTitles(value));
       }
     }
-  }, [saving]);
+  }, [saving, value, tree, draftTitles]);
 
   const hasUnsavedChanges = useMemo(() => {
     const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);

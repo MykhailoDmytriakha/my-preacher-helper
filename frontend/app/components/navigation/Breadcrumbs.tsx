@@ -4,9 +4,15 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
-import useSermon from '@/hooks/useSermon';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import useSermon from '@/hooks/useSermon';
+
+// Route constants
+const ROUTES = {
+  DASHBOARD: '/dashboard',
+} as const;
 
 type BreadcrumbItem = {
   label: string;
@@ -29,7 +35,7 @@ const segmentLabels: Record<string, SegmentConfig> = {
   sermons: {
     labelKey: 'navigation.sermons',
     defaultLabel: 'Sermons',
-    href: '/dashboard'
+    href: ROUTES.DASHBOARD
   },
   plan: {
     labelKey: 'navigation.plan',
@@ -116,7 +122,7 @@ export default function Breadcrumbs() {
   const { series } = useSeriesDetail(seriesId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
-    if (!pathname || pathname === '/' || pathname === '/dashboard') {
+    if (!pathname || pathname === '/' || pathname === ROUTES.DASHBOARD) {
       return [];
     }
 
@@ -145,7 +151,7 @@ export default function Breadcrumbs() {
       // For dashboard sub-routes, use Sermons as root
       crumbs.push({
         label: t('navigation.sermons', { defaultValue: 'Sermons' }),
-        href: '/dashboard'
+        href: ROUTES.DASHBOARD
       });
     }
 
@@ -214,7 +220,7 @@ export default function Breadcrumbs() {
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, t, sermon, series, searchParams]);
+  }, [pathname, t, sermon, series]);
 
   if (items.length <= 1) {
     return null;

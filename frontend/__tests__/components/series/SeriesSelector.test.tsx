@@ -1,5 +1,6 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+
 import SeriesSelector from '@/components/series/SeriesSelector';
 import { Series } from '@/models/models';
 import '@testing-library/jest-dom';

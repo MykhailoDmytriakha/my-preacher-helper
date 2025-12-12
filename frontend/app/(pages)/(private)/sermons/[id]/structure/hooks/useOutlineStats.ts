@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+
 import { Item, Sermon } from "@/models/models";
 
 interface UseOutlineStatsProps {
@@ -34,7 +35,7 @@ export const useOutlineStats = ({ sermon, containers }: UseOutlineStatsProps) =>
     }
     
     return result;
-  }, [sermon?.outline, containers.introduction, containers.main, containers.conclusion]);
+  }, [sermon, containers]);
 
   return { thoughtsPerSermonPoint };
 };

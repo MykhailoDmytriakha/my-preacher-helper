@@ -1,9 +1,10 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
 import '@testing-library/jest-dom';
-import TagList from '@components/settings/TagList';
 import { Tag } from '@/models/models';
+import TagList from '@components/settings/TagList';
 
 // --- Mocks --- //
 

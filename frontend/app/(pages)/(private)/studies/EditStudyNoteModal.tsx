@@ -1,8 +1,5 @@
 'use client';
 
-import { useState, useEffect, KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 import {
   ArrowPathIcon,
   BookmarkIcon,
@@ -12,13 +9,18 @@ import {
   TagIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { useState, useEffect, KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+
 import { StudyNote, ScriptureReference } from '@/models/models';
+
+import { BibleLocale } from './bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 import { parseReferenceText } from './referenceParser';
 import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
 import TagCatalogModal from './TagCatalogModal';
-import { BibleLocale } from './bibleData';
 
 const makeId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto

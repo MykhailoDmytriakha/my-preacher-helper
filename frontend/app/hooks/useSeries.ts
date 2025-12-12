@@ -1,4 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+
 import {
   addSermonToSeries,
   createSeries,
@@ -8,10 +10,19 @@ import {
   reorderSermons,
   updateSeries,
 } from "@services/series.service";
+
 import type { Series } from "@/models/models";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+type SeriesDetailCache = {
+  series?: Series;
+};
 
 const buildQueryKey = (userId: string | null) => ["series", userId];
+
+// Query key constants
+const QUERY_KEYS = {
+  SERIES_DETAIL: "series-detail",
+} as const;
 
 export function useSeries(userId: string | null) {
   const queryClient = useQueryClient();
@@ -50,11 +61,11 @@ export function useSeries(userId: string | null) {
       queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old) =>
         (old ?? []).map((s) => (s.id === updated.id ? updated : s))
       );
-      queryClient.setQueryData(["series-detail", updated.id], (prev: any) =>
+      queryClient.setQueryData<SeriesDetailCache | undefined>([QUERY_KEYS.SERIES_DETAIL, updated.id], (prev) =>
         prev
           ? {
               ...prev,
-              series: { ...(prev.series ?? {}), ...updated },
+              series: { ...(prev.series ?? {} as Series), ...updated },
             }
           : prev
       );
@@ -82,7 +93,7 @@ export function useSeries(userId: string | null) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
     },
     onSuccess: (_data, seriesId) => {
-      queryClient.removeQueries({ queryKey: ["series-detail", seriesId] });
+      queryClient.removeQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
       setMutationError(null);
     },
   });
@@ -136,7 +147,7 @@ export function useSeries(userId: string | null) {
     async (seriesId: string, sermonId: string, position?: number) =>
       mutationGuard(async () => {
         await addSermonToSeries(seriesId, sermonId, position);
-        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
         await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
       }),
     [mutationGuard, queryClient, userId]
@@ -146,7 +157,7 @@ export function useSeries(userId: string | null) {
     async (seriesId: string, sermonId: string) =>
       mutationGuard(async () => {
         await removeSermonFromSeries(seriesId, sermonId);
-        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
         await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
       }),
     [mutationGuard, queryClient, userId]
@@ -156,7 +167,7 @@ export function useSeries(userId: string | null) {
     async (seriesId: string, sermonIds: string[]) =>
       mutationGuard(async () => {
         await reorderSermons(seriesId, sermonIds);
-        await queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
         await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
       }),
     [mutationGuard, queryClient, userId]

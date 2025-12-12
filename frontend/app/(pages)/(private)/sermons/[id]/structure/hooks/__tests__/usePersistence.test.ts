@@ -1,10 +1,12 @@
 import { renderHook, act } from '@testing-library/react';
-import { usePersistence } from '../usePersistence';
+import { toast } from 'sonner';
+
+import { Thought, ThoughtsBySection } from '@/models/models';
 import { updateStructure } from '@/services/structure.service';
 import { updateThought } from '@/services/thought.service';
-import { Thought, ThoughtsBySection, Sermon } from '@/models/models';
-import { toast } from 'sonner';
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import { usePersistence } from '../usePersistence';
 
 // Mock services
 jest.mock('@/services/structure.service');

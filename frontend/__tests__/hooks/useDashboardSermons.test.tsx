@@ -1,8 +1,10 @@
-import React from 'react';
-import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, waitFor, act } from '@testing-library/react';
+import React from 'react';
 import { ReactElement, ReactNode } from 'react';
+
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+
 import type { Sermon } from '@/models/models';
 
 // Mock services

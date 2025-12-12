@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import EditableTitle from '@/components/common/EditableTitle';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -353,7 +354,7 @@ describe('EditableTitle Component', () => {
 
               // Resolve the first commit
               resolveCommit!();
-              await waitFor(() => expect(saveButton).not.toBeDisabled());
+              await waitFor(() => expect(saveButton).toBeEnabled());
             }
           },
           {

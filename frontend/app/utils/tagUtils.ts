@@ -1,5 +1,8 @@
-import { getContrastColor } from "@utils/color";
 import { getTagStyling } from '@/utils/themeColors';
+import { getContrastColor } from "@utils/color";
+
+// Constants for repeated strings
+const ICON_CLASS_NAME = "w-3.5 h-3.5 mr-1";
 
 /**
  * Canonical structure tag ids used across the app for logic
@@ -71,19 +74,19 @@ export const getStructureIcon = (tag: string) => {
   if (canonical === 'intro') {
     return {
       svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`,
-      className: "w-3.5 h-3.5 mr-1"
+      className: ICON_CLASS_NAME
     };
   }
   if (canonical === 'main') {
     return {
       svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>`,
-      className: "w-3.5 h-3.5 mr-1"
+      className: ICON_CLASS_NAME
     };
   }
   if (canonical === 'conclusion') {
     return {
       svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 17 10 11 20 5"></polyline><line x1="4" y1="19" x2="12" y2="19"></line></svg>`,
-      className: "w-3.5 h-3.5 mr-1"
+      className: ICON_CLASS_NAME
     };
   }
   return null;

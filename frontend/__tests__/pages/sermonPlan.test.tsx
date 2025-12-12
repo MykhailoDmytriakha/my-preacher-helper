@@ -1,5 +1,6 @@
+import { render, waitFor } from '@testing-library/react';
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
 import '@testing-library/jest-dom';
 

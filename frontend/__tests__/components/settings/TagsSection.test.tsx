@@ -1,12 +1,14 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
 import '@testing-library/jest-dom';
-import TagsSection from '@components/settings/TagsSection';
-import { Tag } from '@/models/models';
 import { User } from 'firebase/auth';
-import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
 import { toast } from 'sonner';
+
+import { Tag } from '@/models/models';
+import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
+import TagsSection from '@components/settings/TagsSection';
 
 // --- Mocks --- //
 

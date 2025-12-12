@@ -1,7 +1,8 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, act, waitFor } from '@testing-library/react';
+
 import { useSeries } from '@/hooks/useSeries';
+import { Series } from '@/models/models';
 import {
   getAllSeries,
   createSeries,
@@ -11,7 +12,8 @@ import {
   removeSermonFromSeries,
   reorderSermons
 } from '@/services/series.service';
-import { Series } from '@/models/models';
+
+import type { ReactNode } from 'react';
 
 // Mock the services
 jest.mock('@/services/series.service', () => ({

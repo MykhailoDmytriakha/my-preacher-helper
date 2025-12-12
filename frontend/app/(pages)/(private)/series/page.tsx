@@ -1,12 +1,5 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/providers/AuthProvider';
-import { useSeries } from '@/hooks/useSeries';
-import SeriesCard from '@/components/series/SeriesCard';
-import CreateSeriesModal from '@/components/series/CreateSeriesModal';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -17,8 +10,16 @@ import {
   ClockIcon,
   ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { ChevronIcon } from '@/components/Icons';
+import CreateSeriesModal from '@/components/series/CreateSeriesModal';
+import SeriesCard from '@/components/series/SeriesCard';
 import { SeriesGridSkeleton } from '@/components/skeletons/SeriesCardSkeleton';
+import { useSeries } from '@/hooks/useSeries';
+import { useAuth } from '@/providers/AuthProvider';
 import '@locales/i18n';
 
 type StatusFilter = 'all' | 'draft' | 'active' | 'completed';

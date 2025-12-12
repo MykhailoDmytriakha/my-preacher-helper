@@ -100,5 +100,5 @@ export interface TimerEvent {
   timestamp: number;
   previousState: Partial<TimerState>;
   newState: Partial<TimerState>;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }

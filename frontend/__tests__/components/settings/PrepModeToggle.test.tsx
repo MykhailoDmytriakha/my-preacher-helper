@@ -1,5 +1,6 @@
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
 import PrepModeToggle from '@/components/settings/PrepModeToggle';
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -12,7 +13,7 @@ jest.mock('@/hooks/useAuth', () => ({
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: any) => {
+    t: (key: string) => {
       const translations: Record<string, string> = {
         'settings.prepMode.title': 'Preparation Mode (Beta)',
         'settings.prepMode.description': 'Enable access to the new preparation mode workflow'
@@ -89,7 +90,7 @@ describe('PrepModeToggle Component', () => {
 
               await waitFor(() => {
                 const toggle = screen.getByRole('switch');
-                expect(toggle).toHaveAttribute('aria-checked', 'true');
+                expect(toggle).toBeChecked();
                 expect(toggle).toHaveClass('bg-blue-600');
               });
             }
@@ -106,7 +107,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
               expect(toggle).toHaveClass('bg-gray-200');
             }
           },
@@ -122,7 +123,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
             }
           }
         ],
@@ -148,7 +149,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
 
               fireEvent.click(toggle);
 
@@ -172,7 +173,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = await screen.findByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
+              expect(toggle).toBeChecked();
 
               fireEvent.click(toggle);
 
@@ -213,7 +214,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = screen.getByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
               consoleSpy.mockRestore();
             }
           }
@@ -255,7 +256,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               // Toggle should revert to previous state
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
               consoleSpy.mockRestore();
               alertSpy.mockRestore();
             }
@@ -284,7 +285,7 @@ describe('PrepModeToggle Component', () => {
               });
 
               const toggle = screen.getByRole('switch');
-              expect(toggle).toHaveAttribute('aria-checked', 'false');
+              expect(toggle).not.toBeChecked();
               consoleSpy.mockRestore();
             }
           },
@@ -326,7 +327,7 @@ describe('PrepModeToggle Component', () => {
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).toBeInTheDocument();
-              expect(toggle).toHaveAttribute('aria-checked', 'true');
+              expect(toggle).toBeChecked();
 
               expect(screen.getByText('Preparation Mode (Beta)')).toBeInTheDocument();
               expect(screen.getByText('Enable access to the new preparation mode workflow')).toBeInTheDocument();

@@ -1,9 +1,12 @@
-import { useRouter } from 'next/navigation';
-import type { MouseEvent } from 'react';
 import { TFunction } from 'i18next';
+import { ScrollText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
 import { Sermon } from '@/models/models';
 import { getSermonPlanAccessRoute, getSermonAccessType, isSermonReadyForPreaching } from '@/utils/sermonPlanAccess';
-import { ScrollText } from 'lucide-react';
+
+import type { MouseEvent } from 'react';
+
 
 interface QuickPlanAccessButtonProps {
   sermon: Sermon;

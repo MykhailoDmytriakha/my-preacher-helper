@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+import React from 'react';
+
 import SeriesPage from '@/(pages)/(private)/series/page';
 import '@testing-library/jest-dom';
 
@@ -49,7 +50,7 @@ jest.mock('@/providers/AuthProvider', () => ({
 // Mock i18n
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string, options?: any) => {
+        t: (key: string) => {
             const translations: { [key: string]: string } = {
                 'navigation.series': 'Series',
                 'workspaces.series.title': 'Sermon Series',
@@ -173,8 +174,6 @@ describe('Series Page', () => {
 
         it('series cards are clickable through the link wrapper', () => {
             render(<SeriesPage />);
-
-            const links = screen.getAllByTestId('series-link');
 
             // Each series card should be contained within a link
             const seriesCard1 = screen.getByTestId('series-card-series-1');

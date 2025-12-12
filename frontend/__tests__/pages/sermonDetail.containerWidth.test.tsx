@@ -1,5 +1,5 @@
-import React from 'react';
 import { render } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Mock router params
@@ -43,6 +43,7 @@ jest.mock('@components/sermon/StructureStats', () => () => <div>Stats</div>);
 jest.mock('@components/sermon/SermonOutline', () => () => <div>SermonOutline</div>);
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
+
 import { TestProviders } from '../../test-utils/test-providers';
 
 describe('Sermon detail container width', () => {

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+
 import { DocumentIcon, LightBulbIcon, MicrophoneIcon, SwitchViewIcon } from '@components/Icons';
 
 export default function FeatureCards() {

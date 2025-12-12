@@ -1,8 +1,9 @@
+import { render, waitFor } from '@testing-library/react';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
 import { GuestBanner } from '@components/GuestBanner';
-import { auth, checkGuestExpiration } from '@services/firebaseAuth.service';
+import { auth } from '@services/firebaseAuth.service';
 
 // Mock the firebase auth service
 let mockCurrentUser: { isAnonymous: boolean } | null = null;

@@ -1,6 +1,7 @@
 // Simple integration test for PreachingTimer component in plan context
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import React from 'react';
+
 import PreachingTimer from '../../app/components/PreachingTimer';
 
 // Mock the usePreachingTimer hook

@@ -36,9 +36,6 @@ const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
 
 const mockCollection = adminDb.collection;
 
-const mockQuerySnapshot = {
-  docs: [],
-};
 
 const mockDocumentSnapshot = {
   exists: true,
@@ -76,7 +73,7 @@ mockDate.toISOString = jest.fn().mockReturnValue('2024-01-01T12:00:00.000Z');
 describe('SeriesRepository', () => {
   let repository: SeriesRepository;
 
-  const { createdAt, updatedAt, ...seriesWithoutTimestamps } = mockSeriesData;
+  const { ...seriesWithoutTimestamps } = mockSeriesData;
 
   const mockSeries: Omit<Series, 'id' | 'createdAt' | 'updatedAt'> = {
     ...seriesWithoutTimestamps,

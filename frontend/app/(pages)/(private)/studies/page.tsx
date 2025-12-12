@@ -1,27 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import '@locales/i18n';
 import {
   BookOpenIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardDocumentListIcon,
-  FunnelIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { StudyNote } from '@/models/models';
-import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import '@locales/i18n';
+
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { StudyNote } from '@/models/models';
 import { getTags } from '@/services/tag.service';
-import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
-import StudyNoteCard from './StudyNoteCard';
+
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
+import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import EditStudyNoteModal from './EditStudyNoteModal';
+import StudyNoteCard from './StudyNoteCard';
 import StudyNoteDrawer from './StudyNoteDrawer';
 
 export default function StudiesPage() {
@@ -57,7 +58,6 @@ export default function StudiesPage() {
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [bookFilter, setBookFilter] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
   // Type tabs
   type NoteTabType = 'all' | 'notes' | 'questions';
@@ -190,12 +190,6 @@ export default function StudiesPage() {
     [filteredNotes, matchesSearchTokens]
   );
 
-  // Stable list of filtered note IDs for auto-expand effect
-  const filteredNoteIds = useMemo(
-    () => visibleNotes.map((n) => n.id).join(','),
-    [visibleNotes]
-  );
-
   // Auto-expand all matching notes when searching
   // Auto-expand removed to allow Contextual Search Snippets to be visible in collapsed state.
   // User can manually expand if they want to see the full note.
@@ -254,7 +248,9 @@ export default function StudiesPage() {
     await createNote({
       ...values,
       userId: uid,
-    } as any);
+      materialIds: [],
+      relatedSermonIds: [],
+    });
   };
 
   const handleUpdateNote = async (noteId: string, updates: Partial<StudyNote>) => {

@@ -1,10 +1,11 @@
 'use client';
 
+import { Quote, BookOpen, HelpCircle, Check, X } from 'lucide-react';
 import React from 'react';
-import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
-import { Quote, BookOpen, HelpCircle, Check, X } from 'lucide-react';
+
+import { UI_COLORS } from '@/utils/themeColors';
 
 interface ThesisStepContentProps {
   exegetical?: string;

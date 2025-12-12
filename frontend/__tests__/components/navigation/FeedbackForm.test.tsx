@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import FeedbackForm from '@/components/navigation/FeedbackForm';
 
@@ -197,10 +198,10 @@ describe('FeedbackForm Component', () => {
     
     // Form controls should be enabled again after error
     await waitFor(() => {
-      expect(textarea).not.toBeDisabled();
-      expect(screen.getByRole('combobox')).not.toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Submit' })).not.toBeDisabled();
+      expect(textarea).toBeEnabled();
+      expect(screen.getByRole('combobox')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
     });
   });
 

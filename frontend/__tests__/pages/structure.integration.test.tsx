@@ -1,10 +1,12 @@
-import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
-import { updateStructure } from '@/services/structure.service';
 import { sortItemsWithAI } from '@/services/sortAI.service';
+import { updateStructure } from '@/services/structure.service';
+
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
 const searchParamsGetMock = jest.fn((param: string) => (param === 'sermonId' ? 'sermon-123' : null));

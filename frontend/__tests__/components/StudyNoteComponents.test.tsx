@@ -1,11 +1,11 @@
 
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
-import StudyNoteCard from '../../app/(pages)/(private)/studies/StudyNoteCard';
-import AddStudyNoteModal from '../../app/(pages)/(private)/studies/AddStudyNoteModal';
-import EditStudyNoteModal from '../../app/(pages)/(private)/studies/EditStudyNoteModal';
 import { StudyNote } from '@/models/models';
+
+import AddStudyNoteModal from '../../app/(pages)/(private)/studies/AddStudyNoteModal';
 
 // Mock translation
 jest.mock('react-i18next', () => ({
@@ -72,8 +72,8 @@ jest.mock('../../app/(pages)/(private)/studies/ScriptureRefBadge', () => {
 });
 
 // Debug log
-import { BibleLocale } from '../../app/(pages)/(private)/studies/bibleData';
-import { getBooksForDropdown } from '../../app/(pages)/(private)/studies/bibleData';
+import EditStudyNoteModal from '../../app/(pages)/(private)/studies/EditStudyNoteModal';
+import StudyNoteCard from '../../app/(pages)/(private)/studies/StudyNoteCard';
 
 // Basic rendering tests for components are covered in describe blocks below are sufficient.
 

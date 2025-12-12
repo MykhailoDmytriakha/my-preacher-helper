@@ -1,6 +1,7 @@
-import { sortItemsWithAI } from '@/services/sortAI.service';
-import { toast } from 'sonner';
 import fetchMock from 'jest-fetch-mock';
+import { toast } from 'sonner';
+
+import { sortItemsWithAI } from '@/services/sortAI.service';
 
 // Mock the fetch API
 fetchMock.enableMocks();
@@ -12,9 +13,6 @@ jest.mock('sonner', () => ({
     success: jest.fn(),
   },
 }));
-
-// Hard code the API URL for testing instead of using environment variable
-const API_URL = 'http://localhost:3000';
 
 describe('sortItemsWithAI', () => {
   beforeEach(() => {

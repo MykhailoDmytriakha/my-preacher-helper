@@ -1,7 +1,6 @@
 /**
  * API Tests for /api/tags route
  */
-import { NextResponse } from 'next/server';
 
 // Mock firebase admin and clients
 jest.mock('@/config/firebaseAdminConfig', () => ({

@@ -1,8 +1,9 @@
 "use client";
 
+import { ScrollText, FileText, Save, Maximize2, Minimize2 } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollText, FileText, Save, Maximize2, Minimize2 } from "lucide-react";
+
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 

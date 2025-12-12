@@ -1,7 +1,9 @@
-import { exportToWord, PlanData, WordExportOptions, parseMarkdownToParagraphs, parseTable, parseInlineMarkdown } from '../wordExport'
 import { Document, Paragraph, TextRun, Table } from 'docx'
 import { saveAs } from 'file-saver'
+
 import { runScenarios } from '@test-utils/scenarioRunner'
+
+import { exportToWord, PlanData, WordExportOptions, parseMarkdownToParagraphs, parseTable, parseInlineMarkdown } from '../wordExport'
 
 // Mock the docx library
 jest.mock('docx', () => {

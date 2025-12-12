@@ -1,15 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Item, Sermon, SermonPoint, Tag, Thought } from '@/models/models';
-import { getSermonById } from '@/services/sermon.service';
-import { getTags } from '@/services/tag.service';
-import { getSermonOutline } from '@/services/outline.service';
-import { updateStructure } from '@/services/structure.service';
-import { getSectionBaseColor } from '@lib/sections';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 
+import { Item, Sermon, SermonPoint, Tag, Thought } from '@/models/models';
+import { getSermonOutline } from '@/services/outline.service';
+import { getSermonById } from '@/services/sermon.service';
+import { getTags } from '@/services/tag.service';
+import { getSectionBaseColor } from '@lib/sections';
 
-
+// Constants for repeated strings
+const DEFAULT_SECTION_NAMES = ["introduction", "main part", "conclusion"];
+const RUSSIAN_SECTION_NAMES = ["вступление", "основная часть", "заключение"];
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {
   const [sermon, setSermon] = useState<Sermon | null>(null);
@@ -99,8 +100,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         const filteredAllowedTags = Object.values(allTags)
           .filter(
             (tag) =>
-              !["вступление", "основная часть", "заключение"].includes(tag.name.toLowerCase()) &&
-              !["introduction", "main part", "conclusion"].includes(tag.name.toLowerCase()) // Also check English defaults
+              !RUSSIAN_SECTION_NAMES.includes(tag.name.toLowerCase()) &&
+              !DEFAULT_SECTION_NAMES.includes(tag.name.toLowerCase()) // Also check English defaults
           )
           .map(tag => ({
             name: tag.name, // Ensure name is included
@@ -119,8 +120,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
             const customTagNames = normalizedTags.filter(
                 (tag: string) =>
-                    !["вступление", "основная часть", "заключение"].includes(tag) &&
-                    !["introduction", "main part", "conclusion"].includes(tag) // Also check English defaults
+                    !RUSSIAN_SECTION_NAMES.includes(tag) &&
+                    !DEFAULT_SECTION_NAMES.includes(tag) // Also check English defaults
             );
             const enrichedCustomTags = customTagNames.map((tagName: string) => {
               const tagInfo = allTags[tagName];
@@ -132,8 +133,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
             });
 
             const relevantTags = normalizedTags.filter((tag: string) =>
-                ["вступление", "основная часть", "заключение"].includes(tag) ||
-                ["introduction", "main part", "conclusion"].includes(tag) // Also check English defaults
+                RUSSIAN_SECTION_NAMES.includes(tag) ||
+                DEFAULT_SECTION_NAMES.includes(tag) // Also check English defaults
             );
 
             let outlinePointData;

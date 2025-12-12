@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
 
 // Stub dnd-kit hooks/components used by Column
 jest.mock('@dnd-kit/core', () => ({
@@ -15,7 +15,7 @@ jest.mock('@dnd-kit/sortable', () => ({
 jest.mock('@hello-pangea/dnd', () => ({
   DragDropContext: ({ children }: any) => <>{children}</>,
   Droppable: ({ children }: any) => children({ provided: { droppableProps: {}, innerRef: jest.fn() } }),
-  Draggable: ({ children, draggableId, index }: any) => children({ providedDraggable: { draggableProps: {}, dragHandleProps: {}, innerRef: jest.fn() }, snapshot: { isDragging: false } })
+  Draggable: ({ children }: any) => children({ providedDraggable: { draggableProps: {}, dragHandleProps: {}, innerRef: jest.fn() }, snapshot: { isDragging: false } })
 }));
 
 // Mock the AudioRecorder to a lightweight component we can assert on

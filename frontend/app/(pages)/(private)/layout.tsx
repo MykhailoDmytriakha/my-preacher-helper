@@ -1,11 +1,12 @@
 'use client';
 
 import { ReactNode } from 'react';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import DashboardNav from '@/components/navigation/DashboardNav';
+
 import { GuestBanner } from '@/components/GuestBanner';
-import DevQuickNav from '@/components/navigation/DevQuickNav';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
+import DashboardNav from '@/components/navigation/DashboardNav';
+import DevQuickNav from '@/components/navigation/DevQuickNav';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (

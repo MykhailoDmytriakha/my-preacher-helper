@@ -14,6 +14,7 @@
     "test:clean": "cd frontend && npm run test:clean",
     "test:translations": "cd frontend && npm run test:translations",
     "test:summary": "cd frontend && npm run test:summary",
-    "test:perf": "cd frontend && npm run test:perf"
+    "test:perf": "cd frontend && npm run test:perf",
+    "lint": "cd frontend && npm run lint"
   }
 }

@@ -9,10 +9,9 @@
  * All outputs respect the language of the input note.
  */
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
-import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
-import { logger } from "./openAIHelpers";
 
-const isDebugMode = process.env.DEBUG_MODE === 'true';
+import { logger } from "./openAIHelpers";
+import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 /**
  * Result structure for analyzeStudyNote operation.
@@ -357,7 +356,7 @@ export async function analyzeStudyNote(
   }
 
   // Detect language for proper prompt construction
-  const { isCyrillic, hasNonLatinChars, languageHint } = detectLanguage(noteContent);
+  const { languageHint } = detectLanguage(noteContent);
 
   // Always log for easier debugging (content preview truncated for readability)
   const contentPreview = noteContent.length > 500

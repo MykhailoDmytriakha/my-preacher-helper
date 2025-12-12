@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { submitFeedback } from '@services/feedback.service';
 import { useTranslation } from 'react-i18next';
+
+import { submitFeedback } from '@services/feedback.service';
 
 export function useFeedback() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);

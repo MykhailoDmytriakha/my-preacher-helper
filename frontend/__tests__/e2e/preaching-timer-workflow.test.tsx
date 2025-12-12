@@ -1,6 +1,6 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { jest } from '@jest/globals';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import React from 'react';
 
 // Use the global next/navigation mock from jest.setup.js
 
@@ -47,10 +47,9 @@ jest.mock('@/components/PreachingTimer', () => {
   // Store component instances for testing
   const instances: any[] = [];
 
-  function MockPreachingTimer({ initialDuration, className, onSetDuration }: {
+  function MockPreachingTimer({ initialDuration, className }: {
     initialDuration?: number;
     className?: string;
-    onSetDuration?: (duration: number) => void;
   }) {
     const [phase, setPhase] = React.useState<'introduction' | 'main' | 'conclusion' | 'finished'>('introduction');
     const [timeRemaining, setTimeRemaining] = React.useState(initialDuration || 1200);
@@ -77,9 +76,10 @@ jest.mock('@/components/PreachingTimer', () => {
     });
 
     React.useEffect(() => {
-      instances.push(instanceRef.current);
+      const currentInstance = instanceRef.current;
+      instances.push(currentInstance);
       return () => {
-        const index = instances.indexOf(instanceRef.current);
+        const index = instances.indexOf(currentInstance);
         if (index > -1) instances.splice(index, 1);
       };
     }, []);
@@ -257,11 +257,6 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
       };
     }, [params?.id]);
 
-    const handleStartPreaching = (duration: number) => {
-      setPreachingDuration(duration);
-      currentSearchParams = new URLSearchParams('planView=preaching');
-      router.replace?.(`/sermons/${params?.id || 'sermon-1'}/plan?planView=preaching`, { scroll: false });
-    };
 
     const handleExitPreaching = () => {
       setPreachingDuration(null);
@@ -349,7 +344,6 @@ jest.mock('../../app/utils/visualEffects', () => ({
 }));
 
 // Get references to globally mocked functions
-const { useParams, useRouter, useSearchParams, usePathname } = require('next/navigation');
 
 // Create spies to override global mock behavior
 const useRouterSpy = jest.spyOn(require('next/navigation'), 'useRouter');

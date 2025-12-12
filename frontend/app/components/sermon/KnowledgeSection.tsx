@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
+
 import "@locales/i18n";
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { Sermon, Insights, SermonDraft, SectionHints } from '@/models/models';
 import { 
   generateTopics, 
   generateRelatedVerses, 
@@ -10,10 +13,13 @@ import {
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
 import { generateSermonPlan } from "@/services/plan.service";
-import { ChevronIcon, RefreshIcon } from '@components/Icons';
-import { Sermon, Insights, SermonDraft, SectionHints } from '@/models/models';
-import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { ChevronIcon, RefreshIcon } from '@components/Icons';
+
+// Translation key constants to avoid duplicate strings
+const TRANSLATION_KNOWLEDGE_REFRESH = 'knowledge.refresh';
+const TRANSLATION_KNOWLEDGE_SHOW_ALL = 'knowledge.showAll';
+const TRANSLATION_KNOWLEDGE_HIDE_ALL = 'knowledge.hideAll';
 
 interface KnowledgeSectionProps {
   sermon: Sermon;
@@ -23,6 +29,13 @@ interface KnowledgeSectionProps {
 // Types for section regeneration
 type InsightSectionType = 'topics' | 'verses' | 'directions';
 type RegenerationFunction = (sermonId: string) => Promise<Insights | null>;
+
+// Use direct translation calls to avoid duplicate string warnings
+
+// Constants for repeated CSS classes and text
+const REFRESH_BUTTON_CLASSES = "p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50";
+const TOGGLE_BUTTON_CLASSES = "text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none";
+// Use direct translation calls with unique fallback values
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
@@ -80,7 +93,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     // First try to get from insights.sectionHints
     if (localInsights?.sectionHints) {
       console.log('🎯 Getting thoughts plan from insights.sectionHints', localInsights.sectionHints);
-      const tp: any = localInsights.sectionHints as any;
+      const tp = localInsights.sectionHints as SectionHints;
       return {
         introduction: toMarkdown(tp?.introduction) || '',
         main: toMarkdown(tp?.main) || '',
@@ -388,9 +401,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 <button 
                   onClick={handleRegenerateTopics}
                   disabled={isAnyGenerating()}
-                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
-                  aria-label={t('knowledge.refresh')}
-                  title={t('knowledge.refresh')}
+                  className={REFRESH_BUTTON_CLASSES}
+                  aria-label={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+                  title={t(TRANSLATION_KNOWLEDGE_REFRESH)}
                 >
                   {isGeneratingTopics ? <LoadingSpinner /> : (
                     <RefreshIcon className="w-4 h-4" />
@@ -400,9 +413,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               {topics.length > 0 && (
                 <button 
                   onClick={toggleTopicsVisibility}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                  className={TOGGLE_BUTTON_CLASSES}
                 >
-                  {showAllTopics ? t('knowledge.hideAll') : t('knowledge.showAll')}
+                  {showAllTopics ? t(TRANSLATION_KNOWLEDGE_HIDE_ALL) : t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
                 </button>
               )}
             </div>
@@ -423,9 +436,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 <button 
                   onClick={handleRegenerateVerses}
                   disabled={isAnyGenerating()}
-                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
-                  aria-label={t('knowledge.refresh')}
-                  title={t('knowledge.refresh')}
+                  className={REFRESH_BUTTON_CLASSES}
+                  aria-label={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+                  title={t(TRANSLATION_KNOWLEDGE_REFRESH)}
                 >
                   {isGeneratingVerses ? <LoadingSpinner /> : (
                     <RefreshIcon className="w-4 h-4" />
@@ -435,9 +448,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               {relatedVerses.length > 0 && (
                 <button 
                   onClick={toggleVersesVisibility}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                  className={TOGGLE_BUTTON_CLASSES}
                 >
-                  {showAllVerses ? t('knowledge.hideAll') : t('knowledge.showAll')}
+                  {showAllVerses ? t(TRANSLATION_KNOWLEDGE_HIDE_ALL) : t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
                 </button>
               )}
             </div>
@@ -459,9 +472,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 <button 
                   onClick={handleRegenerateDirections}
                   disabled={isAnyGenerating()}
-                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
-                  aria-label={t('knowledge.refresh')}
-                  title={t('knowledge.refresh')}
+                  className={REFRESH_BUTTON_CLASSES}
+                  aria-label={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+                  title={t(TRANSLATION_KNOWLEDGE_REFRESH)}
                 >
                   {isGeneratingDirections ? <LoadingSpinner /> : (
                     <RefreshIcon className="w-4 h-4" />
@@ -471,9 +484,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               {possibleDirections.length > 0 && (
                 <button 
                   onClick={toggleDirectionsVisibility}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                  className={TOGGLE_BUTTON_CLASSES}
                 >
-                  {showAllDirections ? t('knowledge.hideAll') : t('knowledge.showAll')}
+                  {showAllDirections ? t(TRANSLATION_KNOWLEDGE_HIDE_ALL) : t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
                 </button>
               )}
             </div>
@@ -495,9 +508,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
                 <button 
                   onClick={handleGeneratePlan}
                   disabled={isAnyGenerating()}
-                  className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50"
-                  aria-label={t('knowledge.refresh')}
-                  title={t('knowledge.refresh')}
+                  className={REFRESH_BUTTON_CLASSES}
+                  aria-label={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+                  title={t(TRANSLATION_KNOWLEDGE_REFRESH)}
                 >
                   {isGeneratingPlan ? <LoadingSpinner /> : (
                     <RefreshIcon className="w-4 h-4" />

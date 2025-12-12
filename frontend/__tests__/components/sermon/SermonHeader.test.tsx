@@ -1,8 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import SermonHeader from '@/components/sermon/SermonHeader';
-import { updateSermon } from '@/services/sermon.service';
 import { Sermon, Series } from '@/models/models';
+import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
 // Mock dependencies
@@ -444,15 +445,18 @@ describe('SermonHeader Component', () => {
       // Second edit - need to wait for the component to update
       await waitFor(() => {
         const editButtons2 = screen.getAllByTitle('Edit');
-        const verseEditButton2 = editButtons2[1];
-        fireEvent.click(verseEditButton2);
-
-        const verseTextarea2 = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-        fireEvent.change(verseTextarea2, { target: { value: 'Second update' } });
-
-        const saveButton2 = screen.getByTitle('Save');
-        fireEvent.click(saveButton2);
+        expect(editButtons2).toHaveLength(2);
       });
+
+      const editButtons2 = screen.getAllByTitle('Edit');
+      const verseEditButton2 = editButtons2[1];
+      fireEvent.click(verseEditButton2);
+
+      const verseTextarea2 = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
+      fireEvent.change(verseTextarea2, { target: { value: 'Second update' } });
+
+      const saveButton2 = screen.getByTitle('Save');
+      fireEvent.click(saveButton2);
 
       await waitFor(() => {
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon2);

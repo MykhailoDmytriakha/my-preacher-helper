@@ -1,3 +1,5 @@
+import { runScenarios } from '@test-utils/scenarioRunner'
+
 import {
   DEFAULT_TIMER_SETTINGS,
   TIMER_PRESETS,
@@ -17,8 +19,6 @@ import {
   getPhaseColor,
   getEmergencyColor,
 } from '../timerConstants'
-import { TimerSettings } from '@/types/TimerState'
-import { runScenarios } from '@test-utils/scenarioRunner'
 
 describe('timerConstants', () => {
   it('validates constant objects', async () => {

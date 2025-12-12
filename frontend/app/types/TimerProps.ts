@@ -1,4 +1,4 @@
-import { TimerPhase, TimerStatus, TimerSettings, TimerState } from './TimerState';
+import { TimerPhase, TimerStatus, TimerSettings } from './TimerState';
 
 export interface TimerSettingsProps {
   totalDuration: number;
@@ -42,9 +42,7 @@ export interface TimerStateSummary {
   isFinished: boolean;
 }
 
-export interface TimerEvents {
-  // Placeholder for future event handling
-}
+export type TimerEvents = Record<string, never>;
 
 export interface UsePreachingTimerReturn {
   timerState: TimerStateSummary;

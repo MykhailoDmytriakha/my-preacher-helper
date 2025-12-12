@@ -1,22 +1,33 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { updateSermonOutline, getSermonOutline, generateSermonPointsForSection } from "@/services/outline.service";
-import SortableItem from "./SortableItem";
-import { Item, SermonPoint, SermonOutline, Thought } from "@/models/models";
-import { useTranslation } from 'react-i18next';
+import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import "@locales/i18n";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
-import ExportButtons from "./ExportButtons";
-import { toast } from 'sonner';
-import { AudioRecorder } from "./AudioRecorder";
-import { FocusRecorderButton } from "./FocusRecorderButton";
+
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { getSectionLabel } from "@/lib/sections";
+import { Item, SermonOutline, SermonPoint, Thought } from "@/models/models";
+import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from "@/services/outline.service";
+import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
+
+// Translation key constants to avoid duplicate strings
+const TRANSLATION_STRUCTURE_ADD_THOUGHT = 'structure.addThoughtToSection';
+const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = 'structure.unassignedThoughts';
+const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = 'Unassigned Thoughts';
+
+// CSS class constants to avoid duplicate strings
+const BG_GRAY_LIGHT_DARK = 'bg-gray-50 dark:bg-gray-800';
+const BG_GRAY_LIGHTER_DARK = 'bg-gray-100 dark:bg-gray-700';
+
+import { AudioRecorder } from "./AudioRecorder";
+import ExportButtons from "./ExportButtons";
+import { FocusRecorderButton } from "./FocusRecorderButton";
+import SortableItem from "./SortableItem";
 
 interface ColumnProps {
   id: string;
@@ -137,8 +148,8 @@ const SermonPointPlaceholder: React.FC<{
       if (headerColor) {
         return {
           border: `border-2 border-opacity-30`,
-          bg: 'bg-gray-50 dark:bg-gray-800',
-          header: 'bg-gray-100 dark:bg-gray-700',
+          bg: BG_GRAY_LIGHT_DARK,
+          header: BG_GRAY_LIGHTER_DARK,
           headerText: 'text-gray-700 dark:text-gray-200'
         };
       }
@@ -168,8 +179,8 @@ const SermonPointPlaceholder: React.FC<{
         default:
           return {
             border: 'border-2 border-gray-200 dark:border-gray-700',
-            bg: 'bg-gray-50 dark:bg-gray-800',
-            header: 'bg-gray-100 dark:bg-gray-700',
+            bg: BG_GRAY_LIGHT_DARK,
+            header: BG_GRAY_LIGHTER_DARK,
             headerText: 'text-gray-700 dark:text-gray-200'
           };
       }
@@ -179,7 +190,6 @@ const SermonPointPlaceholder: React.FC<{
 
     // Local state for audio recording (per outline point)
     const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
-    const [audioError, setAudioError] = React.useState<string | null>(null);
 
     return (
       <div
@@ -189,7 +199,7 @@ const SermonPointPlaceholder: React.FC<{
       >
         {/* SermonOutline point header */}
         <div
-          className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? 'bg-gray-100 dark:bg-gray-700' : colors.header}`}
+          className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
           style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
         >
           <div className="flex items-center justify-between">
@@ -253,8 +263,8 @@ const SermonPointPlaceholder: React.FC<{
                 <button
                   onClick={() => onAddThought(containerId, point.id)}
                   className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-                  title={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
-                  aria-label={t('structure.addThoughtToSection', { section: sectionTitle || containerId })}
+                  title={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                  aria-label={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                 >
                   <PlusIcon className="h-4 w-4 text-white" />
                 </button>
@@ -382,7 +392,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
     return (
       <div
         ref={setNodeRef}
-        className={`min-h-[80px] p-4 transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : 'bg-gray-50 dark:bg-gray-800'
+        className={`min-h-[80px] p-4 transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : BG_GRAY_LIGHT_DARK
           }`}
       >
         {items.length === 0 ? (
@@ -593,7 +603,6 @@ export default function Column({
 
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -1192,7 +1201,7 @@ export default function Column({
                     <div className="mt-8">
                       <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                         <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
-                          {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                          {t(TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS, { defaultValue: DEFAULT_UNASSIGNED_THOUGHTS_TEXT })} ({unassignedItemsForDisplay.length})
                         </h4>
                         <UnassignedThoughtsDropTarget
                           items={unassignedItemsForDisplay}
@@ -1215,7 +1224,7 @@ export default function Column({
                     <div className="mt-8">
                       <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                         <h4 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4">
-                          {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                          {t(TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS, { defaultValue: DEFAULT_UNASSIGNED_THOUGHTS_TEXT })} (0)
                         </h4>
                         <UnassignedThoughtsDropTarget
                           items={[]}
@@ -1490,7 +1499,7 @@ export default function Column({
                 <div className="mt-8">
                   <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
                     <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
-                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} ({unassignedItemsForDisplay.length})
+                      {t(TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS, { defaultValue: DEFAULT_UNASSIGNED_THOUGHTS_TEXT })} ({unassignedItemsForDisplay.length})
                     </h4>
                     <UnassignedThoughtsDropTarget
                       items={unassignedItemsForDisplay}
@@ -1513,7 +1522,7 @@ export default function Column({
                 <div className="mt-8">
                   <div className={`border-t ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} pt-6`}>
                     <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
-                      {t('structure.unassignedThoughts', { defaultValue: 'Unassigned Thoughts' })} (0)
+                      {t(TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS, { defaultValue: DEFAULT_UNASSIGNED_THOUGHTS_TEXT })} (0)
                     </h4>
                     <UnassignedThoughtsDropTarget
                       items={[]}

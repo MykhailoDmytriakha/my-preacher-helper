@@ -1,9 +1,11 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import StudiesPage from '../page';
-import { useStudyNotes } from '@/hooks/useStudyNotes';
+
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { StudyNote } from '@/models/models';
+
+import StudiesPage from '../page';
 
 jest.mock('@/hooks/useStudyNotes', () => ({
   useStudyNotes: jest.fn(),

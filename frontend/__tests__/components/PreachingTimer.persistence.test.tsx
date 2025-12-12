@@ -1,7 +1,7 @@
-import React from 'react';
+import { jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { jest } from '@jest/globals';
+import React from 'react';
 
 // Mock the usePreachingTimer hook BEFORE importing the component
 const mockUsePreachingTimer = jest.fn();

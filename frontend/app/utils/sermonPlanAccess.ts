@@ -51,7 +51,6 @@ export function isSermonReadyForPlan(sermon: Sermon): boolean {
  */
 export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
   const planReady = hasPlan(sermon);
-  const structureReady = hasStructure(sermon);
   const thoughtsReady = allThoughtsAssigned(sermon);
 
   if (planReady && thoughtsReady) {

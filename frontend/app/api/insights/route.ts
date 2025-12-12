@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { sermonsRepository } from '@repositories/sermons.repository';
-import { Sermon } from '@/models/models';
+
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { Sermon } from '@/models/models';
 import { generateSermonInsights } from '@clients/openAI.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/insights?sermonId=<id>
 export async function POST(request: Request) {

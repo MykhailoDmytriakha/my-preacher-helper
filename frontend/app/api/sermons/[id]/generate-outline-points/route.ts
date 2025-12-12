@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sermonsRepository } from '@repositories/sermons.repository';
+
 import { generateSermonPoints } from '@clients/openAI.client';
+import { sermonsRepository } from '@repositories/sermons.repository';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

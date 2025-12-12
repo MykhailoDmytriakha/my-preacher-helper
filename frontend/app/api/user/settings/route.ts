@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { userSettingsRepository } from '@/api/repositories/userSettings.repository';
+
+// Error messages
+const ERROR_MESSAGES = {
+  USER_ID_REQUIRED: 'User ID is required',
+} as const;
 
 /**
  * GET /api/user/settings
@@ -11,7 +17,7 @@ export async function GET(request: NextRequest) {
     const userId = url.searchParams.get('userId');
     
     if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
     }
     
     const settings = await userSettingsRepository.getByUserId(userId);
@@ -32,7 +38,7 @@ export async function PUT(request: NextRequest) {
     const { userId, language, email, displayName, enablePrepMode } = body;
     
     if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
     }
     
     // Only pass fields that are explicitly provided in the request
@@ -67,7 +73,7 @@ export async function POST(request: NextRequest) {
     const { userId, language, email, displayName, enablePrepMode } = body;
     
     if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
     }
     
     // For new users, provide default language if not specified

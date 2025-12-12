@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sermon } from '@/models/models';
-import TextareaAutosize from 'react-textarea-autosize';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
+
+import { Sermon } from '@/models/models';
 import { updateSermon } from '@services/sermon.service';
 
 interface EditSermonModalProps {

@@ -1,8 +1,9 @@
 'use client';
 
+import { XMarkIcon, MagnifyingGlassIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XMarkIcon, MagnifyingGlassIcon, CheckIcon } from '@heroicons/react/24/outline';
+
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
 interface TagCatalogModalProps {

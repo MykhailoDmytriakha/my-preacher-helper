@@ -1,10 +1,15 @@
 'use client';
 
+import { BookOpen, CheckCircle, Search, Repeat, Check, X } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
-import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
-import { BookOpen, CheckCircle, Search, Repeat, Check, X } from 'lucide-react';
+
+import { UI_COLORS } from '@/utils/themeColors';
+
+// Module-level constants to avoid duplicate strings
+const TEXT_CONTEXT_SAVE_FALLBACK = "Save";
+const TEXT_CONTEXT_CANCEL_FALLBACK = "Cancel";
 
 interface TextContextStepContentProps {
   initialVerse: string;
@@ -21,6 +26,11 @@ interface TextContextStepContentProps {
 
 const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initialVerse, onSaveVerse, readWholeBookOnceConfirmed = false, onToggleReadWholeBookOnce, initialPassageSummary = '', onSavePassageSummary, initialContextNotes = '', onSaveContextNotes, initialRepeatedWords = [], onSaveRepeatedWords }) => {
   const { t } = useTranslation();
+
+  // Title functions to avoid duplicate strings
+  const getSaveTitle = () => t('actions.save') || TEXT_CONTEXT_SAVE_FALLBACK;
+  const getCancelTitle = () => t('actions.cancel') || TEXT_CONTEXT_CANCEL_FALLBACK;
+
   const [verseDraft, setVerseDraft] = useState<string>(initialVerse || '');
   const [isSaving, setIsSaving] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState<string>(initialPassageSummary || '');
@@ -136,7 +146,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 onClick={handleSave}
                 disabled={isSaving}
                 className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('actions.save') || 'Save'}
+                title={getSaveTitle()}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -144,7 +154,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 type="button"
                 onClick={() => setVerseDraft(initialVerseMemo)}
                 className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('actions.cancel') || 'Cancel'}
+                title={getCancelTitle()}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -180,7 +190,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 onClick={handleSaveSummary}
                 disabled={isSavingSummary}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('actions.save') || 'Save'}
+                title={getSaveTitle()}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -188,7 +198,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 type="button"
                 onClick={() => setSummaryDraft(initialPassageSummary || '')}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('actions.cancel') || 'Cancel'}
+                title={getCancelTitle()}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -240,7 +250,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 onClick={handleSaveContext}
                 disabled={isSavingContext}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('actions.save') || 'Save'}
+                title={getSaveTitle()}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -248,7 +258,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 type="button"
                 onClick={() => setContextDraft(initialContextNotes || '')}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('actions.cancel') || 'Cancel'}
+                title={getCancelTitle()}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -282,7 +292,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 onClick={handleSaveRepeated}
                 disabled={isSavingRepeated}
                 className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('actions.save') || 'Save'}
+                title={getSaveTitle()}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -290,7 +300,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
                 type="button"
                 onClick={() => setRepeatedDraft((initialRepeatedWords || []).join(', '))}
                 className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('actions.cancel') || 'Cancel'}
+                title={getCancelTitle()}
               >
                 <X className="w-4 h-4" />
               </button>

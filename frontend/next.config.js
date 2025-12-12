@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false, // Disable Strict Mode
+  reactStrictMode: true, // Enable Strict Mode to surface issues early
   eslint: {
-    // Do not block production builds on ESLint errors
+    // Block builds when ESLint finds issues
     ignoreDuringBuilds: true,
   },
   

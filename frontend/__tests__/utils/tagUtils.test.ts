@@ -1,7 +1,8 @@
+import { runScenarios } from "@test-utils/scenarioRunner";
+
+import { getContrastColor } from "../../app/utils/color";
 import { isStructureTag, getDefaultTagStyling, getStructureIcon, getTagStyle, normalizeStructureTag } from "../../app/utils/tagUtils";
 import { getTagStyling } from "../../app/utils/themeColors";
-import { getContrastColor } from "../../app/utils/color";
-import { runScenarios } from "@test-utils/scenarioRunner";
 
 // Mock dependencies
 jest.mock("../../app/utils/color", () => ({

@@ -1,16 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { useSeriesDetail } from '@/hooks/useSeriesDetail';
-import { useSeries } from '@/hooks/useSeries';
-import { useAuth } from '@/providers/AuthProvider';
-import { toast } from 'sonner';
-import SermonInSeriesCard from '@/components/series/SermonInSeriesCard';
-import EditSeriesModal from '@/components/series/EditSeriesModal';
-import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import {
   ArrowLeftIcon,
   PencilIcon,
@@ -19,8 +9,26 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { SparklesIcon, ClockIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+import { useParams, useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
+import EditSeriesModal from '@/components/series/EditSeriesModal';
+import SermonInSeriesCard from '@/components/series/SermonInSeriesCard';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
+import { useSeries } from '@/hooks/useSeries';
+import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import { useAuth } from '@/providers/AuthProvider';
+
+
 import '@locales/i18n';
+
+// Translation keys constants
+const TRANSLATION_KEYS = {
+  ADD_SERMON: 'workspaces.series.actions.addSermon',
+} as const;
 
 export default function SeriesDetailPage() {
   const { id } = useParams();
@@ -184,7 +192,7 @@ export default function SeriesDetailPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
-              {t('workspaces.series.actions.addSermon')}
+              {t(TRANSLATION_KEYS.ADD_SERMON)}
             </button>
             <button
               onClick={() => setShowEditModal(true)}
@@ -255,7 +263,7 @@ export default function SeriesDetailPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
-              {t('workspaces.series.actions.addSermon')}
+              {t(TRANSLATION_KEYS.ADD_SERMON)}
             </button>
             <button
               onClick={refreshSeriesDetail}
@@ -276,7 +284,7 @@ export default function SeriesDetailPage() {
               className="mt-2 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
-              {t('workspaces.series.actions.addSermon')}
+              {t(TRANSLATION_KEYS.ADD_SERMON)}
             </button>
           </div>
         ) : (

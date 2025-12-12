@@ -1,17 +1,16 @@
-// External libraries
-import React, { useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
-
-// Path alias imports
-import type { Sermon, SermonOutline, SermonPoint } from '@/models/models';
+import { DragDropContext, Draggable, DraggableProvided, DraggableStateSnapshot, DropResult, Droppable, DroppableProvided } from '@hello-pangea/dnd';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
-import { CheckIcon, XMarkIcon, PencilIcon, TrashIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import Link from 'next/link';
+import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
-import { getSectionLabel } from '@lib/sections';
-import Link from 'next/link';
 import { getFocusModeUrl } from '@/utils/urlUtils';
+import { getSectionLabel } from '@lib/sections';
+
+import type { Sermon, SermonOutline, SermonPoint } from '@/models/models';
 
 interface SermonOutlineProps {
   sermon: Sermon;

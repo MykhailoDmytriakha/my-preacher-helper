@@ -1,9 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
-import { useAiSortingDiff } from '../useAiSortingDiff';
-import { sortItemsWithAI } from '@/services/sortAI.service';
-import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from '@/models/models';
 import { toast } from 'sonner';
+
+import { Item, SermonPoint, Sermon } from '@/models/models';
+import { sortItemsWithAI } from '@/services/sortAI.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import { useAiSortingDiff } from '../useAiSortingDiff';
 
 // Mock services
 jest.mock('@/services/sortAI.service');

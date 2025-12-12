@@ -5,10 +5,11 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 
 // Path alias imports
-import type { Sermon, Thought } from "@/models/models";
-import { ChevronIcon } from '@components/Icons';
 import { SERMON_SECTION_COLORS, getTagStyling } from '@/utils/themeColors'; // Import the central theme
+import { ChevronIcon } from '@components/Icons';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+
+import type { Sermon, Thought } from "@/models/models";
 
 interface StructurePreviewProps {
   sermon: Sermon;
@@ -64,7 +65,8 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
   }, [sermon.thoughts]);
 
   const getSortedIdsForSection = (section: 'introduction' | 'main' | 'conclusion'): string[] => {
-    const ids = (sermon.structure as any)?.[section] || [];
+    const structure = sermon.structure ?? { introduction: [], main: [], conclusion: [], ambiguous: [] };
+    const ids = structure[section] || [];
     // Unique while preserving input order
     const seen = new Set<string>();
     const unique = ids.filter((id: string) => (seen.has(id) ? false : (seen.add(id), true)));

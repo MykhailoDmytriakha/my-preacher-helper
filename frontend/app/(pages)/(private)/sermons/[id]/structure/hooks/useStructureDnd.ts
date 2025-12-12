@@ -1,4 +1,3 @@
-import { useState, useRef, useCallback, useMemo } from "react";
 import { 
   useSensors, 
   useSensor, 
@@ -8,18 +7,116 @@ import {
   DragOverEvent,
   DragEndEvent 
 } from "@dnd-kit/core";
-import { updateStructure } from "@/services/structure.service";
-import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
-import { toast } from 'sonner';
+import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
-import debounce from 'lodash/debounce';
-import { 
-  isStructureChanged, 
-  dedupeIds, 
-  ensureUniqueItems, 
+import { toast } from 'sonner';
+
+import { Item, Sermon, SermonPoint, Thought } from "@/models/models";
+import { updateStructure } from "@/services/structure.service";
+
+
+import {
+  isStructureChanged,
+  dedupeIds,
+  ensureUniqueItems,
   removeIdFromOtherSections,
-  calculateGroupPosition 
+  calculateGroupPosition
 } from "../utils/structure";
+
+// Constants for drag target prefixes
+const OUTLINE_POINT_PREFIX = 'outline-point-';
+const UNASSIGNED_PREFIX = 'unassigned-';
+
+// Helper function to determine destination container and outline point
+const determineDestination = (
+  overId: string,
+  over: { data?: { current?: { container?: string; outlinePointId?: string } } },
+  state: Record<string, Item[]>
+): { dstContainerKey: string | undefined; targetSermonPointId: string | null | undefined } => {
+  let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
+  let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
+
+  if (overId.startsWith(OUTLINE_POINT_PREFIX)) {
+    dstContainerKey = over.data?.current?.container as string | undefined;
+    targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
+  } else if (overId.startsWith(UNASSIGNED_PREFIX)) {
+    dstContainerKey = over.data?.current?.container as string | undefined;
+    targetSermonPointId = null;
+  } else if (!dstContainerKey) {
+    // over on item or container id
+    dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
+      ? overId
+      : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
+    if (!dstContainerKey) return { dstContainerKey: undefined, targetSermonPointId: undefined };
+
+    // If over is an item, inherit its outline point group for preview
+    if (overId !== dstContainerKey) {
+      const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
+      if (overIdx !== -1) {
+        targetSermonPointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
+      }
+    }
+  }
+
+  return { dstContainerKey, targetSermonPointId };
+};
+
+// Helper function to calculate insertion index
+const calculateInsertIndex = (
+  overId: string,
+  dstContainerKey: string,
+  targetSermonPointId: string | null | undefined,
+  state: Record<string, Item[]>
+): number => {
+  let insertIndex = state[dstContainerKey].length;
+
+  if (overId !== dstContainerKey && !overId.startsWith(OUTLINE_POINT_PREFIX) && !overId.startsWith(UNASSIGNED_PREFIX)) {
+    const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
+    if (overIdx !== -1) insertIndex = overIdx; // insert before target item
+  } else if (targetSermonPointId !== undefined) {
+    // Append to end of that group
+    const groupKey = targetSermonPointId || null;
+    // find last index of items in that group
+    let lastGroupIndex = -1;
+    for (let i = 0; i < state[dstContainerKey].length; i++) {
+      const it = state[dstContainerKey][i];
+      const itGroup = (it.outlinePointId ?? null);
+      if (itGroup === groupKey) lastGroupIndex = i;
+    }
+    insertIndex = lastGroupIndex === -1 ? state[dstContainerKey].length : lastGroupIndex + 1;
+  }
+
+  return insertIndex;
+};
+
+// Helper function to check if update is needed
+const shouldSkipUpdate = (
+  srcContainerKey: string,
+  dstContainerKey: string,
+  insertIndex: number,
+  dragged: Item,
+  intendedOutline: string | undefined,
+  state: Record<string, Item[]>
+): boolean => {
+  if (srcContainerKey === dstContainerKey) {
+    const currentIdx = state[dstContainerKey].findIndex((it) => it.id === dragged.id);
+    const sameGroup = (dragged.outlinePointId ?? undefined) === intendedOutline;
+    const noReorder = insertIndex === currentIdx || insertIndex === currentIdx + 1;
+    if (sameGroup && noReorder) {
+      return true;
+    }
+  } else {
+    const currentDestIdx = state[dstContainerKey].findIndex((it) => it.id === dragged.id);
+    if (currentDestIdx !== -1) {
+      const alreadyAtIndex = currentDestIdx === insertIndex;
+      const alreadyGroup = (state[dstContainerKey][currentDestIdx].outlinePointId ?? undefined) === intendedOutline;
+      if (alreadyAtIndex && alreadyGroup) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
 
 interface UseStructureDndProps {
   containers: Record<string, Item[]>;
@@ -27,7 +124,6 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   columnTitles: Record<string, string>;
   debouncedSaveThought: (sermonId: string, thought: Thought) => void;
 }
@@ -38,7 +134,6 @@ export const useStructureDnd = ({
   containersRef,
   sermon,
   setSermon,
-  outlinePoints,
   columnTitles,
   debouncedSaveThought,
 }: UseStructureDndProps) => {
@@ -87,31 +182,8 @@ export const useStructureDnd = ({
     const srcContainerKey = Object.keys(state).find((k) => state[k].some((it) => it.id === activeId));
     if (!srcContainerKey) return;
 
-    let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
-    let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
-
-    if (overId.startsWith('outline-point-')) {
-      dstContainerKey = over.data?.current?.container as string | undefined;
-      targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
-    } else if (overId.startsWith('unassigned-')) {
-      dstContainerKey = over.data?.current?.container as string | undefined;
-      targetSermonPointId = null;
-    } else if (!dstContainerKey) {
-      // over on item or container id
-      dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
-        ? overId
-        : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
-      if (!dstContainerKey) return;
-
-      // If over is an item, inherit its outline point group for preview
-      if (overId !== dstContainerKey) {
-        const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
-        if (overIdx !== -1) {
-          targetSermonPointId = state[dstContainerKey][overIdx].outlinePointId ?? null;
-        }
-      }
-    }
-
+    // Determine destination container and outline point
+    const { dstContainerKey, targetSermonPointId } = determineDestination(overId, over, state);
     if (!dstContainerKey) return;
 
     // Early compute current positions before building draft
@@ -119,70 +191,35 @@ export const useStructureDnd = ({
     if (srcIdx === -1) return;
     const dragged = state[srcContainerKey][srcIdx];
 
-    // Determine insertion index in destination relative to over target
-    let insertIndex = state[dstContainerKey].length;
-    if (overId !== dstContainerKey && !overId.startsWith('outline-point-') && !overId.startsWith('unassigned-')) {
-      const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
-      if (overIdx !== -1) insertIndex = overIdx; // insert before target item
-    } else if (targetSermonPointId !== undefined) {
-      // Append to end of that group
-      const groupKey = targetSermonPointId || null;
-      // find last index of items in that group
-      let lastGroupIndex = -1;
-      for (let i = 0; i < state[dstContainerKey].length; i++) {
-        const it = state[dstContainerKey][i];
-        const itGroup = (it.outlinePointId ?? null);
-        if (itGroup === groupKey) lastGroupIndex = i;
-      }
-      insertIndex = lastGroupIndex === -1 ? state[dstContainerKey].length : lastGroupIndex + 1;
-    }
+    // Calculate insertion index
+    const insertIndex = calculateInsertIndex(overId, dstContainerKey, targetSermonPointId, state);
 
     const intendedOutline: string | undefined =
       targetSermonPointId === undefined ? (dragged.outlinePointId || undefined) : (targetSermonPointId || undefined);
 
-    // If the item is already at the intended place/group, skip updating state
-    if (srcContainerKey === dstContainerKey) {
-      // In the same container, if inserting before the same next element, this might be a no-op
-      const currentIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
-      const sameGroup = (dragged.outlinePointId ?? undefined) === intendedOutline;
-      const noReorder = insertIndex === currentIdx || insertIndex === currentIdx + 1;
-      if (sameGroup && noReorder) {
-        return;
-      }
-    } else {
-      const currentDestIdx = state[dstContainerKey].findIndex((it) => it.id === activeId);
-      if (currentDestIdx !== -1) {
-        const alreadyAtIndex = currentDestIdx === insertIndex;
-        const alreadyGroup = (state[dstContainerKey][currentDestIdx].outlinePointId ?? undefined) === intendedOutline;
-        if (alreadyAtIndex && alreadyGroup) {
-          return;
-        }
-      }
+    // Check if update is needed
+    if (shouldSkipUpdate(srcContainerKey, dstContainerKey, insertIndex, dragged, intendedOutline, state)) {
+      return;
     }
 
-    // Build new state preview without duplicating when source === destination
+    // Build new state preview
     const draft: Record<string, Item[]> = { ...state };
     const previewItem: Item = { ...dragged, outlinePointId: intendedOutline };
+
     if (srcContainerKey === dstContainerKey) {
       const arr = [...state[srcContainerKey]];
-      // Remove from current index
       arr.splice(srcIdx, 1);
-      // Adjust insert index if needed
       const safeIndex = Math.min(Math.max(insertIndex, 0), arr.length);
-      // Insert at new index
       arr.splice(safeIndex, 0, previewItem);
       draft[srcContainerKey] = arr;
     } else {
       draft[srcContainerKey] = [...state[srcContainerKey]];
       draft[dstContainerKey] = [...state[dstContainerKey]];
-      // Remove from source
       draft[srcContainerKey].splice(srcIdx, 1);
-      // Insert into destination
       draft[dstContainerKey].splice(insertIndex, 0, previewItem);
     }
 
     // Store preview state in ref only - don't trigger re-render during drag
-    // This prevents infinite loops while maintaining preview functionality
     containersRef.current = draft;
   }, [isDragEnding, containersRef]);
 
@@ -205,12 +242,12 @@ export const useStructureDnd = ({
     let outlinePointId = over.data.current?.outlinePointId;
     
     // Check if we're dropping on an outline point placeholder
-    if (over.id.toString().startsWith('outline-point-')) {
+    if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
       const dropTargetId = over.id.toString();
-      outlinePointId = dropTargetId.replace('outline-point-', '');
+      outlinePointId = dropTargetId.replace(OUTLINE_POINT_PREFIX, '');
       overContainer = over.data.current?.container;
     } 
-    else if (over.id.toString().startsWith('unassigned-')) {
+    else if (over.id.toString().startsWith(UNASSIGNED_PREFIX)) {
       outlinePointId = null;
       overContainer = over.data.current?.container;
     } 
@@ -227,8 +264,8 @@ export const useStructureDnd = ({
 
     if (
       over.id !== overContainer &&
-      !over.id.toString().startsWith('outline-point-') &&
-      !over.id.toString().startsWith('unassigned-')
+      !over.id.toString().startsWith(OUTLINE_POINT_PREFIX) &&
+      !over.id.toString().startsWith(UNASSIGNED_PREFIX)
     ) {
       droppedOnItem = true;
       targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;

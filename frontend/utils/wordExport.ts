@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
+
 import { getSectionBaseColor } from '@lib/sections';
 
 interface PlanData {
@@ -15,6 +16,186 @@ interface WordExportOptions {
   data: PlanData;
   filename?: string;
 }
+
+type TextRunFormat = Partial<{
+  bold: boolean;
+  italics: boolean;
+  strike: boolean;
+  font: string;
+  superScript: boolean;
+  subScript: boolean;
+  size: number;
+}>;
+
+// Helper function to create heading paragraphs
+const createHeadingParagraph = (text: string, level: number, sectionColor?: string): Paragraph => {
+  const baseProps = {
+    children: [
+      new TextRun({
+        text: text,
+        bold: true,
+        color: sectionColor || '374151',
+        font: 'Arial',
+      }),
+    ],
+    spacing: { before: 0, after: 0 },
+  };
+
+  switch (level) {
+    case 1:
+      return new Paragraph({
+        ...baseProps,
+        children: [
+          new TextRun({
+            text: text,
+            bold: true,
+            color: sectionColor || '374151',
+            font: 'Arial',
+            size: 24,
+          }),
+        ],
+        heading: HeadingLevel.HEADING_1,
+      });
+    case 2:
+      return new Paragraph({
+        ...baseProps,
+        children: [
+          new TextRun({
+            text: text,
+            bold: true,
+            color: sectionColor || '374151',
+            font: 'Arial',
+            size: 22,
+            underline: {},
+          }),
+        ],
+        heading: HeadingLevel.HEADING_2,
+      });
+    case 3:
+    default:
+      return new Paragraph({
+        ...baseProps,
+        children: [
+          new TextRun({
+            text: text,
+            bold: true,
+            color: sectionColor || '374151',
+            font: 'Arial',
+            size: 20,
+          }),
+        ],
+        heading: HeadingLevel.HEADING_3,
+        indent: { left: 360 },
+      });
+  }
+};
+
+// Helper function to parse headings
+const parseHeading = (trimmedLine: string, sectionColor?: string): Paragraph => {
+  if (trimmedLine.startsWith('### ')) {
+    return createHeadingParagraph(trimmedLine.replace('### ', ''), 3, sectionColor);
+  } else if (trimmedLine.startsWith('## ')) {
+    return createHeadingParagraph(trimmedLine.replace('## ', ''), 2, sectionColor);
+  } else if (trimmedLine.startsWith('# ')) {
+    return createHeadingParagraph(trimmedLine.replace('# ', ''), 1, sectionColor);
+  }
+  throw new Error('Invalid heading format');
+};
+
+// Helper function to parse bullet points
+const parseBulletPoint = (trimmedLine: string): Paragraph => {
+  const bulletContent = trimmedLine.replace(/^[-*] /, '');
+  const bulletChildren = parseInlineMarkdown(bulletContent);
+  return new Paragraph({
+    children: [
+      new TextRun({ text: '• ' }),
+      ...bulletChildren,
+    ],
+    spacing: { after: 0 },
+    indent: { left: 720 },
+  });
+};
+
+// Helper function to parse numbered lists
+const parseNumberedList = (trimmedLine: string): Paragraph => {
+  const number = trimmedLine.match(/^(\d+)\. (.*)$/);
+  if (!number) throw new Error('Invalid numbered list format');
+
+  const listContent = number[2];
+  const listChildren = parseInlineMarkdown(listContent);
+  return new Paragraph({
+    children: [
+      new TextRun({ text: `${number[1]}. ` }),
+      ...listChildren,
+    ],
+    spacing: { after: 0 },
+    indent: { left: 720 },
+  });
+};
+
+// Helper function to parse blockquotes
+const parseBlockquote = (trimmedLine: string): Paragraph => {
+  const quoteContent = trimmedLine.replace('> ', '');
+  const quoteChildren = parseInlineMarkdown(quoteContent);
+  return new Paragraph({
+    children: quoteChildren,
+    spacing: { after: 0 },
+    indent: { left: 720 },
+    border: {
+      left: {
+        color: 'auto',
+        space: 1,
+        style: BorderStyle.SINGLE,
+        size: 6,
+      },
+    },
+  });
+};
+
+// Helper function to parse horizontal rules
+const parseHorizontalRule = (): Paragraph => {
+  return new Paragraph({
+    children: [
+      new TextRun({
+        text: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+        color: 'e5e7eb',
+      }),
+    ],
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 0, after: 0 },
+  });
+};
+
+// Helper function to parse regular paragraphs
+const parseRegularParagraph = (trimmedLine: string): Paragraph => {
+  const children = parseInlineMarkdown(trimmedLine);
+
+  // Check if this looks like a Bible verse reference (starts with book name and chapter:verse)
+  const isBibleVerse = /^[А-Яа-я\w\s]+\s+\d+:\d+:/.test(trimmedLine);
+
+  return new Paragraph({
+    children,
+    spacing: { after: 0 },
+    alignment: AlignmentType.JUSTIFIED,
+    // Add same left indent for Bible verses to align with list items
+    indent: isBibleVerse ? { left: 720 } : undefined,
+  });
+};
+
+// Helper function to collect and parse table lines
+const parseTableLines = (lines: string[], startIndex: number): { table: Table | null; newIndex: number } => {
+  const tableLines = [];
+  let j = startIndex;
+
+  // Collect all table lines
+  while (j < lines.length && lines[j].trim().includes('|')) {
+    tableLines.push(lines[j]);
+    j++;
+  }
+
+  const table = tableLines.length > 0 ? parseTable(tableLines) : null;
+  return { table, newIndex: j };
+};
 
 export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
@@ -38,161 +219,37 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
 
   while (i < lines.length) {
     const trimmedLine = lines[i].trim();
-    
+
     // Check for table
     if (trimmedLine.includes('|')) {
-      const tableLines = [];
-      let j = i;
-      
-      // Collect all table lines
-      while (j < lines.length && lines[j].trim().includes('|')) {
-        tableLines.push(lines[j]);
-        j++;
-      }
-      
-      if (tableLines.length > 0) {
-        const table = parseTable(tableLines);
-        if (table) {
-          elements.push(table);
-          i = j;
-          continue;
-        }
+      const { table, newIndex } = parseTableLines(lines, i);
+      if (table) {
+        elements.push(table);
+        i = newIndex;
+        continue;
       }
     }
-    
-    // Handle headings with section colors
-    if (trimmedLine.startsWith('### ')) {
-      elements.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: trimmedLine.replace('### ', ''),
-              bold: true,
-              size: 20,
-              color: sectionColor || '374151',
-              font: 'Arial',
-            }),
-          ],
-          heading: HeadingLevel.HEADING_3,
-          spacing: { before: 0, after: 0 },
-          indent: { left: 360 },
-        })
-      );
-    } else if (trimmedLine.startsWith('## ')) {
-      elements.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: trimmedLine.replace('## ', ''),
-              bold: true,
-              underline: {},
-              size: 22,
-              color: sectionColor || '374151',
-              font: 'Arial',
-            }),
-          ],
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 0, after: 0 },
-        })
-      );
-    } else if (trimmedLine.startsWith('# ')) {
-      elements.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: trimmedLine.replace('# ', ''),
-              bold: true,
-              size: 24,
-              color: sectionColor || '374151',
-              font: 'Arial',
-            }),
-          ],
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 0, after: 0 },
-        })
-      );
-    } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
-      // Handle bullet points with markdown formatting
-      const bulletContent = trimmedLine.replace(/^[-*] /, '');
-      const bulletChildren = parseInlineMarkdown(bulletContent);
-      elements.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: '• ' }),
-            ...bulletChildren,
-          ],
-          spacing: { after: 0 },
-          indent: { left: 720 },
-        })
-      );
-    } else if (trimmedLine.match(/^\d+\. /)) {
-      // Handle numbered lists with markdown formatting
-      const number = trimmedLine.match(/^(\d+)\. (.*)$/);
-      if (number) {
-        const listContent = number[2];
-        const listChildren = parseInlineMarkdown(listContent);
-        elements.push(
-          new Paragraph({
-            children: [
-              new TextRun({ text: `${number[1]}. ` }),
-              ...listChildren,
-            ],
-            spacing: { after: 0 },
-            indent: { left: 720 },
-          })
-        );
+
+    // Handle different markdown elements using helper functions
+    try {
+      if (trimmedLine.startsWith('#')) {
+        elements.push(parseHeading(trimmedLine, sectionColor));
+      } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+        elements.push(parseBulletPoint(trimmedLine));
+      } else if (trimmedLine.match(/^\d+\. /)) {
+        elements.push(parseNumberedList(trimmedLine));
+      } else if (trimmedLine.startsWith('> ')) {
+        elements.push(parseBlockquote(trimmedLine));
+      } else if (trimmedLine === '---' || trimmedLine === '***') {
+        elements.push(parseHorizontalRule());
+      } else {
+        elements.push(parseRegularParagraph(trimmedLine));
       }
-    } else if (trimmedLine.startsWith('> ')) {
-      // Handle blockquotes with markdown formatting
-      const quoteContent = trimmedLine.replace('> ', '');
-      const quoteChildren = parseInlineMarkdown(quoteContent);
-      elements.push(
-        new Paragraph({
-          children: quoteChildren,
-          spacing: { after: 0 },
-          indent: { left: 720 },
-          border: {
-            left: {
-              color: 'auto',
-              space: 1,
-              style: BorderStyle.SINGLE,
-              size: 6,
-            },
-          },
-        })
-      );
-    } else if (trimmedLine === '---' || trimmedLine === '***') {
-      // Handle horizontal rules
-      elements.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-              color: 'e5e7eb',
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 0, after: 0 },
-        })
-      );
-    } else {
-      // Regular paragraph with markdown formatting
-      const children = parseInlineMarkdown(trimmedLine);
-      
-      // Check if this looks like a Bible verse reference (starts with book name and chapter:verse)
-      const isBibleVerse = /^[А-Яа-я\w\s]+\s+\d+:\d+:/.test(trimmedLine);
-      
-      elements.push(
-        new Paragraph({
-          children,
-          spacing: { after: 0 },
-          alignment: AlignmentType.JUSTIFIED,
-          // Add same left indent for Bible verses to align with list items
-          indent: isBibleVerse ? { left: 720 } : undefined,
-        })
-      );
+    } catch {
+      // Fallback to regular paragraph if parsing fails
+      elements.push(parseRegularParagraph(trimmedLine));
     }
-    
+
     i++;
   }
 
@@ -260,12 +317,12 @@ export const parseInlineMarkdown = (text: string): TextRun[] => {
   let currentIndex = 0;
 
   // Define patterns in order of priority (most specific first to avoid conflicts)
-  const patterns = [
+  const patterns: Array<{ regex: RegExp; format: TextRunFormat }> = [
     { regex: /\*\*\*(.*?)\*\*\*/g, format: { bold: true, italics: true } },
     { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
     { regex: /__(.*?)__/g, format: { bold: true } },
     { regex: /~~(.*?)~~/g, format: { strike: true } },
-    { regex: /`(.*?)`/g, format: { font: 'Courier New', shading: { type: ShadingType.SOLID, fill: 'f5f5f5' } } },
+    { regex: /`(.*?)`/g, format: { font: 'Courier New' } },
     { regex: /\^(.*?)\^/g, format: { superScript: true, size: 16 } },
     { regex: /~(.*?)~/g, format: { subScript: true, size: 16 } },
     { regex: /\*(.*?)\*/g, format: { italics: true } },
@@ -277,7 +334,7 @@ export const parseInlineMarkdown = (text: string): TextRun[] => {
     start: number;
     end: number;
     content: string;
-    format: any;
+    format: TextRunFormat;
   }> = [];
 
   for (const { regex, format } of patterns) {
@@ -348,13 +405,6 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
   try {
     const { data, filename = 'sermon-plan.docx' } = options;
     
-    // Add current date if not provided
-    const exportDate = data.exportDate || new Date().toLocaleDateString('ru-RU', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
     // Resolve canonical section colors (strip leading '#')
     const introHex = getSectionBaseColor('introduction').replace('#', '');
     const mainHex = getSectionBaseColor('main').replace('#', '');

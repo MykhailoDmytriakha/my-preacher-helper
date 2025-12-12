@@ -1,7 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
 import { Sermon } from '@/models/models';
-import { getSermons } from '@services/sermon.service';
 import { auth } from '@services/firebaseAuth.service';
+import { getSermons } from '@services/sermon.service';
 
 interface UseDashboardSermonsResult {
   sermons: Sermon[];
@@ -35,8 +36,6 @@ function resolveUid(): string | undefined {
 }
 
 export function useDashboardSermons(): UseDashboardSermonsResult {
-  const queryClient = useQueryClient();
-
   // We need to wait for auth to be initialized or local storage to be checked
   // Ideally this should come from an auth hook, but for now we resolve it here
   // If uid is undefined, we might be loading or not logged in

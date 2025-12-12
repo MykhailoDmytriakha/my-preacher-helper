@@ -1,8 +1,11 @@
-import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import UserProfileDropdown from '@/components/navigation/UserProfileDropdown';
+
 import { User } from 'firebase/auth';
+
 import type { ThemePreference } from '@/hooks/useThemePreference';
 
 const translations: Record<string, string> = {

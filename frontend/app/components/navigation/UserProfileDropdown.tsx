@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, type ComponentType, type SVGProps } from "react";
-import { User } from "firebase/auth";
-import { useTranslation } from "react-i18next";
-import Image from "next/image";
-import { ChevronIcon } from "@components/Icons";
 import { ComputerDesktopIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
+import { User } from "firebase/auth";
+import Image from "next/image";
+import { useState, useRef, useEffect, type ComponentType, type SVGProps } from "react";
+import { useTranslation } from "react-i18next";
+
 import { useThemePreference, type ThemePreference } from "@/hooks/useThemePreference";
+import { ChevronIcon } from "@components/Icons";
 import "@locales/i18n";
 
 type ThemeIcon = ComponentType<SVGProps<SVGSVGElement>>;

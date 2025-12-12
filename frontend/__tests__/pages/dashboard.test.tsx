@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -7,7 +8,7 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 // Mock child components for structural testing
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="dashboard-nav">Mocked Nav</div>);
 jest.mock('@/components/dashboard/DashboardStats', () => ({ sermons }: { sermons: any[] }) => <div data-testid="dashboard-stats">Mocked Stats ({sermons.length})</div>);
-jest.mock('@/components/AddSermonModal', () => ({ onNewSermonCreated }: { onNewSermonCreated: any }) => <button data-testid="add-sermon-modal-trigger">Mocked Add Sermon</button>);
+jest.mock('@/components/AddSermonModal', () => ({}: { onNewSermonCreated: any }) => <button data-testid="add-sermon-modal-trigger">Mocked Add Sermon</button>);
 jest.mock('@/components/dashboard/SermonCard', () => ({
   sermon,
   searchSnippets,

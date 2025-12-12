@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Utilities
@@ -72,6 +72,7 @@ jest.mock('@/components/sermon/StructureStats', () => () => (
 ));
 
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
+
 import { TestProviders } from '../../../test-utils/test-providers';
 
 describe('SermonPage mobile ThoughtsBySection placement', () => {

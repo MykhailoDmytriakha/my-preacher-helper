@@ -1,15 +1,17 @@
 "use client";
 
-import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { EditIcon, TrashIcon } from '@components/Icons';
 import { ArrowTopRightOnSquareIcon, LockClosedIcon } from '@heroicons/react/24/outline';
-import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
-import { Item } from "@/models/models";
-import CardContent from "./CardContent";
 import { CheckIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import React from "react";
 import { useTranslation } from 'react-i18next';
+
+import { Item } from "@/models/models";
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { EditIcon, TrashIcon } from '@components/Icons';
+
+import CardContent from "./CardContent";
 
 interface SortableItemProps {
   item: Item;

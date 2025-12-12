@@ -1,5 +1,3 @@
-import type { ComponentType, SVGProps } from 'react';
-import type { NavItemThemeKey } from '@/utils/themeColors';
 import {
   BookOpenIcon,
   Squares2X2Icon,
@@ -7,6 +5,9 @@ import {
   UsersIcon,
   Cog6ToothIcon
 } from '@heroicons/react/24/outline';
+
+import type { NavItemThemeKey } from '@/utils/themeColors';
+import type { ComponentType, SVGProps } from 'react';
 
 export type PrimaryNavItem = {
   key: string;

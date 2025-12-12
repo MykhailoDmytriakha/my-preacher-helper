@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
 import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface EditableVerseProps {

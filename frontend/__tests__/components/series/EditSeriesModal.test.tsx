@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import EditSeriesModal from '@/components/series/EditSeriesModal';
 import '@testing-library/jest-dom';
 

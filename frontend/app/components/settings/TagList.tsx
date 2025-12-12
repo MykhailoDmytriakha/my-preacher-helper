@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Tag } from '@/models/models';
 import { useTranslation } from 'react-i18next';
+
+import { Tag } from '@/models/models';
 import { TrashIcon, PencilIcon } from '@components/Icons';
 
 interface TagListProps {

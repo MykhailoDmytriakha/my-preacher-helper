@@ -1,4 +1,4 @@
-import { Sermon, Plan } from '@/models/models';
+import { Sermon } from '@/models/models';
 
 // Mock the OpenAI library
 jest.mock('openai', () => {

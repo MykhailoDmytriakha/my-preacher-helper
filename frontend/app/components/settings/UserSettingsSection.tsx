@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getUserSettings } from '@/services/userSettings.service';
+
 import { UserSettings } from '@/models/models';
+import { getUserSettings } from '@/services/userSettings.service';
 
 interface UserSettingsSectionProps {
   user: User | null;

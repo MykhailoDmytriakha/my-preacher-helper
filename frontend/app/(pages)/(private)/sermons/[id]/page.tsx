@@ -1,47 +1,48 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react"; // Import useCallback
-import type { ReactNode } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
-import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import Link from "next/link";
-import { getTags } from "@/services/tag.service";
-import useSermon from "@/hooks/useSermon";
-import { useSeries } from "@/hooks/useSeries";
-import { useAuth } from "@/providers/AuthProvider";
-
-import AddThoughtManual from "@components/AddThoughtManual";
-import EditThoughtModal from "@components/EditThoughtModal";
-import SermonHeader from "@/components/sermon/SermonHeader"; // Import the SermonHeader
-import KnowledgeSection from "@/components/sermon/KnowledgeSection";
-import StructureStats from "@/components/sermon/StructureStats";
-import StructurePreview from "@/components/sermon/StructurePreview";
-import SermonOutline from "@/components/sermon/SermonOutline";
-import { useTranslation } from 'react-i18next';
+import { useParams, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useRef, useState } from "react"; // Import useCallback
+import { useTranslation } from "react-i18next";
 import "@locales/i18n";
-import { getContrastColor } from "@utils/color";
-import { UI_COLORS } from "@utils/themeColors";
-import { BookOpen, Sparkles } from 'lucide-react';
+
+import BrainstormModule from '@/components/sermon/BrainstormModule';
+import KnowledgeSection from "@/components/sermon/KnowledgeSection";
+import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
+import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
+import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
 import { getActiveStepId } from '@/components/sermon/prep/logic';
+import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
 import PrepStepCard from '@/components/sermon/prep/PrepStepCard';
 import SpiritualStepContent from '@/components/sermon/prep/SpiritualStepContent';
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
-import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
-import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
-import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
-import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
-import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
+import SermonHeader from "@/components/sermon/SermonHeader"; // Import the SermonHeader
+import SermonOutline from "@/components/sermon/SermonOutline";
+import StructurePreview from "@/components/sermon/StructurePreview";
+import StructureStats from "@/components/sermon/StructureStats";
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
-import { STRUCTURE_TAGS } from '@lib/constants';
-import { normalizeStructureTag } from '@utils/tagUtils';
-import { getSectionLabel } from '@/lib/sections';
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
-import BrainstormModule from '@/components/sermon/BrainstormModule';
+import { useSeries } from "@/hooks/useSeries";
+import useSermon from "@/hooks/useSermon";
+import { getSectionLabel } from '@/lib/sections';
+import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
+import { getTags } from "@/services/tag.service";
+import AddThoughtManual from "@components/AddThoughtManual";
+import EditThoughtModal from "@components/EditThoughtModal";
+import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
+import { STRUCTURE_TAGS } from '@lib/constants';
+import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
+import { getContrastColor } from "@utils/color";
+import { normalizeStructureTag } from '@utils/tagUtils';
+import { UI_COLORS } from "@utils/themeColors";
+
+import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
+import type { ReactNode } from "react";
 export const dynamic = "force-dynamic";
 
 // Smoothly animates its height to match children (prevents jumps when content changes size)
@@ -51,9 +52,9 @@ function AutoHeight({ children, duration = 0.25, delay = 0, className = '' }: { 
 
   useEffect(() => {
     if (!containerRef.current || typeof window === 'undefined') return;
-    const RO: any = (window as any).ResizeObserver;
-    if (!RO) return; // Fallback: no animation in environments without ResizeObserver (e.g., some tests)
-    const observer = new RO((entries: any[]) => {
+    const ResizeObserverCtor = window.ResizeObserver;
+    if (!ResizeObserverCtor) return; // Fallback: no animation in environments without ResizeObserver
+    const observer = new ResizeObserverCtor((entries) => {
       const cr = entries[0]?.contentRect;
       if (cr && typeof cr.height === 'number') setHeight(cr.height);
     });
@@ -155,7 +156,7 @@ export default function SermonPage() {
   // Close filter dropdown when switching to prep mode to avoid floating UI
   useEffect(() => {
     if (uiMode === 'prep' && isFilterOpen) setIsFilterOpen(false);
-  }, [uiMode]);
+  }, [uiMode, isFilterOpen]);
 
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
@@ -526,7 +527,7 @@ export default function SermonPage() {
             setPrepDraft(next);
             await savePreparation(next);
           }}
-          initialGoalType={(prepDraft?.preachingGoal?.type || '') as any}
+          initialGoalType={(prepDraft?.preachingGoal?.type as GoalType) || ''}
           onSaveGoalType={async (type) => {
             const next: Preparation = {
               ...prepDraft,
@@ -1383,7 +1384,7 @@ export default function SermonPage() {
                         setPrepDraft(next);
                         await savePreparation(next);
                       }}
-                      initialGoalType={(prepDraft?.preachingGoal?.type || '') as any}
+                      initialGoalType={(prepDraft?.preachingGoal?.type as GoalType) || ''}
                       onSaveGoalType={async (type) => {
                         const next: Preparation = {
                           ...prepDraft,

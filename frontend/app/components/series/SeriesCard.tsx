@@ -1,14 +1,13 @@
 "use client";
 
-import { Series } from "@/models/models";
-import { formatDate } from "@utils/dateFormatter";
-import { useTranslation } from "react-i18next";
 import {
-  CalendarDaysIcon,
   BookOpenIcon,
   ClockIcon,
   ArrowTrendingUpIcon,
 } from "@heroicons/react/24/outline";
+import { useTranslation } from "react-i18next";
+
+import { Series } from "@/models/models";
 
 interface SeriesCardProps {
   series: Series;
@@ -36,10 +35,9 @@ const statusStyles: Record<
   },
 };
 
-export default function SeriesCard({ series, onUpdate }: SeriesCardProps) {
+export default function SeriesCard({ series }: SeriesCardProps) {
   const { t } = useTranslation();
   const sermonCount = series.sermonIds?.length || 0;
-  const formattedStartDate = series.startDate ? formatDate(series.startDate) : null;
   const accent = series.color || "#2563EB";
 
   return (

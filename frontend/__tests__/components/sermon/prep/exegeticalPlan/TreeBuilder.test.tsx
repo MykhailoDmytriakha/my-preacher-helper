@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -25,6 +26,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import TreeBuilder from '@/components/sermon/prep/exegeticalPlan/TreeBuilder';
+
 import type { ExegeticalPlanNode } from '@/models/models';
 
 describe('TreeBuilder', () => {
@@ -165,7 +167,7 @@ describe('TreeBuilder', () => {
             run: () => {
               render(<TreeBuilder {...defaultProps} tree={treeWithNodes} hasUnsavedChanges={true} />);
               const button = screen.getByText('Save');
-              expect(button).not.toBeDisabled();
+              expect(button).toBeEnabled();
               expect(button).toHaveClass('bg-blue-600');
             }
           },

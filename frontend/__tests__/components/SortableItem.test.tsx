@@ -1,9 +1,11 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import SortableItem from '@/components/SortableItem';
+
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+
 import { Item } from '@/models/models';
 
 jest.mock('@dnd-kit/sortable', () => ({
@@ -315,7 +317,7 @@ Second paragraph with indentation.
   });
 
   test('applies section color classes to move and edit icons for main section', () => {
-    const { container } = render(
+    render(
       <SortableItem
         item={mockItem}
         containerId="main"

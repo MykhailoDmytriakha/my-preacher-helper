@@ -1,10 +1,11 @@
 'use client';
 
+import { Info } from 'lucide-react';
 import React from 'react';
-import { Info, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
-import { UI_COLORS } from '@/utils/themeColors';
+
 import type { AuthorIntentSectionProps } from './types';
 
 const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({

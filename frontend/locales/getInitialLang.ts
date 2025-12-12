@@ -1,5 +1,7 @@
-import { getCookieLanguage, getUserLanguage, setLanguageCookie } from '@/services/userSettings.service';
 import { getAuth } from 'firebase/auth';
+
+import { getCookieLanguage, getUserLanguage, setLanguageCookie } from '@/services/userSettings.service';
+
 import i18n from './i18n';
 
 /**

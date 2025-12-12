@@ -1,6 +1,7 @@
+import { NextRequest } from 'next/server';
+
 import { GET, PUT, POST } from '@/api/user/settings/route';
 import { runScenarios } from '@test-utils/scenarioRunner';
-import { NextRequest } from 'next/server';
 
 // Mock NextRequest and NextResponse
 jest.mock('next/server', () => ({

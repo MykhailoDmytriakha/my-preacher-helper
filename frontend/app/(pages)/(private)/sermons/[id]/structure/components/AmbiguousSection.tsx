@@ -1,7 +1,8 @@
-import React from "react";
-import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, rectSortingStrategy } from "@dnd-kit/sortable";
+import React from "react";
 import { useTranslation } from 'react-i18next';
+
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
 
@@ -76,8 +77,6 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
   focusedColumn,
   columnTitle,
 }) => {
-  const { t } = useTranslation();
-
   // Handle null/undefined items
   const safeItems = items || [];
   const itemCount = safeItems.length;

@@ -1,5 +1,6 @@
-import { getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import { getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
 
 describe('urlUtils', () => {
   describe('getFocusModeUrl', () => {

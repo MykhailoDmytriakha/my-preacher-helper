@@ -7,11 +7,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 // Configuration
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const APP_DIR = path.join(PROJECT_ROOT, 'app');
 const IGNORED_DIRS = ['node_modules', '.next', 'coverage', '.git'];
 
 // Path alias mappings from tsconfig.json
@@ -102,10 +100,6 @@ function analyzeImports(directory) {
 
 // Function to suggest path alias
 function suggestPathAlias(relativePath, filePath) {
-  // Convert the file path to be relative to the project root
-  const filePathFromRoot = path.relative(PROJECT_ROOT, filePath);
-  const fileDir = path.dirname(filePathFromRoot);
-  
   // Resolve the relative import to an absolute path
   const absoluteImportPath = path.resolve(path.dirname(filePath), relativePath);
   const importPathFromRoot = path.relative(PROJECT_ROOT, absoluteImportPath);

@@ -9,17 +9,22 @@
  * Supported audio formats by OpenAI API
  * Source: OpenAI documentation
  */
+
+// Constants for repeated strings
+const AUDIO_MIME_PREFIX = 'audio/';
+const DEFAULT_AUDIO_FORMAT = AUDIO_MIME_PREFIX + 'webm';
+
 export const OPENAI_SUPPORTED_FORMATS = [
-  'audio/flac',
-  'audio/m4a',
-  'audio/mp3',
-  'audio/mp4',
-  'audio/mpeg',
-  'audio/mpga',
-  'audio/oga',
-  'audio/ogg',
-  'audio/wav',
-  'audio/webm'
+  AUDIO_MIME_PREFIX + 'flac',
+  AUDIO_MIME_PREFIX + 'm4a',
+  AUDIO_MIME_PREFIX + 'mp3',
+  AUDIO_MIME_PREFIX + 'mp4',
+  AUDIO_MIME_PREFIX + 'mpeg',
+  AUDIO_MIME_PREFIX + 'mpga',
+  AUDIO_MIME_PREFIX + 'oga',
+  AUDIO_MIME_PREFIX + 'ogg',
+  AUDIO_MIME_PREFIX + 'wav',
+  AUDIO_MIME_PREFIX + 'webm'
 ] as const;
 
 /**
@@ -33,13 +38,13 @@ export const OPENAI_SUPPORTED_FORMATS = [
  * This affects ALL browsers on macOS (Chrome, Safari, Firefox).
  */
 export const FORMAT_PRIORITY = [
-  'audio/mp4',                    // Best compatibility - but SKIPPED on macOS/iOS
-  'audio/mpeg',                   // MP3, excellent compatibility
-  'audio/wav',                    // Uncompressed, reliable
-  'audio/ogg',                    // Ogg Vorbis, good compatibility
-  'audio/webm;codecs=vorbis',     // WebM with Vorbis (better than Opus)
-  'audio/webm',                   // WebM without codec specification (may use Opus!)
-  'audio/webm;codecs=opus'        // Last resort - known issues with OpenAI
+  AUDIO_MIME_PREFIX + 'mp4',                    // Best compatibility - but SKIPPED on macOS/iOS
+  AUDIO_MIME_PREFIX + 'mpeg',                   // MP3, excellent compatibility
+  AUDIO_MIME_PREFIX + 'wav',                    // Uncompressed, reliable
+  AUDIO_MIME_PREFIX + 'ogg',                    // Ogg Vorbis, good compatibility
+  AUDIO_MIME_PREFIX + 'webm;codecs=vorbis',     // WebM with Vorbis (better than Opus)
+  AUDIO_MIME_PREFIX + 'webm',                   // WebM without codec specification (may use Opus!)
+  AUDIO_MIME_PREFIX + 'webm;codecs=opus'        // Last resort - known issues with OpenAI
 ] as const;
 
 /**
@@ -47,19 +52,19 @@ export const FORMAT_PRIORITY = [
  */
 export function getExtensionFromMimeType(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
-    'audio/mp4': 'mp4',
-    'audio/mpeg': 'mp3',
-    'audio/mp3': 'mp3',
-    'audio/wav': 'wav',
-    'audio/webm': 'webm',
-    'audio/webm;codecs=opus': 'webm',
-    'audio/webm;codecs=vorbis': 'webm',
-    'audio/ogg': 'ogg',
-    'audio/ogg;codecs=opus': 'ogg',
-    'audio/ogg;codecs=vorbis': 'ogg',
-    'audio/oga': 'oga',
-    'audio/flac': 'flac',
-    'audio/m4a': 'm4a'
+    [AUDIO_MIME_PREFIX + 'mp4']: 'mp4',
+    [AUDIO_MIME_PREFIX + 'mpeg']: 'mp3',
+    [AUDIO_MIME_PREFIX + 'mp3']: 'mp3',
+    [AUDIO_MIME_PREFIX + 'wav']: 'wav',
+    [AUDIO_MIME_PREFIX + 'webm']: 'webm',
+    [AUDIO_MIME_PREFIX + 'webm;codecs=opus']: 'webm',
+    [AUDIO_MIME_PREFIX + 'webm;codecs=vorbis']: 'webm',
+    [AUDIO_MIME_PREFIX + 'ogg']: 'ogg',
+    [AUDIO_MIME_PREFIX + 'ogg;codecs=opus']: 'ogg',
+    [AUDIO_MIME_PREFIX + 'ogg;codecs=vorbis']: 'ogg',
+    [AUDIO_MIME_PREFIX + 'oga']: 'oga',
+    [AUDIO_MIME_PREFIX + 'flac']: 'flac',
+    [AUDIO_MIME_PREFIX + 'm4a']: 'm4a'
   };
   
   // Handle cases with codec specification
@@ -145,7 +150,7 @@ function isBrowserWithMP4Issues(): boolean {
  */
 export function getBestSupportedFormat(): string {
   if (typeof MediaRecorder === 'undefined') {
-    return 'audio/webm'; // Default fallback
+    return DEFAULT_AUDIO_FORMAT; // Default fallback
   }
   
   // Skip MP4 on macOS/iOS - system-wide MediaRecorder bug, not browser-specific
@@ -163,7 +168,7 @@ export function getBestSupportedFormat(): string {
     }
   }
   
-  return 'audio/webm'; // Fallback
+  return DEFAULT_AUDIO_FORMAT; // Fallback
 }
 
 /**
@@ -245,7 +250,7 @@ export function getFormatRecommendation(mimeType: string): string | null {
  * Create a properly named File object from Blob
  */
 export function createAudioFile(blob: Blob, mimeType?: string): File {
-  const finalMimeType = mimeType || blob.type || 'audio/webm';
+  const finalMimeType = mimeType || blob.type || DEFAULT_AUDIO_FORMAT;
   const extension = getExtensionFromMimeType(finalMimeType);
   const filename = `recording.${extension}`;
   

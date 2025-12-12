@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { studiesRepository } from '@repositories/studies.repository';
 
 export async function GET(request: Request) {

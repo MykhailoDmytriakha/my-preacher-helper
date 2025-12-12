@@ -1,9 +1,11 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import SermonPointSelector from '@components/SermonPointSelector';
-import type { Thought, SermonOutline } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
+
+import type { Thought, SermonOutline } from '@/models/models';
 
 // Mock the translation hook
 jest.mock('react-i18next', () => ({

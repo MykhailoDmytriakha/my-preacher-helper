@@ -1,8 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
-import { Thought } from '@/models/models';
 import ThoughtCard from '@/components/ThoughtCard';
+import { Thought } from '@/models/models';
 
 // Mock dependencies
 jest.mock('@/utils/dateFormatter', () => ({

@@ -1,6 +1,8 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
+import SettingsPage from '@/(pages)/(private)/settings/page';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock all dependencies
@@ -78,7 +80,6 @@ jest.mock('@/components/navigation/LanguageInitializer', () => ({
 }));
 
 // Import the actual component after all mocks
-import SettingsPage from '@/(pages)/(private)/settings/page';
 
 describe('Settings Page Integration', () => {
   const resetScenario = () => {

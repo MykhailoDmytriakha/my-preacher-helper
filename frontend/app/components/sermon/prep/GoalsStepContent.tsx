@@ -1,12 +1,17 @@
 'use client';
 
+import { BookOpen, Check, Info, Link as LinkIcon, ScrollText, Target, X } from 'lucide-react';
 import React from 'react';
-import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
-import { Target, Link as LinkIcon, ScrollText, Check, X, Info, HelpCircle, BookOpen } from 'lucide-react';
 
-type GoalType = '' | 'informative' | 'proclamation' | 'didactic' | 'exhortative';
+import { UI_COLORS } from '@/utils/themeColors';
+
+// Module-level constants to avoid duplicate strings
+const GOALS_SAVE_FALLBACK = "Save";
+const GOALS_CANCEL_FALLBACK = "Cancel";
+
+export type GoalType = '' | 'informative' | 'proclamation' | 'didactic' | 'exhortative';
 
 interface GoalsStepContentProps {
   initialTimelessTruth?: string;
@@ -30,6 +35,10 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
   onSaveGoalType,
 }) => {
   const { t } = useTranslation();
+
+  // Title functions to avoid duplicate strings
+  const getSaveTitle = () => t('actions.save') || GOALS_SAVE_FALLBACK;
+  const getCancelTitle = () => t('actions.cancel') || GOALS_CANCEL_FALLBACK;
 
   const [timelessDraft, setTimelessDraft] = React.useState<string>(initialTimelessTruth || '');
   const [christDraft, setChristDraft] = React.useState<string>(initialChristConnection || '');
@@ -211,7 +220,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               onClick={handleSaveTimeless}
               disabled={savingTimeless}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save') || 'Save'}
+              title={getSaveTitle()}
             >
               <Check className="w-4 h-4" />
             </button>
@@ -219,7 +228,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               type="button"
               onClick={() => setTimelessDraft(initialTimelessTruth || '')}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel') || 'Cancel'}
+              title={getCancelTitle()}
             >
               <X className="w-4 h-4" />
             </button>
@@ -254,7 +263,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               onClick={handleSaveChrist}
               disabled={savingChrist}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save') || 'Save'}
+              title={getSaveTitle()}
             >
               <Check className="w-4 h-4" />
             </button>
@@ -262,7 +271,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               type="button"
               onClick={() => setChristDraft(initialChristConnection || '')}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel') || 'Cancel'}
+              title={getCancelTitle()}
             >
               <X className="w-4 h-4" />
             </button>
@@ -297,7 +306,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
                   onClick={handleSaveType}
                   disabled={savingType || !typeDraft}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={t('actions.save') || 'Save'}
+                  title={getSaveTitle()}
                 >
                   <Check className="w-4 h-4" />
                 </button>
@@ -305,7 +314,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
                   type="button"
                   onClick={() => setTypeDraft(initialGoalType || '')}
                   className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={t('actions.cancel') || 'Cancel'}
+                  title={getCancelTitle()}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -333,7 +342,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               onClick={handleSaveGoal}
               disabled={savingGoal}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save') || 'Save'}
+              title={getSaveTitle()}
             >
               <Check className="w-4 h-4" />
             </button>
@@ -341,7 +350,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               type="button"
               onClick={() => setGoalDraft(initialGoalStatement || '')}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel') || 'Cancel'}
+              title={getCancelTitle()}
             >
               <X className="w-4 h-4" />
             </button>

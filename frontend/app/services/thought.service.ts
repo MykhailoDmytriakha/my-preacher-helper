@@ -1,5 +1,6 @@
-import { Thought } from "@/models/models";
 import { toast } from 'sonner';
+
+import { Thought } from "@/models/models";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const createAudioThought = async (
@@ -91,8 +92,9 @@ export const createAudioThoughtWithForceTag = async (
     }
 
     // Success - clear stored audio if available
-    if (typeof window !== 'undefined' && (window as any).clearAudioRecorderStorage) {
-      (window as any).clearAudioRecorderStorage();
+    if (typeof window !== 'undefined') {
+      const maybeWindow = window as Window & { clearAudioRecorderStorage?: () => void };
+      maybeWindow.clearAudioRecorderStorage?.();
     }
 
     // Возвращаем полный объект с текстом, тегами и т.д.

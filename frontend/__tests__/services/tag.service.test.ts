@@ -2,7 +2,6 @@ import { addCustomTag, removeCustomTag } from '@/services/tag.service';
 
 describe('tag.service API contracts', () => {
   const originalFetch = global.fetch;
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
 
   afterEach(() => {
     global.fetch = originalFetch as any;

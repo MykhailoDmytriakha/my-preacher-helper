@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
 
 describe('TextScaleProvider', () => {
@@ -10,7 +11,7 @@ describe('TextScaleProvider', () => {
 
   it('provides default scale of 1', () => {
     const TestComponent = () => {
-      const { scale, scalePercentage } = useTextScale();
+      const { scalePercentage } = useTextScale();
       return <div data-testid="scale">{scalePercentage}%</div>;
     };
 

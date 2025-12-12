@@ -1,13 +1,14 @@
 "use client";
 
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Series } from '@/models/models';
-import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
-import { useAuth } from '@/providers/AuthProvider';
+
 import ColorPickerModal from '@/components/ColorPickerModal';
+import { Series } from '@/models/models';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface CreateSeriesModalProps {
   onClose: () => void;

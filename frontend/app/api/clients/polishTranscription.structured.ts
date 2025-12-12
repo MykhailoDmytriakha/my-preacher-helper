@@ -9,8 +9,9 @@
  * Used for voice input in Study Notes.
  */
 import { PolishTranscriptionSchema, PolishTranscription } from "@/config/schemas/zod";
-import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
+
 import { logger } from "./openAIHelpers";
+import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 

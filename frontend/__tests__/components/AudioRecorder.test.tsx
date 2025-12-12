@@ -1,7 +1,7 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
-import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the AudioRecorder component completely with a more sophisticated implementation
 // that can handle state changes and simulate behavior
@@ -10,9 +10,154 @@ jest.mock('@components/AudioRecorder', () => {
     const [isRecording, setIsRecording] = React.useState(false);
     const [recordingTime, setRecordingTime] = React.useState(0);
     const [isInitializing, setIsInitializing] = React.useState(false);
-    const [audioLevel, setAudioLevel] = React.useState(0);
     const [storedAudioBlob, setStoredAudioBlob] = React.useState(null);
     const [transcriptionError, setTranscriptionError] = React.useState(null);
+
+    // Extract helper functions to reduce cognitive complexity
+    const getRecordingState = () => {
+      if (props.isProcessing) return 'processing';
+      if (isInitializing) return 'initializing';
+      if (isRecording) return 'recording';
+      return 'idle';
+    };
+
+    const formatTime = (seconds: number) => {
+      return `0:0${seconds}`;
+    };
+
+    const formatMaxDuration = (maxDuration: number) => {
+      return `${Math.floor(maxDuration / 60)}:${(maxDuration % 60).toString().padStart(2, '0')}`;
+    };
+
+    const renderMainButton = () => {
+      const recordingState = getRecordingState();
+      const isDisabled = props.isProcessing || props.disabled || isInitializing;
+      const buttonText = {
+        processing: 'audio.processing',
+        initializing: 'audio.initializing',
+        recording: 'audio.stopRecording',
+        idle: 'audio.newRecording'
+      }[recordingState];
+
+      const className = props.variant === "mini"
+        ? "min-w-full px-4 py-3 text-sm font-medium"
+        : "min-w-[200px] px-6 py-3";
+
+      return (
+        <button
+          data-testid={isRecording ? "stop-button" : "record-button"}
+          disabled={isDisabled}
+          onClick={isRecording ? handleStopRecording : handleStartRecording}
+          className={`${className} rounded-xl font-medium`}
+        >
+          {buttonText}
+        </button>
+      );
+    };
+
+    const renderCancelButton = () => {
+      if (!isRecording) return null;
+
+      if (props.variant === "mini") {
+        return renderCombinedButton();
+      }
+
+      return (
+        <button
+          data-testid="cancel-button"
+          onClick={handleCancelRecording}
+        >
+          audio.cancelRecording
+        </button>
+      );
+    };
+
+    const renderCombinedButton = () => (
+      <div data-testid="combined-button" className="relative w-full">
+        <button
+          onClick={handleStopRecording}
+          className="w-full px-4 py-3 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 relative overflow-hidden"
+        >
+          <div className="flex items-center justify-center w-4/5">
+            <div className="relative mr-2">
+              <svg className="w-5 h-5 animate-pulse" fill="white" viewBox="0 0 20 20">
+                <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.8A9 9 0 0012 20a9 9 0 00-8-4.8V12a4 4 0 118 0v3.2z" />
+              </svg>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
+            </div>
+            audio.stopRecording
+          </div>
+
+          <button
+            data-testid="cancel-overlay-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCancelRecording();
+            }}
+            className="absolute right-0 top-0 h-full w-1/5 bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group"
+          >
+            <svg className="w-4 h-4 text-white group-hover:text-red-100 transition-colors" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </button>
+      </div>
+    );
+
+    const renderTimer = (showProgressBar = false) => {
+      const maxDuration = props.maxDuration || 90;
+      const progressWidth = isRecording ? `${(recordingTime / maxDuration) * 100}%` : '0%';
+
+      const timerClass = props.variant === "mini"
+        ? "text-sm px-3 py-2 font-medium"
+        : "text-sm px-3 py-1";
+
+      return (
+        <div className={`${props.variant === "mini" ? "w-full" : ""}`}>
+          <div
+            data-testid="timer"
+            className={`${timerClass} font-mono text-gray-600 bg-gray-100 rounded-lg text-center relative overflow-hidden`}
+          >
+            <span className="relative z-10">
+              {isRecording ? formatTime(recordingTime) : '0:00'} / {formatMaxDuration(maxDuration)}
+            </span>
+            {showProgressBar && props.variant === "mini" && isRecording && (
+              <div
+                className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 transition-all duration-1000 ease-out"
+                style={{ width: progressWidth }}
+              />
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const renderRecordingIndicator = () => {
+      if (!isRecording || props.variant === "mini") return null;
+
+      return (
+        <div data-testid="recording-indicator" className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+          <div className="text-xs">audio.recording</div>
+        </div>
+      );
+    };
+
+    const renderProgressBar = () => {
+      if (!isRecording || props.variant !== "standard") return null;
+
+      return (
+        <div data-testid="audio-progress-bar-container" className="w-full">
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div
+              data-testid="progress-bar"
+              style={{ width: `${(recordingTime / (props.maxDuration || 90)) * 100}%` }}
+              className="h-full rounded-full"
+            />
+          </div>
+        </div>
+      );
+    };
     
     const handleStartRecording = () => {
       if (props.isProcessing || props.disabled || isInitializing) return;
@@ -21,14 +166,12 @@ jest.mock('@components/AudioRecorder', () => {
         setIsInitializing(false);
         setIsRecording(true);
         setRecordingTime(1); // Simulate 1 second passed
-        setAudioLevel(50); // Simulate audio level
       }, 50); // Reduced timeout for faster test execution
     };
 
     const handleStopRecording = () => {
       setIsRecording(false);
       setRecordingTime(0);
-      setAudioLevel(0);
       // Call the callback with a mock blob
       if (props.onRecordingComplete) {
         const mockBlob = new Blob([], { type: 'audio/webm' });
@@ -40,7 +183,6 @@ jest.mock('@components/AudioRecorder', () => {
     const handleCancelRecording = () => {
       setIsRecording(false);
       setRecordingTime(0);
-      setAudioLevel(0);
       setStoredAudioBlob(null);
       setTranscriptionError(null);
       // Don't call onRecordingComplete for cancel
@@ -53,19 +195,6 @@ jest.mock('@components/AudioRecorder', () => {
       }
     };
 
-    const handleErrorClick = () => {
-      // Simulate microphone permission error
-      if (props.onError) {
-        props.onError('errors.microphoneUnavailable');
-      } else {
-        window.alert('errors.microphoneUnavailable');
-      }
-    };
-
-    const maxDuration = props.maxDuration || 90;
-    const recordingState = props.isProcessing ? 'processing' : 
-                          isInitializing ? 'initializing' : 
-                          isRecording ? 'recording' : 'idle';
 
     // Sync external transcription error
     React.useEffect(() => {
@@ -74,135 +203,60 @@ jest.mock('@components/AudioRecorder', () => {
       }
     }, [props.transcriptionError]);
 
-    return (
-      <div data-testid="audio-recorder-component" className={`${props.className} ${props.variant === "mini" ? "space-y-2" : "space-y-4"}`}>
-        {/* Main controls */}
+    const renderMainControls = () => {
+      const showMainButton = !isRecording || props.variant === "standard";
+      const showTimerAndIndicator = isRecording || props.variant === "standard";
+
+      return (
         <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 ${props.variant === "mini" ? "flex-col gap-3" : ""}`}>
-          {/* Show main button only when not recording in mini variant, or always in standard variant */}
-          {(!isRecording || props.variant === "standard") && (
-            <button 
-              data-testid={isRecording ? "stop-button" : "record-button"}
-              disabled={props.isProcessing || props.disabled || isInitializing}
-              onClick={isRecording ? handleStopRecording : handleStartRecording}
-              className={`${props.variant === "mini" ? "min-w-full px-4 py-3 text-sm font-medium" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium`}
-            >
-              {recordingState === 'processing' && 'audio.processing'}
-              {recordingState === 'initializing' && 'audio.initializing'}
-              {recordingState === 'recording' && 'audio.stopRecording'}
-              {recordingState === 'idle' && 'audio.newRecording'}
-            </button>
-          )}
-          
-          {/* Show cancel button only when recording */}
-          {isRecording && (
-            props.variant === "mini" ? (
-              // Combined button for mini variant
-              <div data-testid="combined-button" className="relative w-full">
-                <button
-                  onClick={handleStopRecording}
-                  className="w-full px-4 py-3 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 relative overflow-hidden"
-                >
-                  <div className="flex items-center justify-center w-4/5">
-                    <div className="relative mr-2">
-                      <svg className="w-5 h-5 animate-pulse" fill="white" viewBox="0 0 20 20">
-                        <path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.8A9 9 0 0012 20a9 9 0 00-8-4.8V12a4 4 0 118 0v3.2z" />
-                      </svg>
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
-                    </div>
-                    audio.stopRecording
-                  </div>
-                  
-                  {/* Cancel button overlay on the right */}
-                  <button
-                    data-testid="cancel-overlay-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancelRecording();
-                    }}
-                    className="absolute right-0 top-0 h-full w-1/5 bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center group"
-                  >
-                    <svg className="w-4 h-4 text-white group-hover:text-red-100 transition-colors" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </button>
-              </div>
-            ) : (
-              // Standard separate buttons for standard variant
-              <button 
-                data-testid="cancel-button"
-                onClick={handleCancelRecording}
-              >
-                audio.cancelRecording
-              </button>
-            )
-          )}
+          {showMainButton && renderMainButton()}
+          {renderCancelButton()}
 
           {/* Retry button for transcription errors */}
           {(transcriptionError || props.transcriptionError) && storedAudioBlob && props.retryCount < props.maxRetries && (
-            <button 
+            <button
               data-testid="retry-button"
               onClick={handleRetryTranscription}
             >
               audio.retryTranscription ({props.retryCount + 1}/{props.maxRetries})
             </button>
           )}
-          
-          {/* Timer and audio level indicator - show only when recording or in standard variant */}
-          {(isRecording || props.variant === "standard") && (
+
+          {/* Timer and audio level indicator */}
+          {showTimerAndIndicator && (
             <div className={`${props.variant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3"}`}>
-              <div className={`${props.variant === "mini" ? "w-full" : ""}`}>
-                <div data-testid="timer" className={`${props.variant === "mini" ? "text-sm px-3 py-2 font-medium" : "text-sm px-3 py-1"} font-mono text-gray-600 bg-gray-100 rounded-lg text-center relative overflow-hidden`}>
-                  <span className="relative z-10">{isRecording ? `0:0${recordingTime}` : '0:00'} / {Math.floor(maxDuration / 60)}:{(maxDuration % 60).toString().padStart(2, '0')}</span>
-                  {/* Progress bar overlay for mini variant only */}
-                  {props.variant === "mini" && isRecording && (
-                    <div 
-                      className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 transition-all duration-1000 ease-out"
-                      style={{ width: `${(recordingTime / maxDuration) * 100}%` }}
-                    />
-                  )}
-                </div>
-              </div>
-              
-              {/* Show recording indicator only in standard variant */}
-              {isRecording && props.variant === "standard" && (
-                <div data-testid="recording-indicator" className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <div className="text-xs">audio.recording</div>
-                </div>
-              )}
+              {renderTimer(true)}
+              {renderRecordingIndicator()}
             </div>
           )}
 
           {/* Show timer in initial state for mini variant */}
           {props.variant === "mini" && !isRecording && (
             <div className="flex flex-col gap-3">
-              <div className="w-full">
-                <div data-testid="timer" className="text-sm px-3 py-2 font-medium font-mono text-gray-600 bg-gray-100 rounded-lg text-center relative overflow-hidden">
-                  <span className="relative z-10">0:00 / {Math.floor(maxDuration / 60)}:{(maxDuration % 60).toString().padStart(2, '0')}</span>
-                </div>
-              </div>
+              {renderTimer()}
             </div>
           )}
 
           {/* Show timer in initial state for standard variant */}
           {props.variant === "standard" && !isRecording && (
             <div className="flex items-center gap-3">
-              <div data-testid="timer" className="text-sm px-3 py-1 font-mono text-gray-600 bg-gray-100 rounded-lg text-center relative overflow-hidden">
-                <span className="relative z-10">0:00 / {Math.floor(maxDuration / 60)}:{(maxDuration % 60).toString().padStart(2, '0')}</span>
-              </div>
+              {renderTimer()}
             </div>
           )}
 
           {/* Show timer in initial state for default variant (standard) */}
           {!props.variant && !isRecording && (
             <div className="flex items-center gap-3">
-              <div data-testid="timer" className="text-sm px-3 py-1 font-mono text-gray-600 bg-gray-100 rounded-lg text-center relative overflow-hidden">
-                <span className="relative z-10">0:00 / {Math.floor(maxDuration / 60)}:{(maxDuration % 60).toString().padStart(2, '0')}</span>
-              </div>
+              {renderTimer()}
             </div>
           )}
         </div>
+      );
+    };
+
+    return (
+      <div data-testid="audio-recorder-component" className={`${props.className} ${props.variant === "mini" ? "space-y-2" : "space-y-4"}`}>
+        {renderMainControls()}
 
         {/* Error message */}
         {(transcriptionError || props.transcriptionError) && (
@@ -233,19 +287,8 @@ jest.mock('@components/AudioRecorder', () => {
             </div>
           </div>
         )}
-        
-        {/* Progress bar - show only when recording or in standard variant */}
-        {(isRecording || props.variant === "standard") && props.variant === "standard" && (
-          <div data-testid="audio-progress-bar-container" className="w-full">
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div 
-                data-testid="progress-bar"
-                style={{ width: isRecording ? `${(recordingTime / maxDuration) * 100}%` : '0%' }}
-                className="h-full rounded-full"
-              />
-            </div>
-          </div>
-        )}
+
+        {renderProgressBar()}
       </div>
     );
   };
@@ -258,7 +301,6 @@ import { AudioRecorder } from '@components/AudioRecorder';
 
 describe('AudioRecorder - UI Tests', () => {
   const mockOnRecordingComplete = jest.fn();
-  const mockOnError = jest.fn();
   const mockOnRetry = jest.fn();
 
   beforeEach(() => {
@@ -324,7 +366,7 @@ describe('AudioRecorder - UI Tests', () => {
   });
 
   it('clears error when new recording starts', async () => {
-    const { rerender } = render(
+    render(
       <AudioRecorder
         onRecordingComplete={mockOnRecordingComplete}
         transcriptionError="Previous error"

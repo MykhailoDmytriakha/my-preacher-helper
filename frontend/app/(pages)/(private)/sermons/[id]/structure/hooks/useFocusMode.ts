@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 
 interface UseFocusModeProps {
   searchParams: URLSearchParams | null;

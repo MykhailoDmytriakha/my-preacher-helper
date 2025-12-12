@@ -1,5 +1,6 @@
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import ModeToggle from '@/components/navigation/ModeToggle';

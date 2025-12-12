@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
 import { Info, ListTree, BookOpen } from 'lucide-react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
-import { UI_COLORS } from '@/utils/themeColors';
+
 import type { InstructionSectionProps } from './types';
 
 const InstructionSection: React.FC<InstructionSectionProps> = ({ isVisible, onToggle }) => {

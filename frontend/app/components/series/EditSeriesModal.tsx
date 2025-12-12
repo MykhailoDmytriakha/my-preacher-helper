@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { Series } from '@/models/models';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
-import { useAuth } from '@/providers/AuthProvider';
+
 import ColorPickerModal from '@/components/ColorPickerModal';
+import { Series } from '@/models/models';
 
 interface EditSeriesModalProps {
   series: Series;
@@ -17,7 +17,6 @@ interface EditSeriesModalProps {
 
 export default function EditSeriesModal({ series, onClose, onUpdate }: EditSeriesModalProps) {
   const { t } = useTranslation();
-  const { user } = useAuth();
   const [title, setTitle] = useState(series.title);
   const [description, setDescription] = useState(series.description || '');
   const [bookOrTopic, setBookOrTopic] = useState(series.bookOrTopic);

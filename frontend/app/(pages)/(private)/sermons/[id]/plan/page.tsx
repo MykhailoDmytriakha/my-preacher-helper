@@ -1,30 +1,34 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
-import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
-import { getSermonById } from "@/services/sermon.service";
-import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
-import { TimerPhase } from "@/types/TimerState";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import TextareaAutosize from "react-textarea-autosize";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
-import Link from "next/link";
-import React from "react";
-import { createPortal } from "react-dom";
 import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List, Maximize2, Copy, Minimize2, X, Check } from "lucide-react";
-import { SwitchViewIcon } from "@/components/Icons";
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
+import React from "react";
+import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
+import TextareaAutosize from "react-textarea-autosize";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
+
+// Translation keys constants to avoid duplicate strings
+const TRANSLATION_SECTIONS_MAIN = "sections.main";
+const TRANSLATION_SECTIONS_CONCLUSION = "sections.conclusion";
+
+import { PlanStyle } from "@/api/clients/openAI.client";
+import ExportButtons from "@/components/ExportButtons";
+import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
+import { SwitchViewIcon } from "@/components/Icons";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
-import { PlanStyle } from "@/api/clients/openAI.client";
-
-import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
+import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
+import { getSermonById } from "@/services/sermon.service";
+import { TimerPhase } from "@/types/TimerState";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
-import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
 type PlanViewMode = "overlay" | "immersive" | "preaching";
@@ -203,9 +207,17 @@ interface FullPlanContentProps {
     totalProgress: number;
   } | null;
   isPreachingMode?: boolean;
+  noContentText: string;
 }
 
-const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState, isPreachingMode }: FullPlanContentProps) => {
+const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState, isPreachingMode, noContentText }: FullPlanContentProps) => {
+  // Helper function to check if a phase is completed
+  const checkPhaseCompleted = useCallback((phase: TimerPhase, currentPhase: TimerPhase): boolean => {
+    const phaseOrder: TimerPhase[] = ['introduction', 'main', 'conclusion', 'finished'];
+    const phaseIndex = phaseOrder.indexOf(phase);
+    const currentIndex = phaseOrder.indexOf(currentPhase);
+    return phaseIndex < currentIndex;
+  }, []);
   const [completingPhase, setCompletingPhase] = useState<TimerPhase | null>(null);
 
   // Track phase changes to trigger completion animation
@@ -213,7 +225,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
   useEffect(() => {
     if (timerState && prevTimerStateRef.current &&
       timerState.currentPhase !== prevTimerStateRef.current.currentPhase &&
-      isPhaseCompleted(prevTimerStateRef.current.currentPhase, timerState.currentPhase)) {
+      checkPhaseCompleted(prevTimerStateRef.current.currentPhase, timerState.currentPhase)) {
       // Phase changed - trigger completion animation for previous phase
       setCompletingPhase(prevTimerStateRef.current.currentPhase);
       const timer = setTimeout(() => {
@@ -222,7 +234,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       return () => clearTimeout(timer);
     }
     prevTimerStateRef.current = timerState || null;
-  }, [timerState?.totalProgress]);
+  }, [timerState, checkPhaseCompleted]);
 
   // Calculate clip-path for each section's progress overlay (fill from top to bottom)
   const getProgressClipPath = useCallback((phase: TimerPhase): string => {
@@ -270,15 +282,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
     const result = `inset(0 0 ${hideFromBottom}% 0)`;
 
     return result;
-  }, [timerState?.currentPhase, timerState?.totalProgress]);
-
-  // Helper function to check if a phase is completed
-  const isPhaseCompleted = useCallback((phase: TimerPhase, currentPhase: TimerPhase): boolean => {
-    const phaseOrder: TimerPhase[] = ['introduction', 'main', 'conclusion', 'finished'];
-    const phaseIndex = phaseOrder.indexOf(phase);
-    const currentIndex = phaseOrder.indexOf(currentPhase);
-    return phaseIndex < currentIndex;
-  }, []);
+  }, [timerState]);
 
   // Get CSS classes for progress overlay including animation state
   const getProgressOverlayClasses = useCallback((phase: TimerPhase): string => {
@@ -318,7 +322,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
     }
 
     return {};
-  }, [timerState?.currentPhase, completingPhase]);
+  }, [timerState, completingPhase]);
 
   // Get accessibility attributes for progress overlay
   const getProgressAriaAttributes = useCallback((phase: TimerPhase) => {
@@ -329,7 +333,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
     // Calculate progress value for accessibility
     if (phase === timerState.currentPhase) {
       progressValue = Math.round(timerState.phaseProgress * 100);
-    } else if (isPhaseCompleted(phase, timerState.currentPhase)) {
+    } else if (checkPhaseCompleted(phase, timerState.currentPhase)) {
       progressValue = 100;
     }
 
@@ -353,7 +357,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       'aria-valuemax': 100,
       'aria-label': ariaLabel.replace('{progress}', progressValue.toString()),
     };
-  }, [timerState?.currentPhase, timerState?.phaseProgress, timerState?.totalProgress, isPhaseCompleted, t]);
+  }, [timerState, checkPhaseCompleted, t]);
 
   return (
     <>
@@ -370,12 +374,12 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
             {sermonVerse}
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            {t("common.scripture")}
+            {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
           </p>
         </div>
       )}
 
-      <div data-section="introduction" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
+      <div data-section={SECTION_NAMES.INTRODUCTION} className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
         {/* Progress overlay for introduction */}
         {timerState && (
           <div
@@ -388,17 +392,17 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
           />
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
-          {t("sections.introduction")}
+          {t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
           <MarkdownRenderer
-            markdown={combinedPlan.introduction || t("plan.noContent")}
-            section="introduction"
+            markdown={combinedPlan.introduction || t(TRANSLATION_KEYS.NO_CONTENT)}
+            section={SECTION_NAMES.INTRODUCTION}
           />
         </div>
       </div>
 
-      <div data-section="main" className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
+      <div data-section={SECTION_NAMES.MAIN} className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
         {/* Progress overlay for main */}
         {timerState && (
           <div
@@ -411,17 +415,17 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
           />
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
-          {t("sections.main")}
+          {t(TRANSLATION_SECTIONS_MAIN)}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
           <MarkdownRenderer
-            markdown={combinedPlan.main || t("plan.noContent")}
-            section="main"
+            markdown={combinedPlan.main || noContentText}
+            section={SECTION_NAMES.MAIN}
           />
         </div>
       </div>
 
-      <div data-section="conclusion" className={`mb-4 relative overflow-hidden rounded-lg`}>
+      <div data-section={SECTION_NAMES.CONCLUSION} className={`mb-4 relative overflow-hidden rounded-lg`}>
         {/* Progress overlay for conclusion */}
         {timerState && (
           <div
@@ -431,12 +435,12 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
           />
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
-          {t("sections.conclusion")}
+          {t(TRANSLATION_SECTIONS_CONCLUSION)}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
           <MarkdownRenderer
-            markdown={combinedPlan.conclusion || t("plan.noContent")}
-            section="conclusion"
+            markdown={combinedPlan.conclusion || noContentText}
+            section={SECTION_NAMES.CONCLUSION}
           />
         </div>
       </div>
@@ -561,8 +565,48 @@ function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: numb
   };
 }
 
+// Translation key constants for frequently used strings
+const TRANSLATION_KEYS = {
+  NO_CONTENT: "plan.noContent",
+  SECTIONS: {
+    INTRODUCTION: "sections.introduction",
+    MAIN: "sections.main",
+    CONCLUSION: "sections.conclusion",
+  },
+  COMMON: {
+    SCRIPTURE: "common.scripture",
+  },
+  PLAN: {
+    COPY_SUCCESS: "plan.copySuccess",
+    COPY_ERROR: "plan.copyError",
+    NO_SERMON_POINTS: "plan.noSermonPoints",
+    VIEW_MODE: "plan.viewMode",
+    EDIT_MODE: "plan.editMode",
+  },
+  COPY: {
+    COPYING: "copy.copying",
+    COPY_FORMATTED: "copy.copyFormatted",
+  },
+} as const;
+
+// Status constants for immersive copy
+const COPY_STATUS = {
+  IDLE: 'idle',
+  COPYING: 'copying',
+  SUCCESS: 'success',
+  ERROR: 'error',
+} as const;
+
+// Section names constants
+const SECTION_NAMES = {
+  INTRODUCTION: 'introduction',
+  MAIN: 'main',
+  CONCLUSION: 'conclusion',
+} as const;
+
 export default function PlanPage() {
   const { t } = useTranslation();
+  const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
   const params = useParams();
   const sermonId = params?.id as string;
   const router = useRouter();
@@ -1040,11 +1084,11 @@ export default function PlanPage() {
     let sectionName: string | null = null;
 
     if (sermon.outline?.introduction.some(op => op.id === outlinePointId)) {
-      sectionName = "introduction";
+      sectionName = SECTION_NAMES.INTRODUCTION;
     } else if (sermon.outline?.main.some(op => op.id === outlinePointId)) {
-      sectionName = "main";
+      sectionName = SECTION_NAMES.MAIN;
     } else if (sermon.outline?.conclusion.some(op => op.id === outlinePointId)) {
-      sectionName = "conclusion";
+      sectionName = SECTION_NAMES.CONCLUSION;
     }
 
     if (!sectionName) {
@@ -1483,12 +1527,6 @@ export default function PlanPage() {
   }, [updatePlanViewMode]);
 
 
-  const handleSetTimer = useCallback((hours: number, minutes: number, seconds: number) => {
-    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-    setPreachingDuration(totalSeconds);
-    // Don't switch to preaching mode yet, just set the timer
-  }, []);
-
   const handleSetTimerDuration = useCallback((durationSeconds: number) => {
     setPreachingDuration(durationSeconds);
   }, []);
@@ -1515,9 +1553,9 @@ export default function PlanPage() {
     const verseSection = sermon.verse ? `> ${sermon.verse}\n\n` : '';
 
     // Format the outline points and their content
-    const introSection = `## ${t("sections.introduction")}\n\n${combinedPlan.introduction || t("plan.noContent")}\n\n`;
-    const mainSection = `## ${t("sections.main")}\n\n${combinedPlan.main || t("plan.noContent")}\n\n`;
-    const conclusionSection = `## ${t("sections.conclusion")}\n\n${combinedPlan.conclusion || t("plan.noContent")}\n\n`;
+    const introSection = `## ${t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}\n\n${combinedPlan.introduction || noContentText}\n\n`;
+    const mainSection = `## ${t(TRANSLATION_SECTIONS_MAIN)}\n\n${combinedPlan.main || noContentText}\n\n`;
+    const conclusionSection = `## ${t(TRANSLATION_SECTIONS_CONCLUSION)}\n\n${combinedPlan.conclusion || noContentText}\n\n`;
 
     // Combine all sections
     const markdown = `${titleSection}${verseSection}${introSection}${mainSection}${conclusionSection}`;
@@ -1552,19 +1590,19 @@ export default function PlanPage() {
               {sermon.verse}
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              {t("common.scripture")}
+              {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
             </p>
           </div>
         )}
 
         <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} mb-4`}>
-            {t("sections.introduction")}
+            {t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.introduction || t("plan.noContent")}
+                {combinedPlan.introduction || noContentText}
               </ReactMarkdown>
             </div>
           </div>
@@ -1572,12 +1610,12 @@ export default function PlanPage() {
 
         <div className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} mb-4`}>
-            {t("sections.main")}
+            {t(TRANSLATION_SECTIONS_MAIN)}
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.main || t("plan.noContent")}
+                {combinedPlan.main || noContentText}
               </ReactMarkdown>
             </div>
           </div>
@@ -1585,12 +1623,12 @@ export default function PlanPage() {
 
         <div className="mb-4">
           <h2 className={`text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} mb-4`}>
-            {t("sections.conclusion")}
+            {t(TRANSLATION_SECTIONS_CONCLUSION)}
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.conclusion || t("plan.noContent")}
+                {combinedPlan.conclusion || noContentText}
               </ReactMarkdown>
             </div>
           </div>
@@ -1810,26 +1848,26 @@ export default function PlanPage() {
                   if (immersiveCopyStatus === 'copying') {
                     return;
                   }
-                  setImmersiveCopyStatus('copying');
+                  setImmersiveCopyStatus(COPY_STATUS.COPYING);
                   const copied = await copyFormattedFromElement(immersiveContentRef.current);
                   if (copied) {
-                    toast.success(t("plan.copySuccess"));
-                    setImmersiveCopyStatus('success');
+                    toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
+                    setImmersiveCopyStatus(COPY_STATUS.SUCCESS);
                     if (immersiveCopyTimeoutRef.current) {
                       clearTimeout(immersiveCopyTimeoutRef.current);
                     }
                     immersiveCopyTimeoutRef.current = setTimeout(() => {
-                      setImmersiveCopyStatus('idle');
+                      setImmersiveCopyStatus(COPY_STATUS.IDLE);
                       immersiveCopyTimeoutRef.current = null;
                     }, 2000);
                   } else {
-                    toast.error(t("plan.copyError"));
-                    setImmersiveCopyStatus('error');
+                    toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
+                    setImmersiveCopyStatus(COPY_STATUS.ERROR);
                     if (immersiveCopyTimeoutRef.current) {
                       clearTimeout(immersiveCopyTimeoutRef.current);
                     }
                     immersiveCopyTimeoutRef.current = setTimeout(() => {
-                      setImmersiveCopyStatus('idle');
+                      setImmersiveCopyStatus(COPY_STATUS.IDLE);
                       immersiveCopyTimeoutRef.current = null;
                     }, 2500);
                   }
@@ -1840,10 +1878,10 @@ export default function PlanPage() {
                   immersiveCopyStatus === 'success'
                     ? t("common.copied")
                     : immersiveCopyStatus === 'error'
-                      ? t("plan.copyError")
+                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
                       : immersiveCopyStatus === 'copying'
-                        ? t('copy.copying', { defaultValue: 'Copying…' })
-                        : t("copy.copyFormatted")
+                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                        : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
                 }
                 disabled={immersiveCopyStatus === 'copying'}
               >
@@ -1859,11 +1897,11 @@ export default function PlanPage() {
               </Button>
               <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
                 {immersiveCopyStatus === 'success'
-                  ? t("plan.copySuccess")
+                  ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
                   : immersiveCopyStatus === 'error'
-                    ? t("plan.copyError")
+                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
                     : immersiveCopyStatus === 'copying'
-                      ? t('copy.copying', { defaultValue: 'Copying…' })
+                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
                       : ''}
               </span>
               <button
@@ -1891,6 +1929,7 @@ export default function PlanPage() {
                 t={t}
                 timerState={preachingTimerState}
                 isPreachingMode={isPlanPreaching}
+                noContentText={noContentText}
               />
             </div>
           </main>
@@ -2077,6 +2116,7 @@ export default function PlanPage() {
                   t={t}
                   timerState={preachingTimerState}
                   isPreachingMode={isPlanPreaching}
+                  noContentText={noContentText}
                 />
 
               </div>
@@ -2106,7 +2146,7 @@ export default function PlanPage() {
                     setOverlayCopyStatus('copying');
                     const copied = await copyFormattedFromElement(planOverlayContentRef.current);
                     if (copied) {
-                      toast.success(t("plan.copySuccess"));
+                      toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
                       setOverlayCopyStatus('success');
                       if (overlayCopyTimeoutRef.current) {
                         clearTimeout(overlayCopyTimeoutRef.current);
@@ -2116,7 +2156,7 @@ export default function PlanPage() {
                         overlayCopyTimeoutRef.current = null;
                       }, 2000);
                     } else {
-                      toast.error(t("plan.copyError"));
+                      toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
                       setOverlayCopyStatus('error');
                       if (overlayCopyTimeoutRef.current) {
                         clearTimeout(overlayCopyTimeoutRef.current);
@@ -2133,10 +2173,10 @@ export default function PlanPage() {
                     overlayCopyStatus === 'success'
                       ? t("common.copied")
                       : overlayCopyStatus === 'error'
-                        ? t("plan.copyError")
+                        ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
                         : overlayCopyStatus === 'copying'
-                          ? t('copy.copying', { defaultValue: 'Copying…' })
-                          : t("copy.copyFormatted")
+                          ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                          : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
                   }
                   disabled={overlayCopyStatus === 'copying'}
                 >
@@ -2152,11 +2192,11 @@ export default function PlanPage() {
                 </Button>
                 <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
                   {overlayCopyStatus === 'success'
-                    ? t("plan.copySuccess")
+                    ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
                     : overlayCopyStatus === 'error'
-                      ? t("plan.copyError")
+                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
                       : overlayCopyStatus === 'copying'
-                        ? t('copy.copying', { defaultValue: 'Copying…' })
+                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
                         : ''}
                 </span>
                 <button
@@ -2183,6 +2223,7 @@ export default function PlanPage() {
                 t={t}
                 timerState={preachingTimerState}
                 isPreachingMode={isPlanPreaching}
+                noContentText={noContentText}
               />
             </div>
           </div>
@@ -2412,7 +2453,7 @@ export default function PlanPage() {
                       {sermon.verse}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                      {t("common.scripture")}
+                      {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
                     </p>
                   </div>
                 )}
@@ -2455,7 +2496,7 @@ export default function PlanPage() {
               />
 
               <SectionHeader
-                section="introduction"
+                section={SECTION_NAMES.INTRODUCTION}
                 onSwitchPage={handleSwitchToStructure}
               /></div>
             {/* Intro Left & Right */}
@@ -2484,7 +2525,7 @@ export default function PlanPage() {
                   />
                 ))}
                 {sermon.outline?.introduction.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>
@@ -2534,7 +2575,7 @@ export default function PlanPage() {
                         className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
                         onClick={() => toggleEditMode(outlinePoint.id)}
                         variant="default"
-                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                       >
                         {editModePoints[outlinePoint.id] ? (
                           <FileText className="h-4 w-4" />
@@ -2546,7 +2587,7 @@ export default function PlanPage() {
                         <TextareaAutosize
                           className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
                           minRows={4}
-                          placeholder={t("plan.noContent")}
+                          placeholder={noContentText}
                           value={generatedContent[outlinePoint.id] || ""}
                           onChange={(e) => {
                             const newContent = e.target.value;
@@ -2585,15 +2626,15 @@ export default function PlanPage() {
                               className="text-sm px-2 py-1 h-8"
                               onClick={() => toggleEditMode(outlinePoint.id)}
                               variant="default"
-                              title={t("plan.editMode")}
+                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                           </div>
                           <div className="p-3 pr-12">
                             <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
-                              section="introduction"
+                              markdown={generatedContent[outlinePoint.id] || noContentText}
+                              section={SECTION_NAMES.INTRODUCTION}
                             />
                           </div>
                         </div>
@@ -2602,7 +2643,7 @@ export default function PlanPage() {
                   </div>
                 ))}
                 {sermon.outline?.introduction.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>
@@ -2637,7 +2678,7 @@ export default function PlanPage() {
                   />
                 ))}
                 {sermon.outline?.main.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>
@@ -2687,7 +2728,7 @@ export default function PlanPage() {
                         className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
                         onClick={() => toggleEditMode(outlinePoint.id)}
                         variant="default"
-                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                       >
                         {editModePoints[outlinePoint.id] ? (
                           <FileText className="h-4 w-4" />
@@ -2699,7 +2740,7 @@ export default function PlanPage() {
                         <TextareaAutosize
                           className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
                           minRows={4}
-                          placeholder={t("plan.noContent")}
+                          placeholder={noContentText}
                           value={generatedContent[outlinePoint.id] || ""}
                           onChange={(e) => {
                             const newContent = e.target.value;
@@ -2738,15 +2779,15 @@ export default function PlanPage() {
                               className="text-sm px-2 py-1 h-8"
                               onClick={() => toggleEditMode(outlinePoint.id)}
                               variant="default"
-                              title={t("plan.editMode")}
+                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                           </div>
                           <div className="p-3 pr-12">
                             <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
-                              section="main"
+                              markdown={generatedContent[outlinePoint.id] || noContentText}
+                              section={SECTION_NAMES.MAIN}
                             />
                           </div>
                         </div>
@@ -2755,7 +2796,7 @@ export default function PlanPage() {
                   </div>
                 ))}
                 {sermon.outline?.main.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>
@@ -2790,7 +2831,7 @@ export default function PlanPage() {
                   />
                 ))}
                 {sermon.outline?.conclusion.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>
@@ -2840,7 +2881,7 @@ export default function PlanPage() {
                         className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
                         onClick={() => toggleEditMode(outlinePoint.id)}
                         variant="default"
-                        title={editModePoints[outlinePoint.id] ? t("plan.viewMode") : t("plan.editMode")}
+                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                       >
                         {editModePoints[outlinePoint.id] ? (
                           <FileText className="h-4 w-4" />
@@ -2852,7 +2893,7 @@ export default function PlanPage() {
                         <TextareaAutosize
                           className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
                           minRows={4}
-                          placeholder={t("plan.noContent")}
+                          placeholder={noContentText}
                           value={generatedContent[outlinePoint.id] || ""}
                           onChange={(e) => {
                             const newContent = e.target.value;
@@ -2891,15 +2932,15 @@ export default function PlanPage() {
                               className="text-sm px-2 py-1 h-8"
                               onClick={() => toggleEditMode(outlinePoint.id)}
                               variant="default"
-                              title={t("plan.editMode")}
+                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                           </div>
                           <div className="p-3 pr-12">
                             <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || t("plan.noContent")}
-                              section="conclusion"
+                              markdown={generatedContent[outlinePoint.id] || noContentText}
+                              section={SECTION_NAMES.CONCLUSION}
                             />
                           </div>
                         </div>
@@ -2908,7 +2949,7 @@ export default function PlanPage() {
                   </div>
                 ))}
                 {sermon.outline?.conclusion.length === 0 && (
-                  <p className="text-gray-500">{t("plan.noSermonPoints")}</p>
+                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
                 )}
               </div>
             </div>

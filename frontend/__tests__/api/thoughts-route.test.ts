@@ -1,10 +1,5 @@
-import { NextResponse } from 'next/server';
-import { createTranscription, generateThought } from "@clients/openAI.client";
-import { generateThoughtStructured } from "@clients/thought.structured";
-import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
-import { sermonsRepository } from '@repositories/sermons.repository';
+// Mock dependencies - imports are used in jest.mock() setup below
 // Import the mocked module to access the spies
-import { adminDb } from '@/config/firebaseAdminConfig';
 
 // Mock dependencies
 jest.mock('@clients/openAI.client', () => ({

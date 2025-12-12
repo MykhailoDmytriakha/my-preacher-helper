@@ -1,16 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import { Check, File, FileText, FileType } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import "@locales/i18n";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Check, FileText, File, FileType } from 'lucide-react';
-import { exportToWord, PlanData } from '../../utils/wordExport';
+
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+
+// Placeholder text constant to avoid duplicate strings
+const PLACEHOLDER_CONTENT = 'Content will be added later';
+
+import { PlanData, exportToWord } from "../../utils/wordExport";
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
@@ -704,9 +709,9 @@ export default function ExportButtons({
       const planData: PlanData = {
         sermonTitle: sermonTitle,
         sermonVerse: sermonVerse || undefined,
-        introduction: introduction.trim() || 'Содержание будет добавлено позже...',
-        main: main.trim() || 'Содержание будет добавлено позже...',
-        conclusion: conclusion.trim() || 'Содержание будет добавлено позже...',
+        introduction: introduction.trim() || PLACEHOLDER_CONTENT,
+        main: main.trim() || PLACEHOLDER_CONTENT,
+        conclusion: conclusion.trim() || PLACEHOLDER_CONTENT,
       };
       
       await exportToWord({ data: planData });

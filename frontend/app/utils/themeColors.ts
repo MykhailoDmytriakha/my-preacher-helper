@@ -7,6 +7,10 @@
 //
 // Example: if you change darkBg: "bg-green-900/50" to darkBg: "bg-green-900/20",
 // you MUST add 'dark:bg-green-900/20' to safelist in tailwind.config.ts
+
+// Constants for repeated strings
+const TEXT_WHITE = "text-white";
+
 export const SERMON_SECTION_COLORS = {
   introduction: {
     base: "#d97706",       // Amber-600
@@ -92,21 +96,21 @@ export const UI_COLORS = {
       hover: "hover:bg-violet-700",
       darkBg: "bg-violet-500",
       darkHover: "hover:bg-violet-400",
-      text: "text-white",
+      text: TEXT_WHITE,
     },
     structure: {
       bg: "bg-amber-600",
       hover: "hover:bg-amber-700",
       darkBg: "bg-amber-500",
       darkHover: "hover:bg-amber-400",
-      text: "text-white",
+      text: TEXT_WHITE,
     },
     plan: {
       bg: "bg-blue-600",
       hover: "hover:bg-blue-700",
       darkBg: "bg-blue-500",
       darkHover: "hover:bg-blue-400",
-      text: "text-white",
+      text: TEXT_WHITE,
     },
     switcher: {
       gradient: "from-amber-500 to-blue-500",
@@ -115,7 +119,7 @@ export const UI_COLORS = {
       darkBorder: "border-gray-700",
       bg: "bg-white",
       darkBg: "bg-gray-800",
-      activeText: "text-white",
+      activeText: TEXT_WHITE,
       inactiveText: "text-gray-700",
       darkInactiveText: "text-gray-200",
     },
@@ -222,7 +226,6 @@ export function getTagStyling(section: 'introduction' | 'mainPart' | 'conclusion
 
 // Helper function to get Focus mode button colors
 export function getFocusModeButtonColors(section: 'introduction' | 'mainPart' | 'conclusion') {
-  const colors = SERMON_SECTION_COLORS[section];
   // Map section to Tailwind color names
   const colorMap = {
     introduction: 'amber',
@@ -233,6 +236,6 @@ export function getFocusModeButtonColors(section: 'introduction' | 'mainPart' | 
   return {
     bg: `bg-${colorName}-500`,
     hover: `hover:bg-${colorName}-600`,
-    text: 'text-white'
+    text: TEXT_WHITE
   };
 } 

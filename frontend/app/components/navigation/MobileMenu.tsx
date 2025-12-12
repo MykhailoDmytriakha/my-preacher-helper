@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
+
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import "@locales/i18n";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';

@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import StudyNoteCard from '../StudyNoteCard';
+
 import { StudyNote } from '@/models/models';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
+
+import StudyNoteCard from '../StudyNoteCard';
 
 const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
   const timestamp = new Date(Date.now()).toISOString();

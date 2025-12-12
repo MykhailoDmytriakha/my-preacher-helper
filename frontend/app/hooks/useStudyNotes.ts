@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
 import { StudyMaterial, StudyNote } from '@/models/models';
+import { useAuth } from '@/providers/AuthProvider';
 import {
   createStudyMaterial,
   createStudyNote,
@@ -10,7 +12,6 @@ import {
   updateStudyMaterial,
   updateStudyNote,
 } from '@services/studies.service';
-import { useAuth } from '@/providers/AuthProvider';
 
 /**
  * Resolve uid from auth context.

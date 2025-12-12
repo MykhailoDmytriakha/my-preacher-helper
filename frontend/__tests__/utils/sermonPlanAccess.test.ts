@@ -3,6 +3,7 @@ import {
   getSermonAccessType,
   getSermonPlanAccessRoute,
 } from '@/utils/sermonPlanAccess';
+
 import type { Sermon } from '@/models/models';
 
 describe('sermonPlanAccess utilities', () => {

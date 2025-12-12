@@ -1,10 +1,12 @@
+import debounce from 'lodash/debounce';
 import { useCallback, useMemo, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+
+import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
-import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
-import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
-import debounce from 'lodash/debounce';
+
 
 interface UsePersistenceProps {
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
@@ -51,8 +53,8 @@ export const usePersistence = ({ setSermon }: UsePersistenceProps) => {
   // Cancel debounced functions on unmount to avoid writing to stale sermons
   useEffect(() => {
     return () => {
-      try { (debouncedSaveStructure as any)?.cancel?.(); } catch {}
-      try { (debouncedSaveThought as any)?.cancel?.(); } catch {}
+      try { debouncedSaveStructure.cancel(); } catch {}
+      try { debouncedSaveThought.cancel(); } catch {}
     };
   }, [debouncedSaveStructure, debouncedSaveThought]);
 

@@ -1,11 +1,12 @@
 "use client";
 
+import { X, Plus, Trash2, Lightbulb } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+
 import { SermonPoint, Thought } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
-import { useTranslation } from "react-i18next";
-import { X, Plus, Trash2, Lightbulb } from "lucide-react";
-import { toast } from "sonner";
 
 interface KeyFragmentsModalProps {
   isOpen: boolean;

@@ -1,5 +1,6 @@
-import React from 'react';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import EditableVerse from '@/components/common/EditableVerse';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';

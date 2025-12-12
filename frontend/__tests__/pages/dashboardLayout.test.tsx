@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
+import React from 'react';
 import '@testing-library/jest-dom';
 
 // Import the dashboard layout component
@@ -61,7 +61,7 @@ describe('Dashboard Layout', () => {
   });
 
   it('should handle text children correctly', () => {
-    const { container } = render(
+    render(
       <DashboardLayout>
         Simple text content
       </DashboardLayout>
@@ -119,7 +119,7 @@ describe('Dashboard Layout', () => {
     
     // All props should be preserved
     expect(button).toHaveClass('test-class');
-    expect(button).not.toBeDisabled();
+    expect(button).toBeEnabled();
     expect(button).toHaveTextContent('Click me');
   });
 });

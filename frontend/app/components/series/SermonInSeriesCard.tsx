@@ -1,18 +1,22 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
-import { Sermon } from "@/models/models";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
-import { formatDate } from "@utils/dateFormatter";
+import Link from "next/link";
+import React from "react";
 import { useTranslation } from "react-i18next";
+
+import { Sermon } from "@/models/models";
+import { formatDate } from "@utils/dateFormatter";
+
+import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+
 
 interface SermonInSeriesCardProps {
   sermon: Sermon;
   position: number;
   onRemove?: (sermonId: string) => void;
   isDragging?: boolean;
-  dragHandleProps?: any; // Props from @hello-pangea/dnd
+  dragHandleProps?: DraggableProvidedDragHandleProps | null; // Props from @hello-pangea/dnd
 }
 
 function buildPreview(sermon: Sermon): string {

@@ -1,5 +1,5 @@
-import { runScenarios } from '../../test-utils/scenarioRunner';
 import { SERMON_SECTION_COLORS, UI_COLORS, getSectionStyling, getTagStyling, getFocusModeButtonColors } from '../../app/utils/themeColors';
+import { runScenarios } from '../../test-utils/scenarioRunner';
 
 describe('themeColors', () => {
   describe('SERMON_SECTION_COLORS', () => {

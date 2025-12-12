@@ -82,7 +82,6 @@ export const triggerTextHighlight = async (
 ): Promise<void> => {
   const {
     duration = 300,
-    intensity = 0.6,
     repeat = 4,
     color = '#3B82F6'
   } = options;

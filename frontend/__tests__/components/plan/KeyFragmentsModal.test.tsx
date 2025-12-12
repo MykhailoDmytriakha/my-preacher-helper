@@ -1,11 +1,13 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
 import '@testing-library/jest-dom';
+import { toast } from 'sonner';
+
+import { SermonPoint, Thought } from '@/models/models';
 import KeyFragmentsModal from '@components/plan/KeyFragmentsModal';
 import { updateThought } from '@services/thought.service';
-import { SermonPoint, Thought } from '@/models/models';
-import { toast } from 'sonner';
 
 // --- Mocks --- //
 

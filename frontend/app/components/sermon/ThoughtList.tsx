@@ -1,7 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Thought, SermonOutline } from '@/models/models';
+
 import ThoughtCard from '@components/ThoughtCard';
+
+import type { Thought, SermonOutline } from '@/models/models';
 
 interface ThoughtListProps {
   filteredThoughts: Thought[];

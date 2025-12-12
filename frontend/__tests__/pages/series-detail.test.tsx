@@ -1,7 +1,9 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import SeriesDetailPage from '@/(pages)/(private)/series/[id]/page';
+
 import { TestProviders } from '../../test-utils/test-providers';
 
 // Mock Next.js router

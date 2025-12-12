@@ -1,4 +1,5 @@
 import { ScriptureReference } from '@/models/models';
+
 import { getBookByName, getBookIds, BibleLocale, psalmSeptuagintToHebrew } from './bibleData';
 
 type BookMatch = { book: string; remaining: string[] };
@@ -318,7 +319,8 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
   // Filter out invalid numbers
   if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
 
-  let [chapter, fromVerse, maybeTo] = numbers;
+  const [rawChapter, fromVerse, maybeTo] = numbers;
+  let chapter = rawChapter;
 
   // Chapter-only reference (one number after book name)
   if (numbers.length === 1) {

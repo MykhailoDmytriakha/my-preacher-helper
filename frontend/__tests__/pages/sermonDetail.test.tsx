@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { TestProviders } from '@test-utils/test-providers';
 import '@testing-library/jest-dom';
@@ -30,21 +31,21 @@ jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeCha
   </div>
 ));
 
-jest.mock('@/components/sermon/SermonOutline', () => ({ sermon, uiMode }: any) => (
+jest.mock('@/components/sermon/SermonOutline', () => ({ uiMode }: any) => (
   <div data-testid="sermon-outline" data-mode={uiMode || 'classic'}>
     <h2>Sermon SermonOutline</h2>
     <p>Mode: {uiMode || 'classic'}</p>
   </div>
 ));
 
-jest.mock('@/components/sermon/BrainstormModule', () => ({ sermon, uiMode }: any) => (
+jest.mock('@/components/sermon/BrainstormModule', () => ({ uiMode }: any) => (
   <div data-testid="brainstorm-module" data-mode={uiMode || 'classic'}>
     <h2>Brainstorm Module</h2>
     <p>Mode: {uiMode || 'classic'}</p>
   </div>
 ));
 
-jest.mock('@/components/sermon/KnowledgeSection', () => ({ sermon, uiMode }: any) => (
+jest.mock('@/components/sermon/KnowledgeSection', () => ({ uiMode }: any) => (
   <div data-testid="knowledge-section" data-mode={uiMode || 'classic'}>
     <h2>Knowledge Section</h2>
     <p>Mode: {uiMode || 'classic'}</p>

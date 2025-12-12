@@ -1,8 +1,10 @@
-import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
+
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
 jest.mock('next/navigation', () => ({
@@ -214,7 +216,7 @@ describe('ThoughtsBySection Page', () => {
         mockSetSermon({ ...mockSermon, outline: updatedOutline });
         await updateSermonOutline(mockSermon.id, updatedOutline);
         toast.success(isReviewed ? 'Marked as reviewed' : 'Marked as unreviewed');
-      } catch (error) {
+      } catch {
         toast.error('Error saving');
       }
     };

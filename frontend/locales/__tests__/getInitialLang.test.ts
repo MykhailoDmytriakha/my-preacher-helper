@@ -1,6 +1,7 @@
-import { getInitialLanguage, initializeLanguageFromDB } from '@locales/getInitialLang';
-import { getCookieLanguage, getUserLanguage, setLanguageCookie } from '@/services/userSettings.service';
 import { getAuth } from 'firebase/auth';
+
+import { getCookieLanguage, getUserLanguage, setLanguageCookie } from '@/services/userSettings.service';
+import { getInitialLanguage, initializeLanguageFromDB } from '@locales/getInitialLang';
 import i18n from '@locales/i18n';
 
 // Mock dependencies

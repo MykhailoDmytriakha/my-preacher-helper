@@ -1,8 +1,9 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
 import HighlightedText from '@components/HighlightedText';
 
 interface MarkdownDisplayProps {
@@ -30,16 +31,13 @@ const formatStructuredBlocks = (text: string) => {
 const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
 
-    // Helper component to highlight text nodes
-    const TextHighlighter = useMemo(() => {
-        if (!searchQuery.trim()) return null;
-        return ({ children }: { children: React.ReactNode }) => {
-            if (typeof children === 'string') {
-                return <HighlightedText text={children} searchQuery={searchQuery} />;
-            }
-            return <>{children}</>;
-        };
-    }, [searchQuery]);
+    const renderHighlighted = useCallback(
+        (node: React.ReactNode) =>
+            typeof node === 'string' && searchQuery.trim()
+                ? <HighlightedText text={node} searchQuery={searchQuery} />
+                : node,
+        [searchQuery]
+    );
 
     return (
         <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
@@ -53,78 +51,57 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                     // Ensure lists are properly spaced
                     ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
                     ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,
-                    // Tweak headings
-                    h1: ({ ...props }) => <h3 {...props} className="text-lg font-bold mt-4 mb-2" />,
-                    h2: ({ ...props }) => <h4 {...props} className="text-base font-bold mt-3 mb-2" />,
-                    h3: ({ ...props }) => <h5 {...props} className="text-sm font-bold mt-2 mb-1" />,
+                    // Tweak headings (h1, h2, h3 are defined below with highlighting)
                     // Text node highlighting when search is active
-                    ...(TextHighlighter && {
-                        p: ({ children, ...props }) => (
-                            <p {...props}>
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </p>
-                        ),
-                        li: ({ children, ...props }) => (
-                            <li {...props}>
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </li>
-                        ),
-                        strong: ({ children, ...props }) => (
-                            <strong {...props}>
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </strong>
-                        ),
-                        em: ({ children, ...props }) => (
-                            <em {...props}>
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </em>
-                        ),
-                        // Add highlighting for headings
-                        h1: ({ children, ...props }) => (
-                            <h3 {...props} className="text-lg font-bold mt-4 mb-2">
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </h3>
-                        ),
-                        h2: ({ children, ...props }) => (
-                            <h4 {...props} className="text-base font-bold mt-3 mb-2">
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </h4>
-                        ),
-                        h3: ({ children, ...props }) => (
-                            <h5 {...props} className="text-sm font-bold mt-2 mb-1">
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </h5>
-                        ),
-                        h4: ({ children, ...props }) => (
-                            <h6 {...props} className="text-xs font-bold mt-2 mb-1">
-                                {React.Children.map(children, (child) =>
-                                    typeof child === 'string' ? <HighlightedText text={child} searchQuery={searchQuery} /> : child
-                                )}
-                            </h6>
-                        ),
-                    }),
+                    p: ({ children, ...props }) => (
+                        <p {...props}>
+                            {React.Children.map(children, renderHighlighted)}
+                        </p>
+                    ),
+                    li: ({ children, ...props }) => (
+                        <li {...props}>
+                            {React.Children.map(children, renderHighlighted)}
+                        </li>
+                    ),
+                    strong: ({ children, ...props }) => (
+                        <strong {...props}>
+                            {React.Children.map(children, renderHighlighted)}
+                        </strong>
+                    ),
+                    em: ({ children, ...props }) => (
+                        <em {...props}>
+                            {React.Children.map(children, renderHighlighted)}
+                        </em>
+                    ),
+                    // Add highlighting for headings
+                    h1: ({ children, ...props }) => (
+                        <h3 {...props} className="text-lg font-bold mt-4 mb-2">
+                            {React.Children.map(children, renderHighlighted)}
+                        </h3>
+                    ),
+                    h2: ({ children, ...props }) => (
+                        <h4 {...props} className="text-base font-bold mt-3 mb-2">
+                            {React.Children.map(children, renderHighlighted)}
+                        </h4>
+                    ),
+                    h3: ({ children, ...props }) => (
+                        <h5 {...props} className="text-sm font-bold mt-2 mb-1">
+                            {React.Children.map(children, renderHighlighted)}
+                        </h5>
+                    ),
+                    h4: ({ children, ...props }) => (
+                        <h6 {...props} className="text-xs font-bold mt-2 mb-1">
+                            {React.Children.map(children, renderHighlighted)}
+                        </h6>
+                    ),
                     // Custom renderer for code blocks to handle our structured types
-                    code: ({ node, inline, className, children, ...props }: any) => {
+                    code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
                         const match = /language-(\w+)/.exec(className || '');
                         const type = match ? match[1] : '';
                         const isStructuredBlock = ['illustration', 'application', 'question', 'quote', 'definition'].includes(type);
 
                         if (!inline && isStructuredBlock) {
-                            let title = type.charAt(0).toUpperCase() + type.slice(1);
+                            const title = type.charAt(0).toUpperCase() + type.slice(1);
                             let bgClass = 'bg-gray-100 dark:bg-gray-800';
                             let borderClass = 'border-gray-300 dark:border-gray-600';
                             let icon = '📝';

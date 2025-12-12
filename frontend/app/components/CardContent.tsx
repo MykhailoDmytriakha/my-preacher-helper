@@ -1,11 +1,12 @@
 "use client";
 
 import React from "react";
-import { getTagStyle } from "@/utils/tagUtils";
-import { Item } from "@/models/models";
 import { useTranslation } from "react-i18next";
-import { normalizeStructureTag } from "@utils/tagUtils";
+
+import { Item } from "@/models/models";
+import { getTagStyle } from "@/utils/tagUtils";
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { normalizeStructureTag } from "@utils/tagUtils";
 
 interface CardContentProps {
   item: Item;

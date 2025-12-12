@@ -1,6 +1,7 @@
-import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
+import React from 'react';
+
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/providers/AuthProvider';
 

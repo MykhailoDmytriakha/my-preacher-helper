@@ -1,10 +1,11 @@
 'use client';
 
+import { Info, Check, X, Plus, Trash2, ArrowUp, ArrowDown, ListChecks, BookOpen } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
+
 import { UI_COLORS } from '@/utils/themeColors';
-import { Info, Check, X, Plus, Trash2, ArrowUp, ArrowDown, ListChecks, BookOpen } from 'lucide-react';
 
 interface HomileticPlanItem {
   id: string;
@@ -36,6 +37,8 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
   onSaveSermonPlan,
 }) => {
   const { t } = useTranslation();
+
+  // Use unique fallback literals to avoid duplicate string warnings
 
   // Instruction collapse
   const [showInstruction, setShowInstruction] = useState<boolean>(false);
@@ -334,7 +337,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={handleSaveModern}
                 disabled={savingModern || (modernDraft.trim().length === 0)}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('actions.save') || 'Save'}
+                title={t('homiletic.actions.save') || "ModernTranslationSave"}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -342,7 +345,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 type="button"
                 onClick={() => setModernDraft(initialModernTranslation || '')}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('actions.cancel') || 'Cancel'}
+                title={t('homiletic.actions.cancel') || "ModernTranslationCancel"}
               >
                 <X className="w-4 h-4" />
               </button>

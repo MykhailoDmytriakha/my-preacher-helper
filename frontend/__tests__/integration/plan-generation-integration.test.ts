@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
-import { sermonsRepository } from '@/api/repositories/sermons.repository';
+
 import { generatePlanForSection } from '@/api/clients/openAI.client';
+import { sermonsRepository } from '@/api/repositories/sermons.repository';
 
 // Mock all dependencies
 jest.mock('@/api/repositories/sermons.repository');
@@ -133,7 +134,7 @@ describe('Plan Generation Integration', () => {
       const { GET } = require('@/api/sermons/[id]/plan/route');
       
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
-      const responseData = await response.json();
+      await response.json();
 
       // Verify that the final plan sent to database has no undefined values
       expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
@@ -162,7 +163,7 @@ describe('Plan Generation Integration', () => {
       const { GET } = require('@/api/sermons/[id]/plan/route');
       
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
-      const responseData = await response.json();
+      await response.json();
 
       // Verify that non-string values are converted to empty strings
       expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
@@ -340,7 +341,6 @@ describe('Plan Generation Integration', () => {
       const { GET } = require('@/api/sermons/[id]/plan/route');
       
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
-      const responseData = await response.json();
 
       // Should still save the plan with available sections
       expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(

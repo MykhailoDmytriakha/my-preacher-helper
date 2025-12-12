@@ -1,5 +1,5 @@
-import React from 'react';
 import { render, waitFor, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
 import { act } from 'react-dom/test-utils';
 import '@testing-library/jest-dom';
 
@@ -33,7 +33,7 @@ class MockMediaRecorder {
     this.mimeType = options?.mimeType || 'audio/webm';
   }
 
-  start = (_timeslice?: number) => {
+  start = () => {
     this.state = 'recording';
     // Immediately emit one non-empty chunk so onstop can build a Blob
     if (this.ondataavailable && !this.emittedChunk) {

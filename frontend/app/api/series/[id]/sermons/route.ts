@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
+
+// Error messages
+const ERROR_MESSAGES = {
+  SERIES_NOT_FOUND: 'Series not found',
+} as const;
 
 // POST /api/series/:id/sermons - add sermon to series
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Validate that series exists
     const series = await seriesRepository.fetchSeriesById(seriesId);
     if (!series) {
-      return NextResponse.json({ error: 'Series not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 404 });
     }
 
     // Add sermon to series
@@ -53,7 +59,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Validate that series exists
     const series = await seriesRepository.fetchSeriesById(seriesId);
     if (!series) {
-      return NextResponse.json({ error: 'Series not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 404 });
     }
 
     // Reorder sermons in series
@@ -84,7 +90,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     // Validate that series exists
     const series = await seriesRepository.fetchSeriesById(seriesId);
     if (!series) {
-      return NextResponse.json({ error: 'Series not found' }, { status: 404 });
+      return NextResponse.json({ error: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 404 });
     }
 
     // Remove sermon from series

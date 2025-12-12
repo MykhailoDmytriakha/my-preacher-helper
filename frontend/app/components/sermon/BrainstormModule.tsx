@@ -1,14 +1,15 @@
 "use client";
 
+import { ClipboardIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
-import { LightBulbIcon } from '@components/Icons';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import "@locales/i18n";
+
 import { BrainstormSuggestion } from '@/models/models';
 import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
-import { useTranslation } from 'react-i18next';
-import "@locales/i18n";
-import { toast } from 'sonner';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ClipboardIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { LightBulbIcon } from '@components/Icons';
 
 interface BrainstormModuleProps {
   sermonId: string;

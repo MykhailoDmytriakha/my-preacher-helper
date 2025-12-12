@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
-import { UI_COLORS } from '@/utils/themeColors';
 import { ChevronDown } from 'lucide-react';
+import React from 'react';
+
+import { UI_COLORS } from '@/utils/themeColors';
 
 export interface PrepStepCardProps {
   stepId: string;

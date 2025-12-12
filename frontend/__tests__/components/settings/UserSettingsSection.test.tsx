@@ -1,10 +1,12 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
-import UserSettingsSection from '@components/settings/UserSettingsSection';
 import { User } from 'firebase/auth';
+
 import { UserSettings } from '@/models/models';
 import { getUserSettings } from '@/services/userSettings.service';
+import UserSettingsSection from '@components/settings/UserSettingsSection';
 
 // --- Mocks --- //
 

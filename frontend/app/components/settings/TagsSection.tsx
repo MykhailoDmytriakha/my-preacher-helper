@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { Tag } from '@/models/models';
-import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
-import TagList from './TagList';
-import AddTagForm from './AddTagForm';
-import ColorPickerModal from '@components/ColorPickerModal';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+
+import { Tag } from '@/models/models';
+import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
+import ColorPickerModal from '@components/ColorPickerModal';
+
+import AddTagForm from './AddTagForm';
+import TagList from './TagList';
+
 
 interface TagsSectionProps {
   user: User | null;
@@ -17,7 +20,6 @@ interface TagsSectionProps {
 const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
   const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>({ requiredTags: [], customTags: [] });
-  const [loaded, setLoaded] = useState(false);
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
 
   useEffect(() => {
@@ -27,7 +29,6 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
           const tagsData = await getTags(user.uid);
           console.log('TagsSection: fetched tags', tagsData);
           setTags(tagsData);
-          setLoaded(true);
         }
       } catch (error) {
         console.error('Error fetching tags:', error);
@@ -52,7 +53,10 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       const tagsData = await getTags(user.uid);
       setTags(tagsData);
     } catch (error: unknown) {
-      const message = (error as any)?.message === 'Reserved tag name' ? t('errors.reservedTagName') : (t('errors.savingError') || 'Error saving');
+      const err = error as { message?: string } | null;
+      const message = err?.message === 'Reserved tag name'
+        ? t('errors.reservedTagName')
+        : (t('errors.savingError') || 'Error saving');
       toast.error(message);
     }
   };

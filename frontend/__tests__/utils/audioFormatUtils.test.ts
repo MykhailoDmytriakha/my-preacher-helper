@@ -92,16 +92,8 @@ describe('audioFormatUtils', () => {
   describe('detectActualFormat', () => {
     // Mock Blob to support arrayBuffer() in tests
     const originalBlob = global.Blob;
-    let mockBlob: jest.Mocked<Blob>;
 
     beforeEach(() => {
-      mockBlob = {
-        slice: jest.fn(),
-        arrayBuffer: jest.fn(),
-        size: 1000,
-        type: 'audio/webm'
-      } as any;
-
       // Mock Blob constructor
       global.Blob = jest.fn().mockImplementation((parts, options) => {
         const data = new Uint8Array(parts[0] || []);

@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { User } from "firebase/auth";
-import { auth } from "@services/firebaseAuth.service";
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import UserSettingsSection from "@/components/settings/UserSettingsSection";
-import TagsSection from "@/components/settings/TagsSection";
+
+import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
+import TagsSection from "@/components/settings/TagsSection";
+import UserSettingsSection from "@/components/settings/UserSettingsSection";
 import SettingsNav from "@components/settings/SettingsNav";
-import LanguageInitializer from "@/components/navigation/LanguageInitializer";
+import { auth } from "@services/firebaseAuth.service";
 import "@locales/i18n";
 
 export default function SettingsPage() {

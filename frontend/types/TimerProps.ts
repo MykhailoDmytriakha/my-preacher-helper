@@ -32,7 +32,6 @@ export interface DigitalTimerDisplayProps extends BaseTimerProps {
 
 // TimerControls component props
 export interface TimerControlsProps extends BaseTimerProps {
-  isRunning: boolean;
   isPaused: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -232,7 +231,7 @@ export interface TimerSessionExport {
   events: Array<{
     action: string;
     timestamp: Date;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }>;
   completed: boolean;
   settings: {

@@ -1,8 +1,10 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+
 import '@testing-library/jest-dom';
 jest.mock('@locales/i18n', () => ({}));
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
+
 import { TestProviders } from '../../../test-utils/test-providers';
 
 // Mock dynamic AudioRecorder
@@ -11,7 +13,6 @@ jest.mock('@/components/AudioRecorder', () => ({
   AudioRecorder: ({}) => <div data-testid="audio-recorder" />,
 }));
 
-let modeValue: string | null = null;
 let searchParamsMock: URLSearchParams;
 let routerMock: any;
 
@@ -56,7 +57,6 @@ jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k
 describe('SermonPage mode transitions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    modeValue = null;
     searchParamsMock = new URLSearchParams();
     routerMock = { push: jest.fn(), replace: jest.fn() };
     mockLocalStorage.getItem.mockReturnValue(null);

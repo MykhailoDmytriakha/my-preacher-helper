@@ -6,12 +6,6 @@ interface MockNextRequest {
   json: () => Promise<any>;
 }
 
-// Mock type for NextResponse
-interface MockNextResponse {
-  status: number;
-  json: () => Promise<any>;
-}
-
 // Mock the sermonsRepository so we don't need the actual implementation
 jest.mock('@/api/repositories/sermons.repository', () => ({
   sermonsRepository: {

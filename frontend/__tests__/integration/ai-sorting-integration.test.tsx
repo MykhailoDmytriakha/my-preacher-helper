@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import React, { useState } from 'react';
 import '@testing-library/jest-dom';
 import { toast } from 'sonner';
 
@@ -22,13 +22,6 @@ interface Item {
   id: string;
   content: string;
   customTagNames?: TagInfo[];
-}
-
-// Define MockItem interface for our test component
-interface MockItem {
-  id: string;
-  content: string;
-  customTagNames: any[];
 }
 
 jest.mock('@/services/sortAI.service');
@@ -105,7 +98,7 @@ describe('AI Sorting Integration Test', () => {
     });
     
     // Mock sortItemsWithAI and updateStructure implementations
-    (sortItemsWithAI as jest.Mock).mockImplementation((columnId, items, sermonId, outlinePoints) => {
+    (sortItemsWithAI as jest.Mock).mockImplementation((columnId, items) => {
       if (columnId === 'introduction') {
         // Return a new array with items in a different order
         return Promise.resolve([
@@ -157,7 +150,7 @@ describe('AI Sorting Integration Test', () => {
           
           await updateStructure('sermon123', newStructure);
           toast.success('Successfully sorted items');
-        } catch (error) {
+        } catch {
           toast.error('Error sorting items');
         } finally {
           setIsSorting(false);
@@ -273,7 +266,7 @@ describe('AI Sorting Integration Test', () => {
           
           await updateStructure('sermon123', newStructure);
           toast.success('Successfully sorted items');
-        } catch (error) {
+        } catch {
           toast.error('Error sorting items');
         } finally {
           setIsSorting(false);
