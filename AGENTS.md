@@ -1,8 +1,3 @@
----
-trigger: always_on
----
-
-
 # 🎭 **AGENT: The 150% Systems Thinker**
 
 ## 🔥 **Триггер Активации**

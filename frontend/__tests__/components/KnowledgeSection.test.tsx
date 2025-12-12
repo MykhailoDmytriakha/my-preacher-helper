@@ -236,6 +236,35 @@ describe('KnowledgeSection Component', () => {
     expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
 
+  it('toggles topics visibility when show/hide is clicked', async () => {
+    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    
+    // Wait for loading state to finish - properly wrapped in act()
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    
+    // Expand the section - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+    
+    // Topics should be visible by default
+    expect(screen.getByText('Faith')).toBeInTheDocument();
+    
+    // Hide topics (first "Hide all" toggle belongs to topics section)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Hide all' })[0]);
+    });
+    expect(screen.queryByText('Faith')).not.toBeInTheDocument();
+    
+    // Show topics again
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+    });
+    expect(screen.getByText('Faith')).toBeInTheDocument();
+  });
+
   it('generates all insights when button is clicked', async () => {
     // Mock the generateInsights function to delay its resolution
     (insightsService.generateInsights as jest.Mock).mockImplementation(() => {
