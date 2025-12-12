@@ -11,6 +11,7 @@
 
 - **SonarJS cognitive complexity в React JSX:** вынесение helper-функций может не снижать score — условный JSX тоже считается; если warning висит на компоненте, выноси крупные секции UI в мелкие компоненты/рендер-хелперы (без изменения behavior).
 - **Перед добавлением тестов — ищи существующие:** для `KnowledgeSection` тесты уже были в `frontend/__tests__/components/KnowledgeSection.test.tsx`; лучше расширять существующие сценарии, чем плодить новый файл в другом месте.
+- **FocusRecorderButton: tests-first + pending async coverage:** чтобы покрыть `initializing` state, мокай `getUserMedia` как pending Promise и явно resolve в тесте (иначе возможны open handles/flake). После этого выноси conditional render (progress/labels/buttons) в маленькие компоненты + state→style maps — это реально снижает cognitive complexity без изменения поведения.
 
 ---
 

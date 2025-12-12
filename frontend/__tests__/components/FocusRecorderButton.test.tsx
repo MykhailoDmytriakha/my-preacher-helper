@@ -132,6 +132,14 @@ describe('FocusRecorderButton', () => {
       expect(button).toHaveAttribute('aria-label', 'audio.newRecording');
     });
 
+    it('should render small size variant', () => {
+      render(<FocusRecorderButton onRecordingComplete={jest.fn()} size="small" />);
+
+      const button = screen.getByRole('button');
+      expect(button).toHaveClass('w-10');
+      expect(button).toHaveClass('h-10');
+    });
+
     it('should show microphone icon in idle state', () => {
       const { container } = render(<FocusRecorderButton onRecordingComplete={jest.fn()} />);
       
@@ -157,6 +165,42 @@ describe('FocusRecorderButton', () => {
   });
 
   describe('Recording Functionality', () => {
+    it('should show initializing state while waiting for microphone permission', async () => {
+      let resolveStream: ((stream: MediaStream) => void) | undefined;
+      const pendingStream = new Promise<MediaStream>((resolve) => {
+        resolveStream = resolve;
+      });
+
+      mockGetUserMedia.mockReturnValueOnce(pendingStream);
+
+      const onRecordingComplete = jest.fn();
+      const { container, unmount } = render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
+
+      const button = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(button).toBeDisabled();
+        expect(button).toHaveClass('bg-yellow-500');
+      });
+
+      const initializingIcon = container.querySelector('svg.animate-pulse');
+      expect(initializingIcon).toBeInTheDocument();
+
+      // Resolve to avoid leaving a pending promise in the test
+      act(() => {
+        resolveStream?.({
+          getTracks: () => [{ stop: mockStop }],
+        } as unknown as MediaStream);
+      });
+
+      await waitFor(() => {
+        expect(button).toHaveClass('bg-red-500');
+      });
+
+      unmount();
+    });
+
     it('should start recording on button click', async () => {
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
@@ -426,4 +470,3 @@ describe('FocusRecorderButton', () => {
     });
   });
 });
-

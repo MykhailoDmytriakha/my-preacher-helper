@@ -9,6 +9,7 @@ import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/au
 
 // Error translation key constant to avoid duplicate strings
 const ERROR_AUDIO_PROCESSING = 'errors.audioProcessing';
+const AUDIO_NEW_RECORDING = 'audio.newRecording';
 
 interface FocusRecorderButtonProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -18,6 +19,257 @@ interface FocusRecorderButtonProps {
   disabled?: boolean;
   size?: 'normal' | 'small'; // Size variant for different contexts
 }
+
+type ButtonState = 'processing' | 'initializing' | 'paused' | 'recording' | 'idle';
+type TranslateFn = (key: string) => string;
+
+type SizeVariant = NonNullable<FocusRecorderButtonProps['size']>;
+
+type SizeConfig = {
+  buttonSize: string;
+  iconSize: string;
+  spinnerSize: string;
+  cancelSize: string;
+  controlIconSize: string;
+  fontSize: string;
+};
+
+const SIZE_CONFIG: Record<SizeVariant, SizeConfig> = {
+  small: {
+    buttonSize: 'w-10 h-10', // 40px for outline point headers
+    iconSize: 'w-4 h-4',
+    spinnerSize: 'h-4 w-4',
+    cancelSize: 'w-4 h-4',
+    controlIconSize: 'w-3 h-3',
+    fontSize: 'text-xs',
+  },
+  normal: {
+    buttonSize: 'w-16 h-16', // 64px for focus mode sidebar
+    iconSize: 'w-6 h-6',
+    spinnerSize: 'h-6 w-6',
+    cancelSize: 'w-6 h-6',
+    controlIconSize: 'w-4 h-4',
+    fontSize: 'text-sm',
+  },
+};
+
+const MAIN_BUTTON_STATE_STYLES: Record<ButtonState, string> = {
+  idle: 'bg-gray-400 hover:bg-green-500 focus:ring-green-400',
+  recording: 'bg-red-500 animate-pulse focus:ring-red-400 shadow-lg shadow-red-500/50',
+  paused: 'bg-red-500 focus:ring-red-400 shadow-lg shadow-red-500/50',
+  initializing: 'bg-yellow-500 focus:ring-yellow-400',
+  processing: 'bg-blue-500 focus:ring-blue-400',
+};
+
+const MAIN_BUTTON_LABEL_KEYS: Record<ButtonState, string> = {
+  idle: AUDIO_NEW_RECORDING,
+  processing: AUDIO_NEW_RECORDING,
+  initializing: AUDIO_NEW_RECORDING,
+  paused: AUDIO_NEW_RECORDING,
+  recording: 'audio.stopRecording',
+};
+
+const formatCountdownTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+const getButtonState = ({
+  isProcessing,
+  isInitializing,
+  isRecording,
+  isPaused,
+}: {
+  isProcessing: boolean;
+  isInitializing: boolean;
+  isRecording: boolean;
+  isPaused: boolean;
+}): ButtonState => {
+  if (isProcessing) return 'processing';
+  if (isInitializing) return 'initializing';
+  if (isRecording && isPaused) return 'paused';
+  if (isRecording) return 'recording';
+  return 'idle';
+};
+
+const RECORDING_CIRCLE_RADIUS = 46;
+const RECORDING_CIRCLE_CIRCUMFERENCE = 2 * Math.PI * RECORDING_CIRCLE_RADIUS;
+
+const ProgressIndicator = ({
+  buttonState,
+  progressPercentage,
+}: {
+  buttonState: ButtonState;
+  progressPercentage: number;
+}) => {
+  if (buttonState !== 'recording' && buttonState !== 'paused') {
+    return null;
+  }
+
+  return (
+    <svg 
+      className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
+      viewBox="0 0 100 100"
+    >
+      <circle
+        cx="50"
+        cy="50"
+        r={RECORDING_CIRCLE_RADIUS}
+        fill="none"
+        stroke="rgba(255, 255, 255, 0.3)"
+        strokeWidth="4"
+      />
+      <circle
+        cx="50"
+        cy="50"
+        r={RECORDING_CIRCLE_RADIUS}
+        fill="none"
+        stroke="white"
+        strokeWidth="4"
+        strokeDasharray={`${RECORDING_CIRCLE_CIRCUMFERENCE}`}
+        strokeDashoffset={`${RECORDING_CIRCLE_CIRCUMFERENCE * (1 - progressPercentage / 100)}`}
+        className={buttonState === 'paused' ? '' : 'transition-all duration-1000 ease-linear'}
+      />
+    </svg>
+  );
+};
+
+const MainButtonContent = ({
+  buttonState,
+  formattedRemainingTime,
+  sizeConfig,
+}: {
+  buttonState: ButtonState;
+  formattedRemainingTime: string;
+  sizeConfig: SizeConfig;
+}) => {
+  if (buttonState === 'recording' || buttonState === 'paused') {
+    return (
+      <span className={`${sizeConfig.fontSize} font-mono font-bold`}>
+        {formattedRemainingTime}
+      </span>
+    );
+  }
+
+  if (buttonState === 'processing') {
+    return (
+      <div className={`animate-spin rounded-full ${sizeConfig.spinnerSize} border-2 border-white border-t-transparent`}></div>
+    );
+  }
+
+  if (buttonState === 'initializing') {
+    return <MicrophoneIcon className={`${sizeConfig.iconSize} animate-pulse`} />;
+  }
+
+  return <MicrophoneIcon className={sizeConfig.iconSize} />;
+};
+
+const PauseResumeButton = ({
+  buttonState,
+  isPaused,
+  onPause,
+  onResume,
+  sizeConfig,
+  t,
+}: {
+  buttonState: ButtonState;
+  isPaused: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  sizeConfig: SizeConfig;
+  t: TranslateFn;
+}) => {
+  if (buttonState !== 'recording' && buttonState !== 'paused') {
+    return null;
+  }
+
+  const label = isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording');
+  const stateClasses = isPaused
+    ? 'bg-green-500 hover:bg-green-600 focus:ring-green-400'
+    : 'bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400';
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (isPaused) {
+          console.log('FocusRecorderButton: Resume button clicked');
+          onResume();
+        } else {
+          console.log('FocusRecorderButton: Pause button clicked');
+          onPause();
+        }
+      }}
+      className={`absolute -top-1 -left-1 ${sizeConfig.cancelSize} rounded-full ${stateClasses} shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 flex items-center justify-center group z-10`}
+      aria-label={label}
+      title={label}
+    >
+      {isPaused ? (
+        // Play/Resume icon
+        <svg 
+          className={`${sizeConfig.controlIconSize} text-white`}
+          fill="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      ) : (
+        // Pause icon
+        <svg 
+          className={`${sizeConfig.controlIconSize} text-white`}
+          fill="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+        </svg>
+      )}
+    </button>
+  );
+};
+
+const CancelButton = ({
+  buttonState,
+  onCancel,
+  sizeConfig,
+  t,
+}: {
+  buttonState: ButtonState;
+  onCancel: () => void;
+  sizeConfig: SizeConfig;
+  t: TranslateFn;
+}) => {
+  if (buttonState !== 'recording' && buttonState !== 'paused') {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        console.log('FocusRecorderButton: Cancel button (X) clicked');
+        onCancel();
+      }}
+      className={`absolute -top-1 -right-1 ${sizeConfig.cancelSize} rounded-full bg-white hover:bg-gray-100 shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-center group z-10`}
+      aria-label={t('audio.cancelRecording')}
+      title={t('audio.cancelRecording')}
+    >
+      <svg 
+        className={`${sizeConfig.controlIconSize} text-gray-700 group-hover:text-red-600 transition-colors`}
+        fill="currentColor" 
+        viewBox="0 0 20 20"
+      >
+        <path 
+          fillRule="evenodd" 
+          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
+          clipRule="evenodd" 
+        />
+      </svg>
+    </button>
+  );
+};
 
 export const FocusRecorderButton = ({
   onRecordingComplete,
@@ -286,208 +538,78 @@ export const FocusRecorderButton = ({
 
   // Calculate remaining time (countdown)
   const remainingTime = maxDuration - recordingTime;
-  
-  // Format time for display (countdown from maxDuration)
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
+  const formattedRemainingTime = formatCountdownTime(remainingTime);
 
   // Calculate progress percentage (fills up as time progresses)
   const progressPercentage = (recordingTime / maxDuration) * 100;
 
-  // Determine button state
-  const getButtonState = () => {
-    if (isProcessing) return 'processing';
-    if (isInitializing) return 'initializing';
-    if (isRecording && isPaused) return 'paused';
-    if (isRecording) return 'recording';
-    return 'idle';
-  };
-
-  const buttonState = getButtonState();
+  const buttonState = getButtonState({ isProcessing, isInitializing, isRecording, isPaused });
   const isButtonDisabled = disabled || isProcessing || isInitializing;
 
-  // Size configurations
-  const sizeConfig = size === 'small'
-    ? {
-        buttonSize: 'w-10 h-10', // 40px for outline point headers
-        iconSize: 'w-4 h-4',
-        spinnerSize: 'h-4 w-4',
-        cancelSize: 'w-4 h-4',
-        fontSize: 'text-xs',
-      }
-    : {
-        buttonSize: 'w-16 h-16', // 64px for focus mode sidebar
-        iconSize: 'w-6 h-6',
-        spinnerSize: 'h-6 w-6',
-        cancelSize: 'w-6 h-6',
-        fontSize: 'text-sm',
-      };
+  const sizeConfig = SIZE_CONFIG[size];
+  const mainButtonLabel = t(MAIN_BUTTON_LABEL_KEYS[buttonState]);
+
+  const handleMainButtonClick = useCallback(() => {
+    console.log('FocusRecorderButton: Main button clicked', { isRecording, isPaused, isProcessing, isInitializing });
+    if (isRecording) {
+      // Main button always stops recording (even when paused)
+      console.log('FocusRecorderButton: Calling stopRecording');
+      stopRecording();
+      return;
+    }
+
+    if (!isProcessing && !isInitializing) {
+      console.log('FocusRecorderButton: Calling startRecording');
+      startRecording();
+      return;
+    }
+
+    console.log('FocusRecorderButton: Button disabled - not calling any function');
+  }, [isRecording, isPaused, isProcessing, isInitializing, stopRecording, startRecording]);
 
   return (
     <div className="relative inline-flex items-center justify-center">
       {/* Main circular button */}
       <button
         type="button"
-        onClick={() => {
-          console.log('FocusRecorderButton: Main button clicked', { isRecording, isPaused, isProcessing, isInitializing });
-          if (isRecording) {
-            // Main button always stops recording (even when paused)
-            console.log('FocusRecorderButton: Calling stopRecording');
-            stopRecording();
-          } else if (!isProcessing && !isInitializing) {
-            console.log('FocusRecorderButton: Calling startRecording');
-            startRecording();
-          } else {
-            console.log('FocusRecorderButton: Button disabled - not calling any function');
-          }
-        }}
+        onClick={handleMainButtonClick}
         disabled={isButtonDisabled}
         className={`relative ${sizeConfig.buttonSize} rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-          buttonState === 'idle' 
-            ? 'bg-gray-400 hover:bg-green-500 focus:ring-green-400' 
-            : buttonState === 'recording'
-            ? 'bg-red-500 animate-pulse focus:ring-red-400 shadow-lg shadow-red-500/50'
-            : buttonState === 'paused'
-            ? 'bg-red-500 focus:ring-red-400 shadow-lg shadow-red-500/50'
-            : buttonState === 'initializing'
-            ? 'bg-yellow-500 focus:ring-yellow-400'
-            : 'bg-blue-500 focus:ring-blue-400'
+          MAIN_BUTTON_STATE_STYLES[buttonState]
         }`}
-        aria-label={
-          buttonState === 'recording' 
-            ? t('audio.stopRecording') 
-            : t('audio.newRecording')
-        }
-        title={
-          buttonState === 'recording' 
-            ? t('audio.stopRecording') 
-            : t('audio.newRecording')
-        }
+        aria-label={mainButtonLabel}
+        title={mainButtonLabel}
       >
         {/* Circular progress indicator */}
-        {(buttonState === 'recording' || buttonState === 'paused') && (
-          <svg 
-            className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
-            viewBox="0 0 100 100"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              r="46"
-              fill="none"
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth="4"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              r="46"
-              fill="none"
-              stroke="white"
-              strokeWidth="4"
-              strokeDasharray={`${2 * Math.PI * 46}`}
-              strokeDashoffset={`${2 * Math.PI * 46 * (1 - progressPercentage / 100)}`}
-              className={buttonState === 'paused' ? '' : 'transition-all duration-1000 ease-linear'}
-            />
-          </svg>
-        )}
+        <ProgressIndicator buttonState={buttonState} progressPercentage={progressPercentage} />
 
         {/* Icon or timer */}
         <div className="relative z-10 flex items-center justify-center w-full h-full text-white">
-          {buttonState === 'recording' || buttonState === 'paused' ? (
-            // Show countdown timer for both recording and paused states
-            <span className={`${sizeConfig.fontSize} font-mono font-bold`}>
-              {formatTime(remainingTime)}
-            </span>
-          ) : buttonState === 'processing' ? (
-            // Show spinner
-            <div className={`animate-spin rounded-full ${sizeConfig.spinnerSize} border-2 border-white border-t-transparent`}></div>
-          ) : buttonState === 'initializing' ? (
-            // Show pulsing mic
-            <MicrophoneIcon className={`${sizeConfig.iconSize} animate-pulse`} />
-          ) : (
-            // Show static mic icon
-            <MicrophoneIcon className={sizeConfig.iconSize} />
-          )}
+          <MainButtonContent
+            buttonState={buttonState}
+            formattedRemainingTime={formattedRemainingTime}
+            sizeConfig={sizeConfig}
+          />
         </div>
       </button>
 
       {/* Pause/Resume button (top left) - only show when recording or paused */}
-      {(buttonState === 'recording' || buttonState === 'paused') && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isPaused) {
-              console.log('FocusRecorderButton: Resume button clicked');
-              resumeRecording();
-            } else {
-              console.log('FocusRecorderButton: Pause button clicked');
-              pauseRecording();
-            }
-          }}
-          className={`absolute -top-1 -left-1 ${sizeConfig.cancelSize} rounded-full ${
-            isPaused 
-              ? 'bg-green-500 hover:bg-green-600' 
-              : 'bg-yellow-500 hover:bg-yellow-600'
-          } shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 ${
-            isPaused ? 'focus:ring-green-400' : 'focus:ring-yellow-400'
-          } flex items-center justify-center group z-10`}
-          aria-label={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
-          title={isPaused ? t('audio.resumeRecording') : t('audio.pauseRecording')}
-        >
-          {isPaused ? (
-            // Play/Resume icon
-            <svg 
-              className={`${size === 'small' ? 'w-3 h-3' : 'w-4 h-4'} text-white`}
-              fill="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          ) : (
-            // Pause icon
-            <svg 
-              className={`${size === 'small' ? 'w-3 h-3' : 'w-4 h-4'} text-white`}
-              fill="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
-          )}
-        </button>
-      )}
+      <PauseResumeButton
+        buttonState={buttonState}
+        isPaused={isPaused}
+        onPause={pauseRecording}
+        onResume={resumeRecording}
+        sizeConfig={sizeConfig}
+        t={t}
+      />
 
       {/* Cancel button (top right) - only show when recording or paused */}
-      {(buttonState === 'recording' || buttonState === 'paused') && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            console.log('FocusRecorderButton: Cancel button (X) clicked');
-            cancelRecording();
-          }}
-          className={`absolute -top-1 -right-1 ${sizeConfig.cancelSize} rounded-full bg-white hover:bg-gray-100 shadow-md transition-all duration-200 hover:scale-125 active:scale-110 focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-center group z-10`}
-          aria-label={t('audio.cancelRecording')}
-          title={t('audio.cancelRecording')}
-        >
-          <svg 
-            className={`${size === 'small' ? 'w-3 h-3' : 'w-4 h-4'} text-gray-700 group-hover:text-red-600 transition-colors`}
-            fill="currentColor" 
-            viewBox="0 0 20 20"
-          >
-            <path 
-              fillRule="evenodd" 
-              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
-              clipRule="evenodd" 
-            />
-          </svg>
-        </button>
-      )}
+      <CancelButton
+        buttonState={buttonState}
+        onCancel={cancelRecording}
+        sizeConfig={sizeConfig}
+        t={t}
+      />
     </div>
   );
 };
-

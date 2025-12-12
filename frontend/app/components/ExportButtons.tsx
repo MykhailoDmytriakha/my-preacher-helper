@@ -27,6 +27,65 @@ interface ExportButtonsLayoutProps {
   variant?: 'default' | 'icon';
 }
 
+type Orientation = NonNullable<ExportButtonsLayoutProps['orientation']>;
+
+const LAYOUT_CLASS_BY_ORIENTATION: Record<Orientation, string> = {
+  horizontal: "flex-row",
+  vertical: "flex-col",
+};
+
+const TOOLTIP_POSITION_BY_ORIENTATION: Record<Orientation, string> = {
+  horizontal: "tooltiptext-top",
+  vertical: "tooltiptext-right",
+};
+
+const PDF_EXPORT_LABEL = "PDF export";
+const PDF_EXPORT_COMING_SOON_LABEL = "PDF export (coming soon)";
+const WORD_EXPORT_LABEL = "Word export";
+
+const getPdfAriaLabel = (isPdfAvailable: boolean) =>
+  isPdfAvailable ? PDF_EXPORT_LABEL : PDF_EXPORT_COMING_SOON_LABEL;
+
+const getTxtIconButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-400"
+    : "text-gray-400 hover:bg-blue-50 hover:text-blue-600 dark:text-gray-500 dark:hover:bg-blue-900/30 dark:hover:text-blue-400";
+
+const getPdfIconButtonClassName = (isPdfAvailable: boolean, isPreached: boolean) => {
+  if (!isPdfAvailable) {
+    return "text-gray-300 cursor-not-allowed dark:text-gray-700";
+  }
+  return isPreached
+    ? "text-gray-500 hover:bg-gray-200 hover:text-purple-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-purple-400"
+    : "text-gray-400 hover:bg-purple-50 hover:text-purple-600 dark:text-gray-500 dark:hover:bg-purple-900/30 dark:hover:text-purple-400";
+};
+
+const getWordIconButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400"
+    : "text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400";
+
+const getTxtTextButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+    : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800";
+
+const getPdfTextButtonClassName = (isPdfAvailable: boolean, isPreached: boolean) => {
+  if (isPreached) {
+    return isPdfAvailable
+      ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-purple-100 hover:text-purple-600 dark:hover:bg-purple-900 dark:hover:text-purple-300"
+      : "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 opacity-50 cursor-not-allowed";
+  }
+  return isPdfAvailable
+    ? "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800"
+    : "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 opacity-50 cursor-not-allowed";
+};
+
+const getWordTextButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300"
+    : "bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800";
+
 export function ExportButtonsLayout({
   onTxtClick,
   onPdfClick,
@@ -37,18 +96,23 @@ export function ExportButtonsLayout({
   variant = 'default',
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
-  const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row";
+  const layoutClass = LAYOUT_CLASS_BY_ORIENTATION[orientation];
+  const pdfTooltipPositionClass = TOOLTIP_POSITION_BY_ORIENTATION[orientation];
+  const pdfAriaLabel = getPdfAriaLabel(isPdfAvailable);
   
   if (variant === 'icon') {
+    const txtIconButtonClassName = getTxtIconButtonClassName(isPreached);
+    const pdfIconButtonClassName = getPdfIconButtonClassName(isPdfAvailable, isPreached);
+    const wordIconButtonClassName = getWordIconButtonClassName(isPreached);
+    const pdfTooltipText = isPdfAvailable ? "PDF" : t('export.soonAvailable');
+
     return (
       <div className={`flex ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
         <div className="tooltip">
           <button
             onClick={onTxtClick}
             className={`p-1.5 rounded-md transition-colors ${
-              isPreached
-                ? 'text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-400'
-                : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600 dark:text-gray-500 dark:hover:bg-blue-900/30 dark:hover:text-blue-400'
+              txtIconButtonClassName
             }`}
             aria-label={t('export.txtTitle')}
           >
@@ -62,28 +126,22 @@ export function ExportButtonsLayout({
             onClick={onPdfClick}
             disabled={!isPdfAvailable}
             className={`p-1.5 rounded-md transition-colors ${
-              !isPdfAvailable
-                ? 'text-gray-300 cursor-not-allowed dark:text-gray-700'
-                : isPreached
-                  ? 'text-gray-500 hover:bg-gray-200 hover:text-purple-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-purple-400'
-                  : 'text-gray-400 hover:bg-purple-50 hover:text-purple-600 dark:text-gray-500 dark:hover:bg-purple-900/30 dark:hover:text-purple-400'
+              pdfIconButtonClassName
             }`}
-            aria-label={isPdfAvailable ? "PDF export" : "PDF export (coming soon)"}
+            aria-label={pdfAriaLabel}
           >
             <File className="w-4 h-4" />
           </button>
-          <span className="tooltiptext tooltiptext-top">{isPdfAvailable ? 'PDF' : t('export.soonAvailable')}</span>
+          <span className="tooltiptext tooltiptext-top">{pdfTooltipText}</span>
         </div>
 
         <div className="tooltip">
           <button
             onClick={onWordClick}
             className={`p-1.5 rounded-md transition-colors ${
-              isPreached
-                ? 'text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400'
-                : 'text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400'
+              wordIconButtonClassName
             }`}
-            aria-label="Word export"
+            aria-label={WORD_EXPORT_LABEL}
           >
             <FileType className="w-4 h-4" />
           </button>
@@ -93,14 +151,16 @@ export function ExportButtonsLayout({
     );
   }
 
+  const txtTextButtonClassName = getTxtTextButtonClassName(isPreached);
+  const pdfTextButtonClassName = getPdfTextButtonClassName(isPdfAvailable, isPreached);
+  const wordTextButtonClassName = getWordTextButtonClassName(isPreached);
+
   return (
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       <button
         onClick={onTxtClick}
         className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${
-          isPreached
-            ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300'
-            : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800'
+          txtTextButtonClassName
         }`}
       >
         TXT
@@ -110,19 +170,13 @@ export function ExportButtonsLayout({
         <button
           onClick={onPdfClick}
           disabled={!isPdfAvailable}
-          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md w-full ${
-            isPreached
-              ? isPdfAvailable
-                ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-purple-100 hover:text-purple-600 dark:hover:bg-purple-900 dark:hover:text-purple-300'
-                : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 opacity-50 cursor-not-allowed'
-              : `bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 ${!isPdfAvailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-purple-200 dark:hover:bg-purple-800'}`
-          }`}
-          aria-label={isPdfAvailable ? "PDF export" : "PDF export (coming soon)"}
+          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md w-full ${pdfTextButtonClassName}`}
+          aria-label={pdfAriaLabel}
         >
           PDF
         </button>
         {!isPdfAvailable && (
-          <span className={`tooltiptext ${orientation === "vertical" ? "tooltiptext-right" : "tooltiptext-top"}`}>
+          <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
             {t('export.soonAvailable')}
           </span>
         )}
@@ -133,11 +187,9 @@ export function ExportButtonsLayout({
           onClick={onWordClick}
           disabled={false}
           className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${
-            isPreached
-              ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300'
-              : 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800'
+            wordTextButtonClassName
           }`}
-          aria-label="Word export"
+          aria-label={WORD_EXPORT_LABEL}
         >
           Word
         </button>

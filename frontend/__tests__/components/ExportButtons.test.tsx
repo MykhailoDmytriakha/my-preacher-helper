@@ -48,6 +48,7 @@ jest.mock('../../utils/wordExport', () => ({
 describe('ExportButtons Component', () => {
   const mockGetExportContent = jest.fn(() => Promise.resolve('Test content'));
   const mockSermonId = 'test-sermon-id';
+  const mockGetPdfContent = jest.fn(() => Promise.resolve('<div>PDF</div>'));
 
   it('renders without crashing', () => {
     render(
@@ -71,6 +72,45 @@ describe('ExportButtons Component', () => {
     );
 
     expect(mockGetExportContent).not.toHaveBeenCalled(); // Should not be called on render
+  });
+
+  it('disables PDF export when PDF is not available', () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'PDF export (coming soon)' })).toBeDisabled();
+    expect(screen.getByText('export.soonAvailable')).toBeInTheDocument();
+  });
+
+  it('enables PDF export when getPdfContent is provided', () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        getPdfContent={mockGetPdfContent}
+        sermonId={mockSermonId}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'PDF export' })).toBeEnabled();
+    expect(screen.queryByText('export.soonAvailable')).not.toBeInTheDocument();
+  });
+
+  it('positions PDF tooltip to the right when orientation is vertical', () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        orientation="vertical"
+      />
+    );
+
+    const tooltip = screen.getByText('export.soonAvailable');
+    expect(tooltip).toHaveClass('tooltiptext');
+    expect(tooltip).toHaveClass('tooltiptext-right');
   });
 
   it('renders icon variant correctly', () => {
