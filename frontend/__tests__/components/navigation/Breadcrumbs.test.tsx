@@ -125,4 +125,32 @@ describe('Breadcrumbs', () => {
     // Single segment pages don't render breadcrumbs
     expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
+
+  it('should show Groups > Group for group detail page (no group data required)', () => {
+    mockUsePathname.mockReturnValue('/groups/test-group-id');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Groups')).toBeInTheDocument();
+    expect(screen.getByText('Group')).toBeInTheDocument();
+  });
+
+  it('should humanize unknown segments into title-cased crumbs', () => {
+    mockUsePathname.mockReturnValue('/unknown/foo-bar');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByRole('link', { name: 'Unknown' })).toBeInTheDocument();
+    expect(screen.getByText('Foo Bar')).toBeInTheDocument();
+  });
 });

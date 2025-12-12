@@ -86,6 +86,78 @@ const HUMANIZE_REGEX = /-/g;
 const capitalizeWords = (value: string) =>
   value.replace(HUMANIZE_REGEX, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
+type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
+
+type SermonData = ReturnType<typeof useSermon>['sermon'];
+type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
+
+const shouldSkipRootSegment = (segment: string, index: number) =>
+  segment === 'dashboard' || (index === 0 && Boolean(segmentLabels[segment]));
+
+type BuildSegmentCrumbParams = {
+  segment: string;
+  parent?: string;
+  currentPath: string;
+  isLast: boolean;
+  t: TranslateFn;
+  sermon: SermonData;
+  series: SeriesData;
+};
+
+const buildSegmentCrumb = ({
+  segment,
+  parent,
+  currentPath,
+  isLast,
+  t,
+  sermon,
+  series,
+}: BuildSegmentCrumbParams): BreadcrumbItem => {
+  const config = segmentLabels[segment];
+  if (config) {
+    const label = t(config.labelKey, { defaultValue: config.defaultLabel });
+    return {
+      label,
+      href: isLast ? undefined : (config.href ?? currentPath),
+      isCurrent: isLast,
+    };
+  }
+
+  if (parent && detailParents[parent]) {
+    if (parent === 'sermons' && sermon) {
+      return {
+        label: sermon.title,
+        href: isLast ? undefined : currentPath,
+        isCurrent: isLast,
+      };
+    }
+
+    if (parent === 'series' && series) {
+      return {
+        label: series.title || `Series ${series.id.slice(-4)}`,
+        href: isLast ? undefined : currentPath,
+        isCurrent: isLast,
+      };
+    }
+
+    const detailLabel = t(detailParents[parent].labelKey, {
+      defaultValue: detailParents[parent].defaultLabel,
+    });
+
+    return {
+      label: detailLabel,
+      href: isLast ? undefined : currentPath,
+      isCurrent: isLast,
+    };
+  }
+
+  return {
+    label: capitalizeWords(segment),
+    href: isLast ? undefined : currentPath,
+    isCurrent: isLast,
+  };
+};
+
 export default function Breadcrumbs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -158,65 +230,16 @@ export default function Breadcrumbs() {
     let currentPath = '';
 
     segments.forEach((segment, index) => {
-      // Skip root segments that are already handled as the first breadcrumb
-      if (segment === 'dashboard' || (index === 0 && segmentLabels[segment])) {
-        currentPath += `/${segment}`;
-        return;
-      }
-
       currentPath += `/${segment}`;
+
+      // Skip root segments that are already handled as the first breadcrumb
+      if (shouldSkipRootSegment(segment, index)) {
+        return;
+      }
+
       const isLast = index === segments.length - 1;
-      const config = segmentLabels[segment];
-
-      if (config) {
-        const label = t(config.labelKey, { defaultValue: config.defaultLabel });
-        crumbs.push({
-          label,
-          href: isLast ? undefined : (config.href ?? currentPath),
-          isCurrent: isLast
-        });
-        return;
-      }
-
       const parent = segments[index - 1];
-      if (parent && detailParents[parent]) {
-        // Special handling for sermons/[id] with sermon context
-        if (parent === 'sermons' && sermon) {
-          crumbs.push({
-            label: sermon.title,
-            href: isLast ? undefined : currentPath,
-            isCurrent: isLast
-          });
-          return;
-        }
-
-        // Special handling for series/[id] with series context
-        if (parent === 'series' && series) {
-          crumbs.push({
-            label: series.title || `Series ${series.id.slice(-4)}`,
-            href: isLast ? undefined : currentPath,
-            isCurrent: isLast
-          });
-          return;
-        }
-
-        const detailLabel = t(detailParents[parent].labelKey, {
-          defaultValue: detailParents[parent].defaultLabel
-        });
-        crumbs.push({
-          label: detailLabel,
-          href: isLast ? undefined : currentPath,
-          isCurrent: isLast
-        });
-        return;
-      }
-
-      const fallbackLabel = capitalizeWords(segment);
-      crumbs.push({
-        label: fallbackLabel,
-        href: isLast ? undefined : currentPath,
-        isCurrent: isLast
-      });
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series }));
     });
 
     return crumbs.length > 1 ? crumbs : [];

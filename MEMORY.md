@@ -9,7 +9,8 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
-*(Empty - lessons processed 2024-12-13)*
+- **SonarJS cognitive complexity в React JSX:** вынесение helper-функций может не снижать score — условный JSX тоже считается; если warning висит на компоненте, выноси крупные секции UI в мелкие компоненты/рендер-хелперы (без изменения behavior).
+- **Перед добавлением тестов — ищи существующие:** для `KnowledgeSection` тесты уже были в `frontend/__tests__/components/KnowledgeSection.test.tsx`; лучше расширять существующие сценарии, чем плодить новый файл в другом месте.
 
 ---
 
@@ -41,6 +42,7 @@
 
 **Cognitive Complexity → Helper Functions:**
 При cognitive complexity > 20 — выделять helper functions. Каждая функция = single responsibility. НЕ менять business logic при рефакторинге.
+Для React компонентов: если warning висит на функции компонента — выноси большие JSX/conditional render блоки в отдельные компоненты/рендер-хелперы, иначе complexity может не упасть.
 
 **Jest Mock String Literals (CRITICAL):**
 `jest.mock()` выполняется во время **module loading phase**, ДО выполнения JS кода. Строковые литералы в `jest.mock()` ОБЯЗАТЕЛЬНЫ — константы вызывают "Cannot access before initialization". Принять дублирование как framework constraint.
