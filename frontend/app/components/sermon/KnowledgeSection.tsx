@@ -702,7 +702,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   //   'sectionHints.conclusion': sectionHints?.conclusion
   // });
   
-  const hasSectionHints = sectionHints && (sectionHints.introduction || sectionHints.main || sectionHints.conclusion);
+  const hasSectionHints = Boolean(sectionHints && (sectionHints.introduction || sectionHints.main || sectionHints.conclusion));
   
   // Data for rendering
   // Check if we have any data to show

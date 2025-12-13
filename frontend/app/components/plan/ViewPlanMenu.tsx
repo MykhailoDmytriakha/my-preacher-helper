@@ -12,6 +12,7 @@ import { getPlanMarkdownStyles } from './markdownStyles';
 
 
 interface ViewPlanMenuProps {
+  sermonTitle: string;
   sermonId: string;
   combinedPlan: {
     introduction: string;
@@ -48,6 +49,7 @@ const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
 };
 
 const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
+  sermonTitle,
   sermonId,
   combinedPlan,
   sectionMenuRef,

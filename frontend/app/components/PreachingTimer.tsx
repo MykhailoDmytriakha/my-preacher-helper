@@ -156,11 +156,13 @@ interface PreachingTimerProps {
   sermonId?: string;
   onExitPreaching?: () => void;
   onSetDuration?: (durationSeconds: number) => void; // Called when user selects new duration
+  onTimerFinished?: () => void; // Called when timer naturally finishes
   onTimerStateChange?: (timerState: {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
     timeRemaining: number;
+    isFinished: boolean;
     isBlinking?: boolean;
   }) => void; // Called when timer state changes for progress bars
 }
@@ -171,6 +173,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   sermonId,
   onExitPreaching,
   onSetDuration,
+  onTimerFinished,
   onTimerStateChange,
 }) => {
 
@@ -190,7 +193,9 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     visualState,
     actions,
     settings
-  } = usePreachingTimer(initialTimerSettings);
+  } = usePreachingTimer(initialTimerSettings, {
+    onFinish: onTimerFinished,
+  });
 
   // Notify parent component about timer state changes for progress bars
   useEffect(() => {
@@ -200,9 +205,10 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         phaseProgress: progress.phaseProgress,
         totalProgress: progress.totalProgress,
         timeRemaining: progress.timeRemaining,
+        isFinished: timerState.isFinished,
       });
     }
-  }, [timerState.currentPhase, progress, onTimerStateChange]);
+  }, [timerState.currentPhase, timerState.isFinished, progress, onTimerStateChange]);
 
   // State for duration pickers
   const [showInlinePresets, setShowInlinePresets] = useState(false);
@@ -229,7 +235,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   // Periodic logging every 5 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      logModalState('PERIODIC_STATUS_CHECK');
+      logModalState();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -244,7 +250,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     setShowInlinePresets((prev) => {
       const newValue = typeof value === 'function' ? value(prev) : value;
       if (prev !== newValue) {
-        logModalState('SET_INLINE_PRESETS', { from: prev, to: newValue, stack: new Error().stack?.split('\n')[2] });
+        logModalState();
       }
       return newValue;
     });
@@ -254,13 +260,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     setShowCustomPicker((prev) => {
       const newValue = typeof value === 'function' ? value(prev) : value;
       if (prev !== newValue) {
-        const stack = new Error().stack?.split('\n').slice(2, 8).join('\n') || 'no stack';
-        logModalState('SET_CUSTOM_PICKER', {
-          from: prev,
-          to: newValue,
-          stack: stack,
-          timestamp: Date.now()
-        });
+        logModalState();
       }
       return newValue;
     });
@@ -270,7 +270,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     setPendingCustomPickerOpen((prev) => {
       const newValue = typeof value === 'function' ? value(prev) : value;
       if (prev !== newValue) {
-        logModalState('SET_PENDING_CUSTOM_PICKER', { from: prev, to: newValue, stack: new Error().stack?.split('\n')[2] });
+        logModalState();
       }
       return newValue;
     });
@@ -278,25 +278,16 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
   // Effect: Open custom picker AFTER inline presets finish closing
   useEffect(() => {
-    logModalState('EFFECT_CUSTOM_PICKER_CHECK', {
-      pendingCustomPickerOpen,
-      showInlinePresets,
-      effectTrigger: 'pendingCustomPickerOpen or showInlinePresets changed'
-    });
-
     if (pendingCustomPickerOpen && !showInlinePresets) {
-      logModalState('EFFECT_OPENING_CUSTOM_PICKER');
       const timer = setTimeout(() => {
-        logModalState('TIMEOUT_EXECUTING_SET_CUSTOM_PICKER_TRUE');
         setShowCustomPickerLogged(true);
         setPendingCustomPickerOpenLogged(false);
       }, 50); // Small delay to ensure proper sequencing
       return () => {
-        logModalState('TIMEOUT_CLEANUP');
         clearTimeout(timer);
       };
     }
-  }, [pendingCustomPickerOpen, showInlinePresets, logModalState, setShowCustomPickerLogged, setPendingCustomPickerOpenLogged]);
+  }, [pendingCustomPickerOpen, showInlinePresets, setShowCustomPickerLogged, setPendingCustomPickerOpenLogged]);
 
   // Update timer duration when initialDuration changes (but not on first render)
   // Only update if initialDuration > 0 to avoid resetting saved duration
@@ -311,18 +302,14 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
   // Handlers for duration selection
   const handleOpenDurationPicker = useCallback(() => {
-    logModalState('HANDLE_OPEN_DURATION_PICKER');
     setShowInlinePresetsLogged(true);
-  }, [logModalState, setShowInlinePresetsLogged]);
+  }, [setShowInlinePresetsLogged]);
 
   const handleCloseInlinePresets = useCallback(() => {
-    logModalState('HANDLE_CLOSE_INLINE_PRESETS');
     setShowInlinePresetsLogged(false);
-  }, [logModalState, setShowInlinePresetsLogged]);
+  }, [setShowInlinePresetsLogged]);
 
   const handleSelectDuration = useCallback((durationSeconds: number) => {
-    logModalState('HANDLE_SELECT_DURATION', { durationSeconds });
-
     // Устанавливаем локальное состояние сразу для немедленного обновления UI
     setSelectedDuration(durationSeconds);
 
@@ -330,36 +317,31 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     actions.setDuration(durationSeconds);
     onSetDuration?.(durationSeconds);
     setShowInlinePresetsLogged(false);
-  }, [actions, onSetDuration, logModalState, setShowInlinePresetsLogged]);
+  }, [actions, onSetDuration, setShowInlinePresetsLogged]);
 
   const handleOpenCustomPicker = useCallback(() => {
-    logModalState('HANDLE_OPEN_CUSTOM_PICKER_START');
     // Close inline presets and flag to open custom picker
     // This ensures proper sequencing: inline presets close first, then modal opens
     setShowInlinePresetsLogged(false);
     setPendingCustomPickerOpenLogged(true);
-    logModalState('HANDLE_OPEN_CUSTOM_PICKER_END');
-  }, [logModalState, setShowInlinePresetsLogged, setPendingCustomPickerOpenLogged]);
+  }, [setShowInlinePresetsLogged, setPendingCustomPickerOpenLogged]);
 
   const handleCloseCustomPicker = useCallback(() => {
-    logModalState('HANDLE_CLOSE_CUSTOM_PICKER');
     setShowCustomPickerLogged(false);
-  }, [logModalState, setShowCustomPickerLogged]);
+  }, [setShowCustomPickerLogged]);
 
   const handleBackToPresets = useCallback(() => {
-    logModalState('HANDLE_BACK_TO_PRESETS');
     // Go back from custom picker to inline presets
     setShowCustomPickerLogged(false);
     setShowInlinePresetsLogged(true);
-  }, [logModalState, setShowCustomPickerLogged, setShowInlinePresetsLogged]);
+  }, [setShowCustomPickerLogged, setShowInlinePresetsLogged]);
 
   const handleConfirmCustomTime = useCallback((hours: number, minutes: number, seconds: number) => {
-    logModalState('HANDLE_CONFIRM_CUSTOM_TIME', { hours, minutes, seconds });
     const totalSeconds = hours * 3600 + minutes * 60 + seconds;
     actions.setDuration(totalSeconds);
     onSetDuration?.(totalSeconds);
     setShowCustomPickerLogged(false);
-  }, [actions, logModalState, onSetDuration, setShowCustomPickerLogged]);
+  }, [actions, onSetDuration, setShowCustomPickerLogged]);
 
 
   // REMOVED: Auto-start timer functionality

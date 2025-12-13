@@ -60,6 +60,8 @@ describe('PreachingTimer - Plan Integration', () => {
     // Verify hook integration
     expect(mockUsePreachingTimer).toHaveBeenCalledWith({
       totalDuration: 1200,
+    }, {
+      onFinish: undefined,
     });
   });
 
@@ -83,6 +85,8 @@ describe('PreachingTimer - Plan Integration', () => {
     expect(screen.getAllByRole('timer')).toHaveLength(3);
     expect(mockUsePreachingTimer).toHaveBeenCalledWith({
       totalDuration: 1800,
+    }, {
+      onFinish: undefined,
     });
   });
 });

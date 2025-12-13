@@ -42,13 +42,63 @@ export interface TimerStateSummary {
   isFinished: boolean;
 }
 
-export type TimerEvents = Record<string, never>;
-
 export interface UsePreachingTimerReturn {
-  timerState: TimerStateSummary;
-  progress: TimerProgress;
-  visualState: TimerVisualState;
-  actions: TimerActions;
-  settings: TimerSettingsProps;
-  events: TimerEvents;
+  // State
+  timerState: {
+    timeRemaining: number;
+    currentPhase: TimerPhase;
+    status: TimerStatus;
+    isRunning: boolean;
+    isPaused: boolean;
+    isFinished: boolean;
+  };
+
+  // Progress
+  progress: {
+    totalProgress: number;
+    phaseProgress: number;
+    timeElapsed: number;
+    timeRemaining: number;
+  };
+
+  // Visual state
+  visualState: {
+    displayTime: string;
+    displayColor: string;
+    phaseLabel: string;
+    isEmergency: boolean;
+    animationClass: string;
+  };
+
+  // Actions
+  actions: {
+    start: () => void;
+    pause: () => void;
+    resume: () => void;
+    stop: () => void;
+    skip: () => void;
+    reset: () => void;
+    setDuration: (seconds: number) => void;
+  };
+
+  // Settings
+  settings: {
+    totalDuration: number;
+    introductionRatio: number;
+    mainRatio: number;
+    conclusionRatio: number;
+    updateSettings: (settings: Partial<{
+      totalDuration: number;
+      introductionRatio: number;
+      mainRatio: number;
+      conclusionRatio: number;
+    }>) => void;
+  };
+
+  // Events
+  events: {
+    onPhaseChange?: (phase: TimerPhase) => void;
+    onFinish?: () => void;
+    onEmergency?: (timeRemaining: number) => void;
+  };
 }

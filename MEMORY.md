@@ -28,11 +28,24 @@
 **Principle:** UI-state с пересечением факторов (variant/orientation/flags) выражай через таблицы (maps) и небольшие pure helpers; одновременно закрывай тестами “disabled/tooltip/aria-label” поведения.
 
 ### 2025-12-13 EditThoughtModal: разделять derived data и render
-**Problem:** `EditThoughtModal` имел высокую complexity из-за смешивания “подготовки данных” (outline points, фильтры) и рендера (теги с fallback-логикой, иконки, стили) в одном компоненте.
+**Problem:** `EditThoughtModal` имел высокую complexity из-за смешивания "подготовки данных" (outline points, фильтры) и рендера (теги с fallback-логикой, иконки, стили) в одном компоненте.
 **Attempts:** Сокращение условий внутри JSX редко даёт ощутимый эффект, если логика остаётся inline.
-**Solution:** Сначала добавить тесты на “containerSection отсутствует → показываем все секции” и “нет translationKey → canonical structure translations”, затем вынести derived-data helpers (`buildAllSermonPoints`, `getFilteredSermonPoints`, `getTagDisplayName`, `areStringArraysEqual`) и маленькие UI-компоненты (select/tags).
-**Why it worked:** Главный компонент стал orchestration’ом, а ветвления ушли в переиспользуемые функции; тесты страхуют поведение.
-**Principle:** Когда компонент одновременно “считает” и “рисует” — отделяй computation (pure functions) от UI (маленькие компоненты), и используй единый canonical источник (например, `normalizeStructureTag`) для всех fallback-правил.
+**Solution:** Сначала добавить тесты на "containerSection отсутствует → показываем все секции" и "нет translationKey → canonical structure translations", затем вынести derived-data helpers (`buildAllSermonPoints`, `getFilteredSermonPoints`, `getTagDisplayName`, `areStringArraysEqual`) и маленькие UI-компоненты (select/tags).
+**Why it worked:** Главный компонент стал orchestration'ом, а ветвления ушли в переиспользуемые функции; тесты страхуют поведение.
+**Principle:** Когда компонент одновременно "считает" и "рисует" — отделяй computation (pure functions) от UI (маленькие компоненты), и используй единый canonical источник (например, `normalizeStructureTag`) для всех fallback-правил.
+
+### 2025-12-13 Build Failure: Multiple TypeScript Issues Fixed
+**Problem:** `npm run build` failed with multiple TypeScript errors: missing `onTimerFinished` prop, unused `onSwitchToDurationSelector` prop, incorrect `logModalState` function calls, wrong `hasSectionHints` boolean logic, and conflicting TimerEvents type definitions.
+**Root Cause:** Recent refactoring introduced breaking changes without updating all dependent code. Multiple TimerProps.ts files existed with different interfaces.
+**Solution:**
+1. **Added onTimerFinished support:** Updated `usePreachingTimer` hook to accept events parameter with `onFinish` callback, implemented timer finish detection and callback invocation.
+2. **Fixed PreachingTimer component:** Added `onTimerFinished` prop to interface and passed events to hook.
+3. **Cleaned up unused code:** Removed `handleSwitchToDurationSelector` function and its usage.
+4. **Fixed logModalState calls:** Removed arguments from all calls since function was simplified to no-op.
+5. **Fixed boolean logic:** Changed `hasSectionHints` to use `Boolean()` wrapper for proper typing.
+6. **Resolved type conflicts:** Updated the correct TimerProps.ts file (`frontend/app/types/`) with proper event interfaces.
+**Why it worked:** Systematic investigation using git history identified the root cause (refactoring without updates), and step-by-step fixes addressed each TypeScript error.
+**Principle:** When build fails after refactoring, use git history to identify what changed, then systematically fix each error with proper type safety.
 
 ---
 

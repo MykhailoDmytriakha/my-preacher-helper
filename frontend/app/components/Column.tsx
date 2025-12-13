@@ -94,6 +94,7 @@ const SermonPointPlaceholder: React.FC<{
   isFocusMode?: boolean;
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
   sectionTitle?: string;
+  setAudioError: (error: string | null) => void;
 }> = ({
   point,
   items,
@@ -113,6 +114,7 @@ const SermonPointPlaceholder: React.FC<{
   isFocusMode,
   onAddThought,
   sectionTitle,
+  setAudioError,
 }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: `outline-point-${point.id}`,
@@ -604,6 +606,7 @@ export default function Column({
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
 
   // Log audio popover changes
@@ -1193,6 +1196,7 @@ export default function Column({
                       isFocusMode={isFocusMode}
                       onAddThought={onAddThought}
                       sectionTitle={title}
+                      setAudioError={setAudioError}
                     />
                   ))}
 
@@ -1491,6 +1495,7 @@ export default function Column({
                   isFocusMode={false}
                   onAddThought={onAddThought}
                   sectionTitle={title}
+                  setAudioError={setAudioError}
                 />
               ))}
 

@@ -17,7 +17,12 @@ import {
 } from '@/utils/visualEffects';
 
 export const usePreachingTimer = (
-  initialSettings?: Partial<TimerSettings>
+  initialSettings?: Partial<TimerSettings>,
+  events?: {
+    onFinish?: () => void;
+    onPhaseChange?: (phase: TimerPhase) => void;
+    onEmergency?: (timeRemaining: number) => void;
+  }
 ): UsePreachingTimerReturn => {
   // Merge default settings with provided settings
   const settings: TimerSettings = useMemo(() => ({
@@ -156,6 +161,9 @@ export const usePreachingTimer = (
             // Don't clear interval - let timer continue showing negative values
             // Trigger full screen blink
             triggerCompletionBlink();
+
+            // Call the finish event callback
+            events?.onFinish?.();
 
             return {
               ...prevState,
@@ -480,7 +488,7 @@ export const usePreachingTimer = (
     }
   },
 
-    // Events (placeholders for future implementation)
-    events: {}
+    // Events
+    events: events || {}
   };
 };

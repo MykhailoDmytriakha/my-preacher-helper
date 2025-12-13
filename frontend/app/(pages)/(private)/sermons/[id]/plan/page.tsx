@@ -1531,10 +1531,6 @@ export default function PlanPage() {
     setPreachingDuration(durationSeconds);
   }, []);
 
-  const handleSwitchToDurationSelector = useCallback(() => {
-    // No longer needed - kept for compatibility
-    // Timer now handles duration selection internally
-  }, []);
 
   const handleStartPreachingMode = useCallback(() => {
     // Start preaching mode - timer starts at 0:00 (idle state)
@@ -2098,7 +2094,6 @@ export default function PlanPage() {
                 // User can manually exit via "Exit Preaching Mode" button
               }}
               onSetDuration={handleSetTimerDuration}
-              onSwitchToDurationSelector={handleSwitchToDurationSelector}
             />
           </div>
 

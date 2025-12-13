@@ -45,6 +45,7 @@ interface AudioRecorderProps {
   onClearError?: () => void;
   variant?: "standard" | "mini"; // New prop for mini version
   autoStart?: boolean; // Auto-start recording on mount (useful for popovers)
+  hideKeyboardShortcuts?: boolean; // Hide keyboard shortcuts when true
 }
 
 export const AudioRecorder = ({
@@ -61,6 +62,7 @@ export const AudioRecorder = ({
   onClearError,
   variant = "standard", // Default to standard version
   autoStart = false,
+  hideKeyboardShortcuts = false,
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -480,11 +482,13 @@ export const AudioRecorder = ({
 
   // Keyboard shortcuts
   useEffect(() => {
+    if (hideKeyboardShortcuts) return; // Skip keyboard shortcuts when disabled
+
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return; // Don't trigger when typing in inputs
       }
-      
+
       if (e.code === 'Space' && e.ctrlKey) {
         e.preventDefault();
         if (isRecording) {
@@ -500,7 +504,7 @@ export const AudioRecorder = ({
 
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [isRecording, startRecording, stopRecording, cancelRecording]);
+  }, [isRecording, startRecording, stopRecording, cancelRecording, hideKeyboardShortcuts]);
 
   // Auto-start exactly once per mount (avoid auto-restarting after stop)
   useEffect(() => {
