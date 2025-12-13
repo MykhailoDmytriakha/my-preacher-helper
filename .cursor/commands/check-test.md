@@ -1,0 +1,7 @@
+- npm run lint and fix errors realted to changed files
+- ask user, if he would like to cover changes files with tests
+- add test coverage for changed files
+- npm run test - and fix failed tests, you have git history to help you
+- never make test as skip, think and retest with other approach
+- ask user, if he would like to run build
+- npm run build

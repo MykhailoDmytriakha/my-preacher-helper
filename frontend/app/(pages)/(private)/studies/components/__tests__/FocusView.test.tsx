@@ -40,6 +40,7 @@ describe('FocusView', () => {
     hasNext: true,
     onEdit: jest.fn(),
     onDelete: jest.fn(),
+    onAnalyze: jest.fn(),
   };
 
   beforeEach(() => {

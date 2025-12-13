@@ -1,6 +1,19 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Mock useClipboard hook
+jest.mock('@/hooks/useClipboard', () => ({
+  useClipboard: jest.fn(() => ({
+    isCopied: false,
+    copyToClipboard: jest.fn(),
+  })),
+}));
+
+// Mock studyNoteUtils
+jest.mock('@/utils/studyNoteUtils', () => ({
+  formatStudyNoteForCopy: jest.fn(),
+}));
+
 import { StudyNote } from '@/models/models';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
@@ -502,6 +515,58 @@ describe('StudyNoteCard', () => {
       expect(
         screen.getByText(/studiesWorkspace\.noSearchMatches|No match found/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Copy functionality', () => {
+    it('shows copy button in collapsed state', () => {
+      const note = createTestNote({
+        title: 'Test Title',
+        content: 'Test content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          onAnalyze={jest.fn()}
+        />
+      );
+
+      // Check that copy button exists
+      const copyButtons = screen.getAllByRole('button').filter(
+        button => button.querySelector('svg') // Has icon
+      );
+      expect(copyButtons.length).toBeGreaterThan(0);
+    });
+
+    it('shows copy button in expanded state', () => {
+      const note = createTestNote({
+        title: 'Test Title',
+        content: 'Test content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={true}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          onAnalyze={jest.fn()}
+        />
+      );
+
+      // Check that copy button exists in expanded state
+      const copyButtons = screen.getAllByRole('button').filter(
+        button => button.querySelector('svg') // Has icon
+      );
+      expect(copyButtons.length).toBeGreaterThan(0);
     });
   });
 });

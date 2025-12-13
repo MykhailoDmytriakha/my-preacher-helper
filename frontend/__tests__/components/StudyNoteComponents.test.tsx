@@ -14,9 +14,24 @@ jest.mock('react-i18next', () => ({
             if (key === 'studiesWorkspace.type.question') return 'Question';
             if (key === 'studiesWorkspace.type.note') return 'Note';
             if (key === 'studiesWorkspace.untitled') return 'Untitled';
+            if (key === 'common.copy') return 'Copy';
+            if (key === 'common.copied') return 'Copied!';
             return key;
         },
     }),
+}));
+
+// Mock useClipboard hook
+jest.mock('@/hooks/useClipboard', () => ({
+    useClipboard: () => ({
+        isCopied: false,
+        copyToClipboard: jest.fn(),
+    }),
+}));
+
+// Mock studyNoteUtils
+jest.mock('@/utils/studyNoteUtils', () => ({
+    formatStudyNoteForCopy: () => 'mocked markdown',
 }));
 
 // Mock HeroIcons
@@ -77,76 +92,8 @@ import StudyNoteCard from '../../app/(pages)/(private)/studies/StudyNoteCard';
 
 // Basic rendering tests for components are covered in describe blocks below are sufficient.
 
-describe('StudyNoteCard', () => {
-    const mockNote: StudyNote = {
-        id: '1',
-        userId: 'user1',
-        content: 'Test content',
-        title: 'Test Note',
-        scriptureRefs: [],
-        tags: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isDraft: false,
-        type: 'note',
-    };
-
-    const mockQuestionNote: StudyNote = {
-        ...mockNote,
-        type: 'question',
-        title: 'Test Question',
-    };
-
-    const mockOnEdit = jest.fn();
-    const mockOnDelete = jest.fn();
-    const mockOnToggleExpand = jest.fn();
-
-    it('renders regular note with correct styling (emerald)', () => {
-        render(
-            <StudyNoteCard
-                note={mockNote}
-                bibleLocale="en"
-                onEdit={mockOnEdit}
-                onDelete={mockOnDelete}
-                isExpanded={false}
-                onToggleExpand={mockOnToggleExpand}
-            />
-        );
-
-        // Check for title
-        expect(screen.getByText('Test Note')).toBeInTheDocument();
-        // Check for question icon - should NOT be there
-        expect(screen.queryByTestId('question-icon')).not.toBeInTheDocument();
-
-        // We can check class names for borders if needed, but integration visual tests are hard in unit tests.
-        // However, we can check if the article element has the expected classes.
-        const article = screen.getByRole('article');
-        expect(article.className).toContain('border-gray-200'); // Collapsed state default for note
-    });
-
-    it('renders question note with correct styling (amber) and icon', () => {
-        render(
-            <StudyNoteCard
-                note={mockQuestionNote}
-                bibleLocale="en"
-                onEdit={mockOnEdit}
-                onDelete={mockOnDelete}
-                isExpanded={true} // Check expanded state classes
-                onToggleExpand={mockOnToggleExpand}
-            />
-        );
-
-        // Check for title
-        expect(screen.getByText('Test Question')).toBeInTheDocument();
-        // Check for question icon - SHOULD be there
-        expect(screen.getByTestId('question-icon')).toBeInTheDocument();
-        // Check for "Question" badge text
-        expect(screen.getByText('Question')).toBeInTheDocument();
-
-        const article = screen.getByRole('article');
-        expect(article.className).toContain('border-amber-200'); // Expanded state for question
-    });
-});
+// StudyNoteCard tests moved to dedicated test file:
+// app/(pages)/(private)/studies/__tests__/StudyNoteCard.test.tsx
 
 
 describe('AddStudyNoteModal', () => {

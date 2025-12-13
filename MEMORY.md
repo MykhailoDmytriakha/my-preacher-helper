@@ -13,77 +13,42 @@
 - **Перед добавлением тестов — ищи существующие:** для `KnowledgeSection` тесты уже были в `frontend/__tests__/components/KnowledgeSection.test.tsx`; лучше расширять существующие сценарии, чем плодить новый файл в другом месте.
 - **FocusRecorderButton: tests-first + pending async coverage:** чтобы покрыть `initializing` state, мокай `getUserMedia` как pending Promise и явно resolve в тесте (иначе возможны open handles/flake). После этого выноси conditional render (progress/labels/buttons) в маленькие компоненты + state→style maps — это реально снижает cognitive complexity без изменения поведения.
 
-### 2025-12-13 Breadcrumbs: снизить complexity без регрессий
-**Problem:** `Breadcrumbs` имел sonarjs cognitive complexity > лимита из-за большого количества ветвлений внутри builder-логики.
-**Attempts:** Поверхностные перестановки `if/else` почти не помогают, если оставлять всю логику в одной callback-функции.
-**Solution:** Сначала расширить тесты на edge-cases (unknown сегменты, detail routes), затем вынести per-segment логику в чистые helpers (`shouldSkipRootSegment`, `buildSegmentCrumb`).
-**Why it worked:** Sonar считает branching внутри конкретной функции; перенос ветвлений в отдельные функции снижает score на месте, при этом тесты фиксируют поведение.
-**Principle:** Для “breadcrumb builders” держи основной цикл тонким: `parse → iterate → push(buildCrumb())`, а ветвления — в чистых helper’ах + тесты на маршруты/фолбэки.
-
-### 2025-12-13 ExportButtonsLayout: ветвления классов → maps/helpers
-**Problem:** `ExportButtonsLayout` упирался в лимит сложности из-за вложенных ternary для классов/tooltip/aria-label (orientation × preached × availability).
-**Attempts:** Локальная правка ternary часто только “перемещает” сложность, не снижая её.
-**Solution:** Сначала добавить тесты на доступность PDF и позиционирование tooltip (horizontal vs vertical), затем заменить ternary на `orientation → class` maps + маленькие функции `get*ClassName()` и константы для повторяющихся строк.
-**Why it worked:** Maps и функции превращают combinatorial UI-state в предсказуемые lookup’и; код в компоненте становится линейным.
-**Principle:** UI-state с пересечением факторов (variant/orientation/flags) выражай через таблицы (maps) и небольшие pure helpers; одновременно закрывай тестами “disabled/tooltip/aria-label” поведения.
-
-### 2025-12-13 EditThoughtModal: разделять derived data и render
-**Problem:** `EditThoughtModal` имел высокую complexity из-за смешивания "подготовки данных" (outline points, фильтры) и рендера (теги с fallback-логикой, иконки, стили) в одном компоненте.
-**Attempts:** Сокращение условий внутри JSX редко даёт ощутимый эффект, если логика остаётся inline.
-**Solution:** Сначала добавить тесты на "containerSection отсутствует → показываем все секции" и "нет translationKey → canonical structure translations", затем вынести derived-data helpers (`buildAllSermonPoints`, `getFilteredSermonPoints`, `getTagDisplayName`, `areStringArraysEqual`) и маленькие UI-компоненты (select/tags).
-**Why it worked:** Главный компонент стал orchestration'ом, а ветвления ушли в переиспользуемые функции; тесты страхуют поведение.
-**Principle:** Когда компонент одновременно "считает" и "рисует" — отделяй computation (pure functions) от UI (маленькие компоненты), и используй единый canonical источник (например, `normalizeStructureTag`) для всех fallback-правил.
-
-### 2025-12-13 Build Failure: Multiple TypeScript Issues Fixed
-**Problem:** `npm run build` failed with multiple TypeScript errors: missing `onTimerFinished` prop, unused `onSwitchToDurationSelector` prop, incorrect `logModalState` function calls, wrong `hasSectionHints` boolean logic, and conflicting TimerEvents type definitions.
-**Root Cause:** Recent refactoring introduced breaking changes without updating all dependent code. Multiple TimerProps.ts files existed with different interfaces.
-**Solution:**
-1. **Added onTimerFinished support:** Updated `usePreachingTimer` hook to accept events parameter with `onFinish` callback, implemented timer finish detection and callback invocation.
-2. **Fixed PreachingTimer component:** Added `onTimerFinished` prop to interface and passed events to hook.
-3. **Cleaned up unused code:** Removed `handleSwitchToDurationSelector` function and its usage.
-4. **Fixed logModalState calls:** Removed arguments from all calls since function was simplified to no-op.
-5. **Fixed boolean logic:** Changed `hasSectionHints` to use `Boolean()` wrapper for proper typing.
-6. **Resolved type conflicts:** Updated the correct TimerProps.ts file (`frontend/app/types/`) with proper event interfaces.
-**Why it worked:** Systematic investigation using git history identified the root cause (refactoring without updates), and step-by-step fixes addressed each TypeScript error.
-**Principle:** When build fails after refactoring, use git history to identify what changed, then systematically fix each error with proper type safety.
-
-### 2025-12-13 Infinite Re-render: Timer State Updates
-**Problem:** "Maximum update depth exceeded" error in PlanPage. `handleTimerStateChange` callback was called repeatedly by `PreachingTimer.useEffect`, causing infinite re-renders when updating `preachingTimerState`.
-**Root Cause:** `onTimerStateChange` callback was firing on every timer tick, and `setPreachingTimerState(timerState)` was updating state even when values hadn't changed, creating an infinite update loop.
-**Solution:** Modified `handleTimerStateChange` to compare incoming `timerState` with current state before updating. Only call `setPreachingTimerState` when values actually change (phase, progress, time, finished status).
-**Why it worked:** Prevents unnecessary state updates while preserving all timer functionality. The comparison ensures state only updates when timer values change, not on every timer tick.
-**Principle:** When useEffect calls parent callbacks that update state, always compare values before updating to prevent infinite re-render loops.
-
-### 2025-12-13 Null State Error: Initial State Handling
-**Problem:** "Cannot read properties of null (reading 'currentPhase')" error when `handleTimerStateChange` tried to access `prevState.currentPhase` but `prevState` was null (initial state).
-**Root Cause:** `preachingTimerState` is initialized as `null`, but the comparison logic assumed it would always be an object.
-**Solution:** Added null check in the state setter: `if (prevState === null) return timerState;` before attempting property access.
-**Why it worked:** Handles the initial state update correctly while preserving the comparison logic for subsequent updates.
-**Principle:** When using functional state updates with comparison logic, always handle the case where previous state might be the initial value (null/undefined).
-
-### 2025-12-13 Type Mismatch: Timer State Properties
-**Problem:** TypeScript error "Property 'timeRemaining' does not exist on type..." when comparing timer state properties in `handleTimerStateChange`.
-**Root Cause:** State type definition was missing `timeRemaining` and `isFinished` properties, and callback parameter type was incomplete.
-**Solution:** Updated both the state type definition and callback parameter type to include all timer properties being passed from PreachingTimer component.
-**Why it worked:** Ensured type consistency between what PreachingTimer passes and what PlanPage expects to receive and store.
-**Principle:** When implementing callbacks between components, ensure parameter types match exactly what the calling component provides.
-
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
 
-### Component Prop Cleanup Pattern (for next processing)
+### Component Prop Cleanup Pattern (COMPLETED)
 
 **Related lessons:** Timer components cleanup, unused variables batch
-**Common pattern:** When removing unused props, must update multiple locations
-**Emerging principle:** 
-- Update TypeScript interface
-- Update component destructuring  
-- Update all call sites
-- Run tests to catch missed usages
+**Common pattern:** When removing unused props, must update multiple locations systematically
+**Emerging principle:**
+- Update TypeScript interface first
+- Update component destructuring parameter
+- Update ALL call sites (grep search required)
+- Run tests immediately to catch missed usages
+- Check for unused imports after cleanup
 **Confidence:** High
+
+**✅ COMPLETED:** Pattern finalized and principle extracted → moved to Long-Term Memory
+
+### Browser API Testing Hierarchy Pattern
+
+**Related lessons:** 5 clipboard testing lessons (Clipboard Testing, Jest Mock Timing, React-i18next Interpolation, Fallback Testing, Test Organization)
+**Common pattern:** Browser APIs (clipboard, geolocation, media) require multi-level testing strategy
+**Emerging principle:**
+- **Hook-level:** Test isolated hook logic (success/failure/error paths)
+- **Utility-level:** Test pure functions (formatting, validation)
+- **Integration-level:** Test end-to-end scenarios (API calls + callbacks)
+- **Component-level:** Test UI presence/visibility only
+- **Framework constraints:** Accept Jest mock timing requirements over "clean code"
+- **Fallback testing:** Cover ALL combinations (success/failure × modern/fallback × callbacks)
+**Confidence:** High
+
+**✅ COMPLETED:** Pattern extracted from 5 lessons → moved to Long-Term Memory
+
+**✅ ALL PATTERNS COMPLETED:** Timer State Management pattern processed and moved to Long-Term Memory. ALL Short-Term processing complete.
 
 ---
 
@@ -157,6 +122,27 @@ JSDOM не реализует window.matchMedia, ResizeObserver. При тест
 **Modern Catch Blocks:**
 Catch block без параметров: `} catch {` вместо `} catch (_error) {`. Eliminates unused variable warnings.
 
+**Browser API Testing Hierarchy:**
+Для browser APIs (clipboard, geolocation, etc.) применяй иерархический подход: hook-level → utility-level → integration-level → component-level. Каждый уровень тестирует свою зону ответственности.
+
+**Jest Mock Timing Critical:**
+jest.mock() выполняется во время module loading phase — переменные для mock должны быть объявлены ДО jest.mock(). Framework constraints имеют приоритет над "красивым" кодом.
+
+**Framework-Specific Translation Mocks:**
+React-i18next интерполяция t('key', {params}) возвращает объект если перевод не найден. Создавай соответствующие моки: проверяй наличие интерполяционных параметров.
+
+**Fallback Testing Mandatory:**
+Для APIs с fallbacks (clipboard: modern API → execCommand) тестируй ВСЕ комбинации: success/failure × modern/fallback × callbacks.
+
+**Browser API Testing Hierarchy:**
+Для browser APIs (clipboard, geolocation, media) применяй иерархический подход: hook-level → utility-level → integration-level → component-level. Каждый уровень тестирует свою зону ответственности.
+
+**Component Prop Cleanup:**
+При удалении неиспользуемых props — ОБЯЗАТЕЛЬНО обновлять: TypeScript interface → component destructuring → ALL call sites → run tests. Проверять unused imports после cleanup.
+
+**Cognitive Complexity Reduction:**
+При sonarjs cognitive complexity > 20: React components — extract JSX blocks; State logic — extract derived data helpers; Class logic — replace nested ternary with maps. ВСЕГДА добавлять тесты на edge cases ПЕРЕД рефакторингом.
+
 **ESLint Fixes → Run Tests:**
 После ЛЮБЫХ ESLint исправлений — НЕМЕДЛЕННО запускать тесты. ESLint fixes могут ломать функциональность.
 
@@ -208,6 +194,9 @@ Sibling inputs (tags, references) ДОЛЖНЫ иметь идентичные i
 **StudyNote Creation:**
 Исключать server-only поля (id, createdAt, updatedAt) при создании объектов.
 
+**Timer State Management:**
+При работе с timer компонентами: обеспечивай type consistency в callbacks, сравнивай значения перед обновлением состояния, обрабатывай null initial state, используй git history для систематических фиксов.
+
 ### 🌍 Localization Principles
 
 **Multi-Locale Updates:**
@@ -230,12 +219,13 @@ Route params MUST be awaited: `Promise<{ id: string }>` and `await params`.
 
 ## 🔧 Session State — Текущая работа
 
-**Current task:** MEMORY.md processing — lessons consolidated
+**Current task:** MEMORY pipeline FULLY processed - обработаны ВСЕ 13 lessons от 2025-12-13, извлечены 4 новых принципа
 **Recent changes:**
-- Processed 30+ lessons from Inbox
-- Extracted principles to Long-Term Memory
-- Grouped related patterns
-- Cleaned up processed lessons
+- ✅ **PHASE 1:** Component Prop Cleanup, Browser API Testing, Cognitive Complexity (9 lessons → 3 принципа)
+- ✅ **PHASE 2:** Timer State Management pattern (4 lessons → 1 принцип)
+- ✅ **FINAL:** Inbox полностью очищен от 2025-12-13 уроков
+- ✅ **RESULT:** Long-Term Memory расширена на 4 принципа (testing, complexity, state management)
+- ✅ **STATUS:** Pipeline cycle complete - ready for new lessons
 
 **Open questions:** None currently
 

@@ -2,16 +2,20 @@
 
 import {
   BookmarkIcon,
+  CheckIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
   TrashIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
+import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import { BibleLocale } from '../bibleData';
@@ -59,6 +63,12 @@ export default function FocusView({
   const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+
+  // Clipboard functionality
+  const clipboardResult = useClipboard({
+    successDuration: 1500,
+  });
+  const { isCopied, copyToClipboard } = clipboardResult || { isCopied: false, copyToClipboard: () => {} };
 
   const isQuestion = note.type === 'question';
   const needsAnalysis =
@@ -111,6 +121,12 @@ export default function FocusView({
       handleClose();
     }
   }, [t, onDelete, note.id, handleClose]);
+
+  // Handle copying note data
+  const handleCopyNote = useCallback(async () => {
+    const markdownContent = formatStudyNoteForCopy(note, bibleLocale);
+    await copyToClipboard(markdownContent);
+  }, [note, bibleLocale, copyToClipboard]);
 
   // Memoize border class based on note type
   const panelBorderClass = useMemo(
@@ -246,6 +262,19 @@ export default function FocusView({
             >
               <PencilIcon className="h-3.5 w-3.5" />
               {t('common.edit')}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopyNote}
+              className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            >
+              {isCopied ? (
+                <CheckIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+              ) : (
+                <DocumentDuplicateIcon className="h-3.5 w-3.5" />
+              )}
+              {isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
             </button>
 
             {needsAnalysis && onAnalyze && (

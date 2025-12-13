@@ -2,6 +2,7 @@
 
 import {
   BookmarkIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   PencilIcon,
@@ -9,12 +10,15 @@ import {
   SparklesIcon,
   TagIcon,
   TrashIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
 import { extractSearchSnippets } from '@/utils/searchUtils';
+import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
@@ -118,6 +122,18 @@ export default function StudyNoteCard({
   onCardClick,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
+
+  // Clipboard functionality
+  const clipboardResult = useClipboard({
+    successDuration: 1500,
+  });
+  const { isCopied, copyToClipboard } = clipboardResult || { isCopied: false, copyToClipboard: () => {} };
+
+  // Handle copying note data
+  const handleCopyNote = async () => {
+    const markdownContent = formatStudyNoteForCopy(note, bibleLocale);
+    await copyToClipboard(markdownContent);
+  };
 
   // Format relative time
   const formatRelativeTime = (dateStr: string) => {
@@ -326,6 +342,21 @@ export default function StudyNoteCard({
                     {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyNote();
+                  }}
+                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
+                >
+                  {isCopied ? (
+                    <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <DocumentDuplicateIcon className="h-4 w-4" />
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {

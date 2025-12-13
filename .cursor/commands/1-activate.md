@@ -1,0 +1,4 @@
+- read .cursor/rules/agents.mdc
+- read MEMORY.md
+- write message that indicate that you personality and protocols active, and you are ready to think and act according to your personality and protocols.
+- no coding!!! 
