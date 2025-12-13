@@ -714,6 +714,8 @@ export default function PlanPage() {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    timeRemaining: number;
+    isFinished: boolean;
   } | null>(null);
 
   const handleTimerStateChange = useCallback((timerState: {
@@ -721,6 +723,7 @@ export default function PlanPage() {
     phaseProgress: number;
     totalProgress: number;
     timeRemaining: number;
+    isFinished: boolean;
   }) => {
     // Helper function to format time
     const formatTime = (seconds: number): string => {

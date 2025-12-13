@@ -61,6 +61,13 @@
 **Why it worked:** Handles the initial state update correctly while preserving the comparison logic for subsequent updates.
 **Principle:** When using functional state updates with comparison logic, always handle the case where previous state might be the initial value (null/undefined).
 
+### 2025-12-13 Type Mismatch: Timer State Properties
+**Problem:** TypeScript error "Property 'timeRemaining' does not exist on type..." when comparing timer state properties in `handleTimerStateChange`.
+**Root Cause:** State type definition was missing `timeRemaining` and `isFinished` properties, and callback parameter type was incomplete.
+**Solution:** Updated both the state type definition and callback parameter type to include all timer properties being passed from PreachingTimer component.
+**Why it worked:** Ensured type consistency between what PreachingTimer passes and what PlanPage expects to receive and store.
+**Principle:** When implementing callbacks between components, ensure parameter types match exactly what the calling component provides.
+
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
