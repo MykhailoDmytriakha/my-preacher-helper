@@ -771,7 +771,25 @@ export default function PlanPage() {
     // Consolidated log showing all phases progress and current timer time
     console.log(`[TIMER] Phase:${timerState.currentPhase} | Intro:${introProgress.toFixed(1)}% | Main:${mainProgress.toFixed(1)}% | Conclusion:${conclusionProgress.toFixed(1)}% | Time:${formatTime(timerState.timeRemaining)} | Total:${(totalProgress * 100).toFixed(1)}%`);
 
-    setPreachingTimerState(timerState);
+    // Only update state if values actually changed to prevent infinite re-renders
+    setPreachingTimerState(prevState => {
+      // If this is the first state update (prevState is null), always set the new state
+      if (prevState === null) {
+        return timerState;
+      }
+
+      // Compare values to prevent unnecessary updates
+      if (
+        prevState.currentPhase === timerState.currentPhase &&
+        prevState.phaseProgress === timerState.phaseProgress &&
+        prevState.totalProgress === timerState.totalProgress &&
+        prevState.timeRemaining === timerState.timeRemaining &&
+        prevState.isFinished === timerState.isFinished
+      ) {
+        return prevState; // No change, return previous state
+      }
+      return timerState; // Values changed, update state
+    });
   }, []);
 
   // Close section menu when clicking outside

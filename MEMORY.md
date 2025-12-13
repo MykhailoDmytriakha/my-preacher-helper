@@ -47,6 +47,20 @@
 **Why it worked:** Systematic investigation using git history identified the root cause (refactoring without updates), and step-by-step fixes addressed each TypeScript error.
 **Principle:** When build fails after refactoring, use git history to identify what changed, then systematically fix each error with proper type safety.
 
+### 2025-12-13 Infinite Re-render: Timer State Updates
+**Problem:** "Maximum update depth exceeded" error in PlanPage. `handleTimerStateChange` callback was called repeatedly by `PreachingTimer.useEffect`, causing infinite re-renders when updating `preachingTimerState`.
+**Root Cause:** `onTimerStateChange` callback was firing on every timer tick, and `setPreachingTimerState(timerState)` was updating state even when values hadn't changed, creating an infinite update loop.
+**Solution:** Modified `handleTimerStateChange` to compare incoming `timerState` with current state before updating. Only call `setPreachingTimerState` when values actually change (phase, progress, time, finished status).
+**Why it worked:** Prevents unnecessary state updates while preserving all timer functionality. The comparison ensures state only updates when timer values change, not on every timer tick.
+**Principle:** When useEffect calls parent callbacks that update state, always compare values before updating to prevent infinite re-render loops.
+
+### 2025-12-13 Null State Error: Initial State Handling
+**Problem:** "Cannot read properties of null (reading 'currentPhase')" error when `handleTimerStateChange` tried to access `prevState.currentPhase` but `prevState` was null (initial state).
+**Root Cause:** `preachingTimerState` is initialized as `null`, but the comparison logic assumed it would always be an object.
+**Solution:** Added null check in the state setter: `if (prevState === null) return timerState;` before attempting property access.
+**Why it worked:** Handles the initial state update correctly while preserving the comparison logic for subsequent updates.
+**Principle:** When using functional state updates with comparison logic, always handle the case where previous state might be the initial value (null/undefined).
+
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
