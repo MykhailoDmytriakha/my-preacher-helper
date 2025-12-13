@@ -264,11 +264,11 @@ const SermonPointPlaceholder: React.FC<{
               {isFocusMode && onAddThought && (
                 <button
                   onClick={() => onAddThought(containerId, point.id)}
-                  className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+                  className="w-[39px] h-[39px] rounded-full bg-gray-400 hover:bg-green-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center"
                   title={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                   aria-label={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                 >
-                  <PlusIcon className="h-4 w-4 text-white" />
+                  <PlusIcon className="h-[30px] w-[30px] text-white" />
                 </button>
               )}
               {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
