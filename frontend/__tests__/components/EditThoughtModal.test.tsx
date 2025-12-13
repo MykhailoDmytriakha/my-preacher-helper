@@ -223,6 +223,40 @@ describe('EditThoughtModal Component', () => {
     expect(options[2].value).toBe('intro2');
   });
 
+  test('shows all outline sections when containerSection is not specified', () => {
+    const props = { ...mockProps, containerSection: undefined };
+    render(<EditThoughtModal {...props} />);
+
+    const select = screen.getByRole('combobox');
+    const options = Array.from(select.querySelectorAll('option'));
+
+    // 1 placeholder + 2 intro + 2 main + 1 conclusion
+    expect(options.length).toBe(6);
+    expect(options[0].value).toBe('');
+    expect(options.map((o) => o.value)).toEqual(['', 'intro1', 'intro2', 'main1', 'main2', 'conclusion1']);
+  });
+
+  test('uses canonical structure translations when translationKey is missing', () => {
+    const allowedTagsWithoutKeys = [
+      { name: 'intro', color: '#FF6B6B' },
+      { name: 'main', color: '#1DD1A1' },
+      { name: 'conclusion', color: '#54A0FF' },
+    ];
+
+    const props = {
+      ...mockProps,
+      allowedTags: allowedTagsWithoutKeys,
+      initialTags: ['intro'],
+    };
+
+    render(<EditThoughtModal {...props} />);
+
+    // Should render translated structure tag names even without translationKey
+    expect(screen.getByText('Introduction')).toBeInTheDocument();
+    expect(screen.getByText('Main Part')).toBeInTheDocument();
+    expect(screen.getByText('Conclusion')).toBeInTheDocument();
+  });
+
   test('tag containers use overflow-x-hidden (no horizontal scrollbar)', () => {
     render(<EditThoughtModal {...mockProps} />);
     // Find the nearest container with role list or div wrapper
