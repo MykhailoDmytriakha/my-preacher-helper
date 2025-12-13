@@ -1393,6 +1393,14 @@
       "noneSelected": "Теги не вибрано",
       "done": "Готово"
     },
+    "focusMode": {
+      "title": "Режим фокусу",
+      "exitFocus": "Вийти з фокусу",
+      "noteOf": "{{current}} з {{total}}",
+      "prevNote": "Попередня нотатка",
+      "nextNote": "Наступна нотатка",
+      "keyboardHint": "Використовуйте ← → для навігації, ESC для виходу"
+    },
     "aiAnalyze": {
       "button": "AI Аналіз",
       "buttonShort": "AI",

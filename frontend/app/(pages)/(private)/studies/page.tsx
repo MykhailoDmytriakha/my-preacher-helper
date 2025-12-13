@@ -21,7 +21,9 @@ import { getTags } from '@/services/tag.service';
 
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
+import FocusView from './components/FocusView';
 import EditStudyNoteModal from './EditStudyNoteModal';
+import { useStudiesFocusMode } from './hooks/useStudiesFocusMode';
 import StudyNoteCard from './StudyNoteCard';
 import StudyNoteDrawer from './StudyNoteDrawer';
 
@@ -189,6 +191,19 @@ export default function StudiesPage() {
     () => filteredNotes.filter((note) => matchesSearchTokens(note)),
     [filteredNotes, matchesSearchTokens]
   );
+
+  // Focus mode for reading individual notes (must be after visibleNotes is defined)
+  const {
+    focusedNote,
+    focusedIndex,
+    totalCount: focusTotalCount,
+    enterFocus,
+    exitFocus,
+    goToNext,
+    goToPrev,
+    hasNext,
+    hasPrev,
+  } = useStudiesFocusMode({ visibleNotes });
 
   // Auto-expand all matching notes when searching
   // Auto-expand removed to allow Contextual Search Snippets to be visible in collapsed state.
@@ -560,11 +575,12 @@ export default function StudiesPage() {
               bibleLocale={bibleLocale}
               isExpanded={expandedNoteIds.has(note.id)}
               onToggleExpand={() => toggleNoteExpand(note.id)}
-              onEdit={(note) => setEditingNote(note)}
+              onEdit={(n) => setEditingNote(n)}
               onDelete={(noteId) => deleteNote(noteId)}
               onAnalyze={handleAnalyzeNote}
               isAnalyzing={analyzingNoteId === note.id}
               searchQuery={searchQuery}
+              onCardClick={() => enterFocus(note.id)}
             />
           ))}
         </div>
@@ -597,6 +613,32 @@ export default function StudiesPage() {
           onSave={handleUpdateNote}
           availableTags={tagOptions}
           bibleLocale={bibleLocale}
+        />
+      )}
+
+      {/* Focus Mode View */}
+      {focusedNote && (
+        <FocusView
+          note={focusedNote}
+          bibleLocale={bibleLocale}
+          currentIndex={focusedIndex}
+          totalCount={focusTotalCount}
+          onClose={exitFocus}
+          onPrev={goToPrev}
+          onNext={goToNext}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onEdit={(n) => {
+            exitFocus();
+            setEditingNote(n);
+          }}
+          onDelete={(noteId) => {
+            deleteNote(noteId);
+            exitFocus();
+          }}
+          onAnalyze={handleAnalyzeNote}
+          isAnalyzing={analyzingNoteId === focusedNote.id}
+          searchQuery={searchQuery}
         />
       )}
     </section>

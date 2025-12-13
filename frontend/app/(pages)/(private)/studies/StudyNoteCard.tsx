@@ -32,6 +32,8 @@ interface StudyNoteCardProps {
   onAnalyze?: (note: StudyNote) => void;
   isAnalyzing?: boolean;
   searchQuery?: string;
+  /** Called when user clicks the card body to open Focus Mode */
+  onCardClick?: () => void;
 }
 
 const SNIPPET_CONTAINER_CLASS = [
@@ -113,6 +115,7 @@ export default function StudyNoteCard({
   onAnalyze,
   isAnalyzing = false,
   searchQuery = '',
+  onCardClick,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
 
@@ -251,13 +254,24 @@ export default function StudyNoteCard({
         <div
           role="button"
           tabIndex={0}
-          onClick={onToggleExpand}
+          onClick={() => {
+            // If onCardClick is provided, use Focus Mode; otherwise toggle expand
+            if (onCardClick) {
+              onCardClick();
+            } else {
+              onToggleExpand();
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const target = e.target as HTMLElement | null;
             if (target?.closest('button')) return;
             e.preventDefault();
-            onToggleExpand();
+            if (onCardClick) {
+              onCardClick();
+            } else {
+              onToggleExpand();
+            }
           }}
           className="flex flex-1 items-start gap-3 text-left cursor-pointer"
           aria-expanded={isExpanded}

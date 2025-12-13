@@ -1393,6 +1393,14 @@
       "noneSelected": "No tags selected",
       "done": "Done"
     },
+    "focusMode": {
+      "title": "Focus Mode",
+      "exitFocus": "Exit focus",
+      "noteOf": "{{current}} of {{total}}",
+      "prevNote": "Previous note",
+      "nextNote": "Next note",
+      "keyboardHint": "Use ← → arrows to navigate, ESC to exit"
+    },
     "aiAnalyze": {
       "button": "AI Analyze",
       "buttonShort": "AI",
