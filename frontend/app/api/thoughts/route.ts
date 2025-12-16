@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
-import { createTranscription, generateThought } from '@clients/openAI.client';
+import { createTranscription } from '@clients/openAI.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -14,9 +14,7 @@ const ERROR_MESSAGES = {
   SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
 } as const;
 
-// Feature flag for structured output
-// Set to 'true' to use new structured output implementation
-const USE_STRUCTURED_OUTPUT = process.env.USE_STRUCTURED_OUTPUT === 'true';
+
 
 // POST api/thoughts
 export async function POST(request: Request) {
@@ -142,14 +140,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call generateThought using either structured output or legacy implementation
-    const generationResult = USE_STRUCTURED_OUTPUT
-      ? await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag })
-      : await generateThought(transcriptionText, sermon, availableTags, forceTag);
+    // Call generateThought using structured output implementation
+    const generationResult = await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag });
 
-    if (USE_STRUCTURED_OUTPUT) {
-      console.log("Thoughts route: Using STRUCTURED OUTPUT implementation");
-    }
+
 
     // Check if the generation was successful and meaning was preserved
     if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {

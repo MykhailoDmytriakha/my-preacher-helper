@@ -464,12 +464,16 @@ interface GenerateThoughtResult {
 }
 
 // Generate a single thought from audio transcription or text, with retry logic
+/**
+ * @deprecated Use generateThoughtStructured from @clients/thought.structured.ts instead
+ */
 export async function generateThought(
   content: string,
   sermon: Sermon,
   availableTags: string[] = [],
   forceTag?: string | null
 ): Promise<GenerateThoughtResult> {
+  console.warn("generateThought is deprecated. Use generateThoughtStructured instead.");
   const MAX_RETRIES = 3;
   let attempts = 0;
 

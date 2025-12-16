@@ -1,11 +1,11 @@
-import { generateThought } from '@/api/clients/openAI.client';
+import { generateThoughtStructured } from '@/api/clients/thought.structured';
 
-// Mock OpenAI client
-jest.mock('@/api/clients/openAI.client', () => ({
-  generateThought: jest.fn(),
+// Mock structured thought client
+jest.mock('@/api/clients/thought.structured', () => ({
+  generateThoughtStructured: jest.fn(),
 }));
 
-const mockGenerateThought = generateThought as jest.MockedFunction<typeof generateThought>;
+const mockGenerateThought = generateThoughtStructured as jest.MockedFunction<typeof generateThoughtStructured>;
 
 describe('Thought Processing - Dictated Speech Artifacts', () => {
   const mockSermon = {
@@ -36,7 +36,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
       expect(result.meaningSuccessfullyPreserved).toBe(true);
@@ -53,7 +53,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -71,7 +71,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -87,7 +87,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -105,7 +105,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -121,7 +121,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -139,7 +139,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -155,7 +155,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -173,7 +173,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -189,7 +189,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -207,7 +207,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -223,7 +223,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -241,7 +241,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -257,7 +257,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -275,7 +275,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -291,7 +291,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
@@ -307,7 +307,7 @@ describe('Thought Processing - Dictated Speech Artifacts', () => {
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought(dictatedText, mockSermon, availableTags);
+      const result = await generateThoughtStructured(dictatedText, mockSermon, availableTags);
 
       expect(result.formattedText).toBe(expectedFormatted);
     });
