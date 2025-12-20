@@ -63,6 +63,22 @@ export interface VerseWithRelevance {
   relevance: string;
 }
 
+export interface Church {
+  id: string;
+  name: string;
+  city?: string;
+}
+
+export interface PreachDate {
+  id: string;
+  date: string;                    // ISO date string (YYYY-MM-DD)
+  church: Church;                  // Required: church name and city
+  audience?: string;                // Optional: audience description
+  notes?: string;                  // Optional: notes about the preaching
+  outcome?: 'excellent' | 'good' | 'average' | 'poor'; // Optional: outcome rating
+  createdAt: string;                // ISO timestamp when date was added
+}
+
 export interface Sermon {
   id: string;
   title: string;
@@ -84,6 +100,8 @@ export interface Sermon {
   // Series integration
   seriesId?: string;              // Reference to series
   seriesPosition?: number;        // Order in series (1-indexed)
+
+  preachDates?: PreachDate[];      // Array of preach dates
 }
 
 export interface Preparation {

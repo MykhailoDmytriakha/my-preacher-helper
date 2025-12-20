@@ -3,7 +3,8 @@ import {
   Squares2X2Icon,
   RectangleStackIcon,
   UsersIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 
 import type { NavItemThemeKey } from '@/utils/themeColors';
@@ -54,6 +55,14 @@ export const primaryNavItems: PrimaryNavItem[] = [
     defaultLabel: 'Groups',
     icon: UsersIcon,
     matchers: [/^\/groups(\/|$)/]
+  },
+  {
+    key: 'calendar',
+    href: '/calendar',
+    labelKey: 'navigation.calendar',
+    defaultLabel: 'Calendar',
+    icon: CalendarDaysIcon,
+    matchers: [/^\/calendar(\/|$)/]
   },
   {
     key: 'settings',

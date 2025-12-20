@@ -14,7 +14,8 @@
     "sermonDetail": "Проповідь",
     "seriesDetail": "Серія",
     "groupDetail": "Група",
-    "studyDetail": "Дослідження"
+    "studyDetail": "Дослідження",
+    "calendar": "Календар"
   },
   "landing": {
     "title": "Preacher Helper, створений для проповідників",
@@ -237,7 +238,14 @@
     "allThoughts": "Всі думки",
     "noThoughts": "Немає думок для цієї проповіді",
     "deleteThoughtConfirm": "Ви впевнені, що хочете видалити цю думку?\n{{text}}",
-    "outline": "План проповіді",
+    "outline": {
+      "title": "План проповіді",
+      "thoughts": "Думок",
+      "thoughts_one": "Думка",
+      "thoughts_few": "Думки",
+      "thoughts_many": "Думок",
+      "thoughts_other": "Думок"
+    },
     "createOutline": "Створити план (черновик)",
     "viewOutline": "Переглянути план (черновик)",
     "createPlan": "Зібрати План за Пунктами",
@@ -682,6 +690,59 @@
     "setTime": "Встановити час",
     "setTimeAndStart": "Встановити час і розпочати",
     "totalDuration": "Загальна тривалість"
+  },
+  "calendar": {
+    "title": "Календар проповідей",
+    "monthView": "Місяць",
+    "weekView": "Тиждень",
+    "agendaView": "Список",
+    "addPreachDate": "Додати дату",
+    "editPreachDate": "Редагувати дату",
+    "deletePreachDate": "Видалити дату",
+    "deleteConfirm": "Ви впевнені, що хочете видалити цю дату проповіді?",
+    "church": "Церква",
+    "city": "Місто",
+    "date": "Дата",
+    "audience": "Аудиторія",
+    "notes": "Примітки",
+    "outcome": "Результат",
+    "missingDateWarning": "Цю проповідь позначено як виголошену, але відсутня інформація про дату",
+    "missingDateWarningTitle": "Старі дані проповідей",
+    "missingDateWarningDesc": "Деякі з ваших старих проповідей позначені як «проповідувані», але не мають конкретних дат і церков, призначених у новій системі календаря.",
+    "createdDate": "Створено: {{date}}",
+    "addDateNow": "Додати дату зараз",
+    "goToSermon": "Перейти до проповіді",
+    "noPreachDates": "Дати проповідей не записані",
+    "outcomes": {
+      "excellent": "Відмінно",
+      "good": "Добре",
+      "average": "Середньо",
+      "poor": "Погано"
+    },
+    "analytics": {
+      "title": "Аналітика",
+      "totalPreachings": "Всього проповідей",
+      "lastPreaching": "Остання проповідь",
+      "averagePreparation": "Сер. час підг.",
+      "avgPrepTime": "Сер. час підг.",
+      "mostActiveChurch": "Найактивніша церква",
+      "preachingsThisMonth": "Цього місяця",
+      "preachingsThisYear": "Цього року",
+      "churchStats": "Статистика по церквах",
+      "topicStats": "Статистика тем",
+      "topTopics": "Теми/Книги",
+      "timeStats": "Статистика часу",
+      "overview": "Огляд",
+      "uniqueChurches": "Унікальні церкви",
+      "topChurches": "Популярні церкви",
+      "busiestMonth": "Найактивніший місяць",
+      "monthlyActivity": "Активність по місяцях"
+    },
+    "churchAutocomplete": {
+      "placeholder": "Введіть назву церкви...",
+      "cityPlaceholder": "Введіть місто (опціонально)"
+    },
+    "noPreachDatesWarning": "Позначено як проповідане, але дати не додані"
   },
   "copy": {
     "title": "Копіювання вмісту",
@@ -1160,9 +1221,6 @@
       },
       "structure": {
         "title": "Структура"
-      },
-      "outline": {
-        "title": "План-Outline"
       },
       "plan": {
         "title": "План проповіді"

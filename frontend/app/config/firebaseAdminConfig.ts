@@ -1,5 +1,5 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin SDK
 function initAdmin() {
@@ -23,7 +23,7 @@ function initAdmin() {
       throw error;
     }
   }
-  
+
   return getApps()[0];
 }
 
@@ -31,4 +31,4 @@ function initAdmin() {
 const adminApp = initAdmin();
 const adminDb = getFirestore(adminApp);
 
-export { adminDb }; 
+export { adminDb, FieldValue };

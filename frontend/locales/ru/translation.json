@@ -14,7 +14,8 @@
     "sermonDetail": "Проповедь",
     "seriesDetail": "Серия",
     "groupDetail": "Группа",
-    "studyDetail": "Исследование"
+    "studyDetail": "Исследование",
+    "calendar": "Календарь"
   },
   "landing": {
     "title": "Preacher Helper, созданный для проповедников",
@@ -237,7 +238,14 @@
     "allThoughts": "Все мысли",
     "noThoughts": "Нет мыслей для этой проповеди",
     "deleteThoughtConfirm": "Вы уверены, что хотите удалить эту мысль?\n{{text}}",
-    "outline": "План проповеди",
+    "outline": {
+      "title": "План проповеди",
+      "thoughts": "Мыслей",
+      "thoughts_one": "Мысль",
+      "thoughts_few": "Мысли",
+      "thoughts_many": "Мыслей",
+      "thoughts_other": "Мыслей"
+    },
     "createOutline": "Создать черновик",
     "viewOutline": "Смотреть черновик",
     "createPlan": "Собрать по Пунктам",
@@ -682,6 +690,59 @@
     "setTime": "Установить время",
     "setTimeAndStart": "Установить время и начать",
     "totalDuration": "Общая длительность"
+  },
+  "calendar": {
+    "title": "Календарь проповедей",
+    "monthView": "Месяц",
+    "weekView": "Неделя",
+    "agendaView": "Список",
+    "addPreachDate": "Добавить дату",
+    "editPreachDate": "Редактировать дату",
+    "deletePreachDate": "Удалить дату",
+    "deleteConfirm": "Вы уверены, что хотите удалить эту дату проповеди?",
+    "church": "Церковь",
+    "city": "Город",
+    "date": "Дата",
+    "audience": "Аудитория",
+    "notes": "Заметки",
+    "outcome": "Результат",
+    "missingDateWarning": "Эта проповедь отмечена как прочитанная, но отсутствует информация о дате",
+    "missingDateWarningTitle": "Старые данные проповедей",
+    "missingDateWarningDesc": "Некоторые из ваших старых проповедей отмечены как «проповедано», но не имеют конкретных дат и церквей, назначенных в новой системе календаря.",
+    "createdDate": "Создано: {{date}}",
+    "addDateNow": "Добавить дату сейчас",
+    "goToSermon": "Перейти к проповеди",
+    "noPreachDates": "Даты проповедей не записаны",
+    "outcomes": {
+      "excellent": "Отлично",
+      "good": "Хорошо",
+      "average": "Средне",
+      "poor": "Плохо"
+    },
+    "analytics": {
+      "title": "Аналитика",
+      "totalPreachings": "Всего проповедей",
+      "lastPreaching": "Последняя проповедь",
+      "averagePreparation": "Ср. время подг.",
+      "avgPrepTime": "Ср. время подг.",
+      "mostActiveChurch": "Самая активная церковь",
+      "preachingsThisMonth": "В этом месяце",
+      "preachingsThisYear": "В этом году",
+      "churchStats": "Статистика по церквям",
+      "topicStats": "Статистика тем",
+      "topTopics": "Темы/Книги",
+      "timeStats": "Статистика времени",
+      "overview": "Обзор",
+      "uniqueChurches": "Уникальные церкви",
+      "topChurches": "Популярные церкви",
+      "busiestMonth": "Самый активный месяц",
+      "monthlyActivity": "Активность по месяцам"
+    },
+    "churchAutocomplete": {
+      "placeholder": "Введите название церкви...",
+      "cityPlaceholder": "Введите город (опционально)"
+    },
+    "noPreachDatesWarning": "Отмечено как проповеданное, но даты не добавлены"
   },
   "copy": {
     "title": "Копирование содержимого",
@@ -1160,9 +1221,6 @@
       },
       "structure": {
         "title": "Структура"
-      },
-      "outline": {
-        "title": "План-Outline"
       },
       "plan": {
         "title": "План проповеди"

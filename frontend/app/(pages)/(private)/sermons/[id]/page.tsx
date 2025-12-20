@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react"; // Impo
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
+import PreachDateList from "@/components/calendar/PreachDateList";
 import BrainstormModule from '@/components/sermon/BrainstormModule';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
@@ -93,11 +94,11 @@ export default function SermonPage() {
     result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
     return result;
   }, []);
-  
+
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
-  
+
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
@@ -112,12 +113,12 @@ export default function SermonPage() {
     }
     return 'classic';
   });
-  
+
   // Sync UI mode with URL params
   useEffect(() => {
     const mode = (modeParam === 'prep') ? 'prep' : 'classic';
     setUiMode(mode);
-    
+
     // Save to localStorage for persistence
     if (typeof window !== 'undefined') {
       localStorage.setItem(`sermon-${id}-mode`, mode);
@@ -200,7 +201,7 @@ export default function SermonPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  <ThoughtFilterControls 
+                  <ThoughtFilterControls
                     isOpen={isFilterOpen}
                     setIsOpen={setIsFilterOpen}
                     viewFilter={viewFilter}
@@ -240,8 +241,8 @@ export default function SermonPage() {
                 </motion.button>
               )}
             </AnimatePresence>
-            <AddThoughtManual 
-              sermonId={sermon!.id} 
+            <AddThoughtManual
+              sermonId={sermon!.id}
               onNewThought={handleNewManualThought}
               allowedTags={allowedTags}
               sermonOutline={sermon!.outline}
@@ -259,7 +260,7 @@ export default function SermonPage() {
               style={{ overflow: 'hidden' }}
               className="mb-4"
             >
-              <BrainstormModule 
+              <BrainstormModule
                 sermonId={sermon!.id}
                 currentSuggestion={brainstormSuggestion}
                 onSuggestionChange={setBrainstormSuggestion}
@@ -311,19 +312,19 @@ export default function SermonPage() {
               {tagFilters.map((tag: string) => {
                 const tagInfo = allowedTags.find(t => t.name === tag);
                 return (
-                  <span 
+                  <span
                     key={tag}
                     className="px-2 py-1 text-xs rounded-full"
-                    style={{ 
+                    style={{
                       backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
-                      color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
+                      color: tagInfo ? getContrastColor(tagInfo.color) : '#000000'
                     }}
                   >
                     {tag}
                   </span>
                 );
               })}
-              <button 
+              <button
                 onClick={resetFilters}
                 className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
               >
@@ -658,32 +659,32 @@ export default function SermonPage() {
       }, 50);
       return () => clearTimeout(timer);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prepStepParam, activeStepId]);
 
   // Use the custom hook for filtering logic
-  const { 
-    filteredThoughts, 
-    activeCount, 
-    viewFilter, 
-    setViewFilter, 
-    structureFilter, 
-    setStructureFilter, 
-    tagFilters, 
-    toggleTagFilter, 
-    resetFilters, 
-    sortOrder, 
-    setSortOrder, 
-    hasStructureTags 
+  const {
+    filteredThoughts,
+    activeCount,
+    viewFilter,
+    setViewFilter,
+    structureFilter,
+    setStructureFilter,
+    tagFilters,
+    toggleTagFilter,
+    resetFilters,
+    sortOrder,
+    setSortOrder,
+    hasStructureTags
   } = useThoughtFiltering({
     initialThoughts: sermon?.thoughts ?? [],
     sermonStructure: sermon?.structure, // Pass structure to hook
     sermonOutline: sermon?.outline // Also pass outline to refine ordering
   });
-  
+
   // Ref for the filter toggle button (passed to controls)
   const filterButtonRef = useRef<HTMLButtonElement>(null);
-  
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -709,16 +710,16 @@ export default function SermonPage() {
   // Calculate the number of thoughts for each outline point
   const calculateThoughtsPerSermonPoint = () => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return {};
-    
+
     const counts: Record<string, number> = {};
-    
+
     // Count thoughts for each outline point ID
     sermon.thoughts.forEach(thought => {
       if (thought.outlinePointId) {
         counts[thought.outlinePointId] = (counts[thought.outlinePointId] || 0) + 1;
       }
     });
-    
+
     return counts;
   };
 
@@ -731,21 +732,21 @@ export default function SermonPage() {
   );
   const isSpiritualDone = Boolean(prepDraft?.spiritual?.readAndPrayedConfirmed);
   const isExegeticalPlanDone = Boolean(
-    prepDraft?.exegeticalPlan && 
+    prepDraft?.exegeticalPlan &&
     prepDraft.exegeticalPlan.length > 0 &&
-    prepDraft.exegeticalPlan.some(node => 
-      (node.title || '').trim().length > 0 || 
+    prepDraft.exegeticalPlan.some(node =>
+      (node.title || '').trim().length > 0 ||
       (node.children && node.children.some(child => (child.title || '').trim().length > 0))
     ) &&
-    prepDraft?.authorIntent && 
+    prepDraft?.authorIntent &&
     prepDraft.authorIntent.trim().length > 0
   );
   const isMainIdeaDone = Boolean(
-    prepDraft?.mainIdea?.contextIdea && 
+    prepDraft?.mainIdea?.contextIdea &&
     prepDraft.mainIdea.contextIdea.trim().length > 0 &&
-    prepDraft?.mainIdea?.textIdea && 
+    prepDraft?.mainIdea?.textIdea &&
     prepDraft.mainIdea.textIdea.trim().length > 0 &&
-    prepDraft?.mainIdea?.argumentation && 
+    prepDraft?.mainIdea?.argumentation &&
     prepDraft.mainIdea.argumentation.trim().length > 0
   );
 
@@ -769,17 +770,17 @@ export default function SermonPage() {
   // Check for inconsistencies between tags and assigned plan points
   const checkForInconsistentThoughts = (): boolean => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return false;
-    
+
     // Section-tag mapping
     const sectionTagMapping: Record<string, string> = {
       'introduction': STRUCTURE_TAGS.INTRODUCTION,
       'main': STRUCTURE_TAGS.MAIN_BODY,
       'conclusion': STRUCTURE_TAGS.CONCLUSION
     };
-    
+
     // List of required tags to check
     const requiredTags = Object.values(sectionTagMapping);
-    
+
     // Check each thought
     return sermon.thoughts.some(thought => {
       // 1. Check for multiple required tags on one thought
@@ -787,13 +788,13 @@ export default function SermonPage() {
       if (usedRequiredTags.length > 1) {
         return true; // Inconsistency: multiple required tags
       }
-      
+
       // 2. Check for inconsistency between tag and assigned plan point
       if (!thought.outlinePointId) return false; // If no assigned plan point, no issue
-      
+
       // Determine the section of the plan point
       let outlinePointSection: string | undefined;
-      
+
       if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
         outlinePointSection = 'introduction';
       } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
@@ -801,26 +802,26 @@ export default function SermonPage() {
       } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
         outlinePointSection = 'conclusion';
       }
-      
+
       if (!outlinePointSection) return false; // If section not found, consider it consistent
-      
+
       // Get the expected tag for the current section
       const expectedTag = sectionTagMapping[outlinePointSection];
       if (!expectedTag) return false; // If unknown section, consider it consistent
-      
+
       // Check if the thought has the expected tag for the current section
       const hasExpectedTag = thought.tags.includes(expectedTag);
-      
+
       // Check if the thought has tags from other sections
       const hasOtherSectionTags = Object.values(sectionTagMapping)
         .filter(tag => tag !== expectedTag)
         .some(tag => thought.tags.includes(tag));
-      
+
       // Inconsistency if no expected tag or other section tags present
       return !(!hasOtherSectionTags || hasExpectedTag);
     });
   };
-  
+
   // Check for inconsistencies
   const hasInconsistentThoughts = checkForInconsistentThoughts();
 
@@ -845,7 +846,7 @@ export default function SermonPage() {
       if (!prevSermon) return null;
       return {
         ...prevSermon,
-        thoughts: prevSermon.thoughts.map(t => 
+        thoughts: prevSermon.thoughts.map(t =>
           t.id === updatedThought.id ? updatedThought : t
         ),
       };
@@ -898,7 +899,7 @@ export default function SermonPage() {
     setStoredAudioBlob(audioBlob);
     setTranscriptionError(null);
     setRetryCount(0);
-    
+
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
       const newThought: Thought = { ...thoughtResponse };
@@ -907,14 +908,14 @@ export default function SermonPage() {
           ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
           : prevSermon
       );
-      
+
       // Clear stored audio on success
       setStoredAudioBlob(null);
       setTranscriptionError(null);
     } catch (error) {
       console.error("handleNewRecording: Recording error:", error);
       setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
-      
+
       // Don't show alert here - let the AudioRecorder component handle the UI
     } finally {
       setIsProcessing(false);
@@ -923,12 +924,12 @@ export default function SermonPage() {
 
   const handleRetryTranscription = async () => {
     if (!storedAudioBlob) return;
-    
+
     setIsProcessing(true);
     const newRetryCount = retryCount + 1;
     setRetryCount(newRetryCount);
     setTranscriptionError(null);
-    
+
     try {
       const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
       const newThought: Thought = { ...thoughtResponse };
@@ -937,7 +938,7 @@ export default function SermonPage() {
           ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
           : prevSermon
       );
-      
+
       // Clear stored audio on success
       setStoredAudioBlob(null);
       setTranscriptionError(null);
@@ -963,7 +964,7 @@ export default function SermonPage() {
       alert(t('errors.thoughtDeleteError'));
       return;
     }
-    
+
     const confirmed = window.confirm(t('sermon.deleteThoughtConfirm', { text: thoughtToDelete.text }));
     if (!confirmed) return;
     try {
@@ -989,11 +990,11 @@ export default function SermonPage() {
       setEditingModalData(null);
       return;
     }
-    
+
     const thoughtToUpdate = sermon.thoughts[thoughtIndex];
-    const updatedThoughtData = { 
-      ...thoughtToUpdate, 
-      text: updatedText.trim(), 
+    const updatedThoughtData = {
+      ...thoughtToUpdate,
+      text: updatedText.trim(),
       tags: updatedTags,
       outlinePointId
     };
@@ -1026,32 +1027,32 @@ export default function SermonPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
-        <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
-        {/* Mobile-first placement of ThoughtsBySection section between header and audio */}
-        <div className="lg:hidden">
-          <StructureStats 
-            sermon={sermon!} 
-            tagCounts={tagCounts} 
-            totalThoughts={totalThoughts} 
-            hasInconsistentThoughts={hasInconsistentThoughts} 
-          />
-        </div>
-        
-        {/* Single persistent recorder with smooth height transition */}
-        <AutoHeight>
-          <AudioRecorder 
-            onRecordingComplete={handleNewRecording} 
-            isProcessing={isProcessing}
-            onRetry={handleRetryTranscription}
-            retryCount={retryCount}
-            maxRetries={3}
-            transcriptionError={transcriptionError}
-            onClearError={handleClearError}
-            hideKeyboardShortcuts={uiMode === 'prep'}
-          />
-        </AutoHeight>
+      <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
+      {/* Mobile-first placement of ThoughtsBySection section between header and audio */}
+      <div className="lg:hidden">
+        <StructureStats
+          sermon={sermon!}
+          tagCounts={tagCounts}
+          totalThoughts={totalThoughts}
+          hasInconsistentThoughts={hasInconsistentThoughts}
+        />
+      </div>
 
-        {false && (
+      {/* Single persistent recorder with smooth height transition */}
+      <AutoHeight>
+        <AudioRecorder
+          onRecordingComplete={handleNewRecording}
+          isProcessing={isProcessing}
+          onRetry={handleRetryTranscription}
+          retryCount={retryCount}
+          maxRetries={3}
+          transcriptionError={transcriptionError}
+          onClearError={handleClearError}
+          hideKeyboardShortcuts={uiMode === 'prep'}
+        />
+      </AutoHeight>
+
+      {false && (
         <motion.div
           className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 ${uiMode === 'prep' ? 'prep-mode' : ''}`}
         >
@@ -1070,8 +1071,8 @@ export default function SermonPage() {
                     className="space-y-4 sm:space-y-6"
                   >
                     <section>
-                      <AudioRecorder 
-                        onRecordingComplete={handleNewRecording} 
+                      <AudioRecorder
+                        onRecordingComplete={handleNewRecording}
                         isProcessing={isProcessing}
                         onRetry={handleRetryTranscription}
                         retryCount={retryCount}
@@ -1105,7 +1106,7 @@ export default function SermonPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                               </svg>
                             </button>
-                            <ThoughtFilterControls 
+                            <ThoughtFilterControls
                               isOpen={isFilterOpen}
                               setIsOpen={setIsFilterOpen}
                               viewFilter={viewFilter}
@@ -1123,8 +1124,8 @@ export default function SermonPage() {
                             />
                           </div>
                         </div>
-                        <AddThoughtManual 
-                          sermonId={sermon!.id} 
+                        <AddThoughtManual
+                          sermonId={sermon!.id}
                           onNewThought={handleNewManualThought}
                           allowedTags={allowedTags}
                           sermonOutline={sermon!.outline}
@@ -1154,19 +1155,19 @@ export default function SermonPage() {
                             {tagFilters.map((tag: string) => {
                               const tagInfo = allowedTags.find(t => t.name === tag);
                               return (
-                                <span 
+                                <span
                                   key={tag}
                                   className="px-2 py-1 text-xs rounded-full"
-                                  style={{ 
+                                  style={{
                                     backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
-                                    color: tagInfo ? getContrastColor(tagInfo.color) : '#000000' 
+                                    color: tagInfo ? getContrastColor(tagInfo.color) : '#000000'
                                   }}
                                 >
                                   {tag}
                                 </span>
                               );
                             })}
-                            <button 
+                            <button
                               onClick={resetFilters}
                               className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
                             >
@@ -1301,12 +1302,12 @@ export default function SermonPage() {
                         await savePreparation(next);
                       }}
                       saving={savingPrep}
-                       authorIntent={prepDraft?.authorIntent || ''}
-                       onSaveAuthorIntent={async (text: string) => {
-                         const next: Preparation = { ...(prepDraft || {}), authorIntent: text };
-                         setPrepDraft(next);
-                         await savePreparation(next);
-                       }}
+                      authorIntent={prepDraft?.authorIntent || ''}
+                      onSaveAuthorIntent={async (text: string) => {
+                        const next: Preparation = { ...(prepDraft || {}), authorIntent: text };
+                        setPrepDraft(next);
+                        await savePreparation(next);
+                      }}
                     />
                   </PrepStepCard>
 
@@ -1519,17 +1520,18 @@ export default function SermonPage() {
                 >
                   {/* Hide duplicate ThoughtsBySection section on mobile, show on lg+ */}
                   <div className="hidden lg:block">
-                    <StructureStats 
-                      sermon={sermon!} 
-                      tagCounts={tagCounts} 
-                      totalThoughts={totalThoughts} 
-                      hasInconsistentThoughts={hasInconsistentThoughts} 
+                    <StructureStats
+                      sermon={sermon!}
+                      tagCounts={tagCounts}
+                      totalThoughts={totalThoughts}
+                      hasInconsistentThoughts={hasInconsistentThoughts}
                     />
                   </div>
-                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
-                  <SermonOutline 
-                    sermon={sermon!} 
-                    thoughtsPerSermonPoint={thoughtsPerSermonPoint} 
+                  <PreachDateList sermonId={sermon!.id} />
+                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
+                  <SermonOutline
+                    sermon={sermon!}
+                    thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                     onOutlineUpdate={handleOutlineUpdate}
                   />
                   {sermon!.structure && <StructurePreview sermon={sermon!} />}
@@ -1549,56 +1551,56 @@ export default function SermonPage() {
             </AnimatePresence>
           </MotionConfig>
         </motion.div>
-        )}
+      )}
 
-        {/* Slider container that moves viewport left/right */}
-        <div className="relative overflow-hidden">
-          <motion.div
-            className="flex"
-            initial={false}
-            animate={{ x: uiMode === 'prep' ? '0%' : '-50%' }}
-            transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
-            style={{ width: '200%', willChange: 'transform' }}
-          >
-            {/* Slide 1: Preparation layout (left) */}
-            <div className="basis-1/2 shrink-0">
-              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
-                <div className="lg:col-span-2">
-                  {renderPrepContent()}
-                </div>
-                <div className="space-y-6">
-                  {renderClassicContent({ withBrainstorm: false })}
-                </div>
+      {/* Slider container that moves viewport left/right */}
+      <div className="relative overflow-hidden">
+        <motion.div
+          className="flex"
+          initial={false}
+          animate={{ x: uiMode === 'prep' ? '0%' : '-50%' }}
+          transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
+          style={{ width: '200%', willChange: 'transform' }}
+        >
+          {/* Slide 1: Preparation layout (left) */}
+          <div className="basis-1/2 shrink-0">
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
+              <div className="lg:col-span-2">
+                {renderPrepContent()}
+              </div>
+              <div className="space-y-6">
+                {renderClassicContent({ withBrainstorm: false })}
               </div>
             </div>
+          </div>
 
-            {/* Slide 2: Classic layout (right) */}
-            <div className="basis-1/2 shrink-0">
-              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
-                <div className="lg:col-span-2">
-                  {renderClassicContent()}
-                </div>
-                <div className="space-y-6">
-                  <div className="hidden lg:block">
-                    <StructureStats 
-                      sermon={sermon!} 
-                      tagCounts={tagCounts} 
-                      totalThoughts={totalThoughts} 
-                      hasInconsistentThoughts={hasInconsistentThoughts} 
-                    />
-                  </div>
-                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate}/>
-                  <SermonOutline 
-                    sermon={sermon!} 
-                    thoughtsPerSermonPoint={thoughtsPerSermonPoint} 
-                    onOutlineUpdate={handleOutlineUpdate}
+          {/* Slide 2: Classic layout (right) */}
+          <div className="basis-1/2 shrink-0">
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
+              <div className="lg:col-span-2">
+                {renderClassicContent()}
+              </div>
+              <div className="space-y-6">
+                <div className="hidden lg:block">
+                  <StructureStats
+                    sermon={sermon!}
+                    tagCounts={tagCounts}
+                    totalThoughts={totalThoughts}
+                    hasInconsistentThoughts={hasInconsistentThoughts}
                   />
-                  {sermon!.structure && <StructurePreview sermon={sermon!} />}
                 </div>
+                <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
+                <SermonOutline
+                  sermon={sermon!}
+                  thoughtsPerSermonPoint={thoughtsPerSermonPoint}
+                  onOutlineUpdate={handleOutlineUpdate}
+                />
+                {sermon!.structure && <StructurePreview sermon={sermon!} />}
               </div>
             </div>
-          </motion.div>
-        </div>
+          </div>
+        </motion.div>
+      </div>
       {editingModalData && (
         <EditThoughtModal
           initialText={editingModalData.thought.text}

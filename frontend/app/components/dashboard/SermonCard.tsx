@@ -1,6 +1,6 @@
 "use client";
 
-import { List, MessageSquareText, CheckCircle2, Calendar } from "lucide-react";
+import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
@@ -43,10 +43,10 @@ export default function SermonCard({
 
   const formattedDate = formatDate(sermon.date);
   const thoughtCount = sermon.thoughts?.length || 0;
-  const hasOutline = sermon.outline?.introduction?.length || 
-                     sermon.outline?.main?.length || 
-                     sermon.outline?.conclusion?.length;
-  
+  const hasOutline = sermon.outline?.introduction?.length ||
+    sermon.outline?.main?.length ||
+    sermon.outline?.conclusion?.length;
+
   // Find series for this sermon
   const sermonSeries = (() => {
     if (sermon.seriesId && sermon.seriesId.trim()) {
@@ -63,7 +63,7 @@ export default function SermonCard({
     border border-gray-200 dark:border-gray-700
     h-full relative overflow-hidden
   `;
-  
+
   return (
     <div className={cardClasses} data-testid={`sermon-card-${sermon.id}`}>
       {/* Selection Overlay/Checkbox */}
@@ -84,15 +84,14 @@ export default function SermonCard({
         <div className="p-5 flex flex-col flex-grow relative">
           {/* Header: Date & Menu */}
           <div className="flex items-start justify-between mb-2">
-             <div className={`flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${
-               sermon.isPreached 
+            <div className={`flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${sermon.isPreached
                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                 : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-             }`}>
+              }`}>
               <Calendar className="w-3 h-3 mr-1.5" />
               {formattedDate}
             </div>
-            
+
             <div className="z-20 -mr-2 -mt-1">
               <OptionMenu
                 sermon={sermon}
@@ -104,11 +103,10 @@ export default function SermonCard({
 
           {/* Title */}
           <Link href={`/sermons/${sermon.id}`} className="group/title block mb-2">
-            <h3 className={`text-lg font-bold leading-tight transition-colors ${
-              sermon.isPreached
+            <h3 className={`text-lg font-bold leading-tight transition-colors ${sermon.isPreached
                 ? 'text-gray-800 dark:text-gray-100 group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
                 : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
-            }`}>
+              }`}>
               <HighlightedText text={sermon.title} searchQuery={searchQuery} />
             </h3>
           </Link>
@@ -165,8 +163,8 @@ export default function SermonCard({
 
           {/* Badges & Metadata */}
           <div className="flex flex-wrap items-center gap-2 mt-auto text-xs">
-             {/* Series Badge */}
-             {sermonSeries && (
+            {/* Series Badge */}
+            {sermonSeries && (
               <Link
                 href={`/series/${sermonSeries.id}`}
                 className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px]"
@@ -194,12 +192,20 @@ export default function SermonCard({
                 <span>{t('dashboard.hasOutline')}</span>
               </div>
             )}
-            
+
             {/* Preached Status (Icon only) */}
             {sermon.isPreached && (
-               <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t('dashboard.preached')}>
+              <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t('dashboard.preached')}>
                 <CheckCircle2 className="w-3 h-3 mr-1.5" />
                 <span>{t('dashboard.preached')}</span>
+              </div>
+            )}
+
+            {/* Missing Preach Dates Warning */}
+            {sermon.isPreached && (!sermon.preachDates || sermon.preachDates.length === 0) && (
+              <div className="flex items-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 animate-pulse" title={t('calendar.noPreachDatesWarning')}>
+                <AlertCircle className="w-3 h-3 mr-1.5" />
+                <span>{t('calendar.noPreachDatesWarning')}</span>
               </div>
             )}
           </div>
@@ -210,7 +216,7 @@ export default function SermonCard({
           <div className="flex-grow">
             <QuickPlanAccessButton sermon={sermon} t={t} isPreached={sermon.isPreached} />
           </div>
-          
+
           <div className="flex-shrink-0 border-l border-gray-200 dark:border-gray-700 pl-3">
             <ExportButtons
               sermonId={sermon.id}

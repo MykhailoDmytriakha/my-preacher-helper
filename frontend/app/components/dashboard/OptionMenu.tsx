@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Sermon } from "@/models/models";
+import { Sermon, PreachDate } from "@/models/models";
 import EditSermonModal from "@components/EditSermonModal";
+import PreachDateModal from "@components/calendar/PreachDateModal";
 import { DotsVerticalIcon } from "@components/Icons";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
+import * as preachDatesService from "@services/preachDates.service";
 
 import "@locales/i18n";
 
@@ -21,6 +23,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPreachModal, setShowPreachModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -83,10 +86,19 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const handleTogglePreached = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // If marking as preached, open the modal
+    if (!sermon.isPreached) {
+      setShowPreachModal(true);
+      setOpen(false);
+      return;
+    }
+
+    // Otherwise (unmarking), just toggle the boolean
     try {
-      const updated = await updateSermon({ 
-        ...sermon, 
-        isPreached: !sermon.isPreached 
+      const updated = await updateSermon({
+        ...sermon,
+        isPreached: false
       });
       if (updated && onUpdate) {
         onUpdate(updated);
@@ -98,6 +110,32 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
       alert(t('optionMenu.updateError'));
     }
     setOpen(false);
+  };
+
+  const handleSavePreachDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
+    try {
+      // 1. Add the preach date
+      await preachDatesService.addPreachDate(sermon.id, data);
+
+      // 2. Mark as preached (if not already, although it should be true now)
+      // Actually, the server might already handle setting isPreached: true when a date is added.
+      // Let's be explicit to be safe.
+      const updated = await updateSermon({
+        ...sermon,
+        isPreached: true
+      });
+
+      if (updated && onUpdate) {
+        onUpdate(updated);
+      } else if (!onUpdate) {
+        router.refresh();
+      }
+
+      setShowPreachModal(false);
+    } catch (err) {
+      console.error("Failed to save preach date:", err);
+      throw err;
+    }
   };
 
   return (
@@ -126,8 +164,8 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               role="menuitem"
             >
               <span>
-                {sermon.isPreached 
-                  ? t('optionMenu.markAsNotPreached') 
+                {sermon.isPreached
+                  ? t('optionMenu.markAsNotPreached')
                   : t('optionMenu.markAsPreached')}
               </span>
             </button>
@@ -149,6 +187,12 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
           onUpdate={handleUpdateSermon}
         />
       )}
+
+      <PreachDateModal
+        isOpen={showPreachModal}
+        onClose={() => setShowPreachModal(false)}
+        onSave={handleSavePreachDate}
+      />
     </div>
   );
 }

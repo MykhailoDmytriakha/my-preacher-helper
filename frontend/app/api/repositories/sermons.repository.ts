@@ -1,5 +1,5 @@
-import { adminDb } from '@/config/firebaseAdminConfig';
-import { Sermon, SermonOutline, SermonDraft, SermonPoint } from '@/models/models';
+import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
+import { Sermon, SermonOutline, SermonDraft, SermonPoint, PreachDate } from '@/models/models';
 
 // Error message constants
 const ERROR_MESSAGES = {
@@ -227,6 +227,136 @@ export class SermonsRepository {
       console.log(`Sermon series info updated for sermon id ${sermonId}`);
     } catch (error) {
       console.error(`Error updating sermon series info for sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
+
+  async addPreachDate(sermonId: string, preachDate: Omit<PreachDate, 'id' | 'createdAt'>): Promise<PreachDate> {
+    console.log(`Firestore: adding preach date to sermon ${sermonId}`);
+    try {
+      const docRef = adminDb.collection(this.collection).doc(sermonId);
+      const newPreachDate: PreachDate = {
+        ...preachDate,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString()
+      };
+
+      await docRef.update({
+        preachDates: FieldValue.arrayUnion(newPreachDate) as any
+      });
+
+      console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);
+      return newPreachDate;
+    } catch (error) {
+      console.error(`Error adding preach date to sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
+
+  async updatePreachDate(sermonId: string, dateId: string, updates: Partial<PreachDate>): Promise<PreachDate> {
+    console.log(`Firestore: updating preach date ${dateId} for sermon ${sermonId}`);
+    try {
+      const docRef = adminDb.collection(this.collection).doc(sermonId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+      }
+
+      const sermon = docSnap.data() as Sermon;
+      const preachDates = sermon.preachDates || [];
+      const index = preachDates.findIndex(pd => pd.id === dateId);
+
+      if (index === -1) {
+        throw new Error("Preach date not found");
+      }
+
+      const updatedPreachDate: PreachDate = {
+        ...preachDates[index],
+        ...updates,
+        id: preachDates[index].id, // Ensure ID and createdAt are not changed
+        createdAt: preachDates[index].createdAt
+      };
+
+      const updatedArray = [...preachDates];
+      updatedArray[index] = updatedPreachDate;
+
+      await docRef.update({ preachDates: updatedArray });
+      console.log(`Firestore: updated preach date ${dateId} for sermon ${sermonId}`);
+      return updatedPreachDate;
+    } catch (error) {
+      console.error(`Error updating preach date ${dateId} for sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
+
+  async deletePreachDate(sermonId: string, dateId: string): Promise<void> {
+    console.log(`Firestore: deleting preach date ${dateId} from sermon ${sermonId}`);
+    try {
+      const docRef = adminDb.collection(this.collection).doc(sermonId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+      }
+
+      const sermon = docSnap.data() as Sermon;
+      const preachDates = sermon.preachDates || [];
+      const updatedArray = preachDates.filter(pd => pd.id !== dateId);
+
+      await docRef.update({ preachDates: updatedArray });
+      console.log(`Firestore: deleted preach date ${dateId} from sermon ${sermonId}`);
+    } catch (error) {
+      console.error(`Error deleting preach date ${dateId} from sermon ${sermonId}:`, error);
+      throw error;
+    }
+  }
+
+  async fetchSermonsWithPreachDates(userId: string, startDate?: string, endDate?: string): Promise<Sermon[]> {
+    console.log(`Firestore: fetching sermons with preach dates for user ${userId}`);
+    try {
+      let query = adminDb.collection(this.collection).where("userId", "==", userId);
+
+      const snapshot = await query.get();
+      let sermons: Sermon[] = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Sermon[];
+
+      // Hydrate structure and draft for all fetched sermons
+      sermons = sermons.map(s => {
+        const hydrated: Sermon = { ...s };
+        const hydratedStructure = s.thoughtsBySection || s.structure;
+        if (hydratedStructure) {
+          hydrated.thoughtsBySection = hydratedStructure;
+          hydrated.structure = s.structure || hydratedStructure;
+        }
+        const hydratedDraft = s.draft || s.plan;
+        if (hydratedDraft) {
+          hydrated.draft = hydratedDraft;
+          hydrated.plan = s.plan || hydratedDraft;
+        }
+        return hydrated;
+      });
+
+      // Simple filtering in memory for now because Firestore array filtering is limited
+      // and we expect small number of sermons per user
+      if (startDate || endDate) {
+        sermons = sermons.filter(s => {
+          if (!s.preachDates?.length) return false;
+          return s.preachDates.some(pd => {
+            const date = pd.date; // YYYY-MM-DD
+            if (startDate && date < startDate) return false;
+            if (endDate && date > endDate) return false;
+            return true;
+          });
+        });
+      }
+
+      console.log(`Firestore: fetched ${sermons.length} sermons for user ${userId}`);
+      return sermons;
+    } catch (error) {
+      console.error(`Error fetching sermons for user ${userId}:`, error);
       throw error;
     }
   }
