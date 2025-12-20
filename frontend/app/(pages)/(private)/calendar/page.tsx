@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { useCalendarSermons } from "@/hooks/useCalendarSermons";
+import { useSeries } from "@/hooks/useSeries";
+import { useAuth } from "@/providers/AuthProvider";
 import CalendarHeader from "@/components/calendar/CalendarHeader";
 import PreachCalendar from "@/components/calendar/PreachCalendar";
 import DateEventList from "@/components/calendar/DateEventList";
@@ -12,11 +14,12 @@ import AnalyticsSection from "@/components/calendar/AnalyticsSection";
 import LegacyDataWarning from "@/components/calendar/LegacyDataWarning";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import PreachDateModal from "@/components/calendar/PreachDateModal";
-import { Sermon, PreachDate } from "@/models/models";
+import { Sermon, PreachDate, Series } from "@/models/models";
 import * as preachDatesService from "@/services/preachDates.service";
 
 export default function CalendarPage() {
     const { t } = useTranslation();
+    const { user } = useAuth();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
     const [view, setView] = useState<'month' | 'agenda' | 'analytics'>('month');
@@ -26,6 +29,9 @@ export default function CalendarPage() {
     // We fetch a wide range for the calendar, or just let the hook handle it
     // For now, let's fetch everything the hook provides
     const { sermons, sermonsByDate, pendingSermons, isLoading, error, refetch } = useCalendarSermons();
+
+    // Fetch series data for series color indicators
+    const { series: allSeries } = useSeries(user?.uid || null);
 
     const selectedMonth = format(currentMonth, 'yyyy-MM');
     const sermonsForSelectedMonth = Object.entries(sermonsByDate)
@@ -141,12 +147,13 @@ export default function CalendarPage() {
                             <DateEventList
                                 month={currentMonth}
                                 sermons={sermonsForSelectedMonth}
+                                series={allSeries}
                             />
                         )}
                     </div>
                 </div>
             ) : view === 'agenda' ? (
-                <AgendaView sermons={sermons} />
+                <AgendaView sermons={sermons} series={allSeries} />
             ) : (
                 <AnalyticsSection sermonsByDate={sermonsByDate} sermons={sermons} />
             )}

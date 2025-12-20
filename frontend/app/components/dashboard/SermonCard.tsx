@@ -165,18 +165,20 @@ export default function SermonCard({
           <div className="flex flex-wrap items-center gap-2 mt-auto text-xs">
             {/* Series Badge */}
             {sermonSeries && (
-              <Link
-                href={`/series/${sermonSeries.id}`}
-                className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px]"
+              <span
+                className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px] cursor-pointer"
                 style={sermonSeries.color ? {
                   backgroundColor: sermonSeries.color,
                   color: '#ffffff',
                 } : {}}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.location.href = `/series/${sermonSeries.id}`;
+                }}
                 title={sermonSeries.title}
               >
                 <span className="truncate">{sermonSeries.title}</span>
-              </Link>
+              </span>
             )}
 
             {/* Thoughts Count */}

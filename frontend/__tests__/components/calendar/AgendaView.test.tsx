@@ -76,13 +76,13 @@ describe('AgendaView', () => {
     };
 
     it('renders empty state when no sermons', () => {
-        render(<AgendaView sermons={[]} />);
+        render(<AgendaView sermons={[]} series={[]} />);
 
         expect(screen.getByText('No preach dates recorded')).toBeInTheDocument();
     });
 
     it('renders sermon information correctly', () => {
-        render(<AgendaView sermons={[mockSermon]} />);
+        render(<AgendaView sermons={[mockSermon]} series={[]} />);
 
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
         expect(screen.getByText('Jan')).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('AgendaView', () => {
     });
 
     it('displays long sermon verse with proper multi-line classes', () => {
-        render(<AgendaView sermons={[mockSermonWithLongVerse]} />);
+        render(<AgendaView sermons={[mockSermonWithLongVerse]} series={[]} />);
 
         const verseElement = screen.getByText(mockSermonWithLongVerse.verse);
         expect(verseElement).toBeInTheDocument();
@@ -118,7 +118,7 @@ describe('AgendaView', () => {
             title: 'Another Sermon'
         };
 
-        render(<AgendaView sermons={[mockSermon, anotherSermon]} />);
+        render(<AgendaView sermons={[mockSermon, anotherSermon]} series={[]} />);
 
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
         expect(screen.getByText('Another Sermon')).toBeInTheDocument();
@@ -133,13 +133,13 @@ describe('AgendaView', () => {
             }]
         };
 
-        render(<AgendaView sermons={[goodSermon]} />);
+        render(<AgendaView sermons={[goodSermon]} series={[]} />);
 
         expect(screen.getByText('Good')).toBeInTheDocument();
     });
 
     it('renders link elements correctly', () => {
-        render(<AgendaView sermons={[mockSermon]} />);
+        render(<AgendaView sermons={[mockSermon]} series={[]} />);
 
         // Check that the link element exists
         const linkElement = screen.getByTestId('link');

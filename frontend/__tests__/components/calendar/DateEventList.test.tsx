@@ -95,6 +95,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[]}
+                series={[]}
             />
         );
 
@@ -106,6 +107,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -117,6 +119,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon, mockSermon2]}
+                series={[]}
             />
         );
 
@@ -128,6 +131,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[]}
+                series={[]}
             />
         );
 
@@ -139,6 +143,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon, mockSermon2]}
+                series={[]}
             />
         );
 
@@ -152,6 +157,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -167,6 +173,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={reversedSermons}
+                series={[]}
             />
         );
 
@@ -180,6 +187,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -193,6 +201,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -204,6 +213,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -227,6 +237,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -239,6 +250,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -251,6 +263,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -262,6 +275,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -331,6 +345,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[mockSermon]}
+                series={[]}
             />
         );
 
@@ -348,6 +363,7 @@ describe('DateEventList', () => {
             <DateEventList
                 month={mockMonth}
                 sermons={[]}
+                series={[]}
             />
         );
 

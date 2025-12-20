@@ -4,15 +4,16 @@ import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
 import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
-import { Sermon } from "@/models/models";
+import { Sermon, Series } from "@/models/models";
 import { MapPinIcon, UserIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 
 interface DateEventListProps {
     month: Date;
     sermons: Sermon[];
+    series?: Series[];
 }
 
-export default function DateEventList({ month, sermons }: DateEventListProps) {
+export default function DateEventList({ month, sermons, series = [] }: DateEventListProps) {
     const { t, i18n } = useTranslation();
 
     const getDateLocale = () => {
@@ -24,6 +25,14 @@ export default function DateEventList({ month, sermons }: DateEventListProps) {
     };
 
     const formattedMonth = format(month, 'MMMM yyyy', { locale: getDateLocale() });
+
+    // Helper function to find series for a sermon
+    const getSermonSeries = (sermon: Sermon) => {
+        if (sermon.seriesId && sermon.seriesId.trim()) {
+            return series.find(s => s.id === sermon.seriesId);
+        }
+        return series.find(s => s.sermonIds?.includes(sermon.id));
+    };
 
     // Group sermons by date
     const sermonsByDate = sermons.reduce((acc, sermon) => {
@@ -97,6 +106,29 @@ export default function DateEventList({ month, sermons }: DateEventListProps) {
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* Series Badge */}
+                                                {(() => {
+                                                    const sermonSeries = getSermonSeries(sermon);
+                                                    return sermonSeries ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <span
+                                                                className="inline-flex items-center px-2 py-0.5 rounded-full font-medium text-xs transition-opacity hover:opacity-80 max-w-[120px] cursor-pointer"
+                                                                style={{
+                                                                    backgroundColor: sermonSeries.color || '#3B82F6',
+                                                                    color: '#ffffff',
+                                                                }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    window.location.href = `/series/${sermonSeries.id}`;
+                                                                }}
+                                                                title={sermonSeries.title}
+                                                            >
+                                                                <span className="truncate">{sermonSeries.title}</span>
+                                                            </span>
+                                                        </div>
+                                                    ) : null;
+                                                })()}
 
                                                 <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-400">
                                                     <div className="flex flex-wrap gap-x-4 gap-y-1">

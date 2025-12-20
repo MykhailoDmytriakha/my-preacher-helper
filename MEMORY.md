@@ -9,6 +9,21 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### Calendar Series Color Integration Implementation
+**Problem:** Series colors were only displayed in dashboard and series detail views, but missing from calendar view where users see sermon preaching dates. Users couldn't visually identify which sermons belong to which series in the calendar context.
+
+**Solution:** Implemented complete series color integration in calendar view by:
+1. Added `useSeries` hook to calendar page to fetch series data
+2. Updated `DateEventList` component to accept and display series colors
+3. Added series badge with color and title for each sermon in calendar view
+4. Extended to `AgendaView` for list view consistency
+5. Maintained consistent visual design with dashboard series badges
+6. Fixed nested `<a>` tags by replacing Link components with `onClick` handlers to prevent hydration errors
+
+**Why it worked:** Followed established patterns from dashboard implementation, ensuring visual consistency across the app. Used existing series lookup logic (`getSermonSeries`) and color application patterns. Identified and fixed HTML validity issues that would cause runtime errors.
+
+**Principle:** When implementing missing features in secondary views, always check primary views for established patterns and reuse existing logic rather than reinventing solutions. Extend systematically across all related views to maintain consistency. Pay attention to HTML semantics and nesting rules to avoid hydration/runtime errors.
+
 - **CalendarPage Month View Fix:** Исправил UX проблему - DateEventList теперь показывает ВСЕ проповеди за выбранный месяц вместо одной даты; изменил логику фильтрации в CalendarPage (yyyy-MM вместо yyyy-MM-dd); переработал DateEventList для группировки по датам с заголовками; теперь календарь и список согласованы - точки на месяц = список за месяц.
 - **CalendarPage Pending Sermons Visibility:** Добавил условный рендеринг для строки "Pending Date Entry" - показывается только если есть проповеди без дат (pendingSermons.length > 0); убрал показ "0" для лучшего UX.
 - **OptionMenu Unmark Preached Cleanup:** Исправил снятие отметки "проповеданная" - теперь при unmark удаляются ВСЕ preachDates через Promise.all() и устанавливается isPreached: false; предотвращает несогласованное состояние данных.

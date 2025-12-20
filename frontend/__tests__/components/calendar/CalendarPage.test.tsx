@@ -9,6 +9,10 @@ jest.mock('@/hooks/useCalendarSermons', () => ({
   useCalendarSermons: jest.fn(),
 }));
 
+jest.mock('@/hooks/useSeries', () => ({
+  useSeries: jest.fn(),
+}));
+
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     user: { uid: 'test-user' },
@@ -39,11 +43,12 @@ jest.mock('@/components/calendar/PreachCalendar', () => {
 });
 
 jest.mock('@/components/calendar/DateEventList', () => {
-  return function MockDateEventList({ month, sermons }: any) {
+  return function MockDateEventList({ month, sermons, series }: any) {
     return (
       <div data-testid="date-event-list">
         Month: {month.toISOString().split('T')[0]}
         Sermons: {sermons.length}
+        Series: {series?.length || 0}
       </div>
     );
   };
@@ -60,8 +65,8 @@ jest.mock('@/components/calendar/LegacyDataWarning', () => {
 });
 
 jest.mock('@/components/calendar/AgendaView', () => {
-  return function MockAgendaView({ sermons }: any) {
-    return <div data-testid="agenda-view">Agenda: {sermons.length} sermons</div>;
+  return function MockAgendaView({ sermons, series }: any) {
+    return <div data-testid="agenda-view">Agenda: {sermons.length} sermons, {series?.length || 0} series</div>;
   };
 });
 
@@ -108,6 +113,7 @@ jest.mock('react-i18next', () => ({
 
 // Mock the useCalendarSermons hook
 const mockUseCalendarSermons = require('@/hooks/useCalendarSermons').useCalendarSermons;
+const mockUseSeries = require('@/hooks/useSeries').useSeries;
 
 describe('CalendarPage', () => {
   const mockSermon: Sermon = {
@@ -154,6 +160,19 @@ describe('CalendarPage', () => {
       refetch: jest.fn(),
     });
 
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     render(<CalendarPage />);
 
     expect(screen.getByTestId('calendar-header')).toBeInTheDocument();
@@ -169,6 +188,19 @@ describe('CalendarPage', () => {
       isLoading: false,
       error: null,
       refetch: jest.fn(),
+    });
+
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -188,6 +220,19 @@ describe('CalendarPage', () => {
       refetch: jest.fn(),
     });
 
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     render(<CalendarPage />);
 
     expect(screen.getByText('Pending Date Entry')).toBeInTheDocument();
@@ -205,6 +250,19 @@ describe('CalendarPage', () => {
       isLoading: false,
       error: null,
       refetch: jest.fn(),
+    });
+
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -227,6 +285,19 @@ describe('CalendarPage', () => {
         preachDates: [{ ...mockSermon.preachDates[0], date: '2024-02-15' }] // February
       }
     ];
+
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
 
     mockUseCalendarSermons.mockReturnValue({
       sermons: sermonsInDifferentMonths,
@@ -258,6 +329,19 @@ describe('CalendarPage', () => {
     // Mock current date to be in January 2024
     const mockCurrentDate = new Date('2024-01-15');
 
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
       sermonsByDate: { '2024-01-15': [mockSermon] },
@@ -282,6 +366,19 @@ describe('CalendarPage', () => {
   });
 
   it('shows loading skeleton when loading', () => {
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     mockUseCalendarSermons.mockReturnValue({
       sermons: [],
       sermonsByDate: {},
@@ -298,6 +395,19 @@ describe('CalendarPage', () => {
   });
 
   it('shows error message when there is an error', () => {
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     mockUseCalendarSermons.mockReturnValue({
       sermons: [],
       sermonsByDate: {},
@@ -316,6 +426,19 @@ describe('CalendarPage', () => {
   it('renders agenda view infrastructure', () => {
     // This test verifies that the view switching infrastructure exists
     // In a real scenario, we would test the actual view change with proper state mocking
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
       sermonsByDate: { '2024-01-15': [mockSermon] },
