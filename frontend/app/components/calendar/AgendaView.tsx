@@ -80,20 +80,22 @@ export default function AgendaView({ sermons }: AgendaViewProps) {
                                     )}
                                 </div>
 
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-                                    <div className="flex items-center gap-1.5">
-                                        <MapPinIcon className="w-4 h-4 text-blue-500" />
-                                        <span>{event.church.name}{event.church.city ? `, ${event.church.city}` : ''}</span>
-                                    </div>
-                                    {event.audience && (
+                                <div className="flex flex-col gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1">
                                         <div className="flex items-center gap-1.5">
-                                            <UserIcon className="w-4 h-4" />
-                                            <span>{event.audience}</span>
+                                            <MapPinIcon className="w-4 h-4 text-blue-500" />
+                                            <span>{event.church.name}{event.church.city ? `, ${event.church.city}` : ''}</span>
                                         </div>
-                                    )}
-                                    <div className="flex items-center gap-1.5">
-                                        <BookOpenIcon className="w-4 h-4" />
-                                        <span className="truncate">{event.sermon.verse}</span>
+                                        {event.audience && (
+                                            <div className="flex items-center gap-1.5">
+                                                <UserIcon className="w-4 h-4" />
+                                                <span>{event.audience}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-start gap-1.5">
+                                        <BookOpenIcon className="w-4 h-4 mt-0.5" />
+                                        <div className="line-clamp-2 break-words flex-1">{event.sermon.verse}</div>
                                     </div>
                                 </div>
                             </div>

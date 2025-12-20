@@ -28,6 +28,15 @@
 - **PreachCalendar Month Navigation Fix:** Fixed broken month navigation buttons (left/right arrows) in calendar. Root cause: react-day-picker navigation buttons only change displayed month, not selected date, and component wasn't managing month state separately. Solution: Added `currentMonth` and `onMonthChange` props to PreachCalendar, managed separate month state in CalendarPage, and configured DayPicker with explicit month control. Now navigation buttons properly change displayed month and update event filtering.
 - **Calendar Today Button:** Added "Today" button to CalendarHeader that appears when calendar is not on current month. Root cause: Users navigating to different months had no quick way to return to current month. Solution: Added `currentMonth` and `onGoToToday` props to CalendarHeader, implemented month comparison logic to show/hide button, created `handleGoToToday` function that resets both currentMonth and selectedDate to today. Button shows only in month view and when not on current month. Added translations in all 3 languages (en/ru/uk).
 - **DateEventList Month Display Fix:** Fixed DateEventList month title not updating when navigating calendar months. Root cause: DateEventList component was receiving `month={selectedDate}` instead of `month={currentMonth}`, so it displayed the selected date's month rather than the displayed calendar month. Solution: Changed prop from `selectedDate` to `currentMonth` in CalendarPage component, ensuring the event list header reflects the currently viewed month, not the user's selected date.
+- **Multi-Component Verse Text Display Fix:** Comprehensive fix for biblical verse text truncation across all UI components. Root cause: Multiple components used `truncate` class preventing multi-line display of long passages like "Агг 1:5-14: Посему ныне так говорит Господь...". Applied consistent solution pattern across all affected components:
+
+  **DateEventList.tsx (line 104):** Replaced `<span className="truncate">` with `<div className="line-clamp-2 break-words flex-1">`, parent container changed to `flex items-start` with icon `mt-0.5`.
+
+  **LegacyDataWarning.tsx (line 43):** Replaced `<p className="truncate">` with `<p className="line-clamp-2 break-words">` for sermon verse display.
+
+  **AgendaView.tsx (line 96):** Replaced `<span className="truncate">` with `<div className="line-clamp-2 break-words flex-1">`, parent container changed to `flex items-start` with icon `mt-0.5`.
+
+  **Validation Results:** ✅ All existing tests pass (204 test suites, 1623 tests). ✅ Production build successful with no errors. ✅ No linting issues. **Consistent Pattern:** All verse displays now support maximum 2 lines with proper word breaking, maintaining icon alignment and responsive design.
 
 ---
 

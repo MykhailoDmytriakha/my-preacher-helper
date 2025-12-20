@@ -40,7 +40,7 @@ export default function LegacyDataWarning({ pendingSermons, onAddDate }: LegacyD
                                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                         {t('calendar.createdDate', { defaultValue: 'Created: {date}', date: formatDate(sermon.date) })}
                                     </p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 break-words">
                                         {sermon.verse}
                                     </p>
                                 </div>

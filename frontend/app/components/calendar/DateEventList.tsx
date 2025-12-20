@@ -98,23 +98,25 @@ export default function DateEventList({ month, sermons }: DateEventListProps) {
                                                     )}
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <BookOpenIcon className="w-4 h-4 text-gray-400" />
-                                                        <span className="truncate">{sermon.verse}</span>
+                                                <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                                        {sermon.currentPreachDate && (
+                                                            <div className="flex items-center gap-1.5 font-medium text-blue-600 dark:text-blue-400">
+                                                                <MapPinIcon className="w-4 h-4" />
+                                                                <span className="truncate">{sermon.currentPreachDate.church.name}{sermon.currentPreachDate.church.city ? `, ${sermon.currentPreachDate.church.city}` : ''}</span>
+                                                            </div>
+                                                        )}
+                                                        {sermon.currentPreachDate?.audience && (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <UserIcon className="w-4 h-4 text-gray-400" />
+                                                                <span className="truncate">{sermon.currentPreachDate.audience}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    {sermon.currentPreachDate && (
-                                                        <div className="flex items-center gap-1.5 font-medium text-blue-600 dark:text-blue-400">
-                                                            <MapPinIcon className="w-4 h-4" />
-                                                            <span className="truncate">{sermon.currentPreachDate.church.name}{sermon.currentPreachDate.church.city ? `, ${sermon.currentPreachDate.church.city}` : ''}</span>
-                                                        </div>
-                                                    )}
-                                                    {sermon.currentPreachDate?.audience && (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <UserIcon className="w-4 h-4 text-gray-400" />
-                                                            <span className="truncate">{sermon.currentPreachDate.audience}</span>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-start gap-1.5">
+                                                        <BookOpenIcon className="w-4 h-4 text-gray-400 mt-0.5" />
+                                                        <div className="line-clamp-2 break-words flex-1">{sermon.verse}</div>
+                                                    </div>
                                                 </div>
 
                                                 {sermon.currentPreachDate?.notes && (

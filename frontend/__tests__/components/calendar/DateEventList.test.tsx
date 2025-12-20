@@ -199,6 +199,29 @@ describe('DateEventList', () => {
         expect(screen.getByText('John 3:16')).toBeInTheDocument();
     });
 
+    it('displays sermon verse with proper layout structure', () => {
+        render(
+            <DateEventList
+                month={mockMonth}
+                sermons={[mockSermon]}
+            />
+        );
+
+        const verseElement = screen.getByText('John 3:16');
+
+        // Check that the verse is wrapped in a div with proper multi-line classes
+        const verseContainer = verseElement.closest('div');
+        expect(verseContainer).toHaveClass('line-clamp-2', 'break-words', 'flex-1');
+
+        // Check that parent container has proper alignment classes
+        const parentContainer = verseContainer?.parentElement;
+        expect(parentContainer).toHaveClass('flex', 'items-start', 'gap-1.5');
+
+        // Check that the outer container is flex-col with gap
+        const outerContainer = parentContainer?.parentElement;
+        expect(outerContainer).toHaveClass('flex', 'flex-col', 'gap-2');
+    });
+
     it('displays church information', () => {
         render(
             <DateEventList
