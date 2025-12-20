@@ -5,6 +5,15 @@ import SermonCard from '@/components/dashboard/SermonCard';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
+// Mock services used by OptionMenu
+jest.mock('@services/sermon.service', () => ({
+  updateSermon: jest.fn().mockResolvedValue({}),
+}));
+
+jest.mock('@services/preachDates.service', () => ({
+  deletePreachDate: jest.fn().mockResolvedValue({}),
+}));
+
 // Mock Next.js router
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -42,6 +51,13 @@ jest.mock('@utils/dateFormatter', () => ({
 // Mock exportContent
 jest.mock('@utils/exportContent', () => ({
   getExportContent: jest.fn(() => Promise.resolve('Test export content')),
+}));
+
+// Mock @tanstack/react-query
+jest.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({
+    invalidateQueries: jest.fn(),
+  }),
 }));
 
 describe('SermonCard Component', () => {

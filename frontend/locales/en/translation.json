@@ -693,6 +693,8 @@
   },
   "calendar": {
     "title": "Preach Calendar",
+    "today": "Today",
+    "goToToday": "Go to current month",
     "monthView": "Month",
     "weekView": "Week",
     "agendaView": "Agenda",
@@ -713,6 +715,11 @@
     "addDateNow": "Add Date Now",
     "goToSermon": "Go to Sermon",
     "noPreachDates": "No preach dates recorded",
+    "totalSermonsWord": "sermon",
+    "totalSermonsWord_one": "sermon",
+    "totalSermonsWord_few": "sermons",
+    "totalSermonsWord_many": "sermons",
+    "totalSermonsWord_other": "sermons",
     "outcomes": {
       "excellent": "Excellent",
       "good": "Good",
@@ -722,6 +729,8 @@
     "analytics": {
       "title": "Analytics",
       "totalPreachings": "Total Preachings",
+      "quickSummary": "Quick Summary",
+      "pendingDateEntry": "Pending Date Entry",
       "lastPreaching": "Last Preaching",
       "averagePreparation": "Avg Prep Time",
       "avgPrepTime": "Avg Prep Time",

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Sermon, PreachDate } from "@/models/models";
 import EditSermonModal from "@components/EditSermonModal";
@@ -26,6 +27,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const [showPreachModal, setShowPreachModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -94,12 +96,28 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
       return;
     }
 
-    // Otherwise (unmarking), just toggle the boolean
+    // Otherwise (unmarking), remove all preach dates and set isPreached to false
     try {
+      // First, delete all preach dates
+      if (sermon.preachDates && sermon.preachDates.length > 0) {
+        await Promise.all(
+          sermon.preachDates.map(pd => preachDatesService.deletePreachDate(sermon.id, pd.id))
+        );
+      }
+
+      // Then update the sermon to mark as not preached
       const updated = await updateSermon({
         ...sermon,
-        isPreached: false
+        isPreached: false,
+        preachDates: [] // Clear preach dates in local state
       });
+
+      // Invalidate calendar cache to reflect changes across tabs
+      queryClient.invalidateQueries({
+        queryKey: ['calendarSermons'],
+        exact: false // Match all calendarSermons queries regardless of parameters
+      });
+
       if (updated && onUpdate) {
         onUpdate(updated);
       } else if (!onUpdate) {
@@ -123,6 +141,12 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
       const updated = await updateSermon({
         ...sermon,
         isPreached: true
+      });
+
+      // Invalidate calendar cache to reflect changes across tabs
+      queryClient.invalidateQueries({
+        queryKey: ['calendarSermons'],
+        exact: false // Match all calendarSermons queries regardless of parameters
       });
 
       if (updated && onUpdate) {

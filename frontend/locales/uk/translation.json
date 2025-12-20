@@ -693,6 +693,8 @@
   },
   "calendar": {
     "title": "Календар проповідей",
+    "today": "Сьогодні",
+    "goToToday": "Перейти до поточного місяця",
     "monthView": "Місяць",
     "weekView": "Тиждень",
     "agendaView": "Список",
@@ -713,6 +715,11 @@
     "addDateNow": "Додати дату зараз",
     "goToSermon": "Перейти до проповіді",
     "noPreachDates": "Дати проповідей не записані",
+    "totalSermonsWord": "проповідь",
+    "totalSermonsWord_one": "проповідь",
+    "totalSermonsWord_few": "проповіді",
+    "totalSermonsWord_many": "проповідей",
+    "totalSermonsWord_other": "проповідей",
     "outcomes": {
       "excellent": "Відмінно",
       "good": "Добре",
@@ -722,6 +729,8 @@
     "analytics": {
       "title": "Аналітика",
       "totalPreachings": "Всього проповідей",
+      "quickSummary": "Швидка зведення",
+      "pendingDateEntry": "Очікує введення дати",
       "lastPreaching": "Остання проповідь",
       "averagePreparation": "Сер. час підг.",
       "avgPrepTime": "Сер. час підг.",

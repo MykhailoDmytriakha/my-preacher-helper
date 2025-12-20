@@ -693,6 +693,8 @@
   },
   "calendar": {
     "title": "Календарь проповедей",
+    "today": "Сегодня",
+    "goToToday": "Перейти к текущему месяцу",
     "monthView": "Месяц",
     "weekView": "Неделя",
     "agendaView": "Список",
@@ -713,6 +715,11 @@
     "addDateNow": "Добавить дату сейчас",
     "goToSermon": "Перейти к проповеди",
     "noPreachDates": "Даты проповедей не записаны",
+    "totalSermonsWord": "проповедь",
+    "totalSermonsWord_one": "проповедь",
+    "totalSermonsWord_few": "проповеди",
+    "totalSermonsWord_many": "проповедей",
+    "totalSermonsWord_other": "проповедей",
     "outcomes": {
       "excellent": "Отлично",
       "good": "Хорошо",
@@ -722,6 +729,8 @@
     "analytics": {
       "title": "Аналитика",
       "totalPreachings": "Всего проповедей",
+      "quickSummary": "Краткая сводка",
+      "pendingDateEntry": "Ожидает ввода даты",
       "lastPreaching": "Последняя проповедь",
       "averagePreparation": "Ср. время подг.",
       "avgPrepTime": "Ср. время подг.",

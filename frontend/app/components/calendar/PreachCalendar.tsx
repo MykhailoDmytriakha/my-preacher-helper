@@ -11,12 +11,16 @@ interface PreachCalendarProps {
     sermonsByDate: Record<string, Sermon[]>;
     selectedDate: Date;
     onDateSelect: (date: Date) => void;
+    currentMonth?: Date;
+    onMonthChange?: (month: Date) => void;
 }
 
 export default function PreachCalendar({
     sermonsByDate,
     selectedDate,
-    onDateSelect
+    onDateSelect,
+    currentMonth,
+    onMonthChange
 }: PreachCalendarProps) {
     const { i18n } = useTranslation();
 
@@ -74,6 +78,8 @@ export default function PreachCalendar({
                 mode="single"
                 selected={selectedDate}
                 onSelect={(date) => date && onDateSelect(date)}
+                month={currentMonth || selectedDate}
+                onMonthChange={onMonthChange}
                 locale={getDateLocale()}
                 modifiers={{
                     hasEvent: (date) => hasEvents(date)
