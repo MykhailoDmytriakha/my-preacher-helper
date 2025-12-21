@@ -77,6 +77,7 @@ jest.mock('date-fns', () => ({
 
 import { render, screen } from '@testing-library/react';
 import React from 'react';
+import { format } from 'date-fns';
 import AnalyticsSection from '../../../app/components/calendar/AnalyticsSection';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
@@ -245,15 +246,13 @@ describe('AnalyticsSection', () => {
     describe('Localization features', () => {
         it('displays month names in consistent format', () => {
             // Mock date-fns to return formatted months
-            const mockFormat = jest.fn();
-            mockFormat.mockImplementation((date, fmt) => {
+            const formatMock = jest.mocked(format);
+            formatMock.mockImplementation((date, fmt) => {
                 void date;
                 if (fmt === 'MMM yy') return 'Янв 24'; // Russian format without dot, capitalized
                 if (fmt === 'MMMM yyyy') return 'Январь 2024';
                 return 'January 2024';
             });
-
-            require('date-fns').format = mockFormat;
 
             render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
 

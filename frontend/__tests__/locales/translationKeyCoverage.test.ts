@@ -1,8 +1,18 @@
+import enTranslation from '../../locales/en/translation.json';
+import ruTranslation from '../../locales/ru/translation.json';
+import ukTranslation from '../../locales/uk/translation.json';
+
+const translationsByLang = {
+  en: enTranslation,
+  ru: ruTranslation,
+  uk: ukTranslation,
+};
+
   it('should have audio mini keys in all languages', () => {
     const languages = ['en', 'ru', 'uk'];
     
     languages.forEach(lang => {
-      const translation = require(`../../locales/${lang}/translation.json`);
+      const translation = translationsByLang[lang as keyof typeof translationsByLang];
       
       // Check that audio section exists
       expect(translation).toHaveProperty('audio');
@@ -21,10 +31,6 @@
   });
 
   it('should have consistent audio mini translations across languages', () => {
-    const enTranslation = require('../../locales/en/translation.json');
-    const ruTranslation = require('../../locales/ru/translation.json');
-    const ukTranslation = require('../../locales/uk/translation.json');
-    
     // Check that all languages have the same structure
     expect(Object.keys(enTranslation.audio.mini)).toEqual(
       Object.keys(ruTranslation.audio.mini)

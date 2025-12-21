@@ -1,19 +1,18 @@
 // Performance optimization: Only load heavy mocks when needed
 import 'openai/shims/node';
+import '@testing-library/jest-dom';
+import 'jest-environment-jsdom';
+import fetchMock from 'jest-fetch-mock';
+import React from 'react';
 
 // Set dummy API keys for OpenAI client initialization during tests
 process.env.OPENAI_API_KEY = 'test_key_openai';
 process.env.GEMINI_API_KEY = 'test_key_gemini';
 
-// Import Jest DOM utilities
-import '@testing-library/jest-dom';
-import 'jest-environment-jsdom';
-import React from 'react';
-
 // Lazy load heavy mocks only when NODE_ENV is test
 if (process.env.NODE_ENV === 'test') {
   // Pre-configure fetch mock for better performance
-  require('jest-fetch-mock').enableMocks();
+  fetchMock.enableMocks();
 }
 
 // Set React to development mode for better error messages
@@ -23,17 +22,18 @@ process.env.NODE_ENV = 'development';
 const REACT_DOM_CLIENT = 'react-dom/client';
 
 // Polyfill Web Fetch API primitives for Next route tests (Node/Jest)
-try {
-  const undici = require('undici');
-  globalThis.Blob = globalThis.Blob || undici.Blob;
-  globalThis.File = globalThis.File || undici.File;
-  globalThis.FormData = globalThis.FormData || undici.FormData;
-  globalThis.Headers = globalThis.Headers || undici.Headers;
-  globalThis.Request = globalThis.Request || undici.Request;
-  globalThis.Response = globalThis.Response || undici.Response;
-} catch {
-  // ignore if undici not available; jsdom may already provide these
-}
+import('undici')
+  .then((undici) => {
+    globalThis.Blob = globalThis.Blob || undici.Blob;
+    globalThis.File = globalThis.File || undici.File;
+    globalThis.FormData = globalThis.FormData || undici.FormData;
+    globalThis.Headers = globalThis.Headers || undici.Headers;
+    globalThis.Request = globalThis.Request || undici.Request;
+    globalThis.Response = globalThis.Response || undici.Response;
+  })
+  .catch(() => {
+    // ignore if undici not available; jsdom may already provide these
+  });
 
 // Create a portal root element where portal content will be rendered
 const portalRoot = document.createElement('div');

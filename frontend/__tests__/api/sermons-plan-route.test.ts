@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 import { generatePlanForSection } from '@/api/clients/openAI.client';
+import { GET } from '@/api/sermons/[id]/plan/route';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
 
 // Mock dependencies
@@ -98,9 +99,6 @@ describe('Sermon Plan Route', () => {
 
   describe('GET /api/sermons/:id/plan', () => {
     it('should generate full plan successfully', async () => {
-      // Import the route handler
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
       const responseData = await response.json();
 
@@ -140,8 +138,6 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockUndefinedResult);
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
       await response.json();
 
@@ -167,8 +163,6 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockInvalidResult);
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
       await response.json();
 
@@ -190,8 +184,6 @@ describe('Sermon Plan Route', () => {
         .mockResolvedValueOnce({ plan: { main: { outline: '' } }, success: false })
         .mockResolvedValueOnce({ plan: { conclusion: { outline: 'Conclusion' } }, success: true });
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
 
       // Verify 206 Partial Content status
@@ -204,8 +196,6 @@ describe('Sermon Plan Route', () => {
         new Error('Firestore error')
       );
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
       const responseData = await response.json();
 
@@ -219,8 +209,6 @@ describe('Sermon Plan Route', () => {
       // Mock sermon not found
       (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'nonexistent-sermon' } });
       const responseData = await response.json();
 
@@ -240,8 +228,6 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockInvalidResult);
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       await GET(mockRequest, { params: { id: 'test-sermon-123' } });
 
       // Verify that invalid types are converted to empty strings
@@ -262,8 +248,6 @@ describe('Sermon Plan Route', () => {
         .mockRejectedValueOnce(new Error('Main section failed'))
         .mockResolvedValueOnce({ plan: { conclusion: { outline: 'Conclusion' } }, success: true });
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
       const responseData = await response.json();
 
@@ -300,8 +284,6 @@ describe('Sermon Plan Route', () => {
         }
       } as unknown as NextRequest;
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequestWithSection, { params: { id: 'test-sermon-123' } });
       const responseData = await response.json();
 
@@ -328,8 +310,6 @@ describe('Sermon Plan Route', () => {
         }
       } as unknown as NextRequest;
 
-      const { GET } = require('@/api/sermons/[id]/plan/route');
-      
       const response = await GET(mockRequestWithInvalidSection, { params: { id: 'test-sermon-123' } });
       const responseData = await response.json();
 

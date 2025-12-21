@@ -1,9 +1,7 @@
 import { render } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
-
-// Import PrivateLayout using the working strategy
-const PrivateLayout = require('../../app/(pages)/(private)/layout').default;
+import PrivateLayout from '../../app/(pages)/(private)/layout';
 
 describe('Private Layout', () => {
   // Basic functionality tests

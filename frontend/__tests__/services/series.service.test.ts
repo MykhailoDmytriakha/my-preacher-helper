@@ -15,13 +15,13 @@ let removeSermonFromSeries: any;
 let reorderSermons: any;
 
 describe('Series Service', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
     // Set the environment variable before importing the service
     process.env.NEXT_PUBLIC_API_BASE = '';
     // Re-import the service functions for each test to get fresh API_BASE value
-    const seriesService = require('@/services/series.service');
+    const seriesService = await import('@/services/series.service');
     getAllSeries = seriesService.getAllSeries;
     getSeriesById = seriesService.getSeriesById;
     createSeries = seriesService.createSeries;

@@ -1,9 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
-
-// Import the dashboard layout component
-const DashboardLayout = require('../../app/(pages)/(private)/dashboard/layout').default;
+import DashboardLayout from '../../app/(pages)/(private)/dashboard/layout';
 
 describe('Dashboard Layout', () => {
   it('should render children without additional wrapper elements', () => {

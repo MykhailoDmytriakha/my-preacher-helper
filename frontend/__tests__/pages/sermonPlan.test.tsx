@@ -2,6 +2,7 @@ import { render, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
+import { getSermonById } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
 // Mock MutationObserver globally for this test file
@@ -118,7 +119,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   const originalFetch = global.fetch;
   
   // Get the mocked function
-  const mockGetSermonById = require('@/services/sermon.service').getSermonById as jest.MockedFunction<any>;
+  const mockGetSermonById = jest.mocked(getSermonById);
 
   beforeEach(async () => {
     // Ensure we're using real timers for this test

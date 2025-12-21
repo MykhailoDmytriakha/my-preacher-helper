@@ -244,8 +244,10 @@ jest.mock('@/components/Icons', () => ({
 
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
 import { Item } from '@/models/models';
+import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 
 import Column from '../../app/components/Column';
 import { runScenarios } from '../../test-utils/scenarioRunner';
@@ -385,8 +387,6 @@ describe('Column Component', () => {
   // New tests for outline point operations in focus mode
   describe('SermonOutline Point Operations in Focus Mode', () => {
     const mockToggleFocus = jest.fn();
-    const { getSermonOutline, updateSermonOutline } = require('@/services/outline.service');
-    const { toast } = require('sonner');
     
     beforeEach(() => {
       // Reset mocks

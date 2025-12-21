@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import CalendarPage from '../../../app/(pages)/(private)/calendar/page';
 import { Sermon } from '@/models/models';
+import { useCalendarSermons } from '@/hooks/useCalendarSermons';
+import { useSeries } from '@/hooks/useSeries';
 import '@testing-library/jest-dom';
 
 // Mock all the hooks and services
@@ -112,8 +114,8 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock the useCalendarSermons hook
-const mockUseCalendarSermons = require('@/hooks/useCalendarSermons').useCalendarSermons;
-const mockUseSeries = require('@/hooks/useSeries').useSeries;
+const mockUseCalendarSermons = jest.mocked(useCalendarSermons);
+const mockUseSeries = jest.mocked(useSeries);
 
 describe('CalendarPage', () => {
   const mockSermon: Sermon = {

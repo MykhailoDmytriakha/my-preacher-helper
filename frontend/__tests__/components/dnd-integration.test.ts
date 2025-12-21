@@ -1,4 +1,6 @@
 import { handleDragOver, handleDragEnd } from '../../app/utils/dnd-handlers';
+import { updateStructure } from '@/services/structure.service';
+import { updateThought } from '@/services/thought.service';
 import '@testing-library/jest-dom';
 
 // Ensure no backend persistence is triggered by preview moves
@@ -202,9 +204,6 @@ describe('Drag and Drop Integration Tests', () => {
   });
 
   test('Live preview: onDragOver does not call backend services', () => {
-    const { updateStructure } = require('@/services/structure.service');
-    const { updateThought } = require('@/services/thought.service');
-
     handleDragOver(
       { active: { id: 'item1', data: { current: { container: 'ambiguous' } } }, over: { id: 'introduction', data: { current: { container: 'introduction' } } } } as any,
       containers,

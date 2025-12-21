@@ -1,6 +1,8 @@
 // We'll use a simpler approach without importing from Next.js
 // This avoids the 'Request is not defined' error
 
+import { adminDb } from '@/config/firebaseAdminConfig';
+
 // Mock type for Request
 interface MockRequest {
   url?: string;
@@ -27,7 +29,7 @@ jest.mock('next/server', () => ({
 }));
 
 // Import the handlers module directly to mock
-const sermonsRouteModule = require('app/api/sermons/route');
+import * as sermonsRouteModule from 'app/api/sermons/route';
 
 describe('Sermons API Route', () => {
   let mockRequest: MockRequest;
@@ -81,8 +83,8 @@ describe('Sermons API Route', () => {
     });
 
     // Apply the mocks
-    const { adminDb } = require('@/config/firebaseAdminConfig');
-    adminDb.collection.mockImplementation(mockCollection);
+    const mockedAdminDb = adminDb as { collection: jest.Mock };
+    mockedAdminDb.collection.mockImplementation(mockCollection);
 
     // Set up basic request object
     mockRequest = {

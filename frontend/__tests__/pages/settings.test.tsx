@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import SettingsPage from '@/(pages)/(private)/settings/page';
+import { auth } from '@/services/firebaseAuth.service';
 import '@testing-library/jest-dom';
 
 // Mock Firebase auth
@@ -229,7 +230,7 @@ describe('Settings Page', () => {
   describe('Loading State', () => {
     it('shows loading spinner initially', async () => {
       // Mock auth to delay response
-      jest.mocked(require('@/services/firebaseAuth.service').auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
+      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
         // Don't call callback immediately to simulate loading
         setTimeout(() => callback({ uid: 'test-user', email: 'test@example.com' }), 100);
         return jest.fn();
@@ -245,7 +246,7 @@ describe('Settings Page', () => {
   describe('Authentication Handling', () => {
     it('redirects to home when user is not authenticated', async () => {
       // Mock auth to return no user
-      jest.mocked(require('@/services/firebaseAuth.service').auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
+      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
         callback(null);
         return jest.fn();
       });
@@ -260,7 +261,7 @@ describe('Settings Page', () => {
     it('handles authenticated user correctly', async () => {
       const mockUser = { uid: 'test-user', email: 'test@example.com', displayName: 'Test User' };
       
-      jest.mocked(require('@/services/firebaseAuth.service').auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
+      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
         callback(mockUser);
         return jest.fn();
       });

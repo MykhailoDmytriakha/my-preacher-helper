@@ -19,7 +19,12 @@ jest.doMock('@/config/firebaseAdminConfig', () => ({
   }
 }));
 
-const { userSettingsRepository } = require('@/api/repositories/userSettings.repository');
+let userSettingsRepository: typeof import('@/api/repositories/userSettings.repository').userSettingsRepository;
+
+beforeAll(async () => {
+  const userSettingsModule = await import('@/api/repositories/userSettings.repository');
+  userSettingsRepository = userSettingsModule.userSettingsRepository;
+});
 
 describe('UserSettingsRepository', () => {
   const resetScenario = () => {

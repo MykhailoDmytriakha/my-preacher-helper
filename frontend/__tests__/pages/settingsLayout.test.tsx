@@ -1,9 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
-
-// Import the settings layout component
-const SettingsSectionLayout = require('../../app/(pages)/(private)/settings/layout').default;
+import SettingsSectionLayout from '../../app/(pages)/(private)/settings/layout';
 
 describe('Settings Section Layout', () => {
   it('should render children without additional wrapper elements', () => {

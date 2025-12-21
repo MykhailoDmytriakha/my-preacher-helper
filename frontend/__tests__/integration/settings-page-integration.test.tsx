@@ -4,6 +4,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import SettingsPage from '@/(pages)/(private)/settings/page';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { auth as mockAuth } from '@services/firebaseAuth.service';
 
 // Mock all dependencies
 const mockUseAuth = jest.fn(() => ({ user: { uid: 'test-user-id' } }));
@@ -29,7 +30,6 @@ jest.mock('@services/firebaseAuth.service', () => ({
   }
 }));
 
-const { auth: mockAuth } = require('@services/firebaseAuth.service');
 
 // Mock components
 jest.mock('@/components/settings/UserSettingsSection', () => ({

@@ -11,7 +11,7 @@ const API_URL = 'http://localhost:3000';
 describe('brainstorm.service', () => {
   let generateBrainstormSuggestion: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     fetchMock.resetMocks();
     jest.clearAllMocks();
     
@@ -24,7 +24,7 @@ describe('brainstorm.service', () => {
     
     // Import fresh module each time
     jest.resetModules();
-    const brainstormService = require('@/services/brainstorm.service');
+    const brainstormService = await import('@/services/brainstorm.service');
     generateBrainstormSuggestion = brainstormService.generateBrainstormSuggestion;
   });
 
@@ -136,8 +136,8 @@ describe('brainstorm.service', () => {
       // Arrange - clear environment variable and re-import module
       delete process.env.NEXT_PUBLIC_API_BASE;
       jest.resetModules();
-      const brainstormService = require('@/services/brainstorm.service');
-      const testFunction = brainstormService.generateBrainstormSuggestion;
+    const brainstormService = await import('@/services/brainstorm.service');
+    const testFunction = brainstormService.generateBrainstormSuggestion;
 
       // Mock response for undefined URL
       fetchMock.mockResponseOnce(JSON.stringify(mockSuccessResponse), { status: 200 });

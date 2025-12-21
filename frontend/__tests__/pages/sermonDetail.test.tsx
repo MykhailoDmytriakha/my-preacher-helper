@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
+import { getSermonById } from '@/services/sermon.service';
 import { TestProviders } from '@test-utils/test-providers';
 import '@testing-library/jest-dom';
 
@@ -198,7 +199,7 @@ describe('Sermon Detail Page', () => {
       );
 
       await waitFor(() => {
-        expect(require('@/services/sermon.service').getSermonById).toHaveBeenCalledWith(sermonId);
+        expect(getSermonById).toHaveBeenCalledWith(sermonId);
       });
     });
 

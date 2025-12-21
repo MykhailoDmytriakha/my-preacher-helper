@@ -1,9 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
-
-// Import the sermon detail layout component
-const SermonAreaLayout = require('../../app/(pages)/(private)/sermons/[id]/layout').default;
+import SermonAreaLayout from '../../app/(pages)/(private)/sermons/[id]/layout';
 
 describe('Sermon Detail Layout', () => {
   it('should render children without additional wrapper elements', () => {

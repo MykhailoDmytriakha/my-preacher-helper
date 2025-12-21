@@ -70,7 +70,7 @@ describe('api/thoughts POST attaches outlinePointId', () => {
   it('returns Thought with outlinePointId when provided in FormData', async () => {
     // Ensure Fetch API globals exist before importing the route
     try {
-      const undici = require('undici');
+      const undici = await import('undici');
       globalThis.Blob = globalThis.Blob || undici.Blob;
       globalThis.File = globalThis.File || undici.File;
       globalThis.FormData = globalThis.FormData || undici.FormData;

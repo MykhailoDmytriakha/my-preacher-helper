@@ -1,4 +1,5 @@
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
+import { adminDb } from '@/config/firebaseAdminConfig';
 
 import { runScenarios } from '../../../test-utils/scenarioRunner';
 
@@ -55,8 +56,8 @@ describe('SermonsRepository', () => {
     };
 
     // Mock the collection().doc() chain
-    const { adminDb } = require('@/config/firebaseAdminConfig');
-    adminDb.collection.mockReturnValue({
+    const mockedAdminDb = adminDb as { collection: jest.Mock };
+    mockedAdminDb.collection.mockReturnValue({
       doc: jest.fn().mockReturnValue(mockDocRef)
     });
   });

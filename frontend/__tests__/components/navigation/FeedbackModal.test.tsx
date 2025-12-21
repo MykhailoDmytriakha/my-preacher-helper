@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import FeedbackModal from '@/components/navigation/FeedbackModal';
+import * as reactI18next from 'react-i18next';
 
 // Mock dependencies
 jest.mock('react-i18next', () => ({
@@ -84,7 +85,7 @@ describe('FeedbackModal Component', () => {
 
   test('uses fallback title when translation is missing', () => {
     // Temporarily replace the mock implementation
-    jest.spyOn(require('react-i18next'), 'useTranslation').mockImplementation(mockUseTranslationWithMissingKeys);
+    jest.spyOn(reactI18next, 'useTranslation').mockImplementation(mockUseTranslationWithMissingKeys);
     
     render(
       <FeedbackModal 

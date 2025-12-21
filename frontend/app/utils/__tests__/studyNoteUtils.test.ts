@@ -1,4 +1,5 @@
 import { formatStudyNoteForCopy } from '../studyNoteUtils';
+import { formatScriptureRef } from '../../(pages)/(private)/studies/bookAbbreviations';
 import type { StudyNote } from '@/models/models';
 
 // Mock the bookAbbreviations module
@@ -23,8 +24,6 @@ describe('formatStudyNoteForCopy', () => {
     isDraft: false,
     type: 'note',
   };
-
-  const { formatScriptureRef } = require('../../(pages)/(private)/studies/bookAbbreviations');
 
   it('formats note with title and content only', () => {
     const note: StudyNote = {

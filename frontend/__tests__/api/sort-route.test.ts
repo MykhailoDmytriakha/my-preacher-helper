@@ -1,6 +1,8 @@
 // We'll use a simpler approach without importing from Next.js
 // This avoids the 'Request is not defined' error
 
+import { sermonsRepository } from '@/api/repositories/sermons.repository';
+
 // Mock type for NextRequest
 interface MockNextRequest {
   json: () => Promise<any>;
@@ -28,7 +30,7 @@ describe('Sort API Route', () => {
     jest.clearAllMocks();
     
     // Default mock repository behavior
-    const mockSermonRepo = require('@/api/repositories/sermons.repository').sermonsRepository;
+    const mockSermonRepo = sermonsRepository as jest.Mocked<typeof sermonsRepository>;
     mockSermonRepo.fetchSermonById.mockResolvedValue({
       id: 'sermon123',
       title: 'Test Sermon',
@@ -55,7 +57,6 @@ describe('Sort API Route', () => {
       }
       
       // Check if sermon exists
-      const mockSermonRepo = require('@/api/repositories/sermons.repository').sermonsRepository;
       const sermon = await mockSermonRepo.fetchSermonById(data.sermonId);
       if (!sermon) {
         return {
@@ -131,8 +132,7 @@ describe('Sort API Route', () => {
   
   test('returns 404 when sermon is not found', async () => {
     // Setup
-    const mockSermonRepo = require('@/api/repositories/sermons.repository').sermonsRepository;
-    mockSermonRepo.fetchSermonById.mockResolvedValueOnce(null);
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce(null);
     
     const request = {
       json: jest.fn().mockResolvedValue({

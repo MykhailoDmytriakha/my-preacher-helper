@@ -82,30 +82,30 @@ describe('Thoughts API POST', () => {
   let generateThoughtStructuredMock: jest.Mock;
   let adminDbMock: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     process.env.USE_STRUCTURED_OUTPUT = 'true'; // Enable structured output for these tests
     jest.resetModules(); // Reset cache to re-evaluate module with new env var
 
     // Re-require route
-    const routeModule = require('@/api/thoughts/route');
+    const routeModule = await import('@/api/thoughts/route');
     POST = routeModule.POST;
 
     // Re-require dependencies to configure the active mocks
-    const firestoreClient = require('@clients/firestore.client');
-    const openAIClient = require('@clients/openAI.client');
-    const sermonsRepo = require('@repositories/sermons.repository');
-    const thoughtStructured = require('@clients/thought.structured');
-    const firebaseConfig = require('@/config/firebaseAdminConfig');
+    const firestoreClient = await import('@clients/firestore.client');
+    const openAIClient = await import('@clients/openAI.client');
+    const sermonsRepo = await import('@repositories/sermons.repository');
+    const thoughtStructured = await import('@clients/thought.structured');
+    const firebaseConfig = await import('@/config/firebaseAdminConfig');
 
-    generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured;
+    generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured as jest.Mock;
     adminDbMock = firebaseConfig.adminDb;
 
     // Configure these new mock instances
-    firestoreClient.getRequiredTags.mockResolvedValue([]);
-    firestoreClient.getCustomTags.mockResolvedValue([]);
-    sermonsRepo.sermonsRepository.fetchSermonById.mockResolvedValue({ userId: 'user-1', thoughts: [] });
-    openAIClient.createTranscription.mockResolvedValue(mockTranscription);
+    (firestoreClient.getRequiredTags as jest.Mock).mockResolvedValue([]);
+    (firestoreClient.getCustomTags as jest.Mock).mockResolvedValue([]);
+    (sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'user-1', thoughts: [] });
+    (openAIClient.createTranscription as jest.Mock).mockResolvedValue(mockTranscription);
   });
 
   it('should fall back to raw transcription when valid structure generation fails', async () => {

@@ -1,3 +1,5 @@
+import OpenAI from 'openai';
+
 import { Sermon, DirectionSuggestion } from '@/models/models';
 // Import the actual EXPORTED functions we want to test
 import { generateSermonDirections } from '@clients/openAI.client';
@@ -33,11 +35,8 @@ jest.mock('openai', () => {
 });
 
 // Helper to access the inner mock function after mocking
-const getMockCreateCompletion = () => { 
-    // Dynamically require the mocked module to access the attached function
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const MockOpenAI = require('openai'); 
-    return (MockOpenAI as any).mockCreateCompletion as jest.Mock; 
+const getMockCreateCompletion = () => {
+  return (OpenAI as any).mockCreateCompletion as jest.Mock;
 };
 
 // --- Test Suite ---

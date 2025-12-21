@@ -2,6 +2,9 @@
  * API Tests for /api/tags route
  */
 
+import * as clients from '@/api/clients/firestore.client';
+import * as route from '@/api/tags/route';
+
 // Mock firebase admin and clients
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
@@ -24,9 +27,6 @@ jest.mock('@/api/clients/firestore.client', () => ({
 }));
 
 describe('Tags API Route', () => {
-  const route = require('@/api/tags/route');
-  const clients = require('@/api/clients/firestore.client');
-
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -72,5 +72,4 @@ describe('Tags API Route', () => {
     expect(data.affectedThoughts).toBe(3);
   });
 });
-
 

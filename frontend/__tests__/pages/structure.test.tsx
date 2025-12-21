@@ -1,9 +1,11 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
+import { updateSermonOutline } from '@/services/outline.service';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
@@ -192,8 +194,6 @@ describe('ThoughtsBySection Page', () => {
   });
 
   describe('handleToggleReviewed', () => {
-    const { updateSermonOutline } = require('@/services/outline.service');
-    const { toast } = require('sonner');
 
     let mockSermon: ReturnType<typeof createMockSermon>;
     let mockSetSermon: jest.Mock;

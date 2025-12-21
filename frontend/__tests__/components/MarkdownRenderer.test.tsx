@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { sanitizeMarkdown } from '@/utils/markdownUtils';
 
 // Spy on sanitizeMarkdown to ensure it is invoked
 jest.mock('@/utils/markdownUtils', () => {
@@ -24,10 +25,10 @@ describe('MarkdownRenderer (ui)', () => {
   });
 
   it('sanitizes incoming markdown content', () => {
-    const { sanitizeMarkdown } = require('@/utils/markdownUtils');
+    const sanitizeMarkdownMock = jest.mocked(sanitizeMarkdown);
     const input = 'Hello\u0000World';
     render(<MarkdownRenderer markdown={input} />);
-    expect(sanitizeMarkdown).toHaveBeenCalledWith(input);
+    expect(sanitizeMarkdownMock).toHaveBeenCalledWith(input);
   });
 
   // react-markdown is globally mocked in jest.setup to a simple div.
