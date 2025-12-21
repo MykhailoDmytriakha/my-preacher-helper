@@ -1,7 +1,7 @@
-# Project Memory (Learning Pipeline)
+# Project Memory (Project Operating Manual)
 
-> **Принцип:** Memory — это не хранилище, а pipeline обучения.  
-> **Flow:** Lessons (сырые) → Short-Term (осмысление) → Long-Term (принципы)
+> **Принцип:** Memory — это не хранилище, а pipeline обучения.
+> **Flow:** Lessons (сырые) → Short-Term (осмысление) → Long-Term (инструкции)
 
 ---
 
@@ -9,49 +9,6 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
-### Calendar Series Color Integration Implementation
-**Problem:** Series colors were only displayed in dashboard and series detail views, but missing from calendar view where users see sermon preaching dates. Users couldn't visually identify which sermons belong to which series in the calendar context.
-
-**Solution:** Implemented complete series color integration in calendar view by:
-1. Added `useSeries` hook to calendar page to fetch series data
-2. Updated `DateEventList` component to accept and display series colors
-3. Added series badge with color and title for each sermon in calendar view
-4. Extended to `AgendaView` for list view consistency
-5. Maintained consistent visual design with dashboard series badges
-6. Fixed nested `<a>` tags by replacing Link components with `onClick` handlers to prevent hydration errors
-
-**Why it worked:** Followed established patterns from dashboard implementation, ensuring visual consistency across the app. Used existing series lookup logic (`getSermonSeries`) and color application patterns. Identified and fixed HTML validity issues that would cause runtime errors.
-
-**Principle:** When implementing missing features in secondary views, always check primary views for established patterns and reuse existing logic rather than reinventing solutions. Extend systematically across all related views to maintain consistency. Pay attention to HTML semantics and nesting rules to avoid hydration/runtime errors.
-
-- **CalendarPage Month View Fix:** Исправил UX проблему - DateEventList теперь показывает ВСЕ проповеди за выбранный месяц вместо одной даты; изменил логику фильтрации в CalendarPage (yyyy-MM вместо yyyy-MM-dd); переработал DateEventList для группировки по датам с заголовками; теперь календарь и список согласованы - точки на месяц = список за месяц.
-- **CalendarPage Pending Sermons Visibility:** Добавил условный рендеринг для строки "Pending Date Entry" - показывается только если есть проповеди без дат (pendingSermons.length > 0); убрал показ "0" для лучшего UX.
-- **OptionMenu Unmark Preached Cleanup:** Исправил снятие отметки "проповеданная" - теперь при unmark удаляются ВСЕ preachDates через Promise.all() и устанавливается isPreached: false; предотвращает несогласованное состояние данных.
-- **Calendar Cache Invalidation:** Добавил инвалидацию кеша ['calendarSermons'] в OptionMenu при изменении проповеди (как добавление, так и снятие отметки); теперь изменения сразу отражаются в календаре без перезагрузки страницы.
-- **SonarJS cognitive complexity в React JSX:** вынесение helper-функций может не снижать score — условный JSX тоже считается; если warning висит на компоненте, выноси крупные секции UI в мелкие компоненты/рендер-хелперы (без изменения behavior).
-- **Перед добавлением тестов — ищи существующие:** для `KnowledgeSection` тесты уже были в `frontend/__tests__/components/KnowledgeSection.test.tsx`; лучше расширять существующие сценарии, чем плодить новый файл в другом месте.
-- **FocusRecorderButton: tests-first + pending async coverage:** чтобы покрыть `initializing` state, мокай `getUserMedia` как pending Promise и явно resolve в тесте (иначе возможны open handles/flake). После этого выноси conditional render (progress/labels/buttons) в маленькие компоненты + state→style maps — это реально снижает cognitive complexity без изменения поведения.
-- **UI Consistency: Button styling patterns:** при изменении стиля кнопок для consistency, копируй паттерны из существующих компонентов (FocusRecorderButton использует `bg-gray-400 hover:bg-green-500` для gray→green transition); проверяй focus states and accessibility rings.
-- **LegacyDataWarning Layout Overflow:** When flex content overflows container boundaries, replace `justify-between` with `gap` spacing and use `flex-1 min-w-0` for text areas with `shrink-0` on buttons to prevent layout collapse.
-- **LegacyDataWarning Date Display:** When adding creation date to sermon cards, use `formatDate` utility for consistent formatting, add translation keys (`calendar.createdDate`) in all locale files (en, ru, uk) with double curly braces `{{date}}` for i18next interpolation, and place date between title and verse for logical information hierarchy. Tests pass after fixing interpolation syntax.
-- **Form Accessibility & Testing:** Always link `<label>` and `<input>` via `id` and `htmlFor`. This not only improves accessibility but also allows using `getByLabelText` in tests, which is more robust and confirms proper semantic structure. In `PreachDateModal`, adding these attributes fixed a test failure where the input couldn't be found by its label text.
-- **DateEventList Test Fixes:** After removing thought count display from DateEventList component, updated test expectations to check for date headers instead of removed count text. Tests now validate core functionality (date grouping) without depending on specific UI elements. Focus on functional behavior, not specific UI elements when updating tests.
-- **DateEventList Sermon Count Translation:** Changed header count display from "thoughts" (мыслей) to "sermons" (проповедей) by switching from `sermon.outline.thoughts` to `workspaces.series.detail.sermonCount` translation key. Updated tests accordingly to expect "sermon(s)" instead of "thought(s)".
-- **Calendar Sermon Count i18n:** Created proper pluralized translation key `calendar.totalSermons` with correct Russian declension (проповедь/проповеди/проповедей) using i18next ICU pluralization syntax `{{count, plural, one {# item} few {# items} other {# items}}}`. Fixed root cause of malformed pluralization output by using correct ICU format instead of separate count interpolation. Added to all locale files (ru/uk/en) with proper grammar rules.
-- **DateEventList Pluralization Fix:** Fixed malformed pluralization in `calendar.totalSermonsWord` key causing "2 {{count, plural, one {проповедь} few {проповеди} other {проповедей}}}" display. Root cause: ICU MessageFormat not properly working in Next.js environment. Solution: Use native i18next pluralization with suffixes (`totalSermonsWord_one`, `totalSermonsWord_few`, etc.) instead of ICU syntax. Applied consistent pluralization approach used elsewhere in the app. Tests maintained compatibility.
-- **DateEventList DOM Structure Consistency:** Fixed inconsistent DOM structure in DateEventList component where empty state and populated state had different wrapper elements. Root cause: Conditional rendering created `<div className="text-center...">` for empty state vs `<div className="space-y-6">` for populated state. Solution: Always wrap content in consistent `<div className="space-y-6">` container to maintain stable DOM paths and prevent layout shifts. Ensures predictable CSS selectors, testing, and accessibility.
-- **PreachCalendar Month Navigation Fix:** Fixed broken month navigation buttons (left/right arrows) in calendar. Root cause: react-day-picker navigation buttons only change displayed month, not selected date, and component wasn't managing month state separately. Solution: Added `currentMonth` and `onMonthChange` props to PreachCalendar, managed separate month state in CalendarPage, and configured DayPicker with explicit month control. Now navigation buttons properly change displayed month and update event filtering.
-- **Calendar Today Button:** Added "Today" button to CalendarHeader that appears when calendar is not on current month. Root cause: Users navigating to different months had no quick way to return to current month. Solution: Added `currentMonth` and `onGoToToday` props to CalendarHeader, implemented month comparison logic to show/hide button, created `handleGoToToday` function that resets both currentMonth and selectedDate to today. Button shows only in month view and when not on current month. Added translations in all 3 languages (en/ru/uk).
-- **DateEventList Month Display Fix:** Fixed DateEventList month title not updating when navigating calendar months. Root cause: DateEventList component was receiving `month={selectedDate}` instead of `month={currentMonth}`, so it displayed the selected date's month rather than the displayed calendar month. Solution: Changed prop from `selectedDate` to `currentMonth` in CalendarPage component, ensuring the event list header reflects the currently viewed month, not the user's selected date.
-- **Multi-Component Verse Text Display Fix:** Comprehensive fix for biblical verse text truncation across all UI components. Root cause: Multiple components used `truncate` class preventing multi-line display of long passages like "Агг 1:5-14: Посему ныне так говорит Господь...". Applied consistent solution pattern across all affected components:
-
-  **DateEventList.tsx (line 104):** Replaced `<span className="truncate">` with `<div className="line-clamp-2 break-words flex-1">`, parent container changed to `flex items-start` with icon `mt-0.5`.
-
-  **LegacyDataWarning.tsx (line 43):** Replaced `<p className="truncate">` with `<p className="line-clamp-2 break-words">` for sermon verse display.
-
-  **AgendaView.tsx (line 96):** Replaced `<span className="truncate">` with `<div className="line-clamp-2 break-words flex-1">`, parent container changed to `flex items-start` with icon `mt-0.5`.
-
-  **Validation Results:** ✅ All existing tests pass (204 test suites, 1623 tests). ✅ Production build successful with no errors. ✅ No linting issues. **Consistent Pattern:** All verse displays now support maximum 2 lines with proper word breaking, maintaining icon alignment and responsive design.
 
 ---
 
@@ -59,213 +16,152 @@
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
 
-### Component Prop Cleanup Pattern (COMPLETED)
-
-**Related lessons:** Timer components cleanup, unused variables batch
-**Common pattern:** When removing unused props, must update multiple locations systematically
-**Emerging principle:**
-- Update TypeScript interface first
-- Update component destructuring parameter
-- Update ALL call sites (grep search required)
-- Run tests immediately to catch missed usages
-- Check for unused imports after cleanup
-**Confidence:** High
-
-**✅ COMPLETED:** Pattern finalized and principle extracted → moved to Long-Term Memory
-
-### Browser API Testing Hierarchy Pattern
-
-**Related lessons:** 5 clipboard testing lessons (Clipboard Testing, Jest Mock Timing, React-i18next Interpolation, Fallback Testing, Test Organization)
-**Common pattern:** Browser APIs (clipboard, geolocation, media) require multi-level testing strategy
-**Emerging principle:**
-- **Hook-level:** Test isolated hook logic (success/failure/error paths)
-- **Utility-level:** Test pure functions (formatting, validation)
-- **Integration-level:** Test end-to-end scenarios (API calls + callbacks)
-- **Component-level:** Test UI presence/visibility only
-- **Framework constraints:** Accept Jest mock timing requirements over "clean code"
-- **Fallback testing:** Cover ALL combinations (success/failure × modern/fallback × callbacks)
-**Confidence:** High
-
-**✅ COMPLETED:** Pattern extracted from 5 lessons → moved to Long-Term Memory
-
-**✅ ALL PATTERNS COMPLETED:** Timer State Management pattern processed and moved to Long-Term Memory. ALL Short-Term processing complete.
 
 ---
 
-## 💎 Long-Term Memory (Knowledge Base) — Интернализированные принципы
+## 💎 Long-Term Memory (Operating Protocols) — Интернализированные правила
 
-> Осмысленные, проверенные временем правила. Формат: "При X — ВСЕГДА делай Y"
+> Инструкции по взаимодействию с проектом. Формат: "Контекст → Протокол → Причина"
 
-### 🔧 ESLint & Linting Principles
+### 🔧 Code Quality & Linting Protocols
 
-**Duplicate Strings → Constants:**
-При ESLint sonarjs/no-duplicate-string — создавать константы в начале файла. Для 3+ повторений → обязательно константа.
+**String Duplication Management**
+*   **Context:** Проект использует SonarJS правила.
+*   **Protocol:** При появлении 3+ одинаковых строк — **ОБЯЗАТЕЛЬНО** выносить в константу в начале файла.
+*   **Reasoning:** Предотвращает ошибки копипасты и усложнение поддержки (`sonarjs/no-duplicate-string`).
 
-**Cognitive Complexity → Helper Functions:**
-При cognitive complexity > 20 — выделять helper functions. Каждая функция = single responsibility. НЕ менять business logic при рефакторинге.
-Для React компонентов: если warning висит на функции компонента — выноси большие JSX/conditional render блоки в отдельные компоненты/рендер-хелперы, иначе complexity может не упасть.
+**Cognitive Complexity Control**
+*   **Context:** React компоненты и бизнес-логика.
+*   **Protocol:** Если Cognitive Complexity > 20 (или warning):
+    *   JSX: Выносить условные блоки в отдельные компоненты/рендер-хелперы.
+    *   Logic: Использовать map/object lookups вместо вложенных тернарников.
+*   **Reasoning:** Поддерживаемость кода. В React условный рендеринг в основном теле компонента сильно увеличивает сложность.
 
-**Jest Mock String Literals (CRITICAL):**
-`jest.mock()` выполняется во время **module loading phase**, ДО выполнения JS кода. Строковые литералы в `jest.mock()` ОБЯЗАТЕЛЬНЫ — константы вызывают "Cannot access before initialization". Принять дублирование как framework constraint.
+**Component Prop Cleanup**
+*   **Context:** Удаление неиспользуемых пропсов.
+*   **Protocol:** Действовать каскадно: Interface → Destructuring → Usage (grep) → Tests.
+*   **Reasoning:** Оставленные "висячие" пропсы создают путаницу в API компонента.
 
-**Translation Key Coverage:**
-При добавлении новых `t()` ключей — ОБЯЗАТЕЛЬНО добавлять во ВСЕ языковые файлы (en/ru/uk) сразу. Иначе упадут translation coverage tests.
+**ESLint-Induced Test Failures**
+*   **Context:** Автоматические фиксы линтера.
+*   **Protocol:** После применения ESLint fixes — **НЕМЕДЛЕННО** запускать тесты.
+*   **Reasoning:** Авто-фиксы могут ломать логику (например, перемещение хуков или изменение порядка импортов).
 
-**Framework Constraints Win:**
-Когда ESLint правила конфликтуют с framework requirements (Jest mocks, Testing Library) — framework constraints имеют приоритет. Принять некоторые warnings как acceptable.
+### 🧪 Testing Protocols
 
-**Circular Constant References:**
-При replace_all ВСЕГДА проверять результат на self-reference: `const X = X` — НЕПРАВИЛЬНО. `const X = 'value'` — ПРАВИЛЬНО.
+**Jest Mocking Architecture**
+*   **Context:** Module loading phase в Jest.
+*   **Protocol:** В `jest.mock()` использовать **ТОЛЬКО** строковые литералы. Переменные объявлять внутри фабрики или использовать `doMock`.
+*   **Reasoning:** Переменные вне мока не инициализированы в момент поднятия мока (`ReferenceError`).
 
-### 🔄 React Hooks Principles
+**Browser API Simulation**
+*   **Context:** JSDOM окружение.
+*   **Protocol:** Для API, отсутствующих в JSDOM (`matchMedia`, `ResizeObserver`, `clipboard`):
+    *   Создавать полные моки с методами-заглушками.
+    *   Тестировать fallback-сценарии (если API недоступно).
+*   **Reasoning:** Компоненты падают при рендеринге без этих API.
 
-**useEffect Dependencies — Primitives Only:**
-НИКОГДА не использовать computed arrays/objects как dependencies. Конвертировать в primitive string (IDs join).
+**Framework Constraints Priority**
+*   **Context:** Конфликт "Чистый код" vs "Требования тестов".
+*   **Protocol:** Если требования Jest/RTL конфликтуют с красотой кода (например, дублирование моков) — **ВЫБИРАТЬ ТРЕБОВАНИЯ ТЕСТОВ**.
+*   **Reasoning:** Работающие тесты важнее эстетики в тестовой инфраструктуре.
 
-**State Transition Effects:**
-Для effects на state transitions — использовать useRef для tracking previous value. Guard execution: `if (prevRef.current && !current)`.
+**Translation Mocking**
+*   **Context:** `react-i18next` тесты.
+*   **Protocol:** Мокать `t` функцию так, чтобы она возвращала ключ или интерполировала параметры, если они переданы.
+*   **Reasoning:** Тесты часто проверяют наличие конкретного текста, который зависит от переданных переменных.
 
-**Missing Imports Break Runtime:**
-ESLint может пропустить missing hook imports, но runtime сломается. При добавлении useMemo/useCallback — ВСЕГДА проверять импорты.
+### 🔄 React & State Management Protocols
 
-**useCallback for Function Dependencies:**
-Если функция используется в dependency array — оборачивать в useCallback. Или перемещать внутрь эффекта.
+**useEffect Safety**
+*   **Context:** Dependency arrays.
+*   **Protocol:** **НИКОГДА** не использовать вычисляемые объекты/массивы в deps. Конвертировать ID массивов в строки (`ids.join(',')`) или использовать `useMemo`.
+*   **Reasoning:** Бесконечные циклы ре-рендеринга из-за нестабильных ссылок.
 
-### 🔍 Search & Highlighting Principles
+**State Transition Integrity**
+*   **Context:** Отслеживание изменений стейта (например, открытие таймера).
+*   **Protocol:** Использовать `useRef` для хранения предыдущего значения и сравнивать с текущим внутри эффекта.
+*   **Reasoning:** Эффекты запускаются чаще, чем кажется. Ref гарантирует реакцию только на *изменение*.
 
-**Search Matching — User's View:**
-ВСЕГДА искать по DISPLAYED values, не internal storage. User searches what they see.
+**Hook Import Verification**
+*   **Context:** Добавление `useMemo`/`useCallback`.
+*   **Protocol:** После добавления хука — **ЯВНО** проверить секцию импортов.
+*   **Reasoning:** Runtime crash (`React.useMemo is not a function`) — частая ошибка при рефакторинге.
 
-**Snippets Show WHY Matched:**
-Если match только в tags — показывать tags в snippet. Один контейнер для text + tags. Fallback текста при tag-only match.
+### 🎨 UI/UX Design System Standards
 
-**Inline Highlights — No Word Breaks:**
-При подсветке части слова — добавлять word-joiners, `white-space: nowrap` на mark, `word-break: keep-all` на container. Иначе слово разорвётся.
+**Multi-line Truncation**
+*   **Context:** Текст в списках/карточках (особенно с иконками).
+*   **Protocol:** Использовать: `line-clamp-X` + `break-words` + `flex-1` (или `min-w-0`). **ИЗБЕГАТЬ** `truncate` (только для 1 строки).
+*   **Reasoning:** `truncate` ломает верстку если текст длиннее одной строки, скрывая важный контекст.
 
-**Highlighting Implementation:**
-`regex.exec(originalContent)` — единственный safe way для indices. Map ALL content blocks в Markdown renderer.
+**Stable DOM Structure**
+*   **Context:** Conditional rendering (Empty vs Loaded states).
+*   **Protocol:** Поддерживать одинаковый корневой тег (обычно `div`) и структуру оберток для обоих состояний.
+*   **Reasoning:** Предотвращает Layout Shifts и упрощает CSS селекторы/тесты.
 
-### 🧪 Testing Principles
+**Input Interaction Consistency**
+*   **Context:** Интерактивные элементы (теги, ссылки).
+*   **Protocol:** Любой кликабельный инпут должен поддерживать: Click + Keyboard (Enter).
+*   **Reasoning:** Accessibility (a11y) requirement.
 
-**Jest Mocks — Match ALL Exports:**
-При моках компонентов с иконками — мокать КАЖДЫЙ используемый экспорт. "Element type is invalid" = missing mock.
+**Card Actions Hierarchy**
+*   **Context:** Длинные списки или контент.
+*   **Protocol:** Кнопки действий (Edit/Delete) размещать в **Header**, а не внизу.
+*   **Reasoning:** Пользователь не должен скроллить 10к слов чтобы найти кнопку редактирования.
 
-**Browser APIs Need Mocks:**
-JSDOM не реализует window.matchMedia, ResizeObserver. При тестировании responsive компонентов — ОБЯЗАТЕЛЬНО добавлять mock с полным интерфейсом.
+### 📆 Calendar Module Protocols
 
-**Test Class Expectations — Keep Synced:**
-При изменении CSS классов в компонентах — обновлять тестовые ожидания. Классы в assertions должны соответствовать реальной верстке.
+**View vs Selection Separation**
+*   **Context:** Навигация календаря.
+*   **Protocol:** Разделять `viewedMonth` (что видим) и `selectedDate` (что выбрали). Передавать `viewedMonth` в дочерние списки.
+*   **Reasoning:** Пользователь может смотреть события января, выбрав дату в декабре. Списки должны показывать январь.
 
-**Testing Library waitFor:**
-`waitFor()` только для проверок условий, НИКОГДА для actions. Использовать `findAllByTestId()` + `fireEvent.click()`.
+**Series Integration Consistency**
+*   **Context:** Вторичные представления (Календарь, Агенда).
+*   **Protocol:** Наследовать визуальные паттерны (цвета серий, бейджи) из Dashboard. Использовать `useSeries`.
+*   **Reasoning:** Пользователь должен узнавать серию проповеди мгновенно, вне зависимости от экрана.
 
-**Modern Catch Blocks:**
-Catch block без параметров: `} catch {` вместо `} catch (_error) {`. Eliminates unused variable warnings.
+### 🌍 Localization (i18n) Protocols
 
-**Browser API Testing Hierarchy:**
-Для browser APIs (clipboard, geolocation, etc.) применяй иерархический подход: hook-level → utility-level → integration-level → component-level. Каждый уровень тестирует свою зону ответственности.
+**Native Pluralization Rule**
+*   **Context:** Next.js + i18next engine.
+*   **Protocol:** Использовать суффиксы `_one`, `_few`, `_many`, `_other`. **ЗАПРЕЩЕНО** использовать ICU синтаксис `{{count, plural...}}` внутри строки.
+*   **Reasoning:** ICU формат часто вызывает ошибки парсинга/гидратации в текущем стеке.
 
-**Jest Mock Timing Critical:**
-jest.mock() выполняется во время module loading phase — переменные для mock должны быть объявлены ДО jest.mock(). Framework constraints имеют приоритет над "красивым" кодом.
+**Transactional Updates**
+*   **Context:** Добавление/изменение ключей.
+*   **Protocol:** `grep` ключа → Обновление **ВСЕХ ТРЕХ** файлов (`en`, `ru`, `uk`) в одном коммите.
+*   **Reasoning:** CI тесты покрытия переводов упадут, если пропустить язык.
 
-**Framework-Specific Translation Mocks:**
-React-i18next интерполяция t('key', {params}) возвращает объект если перевод не найден. Создавай соответствующие моки: проверяй наличие интерполяционных параметров.
+### 🧭 Architecture & Navigation Protocols
 
-**Fallback Testing Mandatory:**
-Для APIs с fallbacks (clipboard: modern API → execCommand) тестируй ВСЕ комбинации: success/failure × modern/fallback × callbacks.
+**Next.js 15 Async Params**
+*   **Context:** Динамические роуты.
+*   **Protocol:** Всегда `await params` перед использованием. Тип: `Promise<{ id: string }>`.
+*   **Reasoning:** Требование Next.js 15. Синхронный доступ вызывает ворнинги/ошибки.
 
-**Browser API Testing Hierarchy:**
-Для browser APIs (clipboard, geolocation, media) применяй иерархический подход: hook-level → utility-level → integration-level → component-level. Каждый уровень тестирует свою зону ответственности.
+### 🤖 AI Integration Protocols
 
-**Component Prop Cleanup:**
-При удалении неиспользуемых props — ОБЯЗАТЕЛЬНО обновлять: TypeScript interface → component destructuring → ALL call sites → run tests. Проверять unused imports после cleanup.
+**Structured Output Enforcement**
+*   **Context:** Генерация данных (мысли, теги).
+*   **Protocol:** Использовать только `zodResponseFormat` + `beta.chat.completions.parse()`.
+*   **Reasoning:** Regex/JSON parsing из текста ненадежны. Zod гарантирует схему.
 
-**Cognitive Complexity Reduction:**
-При sonarjs cognitive complexity > 20: React components — extract JSX blocks; State logic — extract derived data helpers; Class logic — replace nested ternary with maps. ВСЕГДА добавлять тесты на edge cases ПЕРЕД рефакторингом.
-
-**ESLint Fixes → Run Tests:**
-После ЛЮБЫХ ESLint исправлений — НЕМЕДЛЕННО запускать тесты. ESLint fixes могут ломать функциональность.
-
-### 🎨 UI/Layout Principles
-
-**Collapsible Panels:**
-При добавлении collapsible columns — ВСЕГДА синхронизировать `grid-template-columns` И `col-span` вместе.
-
-**Long Content Components (10K+ words):**
-Все action buttons (Edit/Delete) ДОЛЖНЫ быть в header — НИКОГДА внизу scrollable content.
-
-**Modal → Drawer Migration:**
-Primary benefit — MORE SPACE. Drawer widths: text labels (`30%` | `50%` | `100%`), НЕ abstract icons.
-
-**Toolbar Search — Stay Flexible:**
-В тулбаре поиска — input с `flex-1` без max-width. Фильтры/чекбоксы отдельно или в другой row, чтобы не сжимать поиск.
-
-**Multiple Headings in Tests:**
-Страницы могут иметь несколько h1/h2. Использовать `getAllByRole(...).some(...)` или `getByText` вместо единственного `getByRole`.
-
-### 🖱️ UX Consistency Principles
-
-**Input Interactions:**
-Sibling inputs (tags, references) ДОЛЖНЫ иметь идентичные interaction affordances. ВСЕГДА keyboard (Enter) + clickable button.
-
-**Clickable Cards:**
-`onClick` + `router.push()` для navigation. Проверять nested interactive elements. Actions в header.
-
-**Text Labels vs Icons:**
-Для size/mode toggles — TEXT labels. Abstract icons (⊡, ⤢) создают confusion.
-
-### 🔄 State Management Principles
-
-**State Lifecycle:**
-При добавлении ЛЮБОЙ state variable — trace через ВЕСЬ lifecycle: init → transitions → ALL exit points.
-Особенно проверять reset в: normal exit, error handling, cancellation, timeout.
-
-### 🏗️ Build & TypeScript Principles
-
-**Systematic Build Debugging:**
-При множественных TypeScript ошибках — фиксить систематически:
-1. Понять API каждого проблемного места
-2. Предпочесть working code над perfect typing
-3. Тестировать каждое изменение отдельно
-
-**DnD Types:**
-`dragHandleProps` может быть null — добавлять `| null` к типам.
-
-**StudyNote Creation:**
-Исключать server-only поля (id, createdAt, updatedAt) при создании объектов.
-
-**Timer State Management:**
-При работе с timer компонентами: обеспечивай type consistency в callbacks, сравнивай значения перед обновлением состояния, обрабатывай null initial state, используй git history для систематических фиксов.
-
-### 🌍 Localization Principles
-
-**Multi-Locale Updates:**
-Перед редактированием ЛЮБОГО текста: `grep` key across ALL locales. Update ALL 3 (en/ru/uk) в одном commit.
-
-### 🤖 AI Integration Principles
-
-**Structured Output:**
-Zod schemas + `zodResponseFormat()` + `beta.chat.completions.parse()`. Eliminates fragile XML/regex parsing.
-
-**Scripture References:**
-Book names MUST be English for `referenceParser.ts` compatibility. Explicit per-field language rules in prompts.
-
-### 🧭 Navigation & Architecture
-
-**Next.js 15:**
-Route params MUST be awaited: `Promise<{ id: string }>` and `await params`.
+**Scripture Reference Handling**
+*   **Context:** Парсинг библейских ссылок.
+*   **Protocol:** Запрашивать названия книг **НА АНГЛИЙСКОМ** в промптах.
+*   **Reasoning:** Наш `referenceParser.ts` работает с английскими названиями для унификации.
 
 ---
 
 ## 🔧 Session State — Текущая работа
 
-**Current task:** MEMORY pipeline FULLY processed - обработаны ВСЕ 13 lessons от 2025-12-13, извлечены 4 новых принципа
+**Current task:** Refactoring completed - MEMORY.md converted to Operating Protocols
 **Recent changes:**
-- ✅ **PHASE 1:** Component Prop Cleanup, Browser API Testing, Cognitive Complexity (9 lessons → 3 принципа)
-- ✅ **PHASE 2:** Timer State Management pattern (4 lessons → 1 принцип)
-- ✅ **FINAL:** Inbox полностью очищен от 2025-12-13 уроков
-- ✅ **RESULT:** Long-Term Memory расширена на 4 принципа (testing, complexity, state management)
-- ✅ **STATUS:** Pipeline cycle complete - ready for new lessons
+- ✅ **Reformatting:** All/Long-Term Memory sections rewritten as explicit protocols.
+- ✅ **Context Added:** Each rule now explains WHY (context/reasoning).
+- ✅ **Status:** Ready to serve as an active project manual.
 
 **Open questions:** None currently
 
@@ -277,21 +173,20 @@ Route params MUST be awaited: `Promise<{ id: string }>` and `await params`.
 
 1. **New lessons** → записывать в Lessons (Inbox) СРАЗУ
 2. **3+ похожих lessons** → группировать в Short-Term для осмысления
-3. **Extracted principle** → переместить в Long-Term
+3. **Extracted principle** → переместить в Long-Term как Протокол
 4. **Processed lessons** → архивировать или удалять
 
 ### Session Start Checklist
 
-- [ ] Read Long-Term Memory (мои интернализированные знания)
-- [ ] Check Lessons (Inbox) — есть ли необработанные?
-- [ ] If 3+ similar lessons → process to Short-Term
-- [ ] Load Session State from previous session
+- [ ] **Review Protocols:** Прочитать Long-Term Memory (инструкции к проекту)
+- [ ] **Check Inbox:** Есть ли необработанные уроки?
+- [ ] **Load Context:** Восстановить Session State
 
 ### Session End Checklist
 
-- [ ] "Были ли solved problems?" → If yes, записал ли lessons?
-- [ ] Update Session State for next session
-- [ ] Commit MEMORY.md changes if significant
+- [ ] **Capture Lessons:** Были ли решены неочевидные проблемы? → Inbox
+- [ ] **Update State:** Записать текущий прогресс
+- [ ] **Commit:** Сохранить изменения MEMORY.md
 
 ---
 

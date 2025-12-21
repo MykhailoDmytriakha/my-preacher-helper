@@ -745,7 +745,17 @@
       "uniqueChurches": "Unique Churches",
       "topChurches": "Top Churches",
       "busiestMonth": "Busiest Month",
-      "monthlyActivity": "Monthly Activity"
+      "monthlyActivity": "Monthly Activity",
+      "bibleBooks": "Bible Books Distribution",
+      "oldTestament": "Old Testament",
+      "newTestament": "New Testament",
+      "sermons": "sermons",
+      "noSermons": "No sermons",
+      "mostSermons": "Most sermons",
+      "noActivity": "No activity",
+      "mostActivity": "Most activity",
+      "noActivityRecorded": "No activity recorded yet",
+      "other": "Other"
     },
     "churchAutocomplete": {
       "placeholder": "Enter church name...",

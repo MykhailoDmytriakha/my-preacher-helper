@@ -745,7 +745,17 @@
       "uniqueChurches": "Унікальні церкви",
       "topChurches": "Популярні церкви",
       "busiestMonth": "Найактивніший місяць",
-      "monthlyActivity": "Активність по місяцях"
+      "monthlyActivity": "Активність по місяцях",
+      "bibleBooks": "Розподіл по книгах Біблії",
+      "oldTestament": "Старий Завіт",
+      "newTestament": "Новий Завіт",
+      "sermons": "проповідей",
+      "noSermons": "Немає проповідей",
+      "mostSermons": "Найбільше проповідей",
+      "noActivity": "Немає активності",
+      "mostActivity": "Найбільша активність",
+      "noActivityRecorded": "Активність ще не записана",
+      "other": "Інші"
     },
     "churchAutocomplete": {
       "placeholder": "Введіть назву церкви...",
