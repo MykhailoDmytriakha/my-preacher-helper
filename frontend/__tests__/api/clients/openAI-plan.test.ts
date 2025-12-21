@@ -1,3 +1,6 @@
+import OpenAI from 'openai';
+
+import { generatePlanForSection } from '@/api/clients/openAI.client';
 import { Sermon } from '@/models/models';
 
 // Mock the OpenAI library
@@ -24,6 +27,7 @@ const originalConsoleError = console.error;
 
 describe('generatePlanForSection', () => {
   let mockSermon: Sermon;
+  const mockCreateCompletion = (OpenAI as unknown as { mockCreateCompletion: jest.Mock }).mockCreateCompletion;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -52,12 +56,7 @@ describe('generatePlanForSection', () => {
   describe('Plan ThoughtsBySection Validation', () => {
     it('should handle undefined values in plan structure', async () => {
       // Mock the actual function to test the validation logic
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
       // Mock the OpenAI response with undefined values
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -79,11 +78,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle non-string values in plan structure', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -105,11 +99,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle valid string values correctly', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -131,11 +120,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle empty string values correctly', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -157,11 +141,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle missing properties in AI response', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -182,11 +161,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle malformed JSON in AI response', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -204,11 +178,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle AI API errors', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockRejectedValue(new Error('AI API failed'));
 
       const result = await generatePlanForSection(mockSermon, 'introduction');
@@ -222,11 +191,6 @@ describe('generatePlanForSection', () => {
 
   describe('Section-Specific Generation', () => {
     it('should generate plan for introduction section', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -246,11 +210,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should generate plan for main section', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -270,11 +229,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should generate plan for conclusion section', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockResolvedValue({
         choices: [{
           message: {
@@ -296,11 +250,6 @@ describe('generatePlanForSection', () => {
 
   describe('Error Handling', () => {
     it('should handle network errors gracefully', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockRejectedValue(new Error('Network error'));
 
       const result = await generatePlanForSection(mockSermon, 'introduction');
@@ -312,11 +261,6 @@ describe('generatePlanForSection', () => {
     });
 
     it('should handle timeout errors', async () => {
-      const { generatePlanForSection } = require('@/api/clients/openAI.client');
-      
-      const mockOpenAI = require('openai');
-      const mockCreateCompletion = (mockOpenAI as any).mockCreateCompletion;
-      
       mockCreateCompletion.mockRejectedValue(new Error('Request timeout'));
 
       const result = await generatePlanForSection(mockSermon, 'introduction');
@@ -328,4 +272,3 @@ describe('generatePlanForSection', () => {
     });
   });
 }); 
-

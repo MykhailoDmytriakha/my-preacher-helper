@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { Sermon } from '@/models/models';
+import { PreachDate, Sermon } from '@/models/models';
 import * as preachDatesService from '@services/preachDates.service';
 
 import { useAuth } from './useAuth';
@@ -36,7 +36,7 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
             });
         });
         return acc;
-    }, {} as Record<string, (Sermon & { currentPreachDate: any })[]>);
+    }, {} as Record<string, (Sermon & { currentPreachDate: PreachDate })[]>);
 
     return {
         sermons,

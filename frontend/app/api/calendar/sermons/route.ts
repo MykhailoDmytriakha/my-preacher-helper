@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
         const sermons = await sermonsRepository.fetchSermonsWithPreachDates(userId, startDate, endDate);
         return NextResponse.json({ sermons });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`Error fetching sermons for calendar:`, error);
         return NextResponse.json({ error: 'Failed to fetch sermons for calendar' }, { status: 500 });
     }

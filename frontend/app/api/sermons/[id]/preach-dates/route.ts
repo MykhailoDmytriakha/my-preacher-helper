@@ -15,10 +15,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
         const preachDate = await sermonsRepository.addPreachDate(id, data);
         return NextResponse.json({ preachDate });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`Error adding preach date to sermon ${id}:`, error);
-        if (error.message === "Sermon not found") {
-            return NextResponse.json({ error: error.message }, { status: 404 });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage === "Sermon not found") {
+            return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         return NextResponse.json({ error: 'Failed to add preach date' }, { status: 500 });
     }
@@ -30,10 +31,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     try {
         const sermon = await sermonsRepository.fetchSermonById(id);
         return NextResponse.json({ preachDates: sermon.preachDates || [] });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`Error fetching preach dates for sermon ${id}:`, error);
-        if (error.message === "Sermon not found") {
-            return NextResponse.json({ error: error.message }, { status: 404 });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage === "Sermon not found") {
+            return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         return NextResponse.json({ error: 'Failed to fetch preach dates' }, { status: 500 });
     }

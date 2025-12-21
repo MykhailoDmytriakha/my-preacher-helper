@@ -3,13 +3,14 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 import PreachingTimer from '../../app/components/PreachingTimer';
+import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 
 // Mock the usePreachingTimer hook
 jest.mock('@hooks/usePreachingTimer', () => ({
   usePreachingTimer: jest.fn(),
 }));
 
-const mockUsePreachingTimer = require('@hooks/usePreachingTimer').usePreachingTimer;
+const mockUsePreachingTimer = jest.mocked(usePreachingTimer);
 
 describe('PreachingTimer - Plan Integration', () => {
   const mockTimerData = {

@@ -90,8 +90,15 @@ jest.mock('@/components/GuestBanner', () => () => <div data-testid="mock-guest-b
 // --- Simplified SermonPage component for testing --- 
 // Remove useSermon import
 // import useSermon from '@/hooks/useSermon';
-const SermonOutline = require('@/components/sermon/SermonOutline').default;
-const EditThoughtModal = require('@/components/EditThoughtModal').default;
+let SermonOutline: typeof import('@/components/sermon/SermonOutline').default;
+let EditThoughtModal: typeof import('@/components/EditThoughtModal').default;
+
+beforeAll(async () => {
+  const SermonOutlineModule = await import('@/components/sermon/SermonOutline');
+  const EditThoughtModalModule = await import('@/components/EditThoughtModal');
+  SermonOutline = SermonOutlineModule.default;
+  EditThoughtModal = EditThoughtModalModule.default;
+});
 
 const TestSermonPage = () => {
   // Use React.useState instead of useSermon mock

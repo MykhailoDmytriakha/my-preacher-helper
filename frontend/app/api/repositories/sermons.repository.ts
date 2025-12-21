@@ -242,7 +242,7 @@ export class SermonsRepository {
       };
 
       await docRef.update({
-        preachDates: FieldValue.arrayUnion(newPreachDate) as any
+        preachDates: FieldValue.arrayUnion(newPreachDate)
       });
 
       console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);

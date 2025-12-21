@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import React from 'react';
 
-import SermonOutline from '@/components/sermon/SermonOutline';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
@@ -62,9 +61,10 @@ describe('SermonOutline Component', () => {
   // Import the component *after* the mock is defined within describe
   // (Ensure this runs after the mock setup)
   let SermonOutline: typeof import('@/components/sermon/SermonOutline').default;
-  beforeAll(() => {
-     // Use beforeAll to require the component once after mock setup
-     SermonOutline = require('@/components/sermon/SermonOutline').default;
+  beforeAll(async () => {
+     // Use beforeAll to import the component once after mock setup
+     const SermonOutlineModule = await import('@/components/sermon/SermonOutline');
+     SermonOutline = SermonOutlineModule.default;
   });
 
   const mockSermon: Sermon = {
