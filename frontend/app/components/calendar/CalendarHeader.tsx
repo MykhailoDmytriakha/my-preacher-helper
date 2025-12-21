@@ -12,6 +12,7 @@ interface CalendarHeaderProps {
 
 export default function CalendarHeader({ view, onViewChange, currentMonth, onGoToToday }: CalendarHeaderProps) {
     const { t } = useTranslation();
+    const inactiveViewClasses = "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
 
     const isCurrentMonth = currentMonth ? (
         currentMonth.getMonth() === new Date().getMonth() &&
@@ -42,7 +43,7 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
                     onClick={() => onViewChange('month')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'month'
                         ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        : inactiveViewClasses
                         }`}
                 >
                     <CalendarDaysIcon className="w-4 h-4" />
@@ -52,7 +53,7 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
                     onClick={() => onViewChange('agenda')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'agenda'
                         ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        : inactiveViewClasses
                         }`}
                 >
                     <ListBulletIcon className="w-4 h-4" />
@@ -62,7 +63,7 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
                     onClick={() => onViewChange('analytics')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'analytics'
                         ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        : inactiveViewClasses
                         }`}
                 >
                     <ChartBarIcon className="w-4 h-4" />

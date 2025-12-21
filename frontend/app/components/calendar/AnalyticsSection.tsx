@@ -21,6 +21,7 @@ interface AnalyticsSectionProps {
 
 export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
     const { t, i18n } = useTranslation();
+    const sermonsLabel = t('calendar.analytics.sermons', { defaultValue: 'sermons' });
 
     const getDateLocale = () => {
         switch (i18n.language) {
@@ -243,7 +244,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
             newTestamentBooks,
             bibleBookMax
         };
-    }, [sermonsByDate]);
+    }, [sermonsByDate, i18n.language]);
 
     return (
         <div className="space-y-8">
@@ -364,7 +365,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
-                                        title={`${book.names.en} (${book.names.ru}): ${count} ${t('calendar.analytics.sermons', { defaultValue: 'sermons' })}`}
+                                        title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
@@ -407,7 +408,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
-                                        title={`${book.names.en} (${book.names.ru}): ${count} ${t('calendar.analytics.sermons', { defaultValue: 'sermons' })}`}
+                                        title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
@@ -468,7 +469,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                             ? `rgba(245, 158, 11, ${intensity / 100 * 0.2})`
                                             : 'transparent'
                                     }}
-                                    title={`${format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase())}: ${count} ${t('calendar.analytics.sermons', { defaultValue: 'sermons' })}`}
+                                    title={`${format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase())}: ${count} ${sermonsLabel}`}
                                 >
                                     <div className="text-center">
                                         <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">

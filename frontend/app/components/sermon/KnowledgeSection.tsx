@@ -56,9 +56,12 @@ const getSectionHintsFromInsightsOrDraft = (
   insights: Insights | undefined,
   draft: SermonDraft | undefined
 ): SectionHints | undefined => {
+  const shouldLog = process.env.NODE_ENV !== 'test';
   // First try to get from insights.sectionHints
   if (insights?.sectionHints) {
-    console.log('🎯 Getting thoughts plan from insights.sectionHints', insights.sectionHints);
+    if (shouldLog) {
+      console.log('🎯 Getting thoughts plan from insights.sectionHints', insights.sectionHints);
+    }
     const tp = insights.sectionHints as unknown as Partial<Record<keyof SectionHints, unknown>>;
     return {
       introduction: toMarkdownString(tp?.introduction),
@@ -68,7 +71,9 @@ const getSectionHintsFromInsightsOrDraft = (
   }
 
   // If not available in insights, convert sermon draft to SectionHints format
-  console.log('🎯 Getting thoughts plan from sermon draft', draft);
+  if (shouldLog) {
+    console.log('🎯 Getting thoughts plan from sermon draft', draft);
+  }
   if (draft) {
     return {
       introduction: draft.introduction.outline,
