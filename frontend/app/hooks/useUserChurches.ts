@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from './useAuth';
-import { getSermons } from '@services/sermon.service';
+
 import { Church } from '@/models/models';
+import { getSermons } from '@services/sermon.service';
+
+import { useAuth } from './useAuth';
 
 export function useUserChurches() {
     const { user } = useAuth();

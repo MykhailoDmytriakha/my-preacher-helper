@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/sermons/[id]/preach-dates
@@ -24,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 // GET /api/sermons/[id]/preach-dates
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     try {
         const sermon = await sermonsRepository.fetchSermonById(id);

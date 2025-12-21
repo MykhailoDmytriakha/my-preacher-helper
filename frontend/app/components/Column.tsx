@@ -606,7 +606,7 @@ export default function Column({
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
+  const [, setAudioError] = useState<string | null>(null);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
 
   // Log audio popover changes

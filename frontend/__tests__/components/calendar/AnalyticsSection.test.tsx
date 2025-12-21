@@ -11,7 +11,7 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => ({
         { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
         { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
     ],
-    getBookByName: jest.fn((name: string, locale?: string) => {
+    getBookByName: jest.fn((name: string, _locale?: string) => {
         const books: Record<string, any> = {
             'Genesis': { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
             'Exodus': { id: 'Exodus', chapters: 40, names: { en: 'Exodus', ru: 'Исход', uk: 'Вихід' }, abbrev: { en: 'Exod', ru: 'Исх', uk: 'Вих' } },
@@ -44,7 +44,7 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => ({
 // Mock translation
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string, options?: any) => {
+        t: (key: string, _options?: any) => {
             // Return translated text for common keys (Russian)
             const translations: Record<string, string> = {
                 'calendar.analytics.bibleBooks': 'Распределение по книгам Библии',
@@ -72,7 +72,7 @@ jest.mock('react-i18next', () => ({
 
 // Mock date-fns
 jest.mock('date-fns', () => ({
-    format: jest.fn((date, fmt) => 'January 2024'),
+    format: jest.fn((_date, _fmt) => 'January 2024'),
 }));
 
 import { render, screen } from '@testing-library/react';
@@ -143,7 +143,7 @@ describe('AnalyticsSection', () => {
     };
 
     it('correctly extracts multi-word Bible book names', () => {
-        render(<AnalyticsSection sermonsByDate={sermonsByDate} sermons={mockSermons} />);
+        render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
 
         // Check that Bible books are displayed in the grid
         // The books should be present in the DOM (either as text or in tooltips)
@@ -157,7 +157,7 @@ describe('AnalyticsSection', () => {
     });
 
     it('calculates counts correctly', () => {
-        render(<AnalyticsSection sermonsByDate={sermonsByDate} sermons={mockSermons} />);
+        render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
 
         // Check total preachings count (should be unique)
         const totalElements = screen.getAllByText('3');
@@ -197,7 +197,7 @@ describe('AnalyticsSection', () => {
                 '2024-01-15': [sermonsWithRussianBooks[1]],
             };
 
-            render(<AnalyticsSection sermonsByDate={sermonsByDateRussian} sermons={sermonsWithRussianBooks} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDateRussian} />);
 
             // Should display Bible Books Distribution section
             expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('AnalyticsSection', () => {
                 '2024-01-10': [sermonsWithFuzzyBooks[0]],
             };
 
-            render(<AnalyticsSection sermonsByDate={sermonsByDateFuzzy} sermons={sermonsWithFuzzyBooks} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDateFuzzy} />);
 
             // The component should render without errors and recognize the book
             expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
@@ -235,7 +235,7 @@ describe('AnalyticsSection', () => {
                 '2024-01-10': [sermonWithMultipleBooks],
             };
 
-            render(<AnalyticsSection sermonsByDate={sermonsByDateMulti} sermons={[sermonWithMultipleBooks]} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDateMulti} />);
 
             // Should render without errors
             expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
@@ -247,6 +247,7 @@ describe('AnalyticsSection', () => {
             // Mock date-fns to return formatted months
             const mockFormat = jest.fn();
             mockFormat.mockImplementation((date, fmt) => {
+                void date;
                 if (fmt === 'MMM yy') return 'Янв 24'; // Russian format without dot, capitalized
                 if (fmt === 'MMMM yyyy') return 'Январь 2024';
                 return 'January 2024';
@@ -254,7 +255,7 @@ describe('AnalyticsSection', () => {
 
             require('date-fns').format = mockFormat;
 
-            render(<AnalyticsSection sermonsByDate={sermonsByDate} sermons={mockSermons} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
 
             // Check that monthly activity section exists
             expect(screen.getByText('Активность по месяцам')).toBeInTheDocument();
@@ -274,7 +275,7 @@ describe('AnalyticsSection', () => {
                 '2024-01-10': [sermonsWithLocalizedBooks[0]],
             };
 
-            render(<AnalyticsSection sermonsByDate={sermonsByDateLocalized} sermons={sermonsWithLocalizedBooks} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDateLocalized} />);
 
             // Should display with Russian localization
             expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
@@ -286,7 +287,7 @@ describe('AnalyticsSection', () => {
         it('displays books in Synodal order for Russian locale', () => {
             // This test verifies that the component renders with Russian locale
             // The actual ordering logic is tested in the bibleData tests
-            render(<AnalyticsSection sermonsByDate={sermonsByDate} sermons={mockSermons} />);
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
 
             // Should display sections in Russian
             expect(screen.getByText('Ветхий Завет')).toBeInTheDocument();

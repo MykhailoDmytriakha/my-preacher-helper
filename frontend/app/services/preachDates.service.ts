@@ -1,4 +1,4 @@
-import { PreachDate, Sermon, Church } from '@/models/models';
+import { PreachDate, Sermon } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
 

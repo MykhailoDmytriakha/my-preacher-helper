@@ -88,7 +88,6 @@ jest.mock('../../app/(pages)/(private)/studies/ScriptureRefBadge', () => {
 
 // Debug log
 import EditStudyNoteModal from '../../app/(pages)/(private)/studies/EditStudyNoteModal';
-import StudyNoteCard from '../../app/(pages)/(private)/studies/StudyNoteCard';
 
 // Basic rendering tests for components are covered in describe blocks below are sufficient.
 

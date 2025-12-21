@@ -237,35 +237,6 @@ export function extractSermonContent(sermon: Sermon): string {
 }
 
 /**
- * Parses OpenAI JSON response with standardized error handling
- * @param rawJson The raw JSON string from OpenAI
- * @param fieldName The expected field name in the response
- * @param functionName The calling function name for error messages
- * @returns The parsed result or null if failed
- */
-export function parseAIResponse<T>(rawJson: string | null, fieldName: string, functionName: string): T[] | null {
-  if (!rawJson) return null;
-  
-  try {
-    const result = JSON.parse(rawJson);
-    
-    if (isDebugMode) {
-      console.log(`DEBUG MODE: Parsed ${fieldName} from AI response:`, result[fieldName]);
-    }
-    
-    if (Array.isArray(result[fieldName])) {
-      return result[fieldName];
-    }
-    
-    console.error(`${functionName}: Expected ${fieldName} field not found or not an array`);
-    return null;
-  } catch (jsonError) {
-    console.error(`${functionName}: JSON parsing error:`, jsonError);
-    return null;
-  }
-}
-
-/**
  * Formats a duration into a human-readable string
  * @param durationMs Duration in milliseconds
  * @returns Formatted string (e.g. "1.5s", "2m 30s", "1h 20m")
@@ -298,18 +269,6 @@ export function formatDuration(durationMs: number): string {
   const remainingMinutes = Math.floor(minutes % 60);
   
   return `${hours}h ${remainingMinutes}m`;
-}
-
-/**
- * Logs timing information for AI operations
- * @param operation Name of the operation being timed
- * @param startTime Start time in milliseconds from performance.now()
- */
-export function logOperationTiming(operation: string, startTime: number): void {
-  const endTime = performance.now();
-  const durationMs = endTime - startTime;
-  const formattedDuration = formatDuration(durationMs);
-  logger.info(operation, `Completed in ${formattedDuration}`);
 }
 
 /**

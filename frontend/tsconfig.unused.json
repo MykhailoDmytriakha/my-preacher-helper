@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": false
+  },
+  "exclude": [
+    "node_modules",
+    ".next",
+    "coverage",
+    "__tests__",
+    "test-utils",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/*.d.ts"
+  ]
+}

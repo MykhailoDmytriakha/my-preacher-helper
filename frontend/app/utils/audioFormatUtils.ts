@@ -5,27 +5,9 @@
  * to ensure maximum compatibility with OpenAI's transcription API.
  */
 
-/**
- * Supported audio formats by OpenAI API
- * Source: OpenAI documentation
- */
-
 // Constants for repeated strings
 const AUDIO_MIME_PREFIX = 'audio/';
 const DEFAULT_AUDIO_FORMAT = AUDIO_MIME_PREFIX + 'webm';
-
-export const OPENAI_SUPPORTED_FORMATS = [
-  AUDIO_MIME_PREFIX + 'flac',
-  AUDIO_MIME_PREFIX + 'm4a',
-  AUDIO_MIME_PREFIX + 'mp3',
-  AUDIO_MIME_PREFIX + 'mp4',
-  AUDIO_MIME_PREFIX + 'mpeg',
-  AUDIO_MIME_PREFIX + 'mpga',
-  AUDIO_MIME_PREFIX + 'oga',
-  AUDIO_MIME_PREFIX + 'ogg',
-  AUDIO_MIME_PREFIX + 'wav',
-  AUDIO_MIME_PREFIX + 'webm'
-] as const;
 
 /**
  * Format priority for MediaRecorder selection
@@ -37,7 +19,7 @@ export const OPENAI_SUPPORTED_FORMATS = [
  * 
  * This affects ALL browsers on macOS (Chrome, Safari, Firefox).
  */
-export const FORMAT_PRIORITY = [
+const FORMAT_PRIORITY = [
   AUDIO_MIME_PREFIX + 'mp4',                    // Best compatibility - but SKIPPED on macOS/iOS
   AUDIO_MIME_PREFIX + 'mpeg',                   // MP3, excellent compatibility
   AUDIO_MIME_PREFIX + 'wav',                    // Uncompressed, reliable
@@ -283,4 +265,3 @@ export async function logAudioInfo(blob: Blob, context: string = 'Audio'): Promi
     console.error(`❌ This is a browser bug - MediaRecorder lied about the format it produced`);
   }
 }
-

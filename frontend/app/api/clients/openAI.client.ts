@@ -128,7 +128,7 @@ function cleanPotentiallyInvalidJsonString(jsonString: string): string {
   // Attempt to fix unescaped quotes within strings
   // This regex finds typical JSON string values and escapes unescaped quotes within them
   try {
-    return jsonString.replace(/: *"((?:\\.|[^"\\])*)"/g, (match, group1) => {
+    return jsonString.replace(/: *"((?:\\.|[^"\\])*)"/g, (_match, group1) => {
       const cleanedGroup = group1.replace(/(?<!\\)"/g, '\\"');
       return `: "${cleanedGroup}"`;
     });

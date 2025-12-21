@@ -80,7 +80,6 @@ function handleDragOver(
 function handleDragEnd(
   event: DragEndEvent,
   originalContainer: string | null,
-  containers: Record<string, any[]>,
   setContainers: (containers: Record<string, any[]>) => void,
   containersRef: React.MutableRefObject<Record<string, any[]>>
 ) {
@@ -289,7 +288,6 @@ describe('Drag and Drop Handlers', () => {
     handleDragEnd(
       dragEndEvent,
       originalContainer,
-      containers,
       setContainersMock,
       containersRef
     );
@@ -401,7 +399,6 @@ describe('Drag and Drop Handlers', () => {
     handleDragEnd(
       dragEndEvent,
       'introduction',
-      containers,
       setContainersMock,
       containersRef
     );
@@ -429,7 +426,6 @@ describe('Drag and Drop Handlers', () => {
     handleDragEnd(
       dragEndEvent,
       originalContainer,
-      containers,
       setContainersMock,
       containersRef
     );
@@ -492,7 +488,6 @@ describe('Drag and Drop Handlers', () => {
     handleDragEnd(
       dragEndEvent,
       'ambiguous',
-      containers,
       setContainersMock,
       containersRef
     );

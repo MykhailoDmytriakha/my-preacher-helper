@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { Church } from "@/models/models";
-import { useUserChurches } from "@/hooks/useUserChurches";
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions, Transition, ComboboxButton } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
+import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+
+import { useUserChurches } from "@/hooks/useUserChurches";
+import { Church } from "@/models/models";
 
 interface ChurchAutocompleteProps {
     initialValue?: Church;

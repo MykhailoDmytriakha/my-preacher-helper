@@ -1,11 +1,13 @@
 "use client";
 
-import { useTranslation } from "react-i18next";
+import { MapPinIcon, UserIcon, BookOpenIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { format, parseISO } from "date-fns";
 import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
-import { Sermon, PreachDate, Series } from "@/models/models";
-import { MapPinIcon, UserIcon, BookOpenIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { useTranslation } from "react-i18next";
+
+import { Sermon, Series } from "@/models/models";
+
 
 interface AgendaViewProps {
     sermons: Sermon[];

@@ -20,7 +20,7 @@ jest.mock('@/hooks/useAuth', () => ({
 }));
 
 jest.mock('@/components/calendar/CalendarHeader', () => {
-  return function MockCalendarHeader({ view, onViewChange }: any) {
+  return function MockCalendarHeader({ onViewChange }: any) {
     return (
       <div data-testid="calendar-header">
         <button onClick={() => onViewChange('month')}>Month</button>
@@ -31,7 +31,7 @@ jest.mock('@/components/calendar/CalendarHeader', () => {
 });
 
 jest.mock('@/components/calendar/PreachCalendar', () => {
-  return function MockPreachCalendar({ sermonsByDate, selectedDate, onDateSelect }: any) {
+  return function MockPreachCalendar({ onDateSelect }: any) {
     return (
       <div data-testid="preach-calendar">
         <button onClick={() => onDateSelect(new Date('2024-01-15'))}>
@@ -55,7 +55,7 @@ jest.mock('@/components/calendar/DateEventList', () => {
 });
 
 jest.mock('@/components/calendar/LegacyDataWarning', () => {
-  return function MockLegacyDataWarning({ pendingSermons, onAddDate }: any) {
+  return function MockLegacyDataWarning({ pendingSermons }: any) {
     return (
       <div data-testid="legacy-data-warning">
         Pending: {pendingSermons.length}
@@ -71,10 +71,10 @@ jest.mock('@/components/calendar/AgendaView', () => {
 });
 
 jest.mock('@/components/calendar/AnalyticsSection', () => {
-  return function MockAnalyticsSection({ sermonsByDate, sermons }: any) {
+  return function MockAnalyticsSection({ sermonsByDate }: any) {
     return (
       <div data-testid="analytics-section">
-        Analytics: {Object.keys(sermonsByDate).length} dates, {sermons.length} sermons
+        Analytics: {Object.keys(sermonsByDate).length} dates
       </div>
     );
   };

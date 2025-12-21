@@ -1,15 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { StudyMaterial, StudyNote } from '@/models/models';
+import { StudyNote } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import {
-  createStudyMaterial,
   createStudyNote,
-  deleteStudyMaterial,
   deleteStudyNote,
-  getStudyMaterials,
   getStudyNotes,
-  updateStudyMaterial,
   updateStudyNote,
 } from '@services/studies.service';
 
@@ -51,7 +47,6 @@ function useResolveUid(): { uid: string | undefined; isAuthLoading: boolean } {
 }
 
 const notesKey = (uid: string | undefined) => ['study-notes', uid];
-const materialsKey = (uid: string | undefined) => ['study-materials', uid];
 
 export function useStudyNotes() {
   const { uid, isAuthLoading } = useResolveUid();
@@ -107,61 +102,5 @@ export function useStudyNotes() {
     updating: updateNoteMutation.isPending,
     updateNote: updateNoteMutation.mutateAsync,
     deleteNote: deleteNoteMutation.mutateAsync,
-  };
-}
-
-export function useStudyMaterials() {
-  const { uid, isAuthLoading } = useResolveUid();
-  const queryClient = useQueryClient();
-
-  const materialsQuery = useQuery({
-    queryKey: materialsKey(uid),
-    queryFn: () => (uid ? getStudyMaterials(uid) : Promise.resolve([])),
-    // Only enable query when auth is settled AND we have a uid
-    enabled: !isAuthLoading && !!uid,
-    staleTime: 60_000,
-  });
-
-  const createMaterialMutation = useMutation({
-    mutationFn: (material: Omit<StudyMaterial, 'id' | 'createdAt' | 'updatedAt'>) => createStudyMaterial(material),
-    onSuccess: (created) => {
-      queryClient.setQueryData<StudyMaterial[]>(materialsKey(uid), (old = []) => [created, ...(old ?? [])]);
-    },
-  });
-
-  const updateMaterialMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<StudyMaterial> }) => {
-      if (!uid) throw new Error('No user');
-      return updateStudyMaterial(id, { ...updates, userId: uid });
-    },
-    onSuccess: (updated) => {
-      queryClient.setQueryData<StudyMaterial[]>(materialsKey(uid), (old = []) =>
-        (old ?? []).map((m) => (m.id === updated.id ? updated : m))
-      );
-    },
-  });
-
-  const deleteMaterialMutation = useMutation({
-    mutationFn: (id: string) => {
-      if (!uid) throw new Error('No user');
-      return deleteStudyMaterial(id, uid);
-    },
-    onSuccess: (_data, id) => {
-      queryClient.setQueryData<StudyMaterial[]>(materialsKey(uid), (old = []) =>
-        (old ?? []).filter((m) => m.id !== id)
-      );
-    },
-  });
-
-  return {
-    uid,
-    materials: materialsQuery.data ?? [],
-    // Show loading when auth is loading OR query is loading
-    loading: isAuthLoading || materialsQuery.isLoading,
-    error: materialsQuery.error as Error | null,
-    refetch: materialsQuery.refetch,
-    createMaterial: createMaterialMutation.mutateAsync,
-    updateMaterial: updateMaterialMutation.mutateAsync,
-    deleteMaterial: deleteMaterialMutation.mutateAsync,
   };
 }

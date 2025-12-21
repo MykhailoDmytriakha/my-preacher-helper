@@ -1,5 +1,3 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { StudyNote } from '@/models/models';
 
 // Mock the entire studies page to avoid complex dependencies

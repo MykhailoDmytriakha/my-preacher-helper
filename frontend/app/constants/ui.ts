@@ -9,14 +9,6 @@ export const TIMING = {
   ANIMATION_DURATION: 200,
 } as const;
 
-// Z-index constants
-export const Z_INDEX = {
-  DROPDOWN: 10,
-  MODAL: 50,
-  TOOLTIP: 100,
-  OVERLAY: 200,
-} as const;
-
 // Spacing constants
 export const SPACING = {
   MENU_ITEM_PADDING: 'px-4 py-2',

@@ -89,7 +89,6 @@ export function handleDragOver(
 export function handleDragEnd(
   event: DragEndEvent,
   originalContainer: string | null,
-  containers: Record<string, DraggableItem[]>,
   setContainers: (containers: Record<string, DraggableItem[]>) => void,
   containersRef: React.MutableRefObject<Record<string, DraggableItem[]>>
 ) {

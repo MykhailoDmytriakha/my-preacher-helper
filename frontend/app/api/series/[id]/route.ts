@@ -9,7 +9,7 @@ const ERROR_MESSAGES = {
 } as const;
 
 // GET /api/series/:id
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   try {
@@ -80,7 +80,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 // DELETE /api/series/:id - Delete a series
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   try {

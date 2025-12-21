@@ -47,7 +47,7 @@ describe('AuthProvider', () => {
     authStateCallback = null;
     unsubscribeMock = jest.fn();
     
-    mockOnAuthStateChanged.mockImplementation((auth, callback) => {
+    mockOnAuthStateChanged.mockImplementation((_auth, callback) => {
       authStateCallback = callback as (user: User | null) => void;
       return unsubscribeMock;
     });

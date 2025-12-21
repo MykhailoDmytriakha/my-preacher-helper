@@ -7,7 +7,7 @@ import '@testing-library/jest-dom';
 // Mock react-i18next
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string, options?: any) => {
+        t: (key: string, _options?: any) => {
             const translations: { [key: string]: string } = {
                 'calendar.noPreachDates': 'No preach dates recorded',
                 'calendar.outcomes.excellent': 'Excellent',

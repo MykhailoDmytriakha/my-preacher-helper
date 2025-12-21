@@ -1,26 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
-import { Sermon, PreachDate } from "@/models/models";
-import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages)/(private)/studies/bibleData";
 import {
     ChartBarIcon,
     MapPinIcon,
     UserGroupIcon,
-    CheckBadgeIcon,
     CalendarIcon,
     BookOpenIcon
 } from "@heroicons/react/24/outline";
+import { format } from "date-fns";
+import { enUS, ru, uk } from "date-fns/locale";
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+
+import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages)/(private)/studies/bibleData";
+import { Sermon, PreachDate } from "@/models/models";
 
 interface AnalyticsSectionProps {
     sermonsByDate: Record<string, Sermon[]>;
-    sermons: Sermon[];
 }
 
-export default function AnalyticsSection({ sermonsByDate, sermons }: AnalyticsSectionProps) {
+export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
     const { t, i18n } = useTranslation();
 
     const getDateLocale = () => {
@@ -162,9 +161,6 @@ export default function AnalyticsSection({ sermonsByDate, sermons }: AnalyticsSe
 
         const topChurches = Object.entries(churchCounts).sort((a, b) => b[1] - a[1]);
         const topTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]);
-
-        const busiestMonth = Object.entries(monthCounts)
-            .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
 
         const avgPrepTime = preachingsWithDates > 0 ? Math.round(totalPrepDays / preachingsWithDates) : 0;
 

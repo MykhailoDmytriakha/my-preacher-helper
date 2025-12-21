@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // PUT /api/sermons/[id]/preach-dates/[dateId]
@@ -27,7 +28,7 @@ export async function PUT(
 
 // DELETE /api/sermons/[id]/preach-dates/[dateId]
 export async function DELETE(
-    request: Request,
+    _request: Request,
     { params }: { params: Promise<{ id: string; dateId: string }> }
 ) {
     const { id, dateId } = await params;

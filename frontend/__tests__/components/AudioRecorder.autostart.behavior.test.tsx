@@ -29,7 +29,7 @@ class MockMediaRecorder {
   private emittedChunk = false;
   static isTypeSupported = jest.fn().mockReturnValue(true);
 
-  constructor(stream: MediaStream, options?: { mimeType?: string }) {
+  constructor(_stream: MediaStream, options?: { mimeType?: string }) {
     this.mimeType = options?.mimeType || 'audio/webm';
   }
 

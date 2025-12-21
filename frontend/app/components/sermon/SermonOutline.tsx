@@ -406,7 +406,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
             <Droppable 
               droppableId={sectionType} 
               key={sectionType}
-              renderClone={(providedDraggable, snapshot, rubric) => {
+              renderClone={(providedDraggable, _snapshot, rubric) => {
                 const point = points[rubric.source.index];
                 return (
                   <li

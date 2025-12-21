@@ -6,6 +6,7 @@ import pluginImport from "eslint-plugin-import";
 import pluginJestDom from "eslint-plugin-jest-dom";
 import pluginSonarjs from "eslint-plugin-sonarjs";
 import pluginTestingLibrary from "eslint-plugin-testing-library";
+import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +34,7 @@ const eslintConfig = [
       "testing-library": pluginTestingLibrary,
       "jest-dom": pluginJestDom,
       sonarjs: pluginSonarjs,
+      "unused-imports": pluginUnusedImports,
     },
     rules: {
       "import/order": [
@@ -52,9 +54,21 @@ const eslintConfig = [
           alphabetize: { order: "asc", caseInsensitive: true },
         },
       ],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true }],
       "@typescript-eslint/no-explicit-any": "error",
       "sonarjs/no-duplicate-string": ["warn", { threshold: 3 }],
       "sonarjs/cognitive-complexity": ["warn", 20],
+      "unused-imports/no-unused-imports": "error",
+      "unused-imports/no-unused-vars": [
+        "warn",
+        {
+          vars: "all",
+          varsIgnorePattern: "^_",
+          args: "after-used",
+          argsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
   {

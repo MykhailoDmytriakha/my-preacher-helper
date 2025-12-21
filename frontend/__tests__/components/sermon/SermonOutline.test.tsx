@@ -90,7 +90,7 @@ describe('SermonOutline Component', () => {
       main: [{ id: 'main1', text: 'Main point 1' }],
       conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
     });
-    mockUpdateSermonOutline.mockReset().mockImplementation(async (sermonId, outline) => Promise.resolve(outline));
+    mockUpdateSermonOutline.mockReset().mockImplementation(async (_sermonId, outline) => Promise.resolve(outline));
     mockOnOutlineUpdate.mockClear();
     // Clear all mocks might still be useful here to catch unexpected calls
     jest.clearAllMocks(); 

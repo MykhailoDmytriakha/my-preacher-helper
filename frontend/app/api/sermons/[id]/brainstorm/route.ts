@@ -5,7 +5,7 @@ import { generateBrainstormSuggestion } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/sermons/:id/brainstorm
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   console.log("Brainstorm route: Received POST request for generating brainstorm suggestion");
   
   try {

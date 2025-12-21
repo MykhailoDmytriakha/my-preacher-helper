@@ -1203,7 +1203,7 @@ export default function PlanPage() {
       }));
 
       // Update the combined plan
-      updateCombinedPlan(outlinePointId, outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
+      updateCombinedPlan(outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
 
       // Equalize only this pair after content generation
       if (section) {
@@ -1221,7 +1221,6 @@ export default function PlanPage() {
 
   // Update the combined plan when a new outline point content is generated
   const updateCombinedPlan = (
-    outlinePointId: string,
     outlinePointText: string,
     content: string,
     section: 'introduction' | 'main' | 'conclusion'
@@ -2477,7 +2476,6 @@ export default function PlanPage() {
                 {/* View Plan Buttons */}
                 <div className="flex flex-wrap gap-3 mt-6">
                   <ViewPlanMenu
-                    sermonTitle={sermon.title}
                     sermonId={sermonId}
                     combinedPlan={combinedPlan}
                     sectionMenuRef={sectionMenuRef}
@@ -2623,7 +2621,6 @@ export default function PlanPage() {
                             }));
 
                             updateCombinedPlan(
-                              outlinePoint.id,
                               outlinePoint.text,
                               newContent,
                               "introduction"
@@ -2776,7 +2773,6 @@ export default function PlanPage() {
                             }));
 
                             updateCombinedPlan(
-                              outlinePoint.id,
                               outlinePoint.text,
                               newContent,
                               "main"
@@ -2929,7 +2925,6 @@ export default function PlanPage() {
                             }));
 
                             updateCombinedPlan(
-                              outlinePoint.id,
                               outlinePoint.text,
                               newContent,
                               "conclusion"

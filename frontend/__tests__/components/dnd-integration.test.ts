@@ -89,7 +89,6 @@ describe('Drag and Drop Integration Tests', () => {
     handleDragEnd(
       dragEndEvent,
       originalContainer,
-      containers,
       setContainersMock,
       containersRef
     );
@@ -145,7 +144,6 @@ describe('Drag and Drop Integration Tests', () => {
     handleDragEnd(
       dragEndEvent,
       originalContainer,
-      containers,
       setContainersMock,
       containersRef
     );

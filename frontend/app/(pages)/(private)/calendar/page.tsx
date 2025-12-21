@@ -1,20 +1,20 @@
 "use client";
 
+import { format } from "date-fns";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
-import { useCalendarSermons } from "@/hooks/useCalendarSermons";
-import { useSeries } from "@/hooks/useSeries";
-import { useAuth } from "@/providers/AuthProvider";
-import CalendarHeader from "@/components/calendar/CalendarHeader";
-import PreachCalendar from "@/components/calendar/PreachCalendar";
-import DateEventList from "@/components/calendar/DateEventList";
+
 import AgendaView from "@/components/calendar/AgendaView";
 import AnalyticsSection from "@/components/calendar/AnalyticsSection";
+import CalendarHeader from "@/components/calendar/CalendarHeader";
+import DateEventList from "@/components/calendar/DateEventList";
 import LegacyDataWarning from "@/components/calendar/LegacyDataWarning";
-import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
+import PreachCalendar from "@/components/calendar/PreachCalendar";
 import PreachDateModal from "@/components/calendar/PreachDateModal";
-import { Sermon, PreachDate, Series } from "@/models/models";
+import { useCalendarSermons } from "@/hooks/useCalendarSermons";
+import { useSeries } from "@/hooks/useSeries";
+import { Sermon, PreachDate } from "@/models/models";
+import { useAuth } from "@/providers/AuthProvider";
 import * as preachDatesService from "@/services/preachDates.service";
 
 export default function CalendarPage() {
@@ -155,7 +155,7 @@ export default function CalendarPage() {
             ) : view === 'agenda' ? (
                 <AgendaView sermons={sermons} series={allSeries} />
             ) : (
-                <AnalyticsSection sermonsByDate={sermonsByDate} sermons={sermons} />
+                <AnalyticsSection sermonsByDate={sermonsByDate} />
             )}
 
             <PreachDateModal

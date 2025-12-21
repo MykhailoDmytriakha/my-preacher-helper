@@ -42,7 +42,7 @@ jest.mock('next/link', () => {
 
 // Mock dateFormatter
 jest.mock('@/utils/dateFormatter', () => ({
-    formatDate: jest.fn((date: string | Date) => '1/1/2024')
+    formatDate: jest.fn((_date: string | Date) => '1/1/2024')
 }));
 
 // Mock heroicons

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // GET /api/calendar/sermons?userId=<uid>&startDate=<ISO>&endDate=<ISO>

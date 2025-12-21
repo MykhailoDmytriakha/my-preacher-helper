@@ -281,7 +281,7 @@ describe('Plan Generation Integration', () => {
 
     it('should handle repository validation errors', async () => {
       // Mock repository to throw validation error
-      (sermonsRepository.updateSermonPlan as jest.Mock).mockImplementation((sermonId, plan) => {
+      (sermonsRepository.updateSermonPlan as jest.Mock).mockImplementation((_sermonId, plan) => {
         // Simulate the validation logic from the repository
         if (!plan || typeof plan !== 'object') {
           throw new Error('Invalid plan data');

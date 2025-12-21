@@ -2,7 +2,7 @@ import { Sermon } from '@/models/models';
 
 import { extractSearchSnippets } from './searchUtils';
 
-export interface SermonSearchOptions {
+interface SermonSearchOptions {
   searchInTitleVerse?: boolean;
   searchInThoughts?: boolean;
   searchInTags?: boolean;

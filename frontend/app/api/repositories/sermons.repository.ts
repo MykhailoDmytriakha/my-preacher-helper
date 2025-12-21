@@ -315,7 +315,7 @@ export class SermonsRepository {
   async fetchSermonsWithPreachDates(userId: string, startDate?: string, endDate?: string): Promise<Sermon[]> {
     console.log(`Firestore: fetching sermons with preach dates for user ${userId}`);
     try {
-      let query = adminDb.collection(this.collection).where("userId", "==", userId);
+      const query = adminDb.collection(this.collection).where("userId", "==", userId);
 
       const snapshot = await query.get();
       let sermons: Sermon[] = snapshot.docs.map(doc => ({

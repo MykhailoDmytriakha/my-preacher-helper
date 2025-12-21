@@ -180,7 +180,7 @@ export const TIMER_CONTROL_COLORS = {
 } as const;
 
 // Navigation item accent palettes (keep navigation styling consistent across workspaces)
-export const NAV_ITEM_THEMES = {
+const NAV_ITEM_THEMES = {
   default: {
     pill: 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
     menu: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',

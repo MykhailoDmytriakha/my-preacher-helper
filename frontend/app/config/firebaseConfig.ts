@@ -1,5 +1,4 @@
 import { FirebaseApp, initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
 
 type FirebaseConfig = {
   apiKey: string;
@@ -26,8 +25,5 @@ try {
   console.error('Firebase initialization error', error);
   throw error;
 }
-
-// Export firestore database
-export const db = getFirestore(app);
 
 export default app;

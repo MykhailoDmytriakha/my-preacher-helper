@@ -86,7 +86,7 @@ const getWordTextButtonClassName = (isPreached: boolean) =>
     ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300"
     : "bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800";
 
-export function ExportButtonsLayout({
+function ExportButtonsLayout({
   onTxtClick,
   onPdfClick,
   onWordClick,
@@ -432,7 +432,7 @@ interface ExportPdfModalProps {
   title: string;
 }
 
-export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
+const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   isOpen,
   onClose,
   getContent,

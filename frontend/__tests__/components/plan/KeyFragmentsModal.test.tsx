@@ -94,7 +94,7 @@ describe('KeyFragmentsModal', () => {
       toString: jest.fn().mockReturnValue(''),
     } as unknown as Selection);
     // Mock updateThought to return a new object mimicking the update
-    (updateThought as jest.Mock).mockImplementation(async (sId, thought) => {
+    (updateThought as jest.Mock).mockImplementation(async (_sId, thought) => {
       // Return a new object to prevent mutation issues and mimic backend response
       return {
         ...thought, // Spread original properties

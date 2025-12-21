@@ -7,7 +7,7 @@ const ICON_CLASS_NAME = "w-3.5 h-3.5 mr-1";
 /**
  * Canonical structure tag ids used across the app for logic
  */
-export type CanonicalStructureId = 'intro' | 'main' | 'conclusion';
+type CanonicalStructureId = 'intro' | 'main' | 'conclusion';
 
 /**
  * Map of aliases (in different languages/cases) to canonical ids

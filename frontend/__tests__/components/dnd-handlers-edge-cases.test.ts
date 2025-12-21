@@ -122,7 +122,7 @@ describe('Drag and Drop Handlers Edge Cases', () => {
     const itemsBefore = JSON.parse(JSON.stringify(items));
     
     // Execute the handler
-    handleDragEnd(event, 'ambiguous', items, mockSetItems, containersRef);
+    handleDragEnd(event, 'ambiguous', mockSetItems, containersRef);
     
     // Verify items are unchanged
     expect(items).toEqual(itemsBefore);
@@ -142,7 +142,7 @@ describe('Drag and Drop Handlers Edge Cases', () => {
     const itemsBefore = JSON.parse(JSON.stringify(items));
     
     // Execute the handler
-    handleDragEnd(event, 'ambiguous', items, mockSetItems, containersRef);
+    handleDragEnd(event, 'ambiguous', mockSetItems, containersRef);
     
     // Verify items are unchanged
     expect(items).toEqual(itemsBefore);

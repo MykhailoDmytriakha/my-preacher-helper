@@ -23,7 +23,7 @@ const formatStructuredBlocks = (text: string) => {
     // Types: Illustration, Application, Question, Quote, Definition
     const blockRegex = /\[(Illustration|Application|Question|Quote|Definition):\s*([\s\S]*?)\]/g;
 
-    return text.replace(blockRegex, (match, type, content) => {
+    return text.replace(blockRegex, (_match, type, content) => {
         return `\n\`\`\`${type.toLowerCase()}\n${content.trim()}\n\`\`\`\n`;
     });
 };

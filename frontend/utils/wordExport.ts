@@ -265,7 +265,7 @@ export const parseTable = (tableLines: string[]): Table | null => {
     .map(line => {
       return line.split('|')
         .map(cell => cell.trim())
-        .filter((cell, index, array) => index > 0 && index < array.length - 1); // Remove empty first/last cells
+        .filter((_, index, array) => index > 0 && index < array.length - 1); // Remove empty first/last cells
     })
     .filter(row => row.length > 0);
   

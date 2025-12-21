@@ -24,7 +24,7 @@ class MockMediaRecorder {
   state: 'inactive' | 'recording' | 'paused' = 'inactive';
   mimeType: string = 'audio/webm';
 
-  constructor(stream: MediaStream, options?: { mimeType: string }) {
+  constructor(_stream: MediaStream, options?: { mimeType: string }) {
     this.mimeType = options?.mimeType || 'audio/webm';
   }
 

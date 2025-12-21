@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 
 import { StudyNote } from '@/models/models';
 
@@ -145,4 +145,3 @@ export const useStudiesFocusMode = ({
     hasPrev,
   };
 };
-
