@@ -279,7 +279,7 @@ describe('DateEventList', () => {
             />
         );
 
-        expect(screen.getByText('"Great sermon"')).toBeInTheDocument();
+        expect(screen.getByText(/Great sermon/)).toBeInTheDocument();
     });
 
     it('handles sermons without preachDates gracefully', () => {

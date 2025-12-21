@@ -2,36 +2,6 @@ import { SermonDraft } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 /**
- * Fetches the plan for a specific sermon
- * @param sermonId The ID of the sermon to fetch the plan for
- * @returns The sermon plan or undefined if not found
- */
-export const getSermonPlan = async (sermonId: string): Promise<SermonDraft | undefined> => {
-  try {
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/plan`, {
-      cache: "no-store",
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    
-    if (response.status === 404) {
-      return undefined;
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch sermon plan: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching plan for sermon ${sermonId}:`, error);
-    throw error;
-  }
-};
-
-/**
  * Generates a new plan for a specific sermon
  * @param sermonId The ID of the sermon to generate the plan for
  * @param section Optional section to generate plan for (introduction, main, conclusion)

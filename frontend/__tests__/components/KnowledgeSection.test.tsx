@@ -24,7 +24,6 @@ jest.mock('@/services/insights.service', () => ({
 // Mock the plan service
 jest.mock('@/services/plan.service', () => ({
   generateSermonPlan: jest.fn(),
-  getSermonPlan: jest.fn(),
 }));
 
 // Mock the translations

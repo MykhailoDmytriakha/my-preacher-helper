@@ -1,6 +1,9 @@
 import { jest } from '@jest/globals';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import * as nextNavigation from 'next/navigation';
 import React from 'react';
+
+
 
 // Use the global next/navigation mock from jest.setup.js
 
@@ -40,170 +43,162 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock timer components - simplified approach with controlled state
-jest.mock('@/components/PreachingTimer', () => {
-  const React = require('react');
+const mockTriggerPhaseTransition = jest.fn();
+const mockTriggerScreenBlink = jest.fn();
 
-  // Store component instances for testing
-  const instances: any[] = [];
+type PreachingPhase = 'introduction' | 'main' | 'conclusion' | 'finished';
+type TimerInstance = {
+  setTime: (time: number) => void;
+  setPhase: React.Dispatch<React.SetStateAction<PreachingPhase>>;
+  setRunning: React.Dispatch<React.SetStateAction<boolean>>;
+  getState: () => { phase: PreachingPhase; timeRemaining: number; isRunning: boolean };
+};
 
-  function MockPreachingTimer({ initialDuration, className }: {
-    initialDuration?: number;
-    className?: string;
-  }) {
-    const [phase, setPhase] = React.useState<'introduction' | 'main' | 'conclusion' | 'finished'>('introduction');
-    const [timeRemaining, setTimeRemaining] = React.useState(initialDuration || 1200);
-    const [isRunning, setIsRunning] = React.useState(true);
+// Store component instances for testing
+const timerInstances: TimerInstance[] = [];
 
-    // Store instance for external control
-    const instanceRef = React.useRef({
-      setTime: (time: number) => {
-        setTimeRemaining(time);
-        if (time <= 300 && time > 0) setPhase('conclusion');
-        else if (time <= 900 && time > 300) {
-          setPhase('main');
-          mockTriggerPhaseTransition?.();
-        }
-        else if (time === 0) {
-          setPhase('finished');
-          setIsRunning(false);
-          mockTriggerScreenBlink?.();
-        }
-      },
-      setPhase,
-      setRunning: setIsRunning,
-      getState: () => ({ phase, timeRemaining, isRunning })
-    });
+const MockPreachingTimer = ({ initialDuration, className }: { initialDuration?: number; className?: string }) => {
+  const [phase, setPhase] = React.useState<PreachingPhase>('introduction');
+  const [timeRemaining, setTimeRemaining] = React.useState(initialDuration || 1200);
+  const [isRunning, setIsRunning] = React.useState(true);
 
-    React.useEffect(() => {
-      const currentInstance = instanceRef.current;
-      instances.push(currentInstance);
-      return () => {
-        const index = instances.indexOf(currentInstance);
-        if (index > -1) instances.splice(index, 1);
-      };
-    }, []);
+  // Store instance for external control
+  const instanceRef = React.useRef<TimerInstance>({
+    setTime: (time: number) => {
+      setTimeRemaining(time);
+      if (time <= 300 && time > 0) setPhase('conclusion');
+      else if (time <= 900 && time > 300) {
+        setPhase('main');
+        mockTriggerPhaseTransition?.();
+      } else if (time === 0) {
+        setPhase('finished');
+        setIsRunning(false);
+        mockTriggerScreenBlink?.();
+      }
+    },
+    setPhase,
+    setRunning: setIsRunning,
+    getState: () => ({ phase, timeRemaining, isRunning })
+  });
 
-    // Global access for tests
-    (global as any).__timerInstances = instances;
-
-    const formatTime = (seconds: number): string => {
-      const mins = Math.floor(Math.abs(seconds) / 60);
-      const secs = Math.abs(seconds) % 60;
-      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  React.useEffect(() => {
+    const currentInstance = instanceRef.current;
+    timerInstances.push(currentInstance);
+    return () => {
+      const index = timerInstances.indexOf(currentInstance);
+      if (index > -1) timerInstances.splice(index, 1);
     };
+  }, []);
 
-    const phaseColors = {
-      introduction: '#FCD34D',
-      main: '#3B82F6',
-      conclusion: '#10B981',
-      finished: '#EF4444'
-    };
+  // Global access for tests
+  (global as any).__timerInstances = timerInstances;
 
-    return (
-      <div data-testid="preaching-timer" className={className}>
-        <div data-testid="timer-display">
-          <span data-testid="phase-label">{phase}</span>
-          <span data-testid="time-display" style={{ color: phaseColors[phase] }}>
-            {formatTime(timeRemaining)}
-          </span>
-          <span>remaining</span>
-        </div>
-        <div data-testid="timer-controls">
-          <button
-            data-testid="pause-btn"
-            onClick={() => setIsRunning(!isRunning)}
-            disabled={timeRemaining === 0}
-          >
-            {isRunning ? 'Pause' : 'Resume'}
-          </button>
-          <button
-            data-testid="stop-btn"
-            onClick={() => {
-              setIsRunning(false);
-              setTimeRemaining(initialDuration || 1200);
-              setPhase('introduction');
-            }}
-          >
-            Stop
-          </button>
-          <button
-            data-testid="skip-btn"
-            onClick={() => {
-              if (phase === 'introduction') setPhase('main');
-              else if (phase === 'main') setPhase('conclusion');
-            }}
-            disabled={phase === 'conclusion' || phase === 'finished'}
-          >
-            Skip to next phase
-          </button>
-        </div>
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(Math.abs(seconds) / 60);
+    const secs = Math.abs(seconds) % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const phaseColors = {
+    introduction: '#FCD34D',
+    main: '#3B82F6',
+    conclusion: '#10B981',
+    finished: '#EF4444'
+  };
+
+  return (
+    <div data-testid="preaching-timer" className={className}>
+      <div data-testid="timer-display">
+        <span data-testid="phase-label">{phase}</span>
+        <span data-testid="time-display" style={{ color: phaseColors[phase] }}>
+          {formatTime(timeRemaining)}
+        </span>
+        <span>remaining</span>
       </div>
-    );
-  }
+      <div data-testid="timer-controls">
+        <button
+          data-testid="pause-btn"
+          onClick={() => setIsRunning(!isRunning)}
+          disabled={timeRemaining === 0}
+        >
+          {isRunning ? 'Pause' : 'Resume'}
+        </button>
+        <button
+          data-testid="stop-btn"
+          onClick={() => {
+            setIsRunning(false);
+            setTimeRemaining(initialDuration || 1200);
+            setPhase('introduction');
+          }}
+        >
+          Stop
+        </button>
+        <button
+          data-testid="skip-btn"
+          onClick={() => {
+            if (phase === 'introduction') setPhase('main');
+            else if (phase === 'main') setPhase('conclusion');
+          }}
+          disabled={phase === 'conclusion' || phase === 'finished'}
+        >
+          Skip to next phase
+        </button>
+      </div>
+    </div>
+  );
+};
 
-  return {
-    __esModule: true,
-    default: MockPreachingTimer,
-  };
-});
+// Mock timer components - simplified approach with controlled state
+jest.mock('@/components/PreachingTimer', () => ({
+  __esModule: true,
+  default: MockPreachingTimer,
+}));
 
+const MockExportButtons = () => React.createElement('div', { 'data-testid': 'export-buttons' });
+jest.mock('@/components/ExportButtons', () => ({
+  __esModule: true,
+  default: MockExportButtons,
+}));
 
-jest.mock('@/components/ExportButtons', () => {
-  const React = require('react');
-  const MockExportButtons = () => React.createElement('div', { 'data-testid': 'export-buttons' });
-  return {
-    __esModule: true,
-    default: MockExportButtons,
-  };
-});
-
-jest.mock('@/components/plan/ViewPlanMenu', () => {
-  const React = require('react');
-  const MockViewPlanMenu = ({
-    onRequestPreachingMode,
-    onStartPreachingMode,
-  }: {
-    onRequestPreachingMode?: () => void;
-    onStartPreachingMode?: () => void;
-  }) =>
+const MockViewPlanMenu = ({
+  onRequestPreachingMode,
+  onStartPreachingMode,
+}: {
+  onRequestPreachingMode?: () => void;
+  onStartPreachingMode?: () => void;
+}) =>
+  React.createElement(
+    'div',
+    { 'data-testid': 'view-plan-menu' },
     React.createElement(
-      'div',
-      { 'data-testid': 'view-plan-menu' },
-      React.createElement(
-        'button',
-        {
-          type: 'button',
-          onClick: onRequestPreachingMode,
-        },
-        'Preach'
-      ),
-      React.createElement(
-        'button',
-        {
-          type: 'button',
-          onClick: onStartPreachingMode,
-        },
-        'Start Preaching Mode'
-      )
-    );
+      'button',
+      {
+        type: 'button',
+        onClick: onRequestPreachingMode,
+      },
+      'Preach'
+    ),
+    React.createElement(
+      'button',
+      {
+        type: 'button',
+        onClick: onStartPreachingMode,
+      },
+      'Start Preaching Mode'
+    )
+  );
 
-  return {
-    __esModule: true,
-    default: MockViewPlanMenu,
-  };
-});
+jest.mock('@/components/plan/ViewPlanMenu', () => ({
+  __esModule: true,
+  default: MockViewPlanMenu,
+}));
 
 jest.mock('@/components/plan/KeyFragmentsModal', () => ({
   __esModule: true,
   default: () => null,
 }));
 
-jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn(),
-}));
-
-const mockGetSermonById = require('@/services/sermon.service').getSermonById;
+const mockGetSermonById = jest.fn();
 
 let currentSearchParams = new URLSearchParams();
 
@@ -213,15 +208,10 @@ const mockRouter = {
 };
 
 jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
-  const React = require('react');
-  const { useParams } = require('next/navigation');
-  const { useTranslation } = require('react-i18next');
-  const MockPreachingTimer = require('@/components/PreachingTimer').default;
-
   const PlanPageMock = () => {
-    const params = useParams?.() || { id: 'sermon-1' };
+    const params = nextNavigation.useParams?.() || { id: 'sermon-1' };
     const router = mockRouter;
-    const { t } = useTranslation();
+    const t = translate;
 
     const initialPlanView = currentSearchParams.get('planView');
     const defaultDuration = 1200;
@@ -330,13 +320,13 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
   };
 });
 
-const PlanPage = require('../../app/(pages)/(private)/sermons/[id]/plan/page').default;
+let PlanPage: typeof import('../../app/(pages)/(private)/sermons/[id]/plan/page').default;
 
 // Mock visual effects
 jest.mock('../../app/utils/visualEffects', () => ({
-  triggerScreenBlink: jest.fn().mockResolvedValue(undefined),
+  triggerScreenBlink: mockTriggerScreenBlink,
   triggerTextHighlight: jest.fn().mockResolvedValue(undefined),
-  triggerPhaseTransition: jest.fn().mockResolvedValue(undefined),
+  triggerPhaseTransition: mockTriggerPhaseTransition,
   triggerEmergencyAlert: jest.fn().mockResolvedValue(undefined),
   triggerSuccessEffect: jest.fn().mockResolvedValue(undefined),
   cancelVisualEffects: jest.fn(),
@@ -346,19 +336,19 @@ jest.mock('../../app/utils/visualEffects', () => ({
 // Get references to globally mocked functions
 
 // Create spies to override global mock behavior
-const useRouterSpy = jest.spyOn(require('next/navigation'), 'useRouter');
-const useSearchParamsSpy = jest.spyOn(require('next/navigation'), 'useSearchParams');
-const useParamsSpy = jest.spyOn(require('next/navigation'), 'useParams');
-const usePathnameSpy = jest.spyOn(require('next/navigation'), 'usePathname');
-
-const mockTriggerScreenBlink = require('../../app/utils/visualEffects').triggerScreenBlink;
-const mockTriggerPhaseTransition = require('../../app/utils/visualEffects').triggerPhaseTransition;
+const useRouterSpy = jest.spyOn(nextNavigation, 'useRouter');
+const useSearchParamsSpy = jest.spyOn(nextNavigation, 'useSearchParams');
+const useParamsSpy = jest.spyOn(nextNavigation, 'useParams');
+const usePathnameSpy = jest.spyOn(nextNavigation, 'usePathname');
 
 const originalMatchMedia = window.matchMedia;
 const originalRequestAnimationFrame = window.requestAnimationFrame;
 const originalCancelAnimationFrame = window.cancelAnimationFrame;
 
-beforeAll(() => {
+beforeAll(async () => {
+  const PlanPageModule = await import('../../app/(pages)/(private)/sermons/[id]/plan/page');
+  PlanPage = PlanPageModule.default;
+
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,

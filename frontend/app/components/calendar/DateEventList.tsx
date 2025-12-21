@@ -6,7 +6,7 @@ import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
-import { Sermon, Series } from "@/models/models";
+import { PreachDate, Sermon, Series } from "@/models/models";
 
 
 interface DateEventListProps {
@@ -37,6 +37,7 @@ export default function DateEventList({ month, sermons, series = [] }: DateEvent
     };
 
     // Group sermons by date
+    type SermonWithPreachDate = Sermon & { currentPreachDate: PreachDate };
     const sermonsByDate = sermons.reduce((acc, sermon) => {
         sermon.preachDates?.forEach(pd => {
             const dateKey = pd.date;
@@ -49,7 +50,7 @@ export default function DateEventList({ month, sermons, series = [] }: DateEvent
             });
         });
         return acc;
-    }, {} as Record<string, (Sermon & { currentPreachDate: any })[]>);
+    }, {} as Record<string, SermonWithPreachDate[]>);
 
     // Sort dates chronologically
     const sortedDates = Object.keys(sermonsByDate).sort();
@@ -155,7 +156,7 @@ export default function DateEventList({ month, sermons, series = [] }: DateEvent
 
                                                 {sermon.currentPreachDate?.notes && (
                                                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 line-clamp-2 italic">
-                                                        "{sermon.currentPreachDate.notes}"
+                                                        &ldquo;{sermon.currentPreachDate.notes}&rdquo;
                                                     </p>
                                                 )}
                                             </div>

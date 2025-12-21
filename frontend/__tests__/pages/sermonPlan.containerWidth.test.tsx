@@ -34,7 +34,6 @@ jest.mock('react-i18next', () => ({
 
 // Service and child mocks to avoid heavy render
 jest.mock('@/services/plan.service', () => ({
-  getSermonPlan: jest.fn(),
   generateSermonPlan: jest.fn(),
 }));
 jest.mock('@/services/sermon.service', () => ({
@@ -60,5 +59,4 @@ describe('Sermon plan container width', () => {
     expect((root as HTMLElement).className).not.toMatch(/min-h-screen/);
   });
 });
-
 

@@ -1,10 +1,12 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 
 import { User } from 'firebase/auth';
+
+const mockUsePathname = jest.fn(() => '/dashboard');
 
 // Mock key dependencies
 jest.mock('next/navigation', () => {
@@ -15,7 +17,7 @@ jest.mock('next/navigation', () => {
       replace: jest.fn(),
       refresh: jest.fn()
     }),
-    usePathname: () => '/dashboard',
+    usePathname: () => mockUsePathname(),
     useSearchParams: () => ({ get: () => null, toString: () => '' })
   };
 });
@@ -155,6 +157,7 @@ describe('DashboardNav Component', () => {
       closeFeedbackModal: jest.fn(),
       handleSubmitFeedback: jest.fn().mockResolvedValue(true)
     };
+    mockUsePathname.mockReturnValue('/dashboard');
     // Set initial mobile view state for consistent testing
     window.innerWidth = 1024; // Desktop view by default
   });
@@ -186,17 +189,13 @@ describe('DashboardNav Component', () => {
     } as User;
 
     // Mock pathname to be a different page (not dashboard)
-    const mockUsePathname = jest.spyOn(require('next/navigation'), 'usePathname');
     mockUsePathname.mockReturnValue('/sermons');
 
     render(<DashboardNav />);
 
-    // On non-dashboard pages, dashboard text should be visible
-    const dashboardElements = screen.getAllByText('Dashboard');
-    expect(dashboardElements.length).toBeGreaterThan(0);
+    // On non-dashboard pages, dashboard link should be visible
+    expect(screen.getByLabelText('Dashboard')).toBeInTheDocument();
 
-    // Restore original mock
-    mockUsePathname.mockRestore();
   });
 
   test('displays user email initial when user has no photo', async () => {
@@ -328,9 +327,8 @@ describe('DashboardNav Component', () => {
   });
 
   test('closes mobile menu when path changes', async () => {
-    // Mock usePathname to return a function that we can change
-    const mockPathname = { value: '/dashboard' };
-    jest.spyOn(require('next/navigation'), 'usePathname').mockImplementation(() => mockPathname.value);
+    // Set initial pathname for mobile
+    mockUsePathname.mockReturnValue('/dashboard');
     
     // Mock a mobile viewport
     window.innerWidth = 600;
@@ -353,13 +351,15 @@ describe('DashboardNav Component', () => {
     expect(screen.getByTestId('mobile-menu')).toBeInTheDocument();
     
     // Simulate path change
-    mockPathname.value = '/dashboard/settings';
+    mockUsePathname.mockReturnValue('/dashboard/settings');
     
     // Re-render to trigger useEffect
     rerender(<DashboardNav />);
     
     // Mobile menu should now be closed due to path change
-    expect(screen.queryByTestId('mobile-menu')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId('mobile-menu')).not.toBeInTheDocument();
+    });
   });
 
   test('opens feedback modal when feedback button is clicked', async () => {
