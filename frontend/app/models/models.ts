@@ -9,23 +9,30 @@ export interface Thought {
   forceTag?: string; // Force tag for transcription (introduction, main, conclusion)
 }
 
-export interface SermonPoint {
+/**
+ * Represents a point in the sermon outline (introduction, main, or conclusion section).
+ * Each point is a building block of the sermon structure.
+ */
+export interface OutlinePoint {
   id: string;
   text: string;
   isReviewed?: boolean;
 }
 
+/** @deprecated Use OutlinePoint instead. Kept for backward compatibility. */
+export type SermonPoint = OutlinePoint;
+
 export interface SermonOutline {
-  introduction: SermonPoint[];
-  main: SermonPoint[];
-  conclusion: SermonPoint[];
+  introduction: OutlinePoint[];
+  main: OutlinePoint[];
+  conclusion: OutlinePoint[];
 }
 
 export interface ThoughtsBySection {
   introduction: string[];
   main: string[];
   conclusion: string[];
-  ambiguous: string[];
+  ambiguous?: string[];
 }
 
 export interface DirectionSuggestion {
@@ -91,9 +98,9 @@ export interface Sermon {
   structure?: ThoughtsBySection;
   userId: string;
   insights?: Insights;
-  draft?: SermonDraft;
+  draft?: SermonContent;
   /** Legacy alias kept for backward compatibility with stored documents */
-  plan?: SermonDraft;
+  plan?: SermonContent;
   isPreached?: boolean;
   preparation?: Preparation;
 
@@ -239,7 +246,11 @@ export interface User {
   }
 }
 
-export interface SermonDraft {
+/**
+ * Represents the generated content for each section of the sermon.
+ * This is the AI-generated text based on thoughts and outline points.
+ */
+export interface SermonContent {
   introduction: {
     outline: string;
     outlinePoints?: Record<string, string>;
@@ -254,8 +265,10 @@ export interface SermonDraft {
   }
 }
 
+/** @deprecated Use SermonContent instead. Kept for backward compatibility. */
+export type SermonDraft = SermonContent;
+
 // Legacy aliases kept for backward compatibility during refactor
-export type OutlinePoint = SermonPoint;
 
 /**
  * Lightweight scripture reference used by study notes.
@@ -325,4 +338,4 @@ export type Outline = SermonOutline;
 export type Structure = ThoughtsBySection;
 export type Item = ThoughtInStructure;
 export type ThoughtsPlan = SectionHints;
-export type Plan = SermonDraft;
+export type Plan = SermonContent;

@@ -62,7 +62,7 @@ describe('Plan Generation Integration', () => {
 
     // Setup repository mock
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(mockSermon);
-    (sermonsRepository.updateSermonPlan as jest.Mock).mockResolvedValue({});
+    (sermonsRepository.updateSermonContent as jest.Mock).mockResolvedValue({});
 
     // Create mock request
     mockRequest = {
@@ -98,7 +98,7 @@ describe('Plan Generation Integration', () => {
       const responseData = await response.json();
 
       // Verify that undefined/null values are converted to empty strings
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: '' },
@@ -133,7 +133,7 @@ describe('Plan Generation Integration', () => {
       await response.json();
 
       // Verify that the final plan sent to database has no undefined values
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: 'Valid introduction' },
@@ -159,7 +159,7 @@ describe('Plan Generation Integration', () => {
       await response.json();
 
       // Verify that non-string values are converted to empty strings
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: '' },
@@ -183,7 +183,7 @@ describe('Plan Generation Integration', () => {
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockValidAIResponse);
 
       // Mock repository validation error
-      (sermonsRepository.updateSermonPlan as jest.Mock).mockRejectedValue(
+      (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValue(
         new Error('Invalid plan structure - outline values must be strings')
       );      
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
@@ -246,7 +246,7 @@ describe('Plan Generation Integration', () => {
       await GET(mockRequest, { params: { id: 'test-sermon-123' } });
 
       // Verify that the repository receives valid data
-      const updateCall = (sermonsRepository.updateSermonPlan as jest.Mock).mock.calls[0];
+      const updateCall = (sermonsRepository.updateSermonContent as jest.Mock).mock.calls[0];
       const planData = updateCall[1]; // Second argument is the plan data
 
       // Check that no undefined values exist in the plan
@@ -262,7 +262,7 @@ describe('Plan Generation Integration', () => {
 
     it('should handle repository validation errors', async () => {
       // Mock repository to throw validation error
-      (sermonsRepository.updateSermonPlan as jest.Mock).mockImplementation((_sermonId, plan) => {
+      (sermonsRepository.updateSermonContent as jest.Mock).mockImplementation((_sermonId, plan) => {
         // Simulate the validation logic from the repository
         if (!plan || typeof plan !== 'object') {
           throw new Error('Invalid plan data');
@@ -318,7 +318,7 @@ describe('Plan Generation Integration', () => {
       const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
 
       // Should still save the plan with available sections
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: 'Introduction' },

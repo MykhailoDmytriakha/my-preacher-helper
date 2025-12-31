@@ -21,7 +21,7 @@ import {
   planFunctionSchema,
   brainstormFunctionSchema
 } from "@/config/schemas";
-import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonDraft, BrainstormSuggestion, SectionHints } from "@/models/models";
+import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
@@ -993,9 +993,9 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
  * Generate a plan for a sermon
  * @param sermon The sermon to analyze
  * @param style Optional style for the plan generation (default: 'memory')
- * @returns SermonDraft object with introduction, main, and conclusion, plus success flag
+ * @returns SermonContent object with introduction, main, and conclusion, plus success flag
  */
-export async function generatePlanForSection(sermon: Sermon, section: string, style: PlanStyle = 'memory'): Promise<{ plan: SermonDraft, success: boolean }> {
+export async function generatePlanForSection(sermon: Sermon, section: string, style: PlanStyle = 'memory'): Promise<{ plan: SermonContent, success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
 
@@ -1068,8 +1068,8 @@ ${createXmlFunctionDefinition(planFunctionSchema)}`;
     // Debug: Log the extracted result
     console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result, null, 2));
 
-    // Format response to match SermonDraft interface - ensure all values are strings
-    const plan: SermonDraft = {
+    // Format response to match SermonContent interface - ensure all values are strings
+    const plan: SermonContent = {
       introduction: { outline: result?.introduction || '' },
       main: { outline: result?.main || '' },
       conclusion: { outline: result?.conclusion || '' }
@@ -1083,7 +1083,7 @@ ${createXmlFunctionDefinition(planFunctionSchema)}`;
       typeof plan.main.outline !== 'string' ||
       typeof plan.conclusion.outline !== 'string') {
       console.error('ERROR: Invalid plan structure - outline values must be strings');
-      const emptyPlan: SermonDraft = {
+      const emptyPlan: SermonContent = {
         introduction: { outline: '' },
         main: { outline: '' },
         conclusion: { outline: '' }
@@ -1095,7 +1095,7 @@ ${createXmlFunctionDefinition(planFunctionSchema)}`;
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for ${section} section:`, error);
     // Return empty plan structure on error, but indicate failure
-    const emptyPlan: SermonDraft = {
+    const emptyPlan: SermonContent = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' }

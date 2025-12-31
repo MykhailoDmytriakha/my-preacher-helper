@@ -1,5 +1,5 @@
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
-import { Sermon, SermonOutline, SermonDraft, SermonPoint, PreachDate } from '@/models/models';
+import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
 
 // Error message constants
 const ERROR_MESSAGES = {
@@ -104,26 +104,26 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonPlan(sermonId: string, draft: SermonDraft): Promise<SermonDraft> {
-    console.log(`Updating sermon draft for sermon ${sermonId}`);
-    console.log(`Draft data to update:`, JSON.stringify(draft, null, 2));
+  async updateSermonContent(sermonId: string, content: SermonContent): Promise<SermonContent> {
+    console.log(`Updating sermon content for sermon ${sermonId}`);
+    console.log(`Content data to update:`, JSON.stringify(content, null, 2));
 
-    // Validate plan structure before updating
-    if (!draft || typeof draft !== 'object') {
-      console.error('ERROR: Invalid draft data - draft is not an object');
-      throw new Error('Invalid draft data');
+    // Validate content structure before updating
+    if (!content || typeof content !== 'object') {
+      console.error('ERROR: Invalid content data - content is not an object');
+      throw new Error('Invalid content data');
     }
 
-    if (!draft.introduction || !draft.main || !draft.conclusion) {
-      console.error('ERROR: Invalid draft structure - missing required sections');
-      throw new Error('Invalid draft structure');
+    if (!content.introduction || !content.main || !content.conclusion) {
+      console.error('ERROR: Invalid content structure - missing required sections');
+      throw new Error('Invalid content structure');
     }
 
-    if (typeof draft.introduction.outline !== 'string' ||
-      typeof draft.main.outline !== 'string' ||
-      typeof draft.conclusion.outline !== 'string') {
-      console.error('ERROR: Invalid draft structure - outline values must be strings');
-      throw new Error('Invalid draft structure - outline values must be strings');
+    if (typeof content.introduction.outline !== 'string' ||
+      typeof content.main.outline !== 'string' ||
+      typeof content.conclusion.outline !== 'string') {
+      console.error('ERROR: Invalid content structure - outline values must be strings');
+      throw new Error('Invalid content structure - outline values must be strings');
     }
 
     try {
@@ -135,15 +135,21 @@ export class SermonsRepository {
         throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
       }
 
-      // Update both the new draft field and legacy plan for backward compatibility
-      await docRef.update({ draft, plan: draft });
-      console.log(`Sermon draft updated for sermon id ${sermonId}`);
+      // Update both the draft field and legacy plan for backward compatibility
+      // Note: We keep "draft" as the field name in DB but refer to it as "content" in code
+      await docRef.update({ draft: content, plan: content });
+      console.log(`Sermon content updated for sermon id ${sermonId}`);
 
-      return draft;
+      return content;
     } catch (error) {
-      console.error(`Error updating sermon plan for sermon ${sermonId}:`, error);
+      console.error(`Error updating sermon content for sermon ${sermonId}:`, error);
       throw error;
     }
+  }
+
+  /** @deprecated Use updateSermonContent instead. Kept for backward compatibility. */
+  async updateSermonPlan(sermonId: string, content: SermonContent): Promise<SermonContent> {
+    return this.updateSermonContent(sermonId, content);
   }
 
   /**

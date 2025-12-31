@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { SermonDraft } from '@/models/models';
+import { SermonContent } from '@/models/models';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -10,7 +10,7 @@ const ERROR_MESSAGES = {
   SERMON_NOT_FOUND: 'Sermon not found',
 } as const;
 
-// Use the SermonDraft interface from models.ts
+// Use the SermonContent interface from models.ts
 
 // GET /api/sermons/:id/plan - generates full plan by default
 // GET /api/sermons/:id/plan?section=introduction|main|conclusion - generates plan for specific section
@@ -98,10 +98,10 @@ export async function GET(
       };
 
       // Update the section that was just generated
-      const updatedPlan: SermonDraft = {
-        introduction: (existingPlan as SermonDraft)?.introduction || { outline: '' },
-        main: (existingPlan as SermonDraft)?.main || { outline: '' },
-        conclusion: (existingPlan as SermonDraft)?.conclusion || { outline: '' }
+      const updatedPlan: SermonContent = {
+        introduction: (existingPlan as SermonContent)?.introduction || { outline: '' },
+        main: (existingPlan as SermonContent)?.main || { outline: '' },
+        conclusion: (existingPlan as SermonContent)?.conclusion || { outline: '' }
       };
 
       // Type-safe way to update the plan section
@@ -114,7 +114,7 @@ export async function GET(
       }
 
       // Save to database
-      await sermonsRepository.updateSermonPlan(id, updatedPlan);
+      await sermonsRepository.updateSermonContent(id, updatedPlan);
       console.log(`Saved ${section} plan to database for sermon ${id}`);
     } catch (saveError: unknown) {
       const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
@@ -167,9 +167,9 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
     let hasFailures = false;
 
     // Declare result variables to check for incomplete structure
-    let introResult: { plan: SermonDraft, success: boolean } | null = null;
-    let mainResult: { plan: SermonDraft, success: boolean } | null = null;
-    let conclusionResult: { plan: SermonDraft, success: boolean } | null = null;
+    let introResult: { plan: SermonContent, success: boolean } | null = null;
+    let mainResult: { plan: SermonContent, success: boolean } | null = null;
+    let conclusionResult: { plan: SermonContent, success: boolean } | null = null;
 
     // Process each section sequentially with proper error handling
     try {
@@ -263,7 +263,7 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
     }
 
     // Store the full plan in the database, excluding sectionStatuses
-    const planToStore: SermonDraft = {
+    const planToStore: SermonContent = {
       introduction: {
         outline: fullPlan.introduction?.outline || '',
         ...(fullPlan.introduction && 'outlinePoints' in fullPlan.introduction && { outlinePoints: (fullPlan.introduction as Record<string, unknown>).outlinePoints as Record<string, string> })
@@ -323,8 +323,8 @@ async function generateFullPlan(sermonId: string, style?: PlanStyle) {
     console.log('Final plan to store:', JSON.stringify(planToStore, null, 2));
 
     try {
-      await sermonsRepository.updateSermonPlan(sermonId, planToStore);
-      console.log(`Saved full plan to database for sermon ${sermonId}`);
+      await sermonsRepository.updateSermonContent(sermonId, planToStore);
+      console.log(`Saved full content to database for sermon ${sermonId}`);
     } catch (saveError: unknown) {
       const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error(`Error saving full plan to database: ${errorMessage}`);
@@ -478,8 +478,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid plan data' }, { status: 400 });
     }
 
-    // Ensure the plan has all required sections
-    const plan: SermonDraft = {
+    // Ensure the content has all required sections
+    const content: SermonContent = {
       introduction: { outline: '' },
       main: { outline: '' },
       conclusion: { outline: '' }
@@ -487,33 +487,33 @@ export async function PUT(
 
     // Update with provided data, maintaining nested structure
     if (planData.introduction) {
-      plan.introduction = {
+      content.introduction = {
         outline: planData.introduction.outline || '',
         ...(planData.introduction.outlinePoints && { outlinePoints: planData.introduction.outlinePoints })
       };
-      console.log("saved introduction plan", plan.introduction);
+      console.log("saved introduction content", content.introduction);
     }
 
     if (planData.main) {
-      plan.main = {
+      content.main = {
         outline: planData.main.outline || '',
         ...(planData.main.outlinePoints && { outlinePoints: planData.main.outlinePoints })
       };
-      console.log("saved main plan", plan.main);
+      console.log("saved main content", content.main);
     }
 
     if (planData.conclusion) {
-      plan.conclusion = {
+      content.conclusion = {
         outline: planData.conclusion.outline || '',
         ...(planData.conclusion.outlinePoints && { outlinePoints: planData.conclusion.outlinePoints })
       };
-      console.log("saved conclusion plan", plan.conclusion);
+      console.log("saved conclusion content", content.conclusion);
     }
 
-    // Save plan to database
-    await sermonsRepository.updateSermonPlan(id, plan);
+    // Save content to database
+    await sermonsRepository.updateSermonContent(id, content);
 
-    return NextResponse.json({ success: true, plan });
+    return NextResponse.json({ success: true, plan: content });
   } catch (error: unknown) {
     console.error(`Error saving plan for sermon ${id}:`, error);
     return NextResponse.json(

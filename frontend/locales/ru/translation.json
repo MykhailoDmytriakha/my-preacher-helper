@@ -85,8 +85,8 @@
     "createFirstSermon": "Создайте свою первую проповедь с помощью кнопки выше",
     "noSearchResults": "Ничего не найдено",
     "tryDifferentSearch": "Попробуйте другой поисковый запрос",
-    "thought": "запись",
-    "thoughts": "записей",
+    "thought": "мысль",
+    "thoughts": "мыслей",
     "hasOutline": "Есть план",
     "activeSermons": "Активные проповеди",
     "preached": "Проповедано",
@@ -99,7 +99,7 @@
     "toStructure": "К структуре",
     "stats": {
       "totalSermons": "Всего проповедей",
-      "totalThoughts": "Всего записей",
+      "totalThoughts": "Всего мыслей",
       "withOutlines": "С планами",
       "latestSermon": "Последняя проповедь"
     }
@@ -337,17 +337,17 @@
     "reservedTagName": "Это имя зарезервировано для структурных тегов"
   },
   "manualThought": {
-    "addManual": "Добавить запись вручную",
-    "placeholder": "Введите вашу запись...",
+    "addManual": "Добавить мысль вручную",
+    "placeholder": "Введите вашу мысль...",
     "addedSuccess": "Мысль успешно добавлена"
   },
   "thought": {
     "tagsLabel": "Теги:",
     "availableTags": "Доступные теги для добавления:",
     "missingTags": "Если нужный тег отсутствует, перейдите в {link}",
-    "missingRequiredTag": "Эта запись не содержит обязательный тег. Не забудьте добавить «{{intro}}», «{{main}}» или «{{conclusion}}»!",
-    "inconsistentSection": "Несогласованность: запись имеет тег \"{{actualTag}}\", но назначена к пункту плана из {{expectedSection}}",
-    "multipleStructureTags": "Несогласованность: обнаружено несколько структурных тегов. Запись должна иметь только один структурный тег.",
+    "missingRequiredTag": "Эта мысль не содержит обязательный тег. Не забудьте добавить «{{intro}}», «{{main}}» или «{{conclusion}}»!",
+    "inconsistentSection": "Несогласованность: мысль имеет тег \"{{actualTag}}\", но назначена к пункту плана из {{expectedSection}}",
+    "multipleStructureTags": "Несогласованность: обнаружено несколько структурных тегов. Мысль должна иметь только один структурный тег.",
     "generate": "Сгенерировать",
     "generating": "Генерация...",
     "regenerate": "Перегенерировать",
@@ -356,8 +356,8 @@
     "optionsMenuLabel": "Опции мысли"
   },
   "editThought": {
-    "editTitle": "Редактировать запись",
-    "textLabel": "Текст записи",
+    "editTitle": "Редактировать мысль",
+    "textLabel": "Текст мысли",
     "availableTags": "Доступные теги для добавления:",
     "outlinePointLabel": "Связанный пункт плана",
     "noOutlinePoint": "Пункт плана не выбран",
@@ -371,10 +371,10 @@
   },
   "structure": {
     "title": "Композиция проповеди:",
-    "entries": "записей",
+    "entries": "мыслей",
     "recommended": "Рекомендуется: {{percent}}%",
     "workButton": "Работать над структурой",
-    "inconsistentTagsWarning": "Некоторые записи имеют несогласованные теги. Исправьте их прежде чем работать над структурой.",
+    "inconsistentTagsWarning": "Некоторые мысли имеют несогласованные теги. Исправьте их прежде чем работать над структурой.",
     "linkThoughtsWarning": "Пожалуйста, сначала создайте пункты плана и привяжите к ним все мысли на странице Структуры",
     "underConsideration": "На рассмотрении",
     "moveToUnderConsideration": "Перенести на рассмотрение",

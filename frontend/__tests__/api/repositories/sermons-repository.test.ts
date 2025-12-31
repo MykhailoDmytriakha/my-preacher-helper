@@ -82,48 +82,48 @@ describe('SermonsRepository', () => {
 
     it('validates plan permutations with scenarios', async () => {
     const invalidPlanCases = [
-        { name: 'plan is null', plan: null, error: 'Invalid draft data' },
-        { name: 'plan is undefined', plan: undefined, error: 'Invalid draft data' },
-        { name: 'plan is not object', plan: 'not an object', error: 'Invalid draft data' },
+        { name: 'plan is null', plan: null, error: 'Invalid content data' },
+        { name: 'plan is undefined', plan: undefined, error: 'Invalid content data' },
+        { name: 'plan is not object', plan: 'not an object', error: 'Invalid content data' },
         {
           name: 'missing introduction',
           plan: { main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure'
+          error: 'Invalid content structure'
         },
         {
           name: 'missing main',
           plan: { introduction: { outline: 'Introduction outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure'
+          error: 'Invalid content structure'
         },
         {
           name: 'missing conclusion',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' } },
-          error: 'Invalid draft structure'
+          error: 'Invalid content structure'
         },
         {
           name: 'non-string introduction outline',
           plan: { introduction: { outline: 123 }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure - outline values must be strings'
+          error: 'Invalid content structure - outline values must be strings'
         },
         {
           name: 'non-string main outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: true }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure - outline values must be strings'
+          error: 'Invalid content structure - outline values must be strings'
         },
         {
           name: 'non-string conclusion outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: 'Main outline' }, conclusion: { outline: {} } },
-          error: 'Invalid draft structure - outline values must be strings'
+          error: 'Invalid content structure - outline values must be strings'
         },
         {
           name: 'undefined introduction outline',
           plan: { introduction: { outline: undefined }, main: { outline: 'Main outline' }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure - outline values must be strings'
+          error: 'Invalid content structure - outline values must be strings'
         },
         {
           name: 'null main outline',
           plan: { introduction: { outline: 'Introduction outline' }, main: { outline: null }, conclusion: { outline: 'Conclusion outline' } },
-          error: 'Invalid draft structure - outline values must be strings'
+          error: 'Invalid content structure - outline values must be strings'
         }
       ];
 

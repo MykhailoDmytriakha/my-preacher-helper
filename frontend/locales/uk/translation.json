@@ -85,8 +85,8 @@
     "createFirstSermon": "Створіть свою першу проповідь за допомогою кнопки вище",
     "noSearchResults": "Нічого не знайдено",
     "tryDifferentSearch": "Спробуйте інший пошуковий запит",
-    "thought": "запис",
-    "thoughts": "записів",
+    "thought": "думка",
+    "thoughts": "думок",
     "hasOutline": "Є план",
     "activeSermons": "Активні проповіді",
     "preached": "Проповідано",
@@ -99,7 +99,7 @@
     "toStructure": "До структури",
     "stats": {
       "totalSermons": "Всього проповідей",
-      "totalThoughts": "Всього записів",
+      "totalThoughts": "Всього думок",
       "withOutlines": "З планами",
       "latestSermon": "Остання проповідь"
     }
@@ -337,17 +337,17 @@
     "reservedTagName": "Це ім'я зарезервовано для структурних тегів"
   },
   "manualThought": {
-    "addManual": "Додати запис вручну",
-    "placeholder": "Введіть ваш запис...",
+    "addManual": "Додати думку вручну",
+    "placeholder": "Введіть вашу думку...",
     "addedSuccess": "Думку успішно додано"
   },
   "thought": {
     "tagsLabel": "Теги:",
     "availableTags": "Доступні теги для додавання:",
     "missingTags": "Якщо потрібного тегу немає, перейдіть до {link}",
-    "missingRequiredTag": "Цей запис не містить обов'язковий тег. Не забудьте додати «{{intro}}», «{{main}}» або «{{conclusion}}»!",
-    "inconsistentSection": "Невідповідність: запис має тег \"{{actualTag}}\", але призначений до пункту плану з {{expectedSection}}",
-    "multipleStructureTags": "Невідповідність: виявлено кілька структурних тегів. Запис повинен мати лише один структурний тег.",
+    "missingRequiredTag": "Ця думка не містить обов'язковий тег. Не забудьте додати «{{intro}}», «{{main}}» або «{{conclusion}}»!",
+    "inconsistentSection": "Невідповідність: думка має тег \"{{actualTag}}\", але призначена до пункту плану з {{expectedSection}}",
+    "multipleStructureTags": "Невідповідність: виявлено кілька структурних тегів. Думка повинна мати лише один структурний тег.",
     "generate": "Згенерувати",
     "generating": "Генерація...",
     "regenerate": "Перегенерувати",
@@ -356,8 +356,8 @@
     "optionsMenuLabel": "Опції думки"
   },
   "editThought": {
-    "editTitle": "Редагувати запис",
-    "textLabel": "Текст запису",
+    "editTitle": "Редагувати думку",
+    "textLabel": "Текст думки",
     "availableTags": "Доступні теги для додавання:",
     "outlinePointLabel": "Пов'язаний пункт плану",
     "noOutlinePoint": "Пункт плану не вибрано",
@@ -371,17 +371,17 @@
   },
   "structure": {
     "title": "Композиція проповіді:",
-    "entries": "записів",
+    "entries": "думок",
     "recommended": "Рекомендується: {{percent}}%",
     "workButton": "Працювати над структурою",
-    "inconsistentTagsWarning": "Деякі записи мають несумісні теги. Виправте їх перед тим, як працювати над структурою.",
+    "inconsistentTagsWarning": "Деякі думки мають несумісні теги. Виправте їх перед тим, як працювати над структурою.",
     "linkThoughtsWarning": "Будь ласка, спочатку створіть пункти плану і прив'яжіть до них усі думки на сторінці Структури",
     "underConsideration": "На розгляді",
     "moveToUnderConsideration": "Перенести на розгляд",
     "loadingSermon": "Завантаження даних проповіді...",
     "notFound": "Проповідь не знайдено або не вказано sermonId",
     "backToSermon": "← Назад до проповіді",
-    "noEntries": "Немає записів",
+    "noEntries": "Немає думок",
     "introduction": "Вступ",
     "mainPart": "Основна частина",
     "conclusion": "Висновок",

@@ -1,4 +1,4 @@
-import { SermonDraft } from '@/models/models';
+import { SermonContent } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 /**
@@ -7,24 +7,24 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
  * @param section Optional section to generate plan for (introduction, main, conclusion)
  * @returns The generated plan or undefined if generation failed
  */
-export const generateSermonPlan = async (sermonId: string, section?: string): Promise<SermonDraft | undefined> => {
+export const generateSermonPlan = async (sermonId: string, section?: string): Promise<SermonContent | undefined> => {
   try {
-    const url = section 
+    const url = section
       ? `${API_BASE}/api/sermons/${sermonId}/plan?section=${section}`
       : `${API_BASE}/api/sermons/${sermonId}/plan`;
-      
+
     const response = await fetch(url, {
       cache: "no-store",
       headers: {
         'Accept': 'application/json',
       }
     });
-    
+
     if (!response.ok) {
       console.error(`Error generating plan for sermon ${sermonId}, status: ${response.status}`);
       return undefined;
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {

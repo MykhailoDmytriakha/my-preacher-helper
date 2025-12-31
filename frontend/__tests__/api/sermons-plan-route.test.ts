@@ -76,7 +76,7 @@ describe('Sermon Plan Route', () => {
 
     // Setup repository mock
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(mockSermon);
-    (sermonsRepository.updateSermonPlan as jest.Mock).mockResolvedValue({});
+    (sermonsRepository.updateSermonContent as jest.Mock).mockResolvedValue({});
 
     // Setup OpenAI client mock
     (generatePlanForSection as jest.Mock).mockResolvedValue(mockPlanResult);
@@ -104,7 +104,7 @@ describe('Sermon Plan Route', () => {
 
       // Verify repository calls
       expect(sermonsRepository.fetchSermonById).toHaveBeenCalledWith('test-sermon-123');
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: 'Introduction outline' },
@@ -142,7 +142,7 @@ describe('Sermon Plan Route', () => {
       await response.json();
 
       // Verify that undefined/null values are converted to empty strings
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: '' },
@@ -167,7 +167,7 @@ describe('Sermon Plan Route', () => {
       await response.json();
 
       // Verify fallback plan is used
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: '' },
@@ -192,7 +192,7 @@ describe('Sermon Plan Route', () => {
 
     it('should handle repository errors gracefully', async () => {
       // Mock repository error
-      (sermonsRepository.updateSermonPlan as jest.Mock).mockRejectedValue(
+      (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValue(
         new Error('Firestore error')
       );
 
@@ -231,7 +231,7 @@ describe('Sermon Plan Route', () => {
       await GET(mockRequest, { params: { id: 'test-sermon-123' } });
 
       // Verify that invalid types are converted to empty strings
-      expect(sermonsRepository.updateSermonPlan).toHaveBeenCalledWith(
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
         'test-sermon-123',
         expect.objectContaining({
           introduction: { outline: '' },

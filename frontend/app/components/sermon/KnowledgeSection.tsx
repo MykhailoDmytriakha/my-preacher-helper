@@ -5,10 +5,10 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
-import { Sermon, Insights, SermonDraft, SectionHints } from '@/models/models';
-import { 
-  generateTopics, 
-  generateRelatedVerses, 
+import { Sermon, Insights, SermonContent, SectionHints } from '@/models/models';
+import {
+  generateTopics,
+  generateRelatedVerses,
   generatePossibleDirections,
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
@@ -52,9 +52,9 @@ const toMarkdownString = (value: unknown): string => {
   return '';
 };
 
-const getSectionHintsFromInsightsOrDraft = (
+const getSectionHintsFromInsightsOrContent = (
   insights: Insights | undefined,
-  draft: SermonDraft | undefined
+  content: SermonContent | undefined
 ): SectionHints | undefined => {
   const shouldLog = process.env.NODE_ENV !== 'test';
   // First try to get from insights.sectionHints
@@ -70,15 +70,15 @@ const getSectionHintsFromInsightsOrDraft = (
     };
   }
 
-  // If not available in insights, convert sermon draft to SectionHints format
+  // If not available in insights, convert sermon content to SectionHints format
   if (shouldLog) {
-    console.log('🎯 Getting thoughts plan from sermon draft', draft);
+    console.log('🎯 Getting thoughts plan from sermon content', content);
   }
-  if (draft) {
+  if (content) {
     return {
-      introduction: draft.introduction.outline,
-      main: draft.main.outline,
-      conclusion: draft.conclusion.outline
+      introduction: content.introduction.outline,
+      main: content.main.outline,
+      conclusion: content.conclusion.outline
     };
   }
 
@@ -105,23 +105,23 @@ const applyInsightsUpdate = ({
   }
 };
 
-const applyDraftUpdate = ({
+const applyContentUpdate = ({
   sermon,
   updateSermon,
-  setLocalDraft,
-  draft
+  setLocalContent,
+  content
 }: {
   sermon: Sermon;
   updateSermon?: (updatedSermon: Sermon) => void;
-  setLocalDraft: React.Dispatch<React.SetStateAction<SermonDraft | undefined>>;
-  draft: SermonDraft;
+  setLocalContent: React.Dispatch<React.SetStateAction<SermonContent | undefined>>;
+  content: SermonContent;
 }) => {
   // Update local state immediately for fast UI refresh
-  setLocalDraft(draft);
+  setLocalContent(content);
 
   // Then update parent if needed
   if (updateSermon) {
-    updateSermon({ ...sermon, draft, plan: draft });
+    updateSermon({ ...sermon, draft: content, plan: content });
   }
 };
 
@@ -270,14 +270,14 @@ const generatePlanForSermon = async ({
   sermonId,
   setIsGeneratingPlan,
   setSuccessNotification,
-  onDraftUpdated,
+  onContentUpdated,
   generateSermonPlan
 }: {
   sermonId: string | undefined;
   setIsGeneratingPlan: React.Dispatch<React.SetStateAction<boolean>>;
   setSuccessNotification: React.Dispatch<React.SetStateAction<boolean>>;
-  onDraftUpdated: (draft: SermonDraft) => void;
-  generateSermonPlan: (sermonId: string) => Promise<SermonDraft | undefined>;
+  onContentUpdated: (content: SermonContent) => void;
+  generateSermonPlan: (sermonId: string) => Promise<SermonContent | undefined>;
 }) => {
   if (!sermonId) {
     console.error("Cannot generate plan: sermon or sermon.id is missing");
@@ -288,9 +288,9 @@ const generatePlanForSermon = async ({
   setSuccessNotification(false);
 
   try {
-    const draft = await generateSermonPlan(sermonId);
-    if (draft) {
-      onDraftUpdated(draft);
+    const content = await generateSermonPlan(sermonId);
+    if (content) {
+      onContentUpdated(content);
       showSuccessNotification(setSuccessNotification);
     }
   } catch (error) {
@@ -387,11 +387,10 @@ const CollapsedGenerateContainer = ({
         ) : null}
 
         <button
-          className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${
-            hasEnoughThoughts
-              ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-          }`}
+          className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${hasEnoughThoughts
+            ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
+            : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+            }`}
           onClick={hasEnoughThoughts ? onGenerate : undefined}
           disabled={!hasEnoughThoughts || anyGenerating}
           data-testid="generate-insights-button"
@@ -566,7 +565,7 @@ const PlanSection = ({
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
-  
+
   // UI state
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -574,27 +573,27 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const [showAllTopics, setShowAllTopics] = useState(true);
   const [showAllVerses, setShowAllVerses] = useState(true);
   const [showAllDirections, setShowAllDirections] = useState(true);
-  
+
   // Keep local insights state for immediate UI updates
   const [localInsights, setLocalInsights] = useState<Insights | undefined>(sermon.insights);
-  // Keep local plan state for immediate UI updates
-  const [localDraft, setLocalDraft] = useState<SermonDraft | undefined>(sermon.draft || sermon.plan);
-  
+  // Keep local content state for immediate UI updates
+  const [localContent, setLocalContent] = useState<SermonContent | undefined>(sermon.draft || sermon.plan);
+
   // Loading states
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [isGeneratingVerses, setIsGeneratingVerses] = useState(false);
   const [isGeneratingDirections, setIsGeneratingDirections] = useState(false);
-  
+
   const anyGenerating = isGeneratingAll || isGeneratingTopics || isGeneratingPlan || isGeneratingVerses || isGeneratingDirections;
 
   const updateInsights = (insights: Insights) =>
     applyInsightsUpdate({ sermon, updateSermon, setLocalInsights, insights });
 
-  const updateDraft = (draft: SermonDraft) =>
-    applyDraftUpdate({ sermon, updateSermon, setLocalDraft, draft });
-  
+  const updateContent = (content: SermonContent) =>
+    applyContentUpdate({ sermon, updateSermon, setLocalContent: setLocalContent, content });
+
   // Generate all insights at once
   const handleGenerateAllInsights = () =>
     generateAllInsightsForSermon({
@@ -613,19 +612,19 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         generateThoughtsBasedPlan
       }
     });
-  
+
   // Generate plan for sermon
   const handleGeneratePlan = () =>
     generatePlanForSermon({
       sermonId: sermon?.id,
       setIsGeneratingPlan,
       setSuccessNotification,
-      onDraftUpdated: updateDraft,
+      onContentUpdated: updateContent,
       generateSermonPlan
     });
 
   // Regenerate individual sections using the generic function
-  const handleRegenerateTopics = () => 
+  const handleRegenerateTopics = () =>
     regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'topics',
@@ -635,8 +634,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
-  
-  const handleRegenerateVerses = () => 
+
+  const handleRegenerateVerses = () =>
     regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'verses',
@@ -646,8 +645,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
-  
-  const handleRegenerateDirections = () => 
+
+  const handleRegenerateDirections = () =>
     regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'directions',
@@ -657,24 +656,24 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
-  
+
   // Toggle visibility functions
   const toggleTopicsVisibility = () => setShowAllTopics(!showAllTopics);
   const toggleVersesVisibility = () => setShowAllVerses(!showAllVerses);
   const toggleDirectionsVisibility = () => setShowAllDirections(!showAllDirections);
 
   // Effects
-  
+
   // Keep localInsights in sync with sermon.insights when it changes from props
   useEffect(() => {
     setLocalInsights(sermon.insights);
   }, [sermon.insights]);
 
-  // Keep localDraft in sync with sermon draft/plan when it changes from props
+  // Keep localContent in sync with sermon draft/plan when it changes from props
   useEffect(() => {
-    setLocalDraft(sermon.draft || sermon.plan);
+    setLocalContent(sermon.draft || sermon.plan);
   }, [sermon.draft, sermon.plan]);
-  
+
   useEffect(() => {
     // Reset states when sermon changes
     setSuccessNotification(false);
@@ -692,12 +691,12 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const thoughtsCount = sermon.thoughts?.length || 0;
   const hasEnoughThoughts = thoughtsCount >= THOUGHTS_THRESHOLD;
   const remainingThoughts = THOUGHTS_THRESHOLD - thoughtsCount;
-  
+
   const topics = localInsights?.topics ?? [];
   const relatedVerses = localInsights?.relatedVerses ?? [];
   const possibleDirections = localInsights?.possibleDirections ?? [];
-  const sectionHints = getSectionHintsFromInsightsOrDraft(localInsights, localDraft);
-  
+  const sectionHints = getSectionHintsFromInsightsOrContent(localInsights, localContent);
+
   // Debug logging (commented out for production)
   // console.log('🔍 Debug Plan:', {
   //   localInsights,
@@ -706,9 +705,9 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   //   'sectionHints.main': sectionHints?.main,
   //   'sectionHints.conclusion': sectionHints?.conclusion
   // });
-  
+
   const hasSectionHints = Boolean(sectionHints && (sectionHints.introduction || sectionHints.main || sectionHints.conclusion));
-  
+
   // Data for rendering
   // Check if we have any data to show
   const hasAnyData = topics.length > 0 || relatedVerses.length > 0 || possibleDirections.length > 0 || hasSectionHints;
