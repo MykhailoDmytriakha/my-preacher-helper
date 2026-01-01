@@ -8,12 +8,19 @@ import { CheckIcon, GoogleIcon } from '@components/Icons';
 interface LoginOptionsProps {
   onGoogleLogin: () => void;
   onTestLogin: () => void;
-  loading?: boolean;
+  googleLoading?: boolean;
+  testLoading?: boolean;
 }
 
-export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = false }: LoginOptionsProps) {
+export default function LoginOptions({
+  onGoogleLogin,
+  onTestLogin,
+  googleLoading = false,
+  testLoading = false,
+}: LoginOptionsProps) {
   const { t } = useTranslation();
   const isDev = process.env.NODE_ENV === 'development';
+  const isLoading = googleLoading || testLoading;
   return (
     <div className="flex w-full max-w-xl flex-col flex-wrap rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-lg shadow-blue-100 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:shadow-none">
       <div className="flex items-start justify-between gap-3">
@@ -38,15 +45,15 @@ export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = fal
         <button
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-75"
           onClick={onGoogleLogin}
-          disabled={loading}
+          disabled={isLoading}
         >
-          {loading ? (
+          {googleLoading ? (
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
           ) : (
             <GoogleIcon className="h-5 w-5" />
           )}
           <span suppressHydrationWarning={true}>
-            {loading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.googleLogin')}
+            {googleLoading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.googleLogin')}
           </span>
         </button>
 
@@ -54,13 +61,13 @@ export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = fal
           <button
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-100/50 px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-amber-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 disabled:cursor-not-allowed disabled:opacity-75 dark:border-amber-300/80 dark:bg-amber-500/15 dark:text-white dark:hover:border-amber-300 dark:hover:bg-amber-500/25"
             onClick={onTestLogin}
-            disabled={loading}
+            disabled={isLoading}
           >
-            {loading && (
+            {testLoading && (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400/40 border-t-slate-700 dark:border-white/25 dark:border-t-white" />
             )}
             <span suppressHydrationWarning={true}>
-              {loading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.testLogin')}
+              {testLoading ? t('common.loading', { defaultValue: 'Loading...' }) : t('loginOptions.testLogin')}
             </span>
           </button>
         )}

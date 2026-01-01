@@ -16,31 +16,31 @@ import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@compone
 export default function Home() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<'google' | 'test' | null>(null);
 
   const handleLogin = async () => {
+    if (loadingProvider) return;
     try {
-      setLoading(true);
+      setLoadingProvider('google');
       await signInWithGoogle();
       router.push('/dashboard');
     } catch (error) {
       console.error('Login error', error);
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   };
 
-
-
   const handleTestLogin = async () => {
+    if (loadingProvider) return;
     try {
-      setLoading(true);
+      setLoadingProvider('test');
       await signInWithEmailAndPassword(auth, 'testuser@example.com', 'TestPassword123');
       router.push('/dashboard');
     } catch (error) {
       console.error('Test login failed:', error);
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   };
 
@@ -225,7 +225,12 @@ export default function Home() {
           </section>
 
           <section className="flex justify-center">
-            <LoginOptions onGoogleLogin={handleLogin} onTestLogin={handleTestLogin} loading={loading} />
+            <LoginOptions
+              onGoogleLogin={handleLogin}
+              onTestLogin={handleTestLogin}
+              googleLoading={loadingProvider === 'google'}
+              testLoading={loadingProvider === 'test'}
+            />
           </section>
 
           <section className="space-y-6">
