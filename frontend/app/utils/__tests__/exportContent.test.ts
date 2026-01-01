@@ -181,6 +181,36 @@ describe('exportContent', () => {
           },
         },
         {
+          name: 'outline point respects position order',
+          run: async () => {
+            const positionSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [
+                {
+                  id: 't-pos-first',
+                  text: 'Position first',
+                  tags: ['intro'],
+                  date: '2024-01-03',
+                  outlinePointId: 'point1',
+                  position: -100,
+                },
+                {
+                  id: 't-pos-second',
+                  text: 'Position second',
+                  tags: ['intro'],
+                  date: '2024-01-01',
+                  outlinePointId: 'point1',
+                  position: 0,
+                },
+              ],
+              outline: { introduction: [{ id: 'point1', text: 'Intro Point' }], main: [], conclusion: [] },
+              structure: { introduction: ['t-pos-first', 't-pos-second'], main: [], conclusion: [], ambiguous: [] },
+            };
+            const result = await getExportContent(positionSermon);
+            expect(result.indexOf('Position first')).toBeLessThan(result.indexOf('Position second'));
+          },
+        },
+        {
           name: 'structure fallbacks and empty sections',
           run: async () => {
             const emptyThoughts = await getExportContent({ ...mockSermon, thoughts: [] });

@@ -338,7 +338,7 @@ function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, S
   // Create a block for each outline point that has thoughts
   return pointsInOrder.map(point => {
     const pointThoughts = thoughtsByOutline.get(point.id) || [];
-    const sortedThoughts = sortThoughtsByDate(pointThoughts); // Sort thoughts *within* the point by date
+    const sortedThoughts = sortThoughtsForOutlinePoint(pointThoughts); // Prefer position order, fallback to date
     return {
       type: 'outline' as const,
       title: point.text, // Use outline point text as block title
@@ -522,6 +522,19 @@ function processSection(
 function sortThoughtsByDate(thoughts: Thought[]): Thought[] {
   if (!thoughts) return [];
   return [...thoughts].sort(sortByDateHelper);
+}
+
+/** Sort thoughts within an outline point using position when available, then date */
+function sortThoughtsForOutlinePoint(thoughts: Thought[]): Thought[] {
+  if (!thoughts) return [];
+  const hasAnyPosition = thoughts.some(thought => typeof thought.position === 'number');
+  if (!hasAnyPosition) return sortThoughtsByDate(thoughts);
+  return [...thoughts].sort((a, b) => {
+    const posA = typeof a.position === 'number' ? a.position : Number.POSITIVE_INFINITY;
+    const posB = typeof b.position === 'number' ? b.position : Number.POSITIVE_INFINITY;
+    if (posA !== posB) return posA - posB;
+    return sortByDateHelper(a, b);
+  });
 }
 
 /** Helper for date comparison */
