@@ -22,9 +22,6 @@ interface SermonCardProps {
   series?: Series[];
   onDelete: (id: string) => void;
   onUpdate: (updatedSermon: Sermon) => void;
-  isMultiSelectMode?: boolean;
-  selectedSermonIds?: Set<string>;
-  onToggleSermonSelection?: (sermonId: string) => void;
   searchQuery?: string;
   searchSnippets?: ThoughtSnippet[];
 }
@@ -34,9 +31,6 @@ export default function SermonCard({
   series = [],
   onDelete,
   onUpdate,
-  isMultiSelectMode = false,
-  selectedSermonIds = new Set(),
-  onToggleSermonSelection,
   searchQuery = "",
   searchSnippets = []
 }: SermonCardProps) {
@@ -67,19 +61,6 @@ export default function SermonCard({
 
   return (
     <div className={cardClasses} data-testid={`sermon-card-${sermon.id}`}>
-      {/* Selection Overlay/Checkbox */}
-      {isMultiSelectMode && (
-        <div className="absolute top-4 left-4 z-30">
-          <input
-            type="checkbox"
-            checked={selectedSermonIds.has(sermon.id)}
-            onChange={() => onToggleSermonSelection?.(sermon.id)}
-            className="w-5 h-5 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 cursor-pointer shadow-sm"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
-
       <div className="flex flex-col h-full">
         {/* Main Content Area */}
         <div className="p-5 flex flex-col flex-grow relative">

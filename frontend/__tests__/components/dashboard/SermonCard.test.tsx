@@ -231,39 +231,6 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Test Series')).toBeInTheDocument();
   });
 
-  it('renders checkbox in multi-select mode', () => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        isMultiSelectMode={true}
-      />
-    );
-
-    const checkbox = screen.getByRole('checkbox');
-    expect(checkbox).toBeInTheDocument();
-  });
-
-  it('calls onToggleSermonSelection when checkbox is clicked', () => {
-    const mockOnToggle = jest.fn();
-
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        isMultiSelectMode={true}
-        onToggleSermonSelection={mockOnToggle}
-      />
-    );
-
-    const checkbox = screen.getByRole('checkbox');
-    checkbox.click();
-
-    expect(mockOnToggle).toHaveBeenCalledWith(baseSermon.id);
-  });
-
   it('renders export buttons with icon variant', () => {
     render(
       <SermonCard

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import SermonCard from "@/components/dashboard/SermonCard";
-import CreateSeriesModal from "@/components/series/CreateSeriesModal";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
@@ -27,7 +26,7 @@ export default function DashboardPage() {
   const { sermons, loading } = useDashboardSermons();
   const { deleteSermonFromCache, updateSermonCache, addSermonToCache } = useSermonMutations();
   
-  const { series: allSeries, createNewSeries } = useSeries(user?.uid || null);
+  const { series: allSeries } = useSeries(user?.uid || null);
   
   // State
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,34 +35,6 @@ export default function DashboardPage() {
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "inSeries" | "standalone">("all");
   const [activeTab, setActiveTab] = useState<"active" | "preached" | "all">("active");
-
-  // Multi-select state
-  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
-  const [showCreateSeriesModal, setShowCreateSeriesModal] = useState(false);
-
-  // Handlers
-  const toggleMultiSelectMode = () => {
-    setIsMultiSelectMode(!isMultiSelectMode);
-    setSelectedSermonIds(new Set());
-  };
-
-  const toggleSermonSelection = (sermonId: string) => {
-    const newSelected = new Set(selectedSermonIds);
-    if (newSelected.has(sermonId)) {
-      newSelected.delete(sermonId);
-    } else {
-      newSelected.add(sermonId);
-    }
-    setSelectedSermonIds(newSelected);
-  };
-
-  const handleCreateSeries = async (seriesData: Parameters<typeof createNewSeries>[0]) => {
-    await createNewSeries(seriesData);
-    setShowCreateSeriesModal(false);
-    setIsMultiSelectMode(false);
-    setSelectedSermonIds(new Set());
-  };
 
   const handleDeleteSermon = (id: string) => {
     deleteSermonFromCache(id);
@@ -147,41 +118,10 @@ export default function DashboardPage() {
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             {t('dashboard.mySermons')}
           </h1>
-          {isMultiSelectMode && (
-            <span className="text-sm text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded-md border border-blue-100 dark:border-blue-800">
-              {selectedSermonIds.size} selected
-            </span>
-          )}
         </div>
         
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          {!isMultiSelectMode ? (
-            <>
-              <button
-                onClick={toggleMultiSelectMode}
-                className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
-              >
-                {t('workspaces.series.actions.selectSermons')}
-              </button>
-              <AddSermonModal onNewSermonCreated={handleNewSermon} />
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setShowCreateSeriesModal(true)}
-                disabled={selectedSermonIds.size === 0}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              >
-                Create Series ({selectedSermonIds.size})
-              </button>
-              <button
-                onClick={toggleMultiSelectMode}
-                className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
-              >
-                Cancel
-              </button>
-            </>
-          )}
+          <AddSermonModal onNewSermonCreated={handleNewSermon} />
         </div>
       </div>
       
@@ -396,23 +336,11 @@ export default function DashboardPage() {
               series={allSeries}
               onDelete={handleDeleteSermon}
               onUpdate={handleUpdateSermon}
-              isMultiSelectMode={isMultiSelectMode}
-              selectedSermonIds={selectedSermonIds}
-              onToggleSermonSelection={toggleSermonSelection}
               searchQuery={searchQuery}
               searchSnippets={searchSnippetsById[sermon.id]}
             />
           ))}
         </div>
-      )}
-
-      {/* Create Series Modal */}
-      {showCreateSeriesModal && (
-        <CreateSeriesModal
-          onClose={() => setShowCreateSeriesModal(false)}
-          onCreate={handleCreateSeries}
-          initialSermonIds={Array.from(selectedSermonIds)}
-        />
       )}
     </div>
   );
