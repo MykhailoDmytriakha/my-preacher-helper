@@ -15,6 +15,7 @@ import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.ser
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
+import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
 
@@ -170,6 +171,12 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     return undefined;
   })();
 
+  const sermonSeriesBadgeColor = sermonSeries?.color;
+  const sermonSeriesTextColor = sermonSeriesBadgeColor ? getContrastColor(sermonSeriesBadgeColor) : undefined;
+  const sermonSeriesBorderColor = sermonSeriesTextColor === '#000'
+    ? 'rgba(0, 0, 0, 0.15)'
+    : 'rgba(255, 255, 255, 0.2)';
+
   return (
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
       {/* Left side: Title, Date, Series Badge, Verse */}
@@ -191,8 +198,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                 }`}
                 style={sermonSeries.color ? {
                   backgroundColor: sermonSeries.color,
-                  color: '#ffffff',
-                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                  color: sermonSeriesTextColor,
+                  border: `1px solid ${sermonSeriesBorderColor}`
                 } : {}}
                 title={`${t('workspaces.series.badges.partOfSeries')}: ${sermonSeries.title}`}
               >

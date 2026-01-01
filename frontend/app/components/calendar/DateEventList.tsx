@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import { PreachDate, Sermon, Series } from "@/models/models";
+import { getContrastColor } from "@/utils/color";
 
 
 interface DateEventListProps {
@@ -113,13 +114,16 @@ export default function DateEventList({ month, sermons, series = [] }: DateEvent
                                                 {/* Series Badge */}
                                                 {(() => {
                                                     const sermonSeries = getSermonSeries(sermon);
-                                                    return sermonSeries ? (
+                                                    if (!sermonSeries) return null;
+                                                    const badgeColor = sermonSeries.color || '#3B82F6';
+                                                    const badgeTextColor = getContrastColor(badgeColor);
+                                                    return (
                                                         <div className="flex items-center gap-2">
                                                             <span
                                                                 className="inline-flex items-center px-2 py-0.5 rounded-full font-medium text-xs transition-opacity hover:opacity-80 max-w-[120px] cursor-pointer"
                                                                 style={{
-                                                                    backgroundColor: sermonSeries.color || '#3B82F6',
-                                                                    color: '#ffffff',
+                                                                    backgroundColor: badgeColor,
+                                                                    color: badgeTextColor,
                                                                 }}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -130,7 +134,7 @@ export default function DateEventList({ month, sermons, series = [] }: DateEvent
                                                                 <span className="truncate">{sermonSeries.title}</span>
                                                             </span>
                                                         </div>
-                                                    ) : null;
+                                                    );
                                                 })()}
 
                                                 <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-400">

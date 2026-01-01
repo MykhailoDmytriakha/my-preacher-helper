@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import { Sermon, Series } from "@/models/models";
+import { getContrastColor } from "@/utils/color";
 
 
 interface AgendaViewProps {
@@ -94,13 +95,16 @@ export default function AgendaView({ sermons, series = [] }: AgendaViewProps) {
                                 {/* Series Badge */}
                                 {(() => {
                                     const sermonSeries = getSermonSeries(event.sermon);
-                                    return sermonSeries ? (
+                                    if (!sermonSeries) return null;
+                                    const badgeColor = sermonSeries.color || '#3B82F6';
+                                    const badgeTextColor = getContrastColor(badgeColor);
+                                    return (
                                         <div className="flex items-center gap-2 mb-2">
                                             <span
                                                 className="inline-flex items-center px-2 py-0.5 rounded-full font-medium text-xs transition-opacity hover:opacity-80 max-w-[140px] cursor-pointer"
                                                 style={{
-                                                    backgroundColor: sermonSeries.color || '#3B82F6',
-                                                    color: '#ffffff',
+                                                    backgroundColor: badgeColor,
+                                                    color: badgeTextColor,
                                                 }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -111,7 +115,7 @@ export default function AgendaView({ sermons, series = [] }: AgendaViewProps) {
                                                 <span className="truncate">{sermonSeries.title}</span>
                                             </span>
                                         </div>
-                                    ) : null;
+                                    );
                                 })()}
 
                                 <div className="flex flex-col gap-2 text-sm text-gray-500 dark:text-gray-400">

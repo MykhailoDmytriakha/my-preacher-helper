@@ -395,7 +395,7 @@ describe('SermonHeader Component', () => {
       const seriesBadge = screen.getByText('Test Series').closest('a');
       expect(seriesBadge).toHaveStyle({
         backgroundColor: 'rgb(255, 107, 107)',
-        color: '#ffffff'
+        color: '#000000'
       });
     });
 

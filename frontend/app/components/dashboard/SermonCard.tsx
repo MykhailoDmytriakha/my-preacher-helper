@@ -10,6 +10,7 @@ import { getExportContent } from "@/utils/exportContent";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
+import { getContrastColor } from "@utils/color";
 import { formatDate } from "@utils/dateFormatter";
 
 import HighlightedText from "../HighlightedText";
@@ -169,7 +170,7 @@ export default function SermonCard({
                 className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px] cursor-pointer"
                 style={sermonSeries.color ? {
                   backgroundColor: sermonSeries.color,
-                  color: '#ffffff',
+                  color: getContrastColor(sermonSeries.color),
                 } : {}}
                 onClick={(e) => {
                   e.stopPropagation();
