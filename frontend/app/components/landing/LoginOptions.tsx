@@ -34,7 +34,7 @@ export default function LoginOptions({ onGoogleLogin, onTestLogin, loading = fal
         </span>
       </div>
 
-      <div className="mt-5 grid w-full gap-3 sm:grid-cols-2">
+      <div className="mt-5 grid w-full gap-3">
         <button
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition hover:from-blue-700 hover:to-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-75"
           onClick={onGoogleLogin}
