@@ -728,6 +728,8 @@
     },
     "analytics": {
       "title": "Аналитика",
+      "year": "Год",
+      "allYears": "Все годы",
       "totalPreachings": "Всего проповедей",
       "quickSummary": "Краткая сводка",
       "pendingDateEntry": "Ожидает ввода даты",

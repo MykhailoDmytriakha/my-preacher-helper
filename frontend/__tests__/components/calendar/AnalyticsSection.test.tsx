@@ -47,6 +47,9 @@ jest.mock('react-i18next', () => ({
         t: (key: string, _options?: any) => {
             // Return translated text for common keys (Russian)
             const translations: Record<string, string> = {
+                'calendar.analytics.title': 'Аналитика',
+                'calendar.analytics.year': 'Год',
+                'calendar.analytics.allYears': 'Все годы',
                 'calendar.analytics.bibleBooks': 'Распределение по книгам Библии',
                 'calendar.analytics.oldTestament': 'Ветхий Завет',
                 'calendar.analytics.newTestament': 'Новый Завет',
@@ -75,7 +78,7 @@ jest.mock('date-fns', () => ({
     format: jest.fn((_date, _fmt) => 'January 2024'),
 }));
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { format } from 'date-fns';
 import AnalyticsSection from '../../../app/components/calendar/AnalyticsSection';
@@ -83,6 +86,15 @@ import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 describe('AnalyticsSection', () => {
+    beforeAll(() => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2024-06-15T00:00:00Z'));
+    });
+
+    afterAll(() => {
+        jest.useRealTimers();
+    });
+
     const mockSermons: Sermon[] = [
         {
             id: '1',
@@ -291,6 +303,57 @@ describe('AnalyticsSection', () => {
             // Should display sections in Russian
             expect(screen.getByText('Ветхий Завет')).toBeInTheDocument();
             expect(screen.getByText('Новый Завет')).toBeInTheDocument();
+        });
+    });
+
+    describe('Year filtering', () => {
+        it('filters stats by selected year and supports all years', () => {
+            const sermonsByDateMultiYear = {
+                '2024-01-10': [mockSermons[0]],
+                '2024-02-05': [
+                    {
+                        ...mockSermons[1],
+                        id: 'sermon-2024-b',
+                        preachDates: [
+                            {
+                                ...mockSermons[1].preachDates[0],
+                                id: 'pd-2024-b',
+                                date: '2024-02-05'
+                            }
+                        ]
+                    }
+                ],
+                '2025-03-12': [
+                    {
+                        ...mockSermons[2],
+                        id: 'sermon-2025',
+                        preachDates: [
+                            {
+                                ...mockSermons[2].preachDates[0],
+                                id: 'pd-2025',
+                                date: '2025-03-12'
+                            }
+                        ]
+                    }
+                ],
+            };
+
+            render(<AnalyticsSection sermonsByDate={sermonsByDateMultiYear} />);
+
+            const yearSelect = screen.getByRole('combobox', { name: 'Год' });
+            expect(yearSelect).toBeInTheDocument();
+            expect(screen.getByRole('option', { name: 'Все годы' })).toBeInTheDocument();
+
+            const totalLabel = screen.getByText('Всего проповедей');
+            const totalCard = totalLabel.closest('div')?.parentElement;
+            expect(totalCard).toBeTruthy();
+            expect(within(totalCard as HTMLElement).getByText('2')).toBeInTheDocument();
+
+            fireEvent.change(yearSelect, { target: { value: '2025' } });
+            expect(within(totalCard as HTMLElement).getByText('1')).toBeInTheDocument();
+
+            fireEvent.change(yearSelect, { target: { value: 'all' } });
+            expect(within(totalCard as HTMLElement).getByText('3')).toBeInTheDocument();
         });
     });
 });

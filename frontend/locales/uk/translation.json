@@ -728,6 +728,8 @@
     },
     "analytics": {
       "title": "Аналітика",
+      "year": "Рік",
+      "allYears": "Усі роки",
       "totalPreachings": "Всього проповідей",
       "quickSummary": "Швидка зведення",
       "pendingDateEntry": "Очікує введення дати",

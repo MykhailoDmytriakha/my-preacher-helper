@@ -9,7 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
 import { enUS, ru, uk } from "date-fns/locale";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages)/(private)/studies/bibleData";
@@ -22,6 +22,8 @@ interface AnalyticsSectionProps {
 export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
     const { t, i18n } = useTranslation();
     const sermonsLabel = t('calendar.analytics.sermons', { defaultValue: 'sermons' });
+    const currentYear = new Date().getFullYear();
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear);
 
     const getDateLocale = () => {
         switch (i18n.language) {
@@ -30,6 +32,18 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
             default: return enUS;
         }
     };
+
+    const availableYears = useMemo(() => {
+        const years = new Set<number>();
+        Object.keys(sermonsByDate).forEach(dateStr => {
+            const year = Number(dateStr.slice(0, 4));
+            if (!Number.isNaN(year)) {
+                years.add(year);
+            }
+        });
+        years.add(currentYear);
+        return Array.from(years).sort((a, b) => b - a);
+    }, [sermonsByDate, currentYear]);
 
     const stats = useMemo(() => {
         const allPreachDates: { pd: PreachDate, sermon: Sermon }[] = [];
@@ -43,7 +57,14 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
             });
         });
 
-        const totalPreachings = allPreachDates.length;
+        const filteredPreachDates = selectedYear === 'all'
+            ? allPreachDates
+            : allPreachDates.filter(({ pd }) => {
+                const year = Number(pd.date.slice(0, 4));
+                return year === selectedYear;
+            });
+
+        const totalPreachings = filteredPreachDates.length;
 
         const churchCounts: Record<string, number> = {};
         const monthCounts: Record<string, number> = {};
@@ -52,7 +73,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         let totalPrepDays = 0;
         let preachingsWithDates = 0;
 
-        allPreachDates.forEach(({ pd, sermon }) => {
+        filteredPreachDates.forEach(({ pd, sermon }) => {
 
             // Church counts
             const churchKey = `${pd.church.name}${pd.church.city ? `, ${pd.church.city}` : ''}`;
@@ -171,6 +192,29 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         const churchMax = topChurches.length > 0 ? Math.max(...topChurches.map(c => c[1])) : 0;
         const topicMax = topTopics.length > 0 ? Math.max(...topTopics.map(t => t[1])) : 0;
 
+        const monthlyActivity = selectedYear === 'all'
+            ? Object.entries(monthCounts)
+                .sort((a, b) => {
+                    const [yearA, monthA] = a[0].split('-').map(Number);
+                    const [yearB, monthB] = b[0].split('-').map(Number);
+                    if (yearA !== yearB) {
+                        return yearA - yearB;
+                    }
+                    return monthA - monthB;
+                })
+                .map(([month, count]) => ({ month, count }))
+            : Array.from({ length: 12 }, (_, index) => {
+                const month = String(index + 1).padStart(2, '0');
+                const key = `${selectedYear}-${month}`;
+                return { month: key, count: monthCounts[key] || 0 };
+            });
+        const busiestMonth = monthlyActivity.reduce<{ month: string; count: number } | null>((best, current) => {
+            if (!best || current.count > best.count) {
+                return current;
+            }
+            return best;
+        }, null);
+
         // Bible books distribution
         const bibleBookCounts: Record<string, number> = {};
         BIBLE_BOOKS_DATA.forEach(book => {
@@ -228,26 +272,54 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
             totalChurchesSum,
             churchMax,
             topicMax,
-            monthlyActivity: Object.entries(monthCounts)
-                .sort((a, b) => {
-                    // Sort by year and month numerically
-                    const [yearA, monthA] = a[0].split('-').map(Number);
-                    const [yearB, monthB] = b[0].split('-').map(Number);
-                    if (yearA !== yearB) {
-                        return yearA - yearB;
-                    }
-                    return monthA - monthB;
-                })
-                .map(([month, count]) => ({ month, count })),
+            monthlyActivity,
+            busiestMonthLabel: busiestMonth && busiestMonth.count > 0 ? busiestMonth.month : undefined,
             bibleBookCounts,
             oldTestamentBooks,
             newTestamentBooks,
             bibleBookMax
         };
-    }, [sermonsByDate, i18n.language]);
+    }, [sermonsByDate, i18n.language, selectedYear]);
+
+    const formatMonthLabel = (monthKey?: string) => {
+        if (!monthKey) return 'N/A';
+        const monthDate = new Date(`${monthKey}-01`);
+        if (Number.isNaN(monthDate.getTime())) return monthKey;
+        return format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
+    };
 
     return (
         <div className="space-y-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                    {t('calendar.analytics.title')}
+                </h2>
+                <div className="flex items-center gap-2">
+                    <label
+                        htmlFor="calendar-analytics-year"
+                        className="text-sm font-medium text-gray-600 dark:text-gray-300"
+                    >
+                        {t('calendar.analytics.year')}
+                    </label>
+                    <select
+                        id="calendar-analytics-year"
+                        value={selectedYear}
+                        onChange={(event) => {
+                            const value = event.target.value;
+                            setSelectedYear(value === 'all' ? 'all' : Number(value));
+                        }}
+                        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                        <option value="all">{t('calendar.analytics.allYears')}</option>
+                        {availableYears.map(year => (
+                            <option key={year} value={year}>
+                                {year}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
             {/* Top Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
@@ -302,7 +374,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                         </h3>
                     </div>
                     <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                        {[...stats.monthlyActivity].sort((a, b) => b.count - a.count)[0]?.month || 'N/A'}
+                        {formatMonthLabel(stats.busiestMonthLabel)}
                     </p>
                 </div>
             </div>
