@@ -358,6 +358,7 @@
   "editThought": {
     "editTitle": "Edit Thought",
     "textLabel": "Thought Text",
+    "appendDictation": "Append dictation",
     "availableTags": "Available tags to add:",
     "outlinePointLabel": "Associated Outline Point",
     "noOutlinePoint": "No outline point selected",

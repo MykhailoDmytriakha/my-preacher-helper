@@ -131,6 +131,45 @@ export const retryAudioTranscription = async (
   return createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag, retryCount, maxRetries);
 };
 
+type ThoughtTranscriptionResult = {
+  polishedText: string;
+  originalText: string;
+  warning?: string;
+};
+
+export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTranscriptionResult> => {
+  try {
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "recording.webm");
+
+    const response = await fetch(`${API_BASE}/api/thoughts/transcribe`, {
+      method: "POST",
+      body: formData,
+    });
+
+    let data: { success?: boolean; polishedText?: string; originalText?: string; warning?: string; error?: string } | null = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok || !data?.success) {
+      const errorMessage = data?.error || response.statusText || `HTTP ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    return {
+      polishedText: data.polishedText ?? data.originalText ?? '',
+      originalText: data.originalText ?? data.polishedText ?? '',
+      warning: data.warning,
+    };
+  } catch (error) {
+    console.error("transcribeThoughtAudio: Error transcribing audio", error);
+    throw error;
+  }
+};
+
 export const deleteThought = async (
   sermonId: string,
   thought: Thought

@@ -235,4 +235,33 @@ describe('polishTranscription', () => {
             })
         );
     });
+
+    it('should include language and scripture rules in the system prompt', async () => {
+        // Arrange
+        const mockResponse = {
+            polishedText: 'Polished text.',
+            meaningPreserved: true,
+        };
+
+        (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+            success: true,
+            data: mockResponse,
+            refusal: null,
+            error: null,
+        });
+
+        // Act
+        await polishTranscription('Test transcription');
+
+        // Assert
+        const callArgs = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
+        const systemPrompt = callArgs[0] as string;
+
+        expect(systemPrompt).toContain('LANGUAGE RULE');
+        expect(systemPrompt).toContain('You MUST respond in the SAME language as the input');
+        expect(systemPrompt).toContain('SCRIPTURE QUOTES & REFERENCES');
+        expect(systemPrompt).toContain('KJV');
+        expect(systemPrompt).toContain('Russian Synodal');
+        expect(systemPrompt).toContain('Ogienko');
+    });
 });

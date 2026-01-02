@@ -35,6 +35,15 @@ import('undici')
     // ignore if undici not available; jsdom may already provide these
   });
 
+// JSDOM does not provide ResizeObserver
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Create a portal root element where portal content will be rendered
 const portalRoot = document.createElement('div');
 portalRoot.setAttribute('id', 'portal-root');

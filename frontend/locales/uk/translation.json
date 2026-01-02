@@ -358,6 +358,7 @@
   "editThought": {
     "editTitle": "Редагувати думку",
     "textLabel": "Текст думки",
+    "appendDictation": "Додати диктування",
     "availableTags": "Доступні теги для додавання:",
     "outlinePointLabel": "Пов'язаний пункт плану",
     "noOutlinePoint": "Пункт плану не вибрано",

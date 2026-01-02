@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
+import { toast } from 'sonner';
 
 import { SermonPoint, SermonOutline } from '@/models/models';
 import "@locales/i18n";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
+import { FocusRecorderButton } from "@components/FocusRecorderButton";
+import { transcribeThoughtAudio } from "@services/thought.service";
 
 interface EditThoughtModalProps {
   initialText: string;
@@ -196,7 +198,7 @@ const TagsSection = ({
   <div className="mb-4">
     <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
 
-    <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
+    <div className="flex flex-wrap gap-1.5">
       {tags.map((tag, idx) => {
         const tagInfo = allowedTags.find((t) => t.name === tag);
         const displayName = getTagDisplayName(t, tag, tagInfo?.translationKey);
@@ -260,6 +262,13 @@ export default function EditThoughtModal({
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDictating, setIsDictating] = useState(false);
+  const [textareaMaxHeight, setTextareaMaxHeight] = useState<number | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const metaRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isChanged =
     text !== initialText ||
     !areStringArraysEqual(tags, initialTags) ||
@@ -292,6 +301,81 @@ export default function EditThoughtModal({
     }
   };
 
+  const handleDictationComplete = async (audioBlob: Blob) => {
+    try {
+      setIsDictating(true);
+      const result = await transcribeThoughtAudio(audioBlob);
+      const appendedText = result.polishedText.trim();
+      if (!appendedText) {
+        toast.error(t('errors.audioProcessing'));
+        return;
+      }
+
+      setText((prev) => {
+        const separator = prev ? "\n\n" : "";
+        return `${prev}${separator}${appendedText}`;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('errors.audioProcessing');
+      toast.error(message);
+    } finally {
+      setIsDictating(false);
+    }
+  };
+
+  const computeTextareaMaxHeight = useCallback(() => {
+    const modal = modalRef.current;
+    if (!modal || typeof window === 'undefined') return;
+
+    const maxModalHeight = window.innerHeight * 0.9;
+    const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
+    const metaHeight = metaRef.current?.getBoundingClientRect().height ?? 0;
+    const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 0;
+    const styles = window.getComputedStyle(modal);
+    const paddingY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+
+    const buffer = 16; // extra spacing for gaps
+    const available = maxModalHeight - headerHeight - metaHeight - footerHeight - paddingY - buffer;
+    setTextareaMaxHeight(Math.max(160, Math.floor(available)));
+  }, []);
+
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = 'auto';
+    const scrollHeight = textarea.scrollHeight;
+    const maxHeight = textareaMaxHeight ?? scrollHeight;
+    const nextHeight = Math.min(scrollHeight, maxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [textareaMaxHeight]);
+
+  useLayoutEffect(() => {
+    computeTextareaMaxHeight();
+  }, [computeTextareaMaxHeight, text, tags, selectedSermonPointId, sermonOutline]);
+
+  useLayoutEffect(() => {
+    resizeTextarea();
+  }, [text, textareaMaxHeight, resizeTextarea]);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => computeTextareaMaxHeight();
+    window.addEventListener('resize', handleResize);
+
+    const observer = new ResizeObserver(() => computeTextareaMaxHeight());
+    [headerRef.current, metaRef.current, footerRef.current].forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      observer.disconnect();
+    };
+  }, [computeTextareaMaxHeight]);
+
   const allSermonPoints = buildAllSermonPoints(sermonOutline, t);
 
   // Find the selected outline point text for display
@@ -304,38 +388,63 @@ export default function EditThoughtModal({
 
   const modalContent = (
     <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden">
-        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">{t('editThought.editTitle')}</h2>
-        <div className="mb-4 flex-grow overflow-auto">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel')}</label>
-          <TextareaAutosize
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
-            minRows={3}
-            maxRows={16}
+      <div ref={modalRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[760px] max-h-[90vh] my-4 sm:my-6 flex flex-col overflow-hidden">
+        <div ref={headerRef} className="space-y-3 mb-3">
+          <h2 className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                {t('editThought.appendDictation')}
+              </span>
+              <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
+                <FocusRecorderButton
+                  size="small"
+                  onRecordingComplete={handleDictationComplete}
+                  isProcessing={isDictating}
+                  maxDuration={90}
+                  disabled={isSubmitting}
+                  onError={(errorMessage) => {
+                    toast.error(errorMessage);
+                    setIsDictating(false);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={6}
+          style={textareaMaxHeight ? { maxHeight: `${textareaMaxHeight}px` } : undefined}
+          className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none overflow-y-auto dark:bg-gray-700 dark:text-white"
+        />
+
+        <div ref={metaRef} className="mt-4 space-y-4">
+          {sermonOutline && (
+            <OutlinePointSelect
+              selectedSermonPointId={selectedSermonPointId}
+              onChange={handleSermonPointChange}
+              filteredSermonPoints={filteredSermonPoints}
+              selectedPointInfo={selectedPointInfo}
+              t={t}
+            />
+          )}
+
+          <TagsSection
+            tags={tags}
+            allowedTags={allowedTags}
+            availableTags={availableTags}
+            onRemoveTag={handleRemoveTag}
+            onAddTag={handleAddTag}
+            t={t}
           />
-	        </div>
+        </div>
 
-	        {sermonOutline && (
-	          <OutlinePointSelect
-	            selectedSermonPointId={selectedSermonPointId}
-	            onChange={handleSermonPointChange}
-	            filteredSermonPoints={filteredSermonPoints}
-	            selectedPointInfo={selectedPointInfo}
-	            t={t}
-	          />
-	        )}
-
-	        <TagsSection
-	          tags={tags}
-	          allowedTags={allowedTags}
-	          availableTags={availableTags}
-	          onRemoveTag={handleRemoveTag}
-	          onAddTag={handleAddTag}
-	          t={t}
-	        />
-	        <div className="flex justify-end gap-3 mt-auto">
+        <div ref={footerRef} className="flex justify-end gap-3 mt-4">
 	          <button 
 	            type="button" 
 	            onClick={onClose} 

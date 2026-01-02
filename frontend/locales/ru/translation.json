@@ -358,6 +358,7 @@
   "editThought": {
     "editTitle": "Редактировать мысль",
     "textLabel": "Текст мысли",
+    "appendDictation": "Добавить диктовку",
     "availableTags": "Доступные теги для добавления:",
     "outlinePointLabel": "Связанный пункт плана",
     "noOutlinePoint": "Пункт плана не выбран",
