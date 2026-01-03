@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, InformationCircleIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -59,6 +59,7 @@ interface ColumnProps {
   onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void; // New callback: append audio thought into section
   onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void; // Toggle reviewed status for outline point
   onSwitchPage?: (sectionId?: string) => void; // Callback to switch to plan view
+  onNavigateToSection?: (sectionId: string) => void; // Callback for navigating between sections in Focus Mode
 }
 
 // Define SectionType based on Column ID mapping
@@ -572,7 +573,8 @@ export default function Column({
   onMoveToAmbiguous,
   onAudioThoughtCreated,
   onToggleReviewed,
-  onSwitchPage
+  onSwitchPage,
+  onNavigateToSection
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -853,6 +855,12 @@ export default function Column({
 
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
+    // Determine sibling sections for navigation
+    const sections: string[] = ['introduction', 'main', 'conclusion'];
+    const currentIndex = sections.indexOf(id);
+    const prevSectionId = currentIndex > 0 ? sections[currentIndex - 1] : null;
+    const nextSectionId = currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null;
+
     return (
       <div className={`flex h-full gap-6 justify-center w-full ${className}`}>
         {/* Left sidebar - responsive: hidden on small screens, collapsible on medium, fixed on large */}
@@ -861,18 +869,42 @@ export default function Column({
             className={`h-full rounded-lg shadow-lg flex flex-col ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
             style={headerBgStyle}
           >
-            {/* Column title */}
+            {/* Column title with navigation arrows */}
             <div className="p-5 border-b border-white dark:border-gray-600">
-              <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold text-white dark:text-gray-100">
-                  {title}
-                </h2>
-                {id === 'introduction' && (
-                  <IntroductionInfo t={t} popoverAlignment="left" />
-                )}
-                {id === 'conclusion' && (
-                  <ConclusionInfo t={t} popoverAlignment="left" />
-                )}
+              <div className="flex items-center justify-between w-full overflow-hidden">
+                {prevSectionId && onNavigateToSection ? (
+                  <button
+                    onClick={() => onNavigateToSection(prevSectionId)}
+                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110 active:scale-95 group shrink-0"
+                    title={t('common.previous')}
+                  >
+                    <ChevronLeftIcon className="h-5 w-5 opacity-70 group-hover:opacity-100" />
+                  </button>
+                ) : <div className="w-8 shrink-0" />}
+
+                <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                  <h2 className="text-xl font-bold text-white dark:text-gray-100 truncate">
+                    {title}
+                  </h2>
+                  <div className="shrink-0">
+                    {id === 'introduction' && (
+                      <IntroductionInfo t={t} popoverAlignment="left" />
+                    )}
+                    {id === 'conclusion' && (
+                      <ConclusionInfo t={t} popoverAlignment="left" />
+                    )}
+                  </div>
+                </div>
+
+                {nextSectionId && onNavigateToSection ? (
+                  <button
+                    onClick={() => onNavigateToSection(nextSectionId)}
+                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:scale-110 active:scale-95 group shrink-0"
+                    title={t('common.next')}
+                  >
+                    <ChevronRightIcon className="h-5 w-5 opacity-70 group-hover:opacity-100" />
+                  </button>
+                ) : <div className="w-8 shrink-0" />}
               </div>
             </div>
 

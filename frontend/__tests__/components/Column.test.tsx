@@ -1,10 +1,20 @@
-// Mock @hello-pangea/dnd library
-jest.mock('@hello-pangea/dnd', () => ({
-  DragDropContext: ({ children }: any) => <div data-testid="drag-drop-context">{children}</div>,
-  Droppable: ({ children }: any) => children({ droppableProps: {}, innerRef: jest.fn() }, {}),
-  Draggable: ({ children }: any) => children({ draggableProps: {}, innerRef: jest.fn() }, {}),
-  DropResult: jest.fn()
-}));
+jest.mock('@heroicons/react/24/outline', () => {
+  const mockIcon = (name: string) => (props: any) => <svg {...props} data-testid={`icon-${name}`} />;
+  return {
+    QuestionMarkCircleIcon: mockIcon('question'),
+    PlusIcon: mockIcon('plus'),
+    PencilIcon: mockIcon('pencil'),
+    CheckIcon: mockIcon('check'),
+    XMarkIcon: mockIcon('x-mark'),
+    TrashIcon: mockIcon('trash'),
+    Bars3Icon: mockIcon('bars-3'),
+    ArrowUturnLeftIcon: mockIcon('arrow-uturn'),
+    SparklesIcon: mockIcon('sparkles'),
+    InformationCircleIcon: mockIcon('info'),
+    ChevronLeftIcon: mockIcon('chevron-left'),
+    ChevronRightIcon: mockIcon('chevron-right')
+  };
+});
 
 // Mock @dnd-kit libraries
 jest.mock('@dnd-kit/core', () => ({
@@ -46,11 +56,11 @@ jest.mock('react-i18next', () => ({
           'structure.rejectAll': 'Reject All',
           'structure.rejectAllChanges': 'Reject all suggestions',
           'structure.outlinePointsExist': 'SermonOutline points already exist',
-        'structure.generateSermonPoints': 'Generate outline points',
-        'structure.generate': 'Generate',
-        'structure.markAsReviewed': 'Mark as reviewed',
-        'structure.markAsUnreviewed': 'Mark as unreviewed',
-        'structure.outlineHelp.ariaLabel': 'Quick help for outline point',
+          'structure.generateSermonPoints': 'Generate outline points',
+          'structure.generate': 'Generate',
+          'structure.markAsReviewed': 'Mark as reviewed',
+          'structure.markAsUnreviewed': 'Mark as unreviewed',
+          'structure.outlineHelp.ariaLabel': 'Quick help for outline point',
           'common.generating': 'Generating...',
           'errors.saveOutlineError': 'Failed to save outline',
           'common.save': 'Save',
@@ -90,9 +100,9 @@ jest.mock('@/models/models', () => ({
 // Mock theme colors
 jest.mock('@/utils/themeColors', () => ({
   SERMON_SECTION_COLORS: {
-    introduction: { 
-      base: '#d97706', 
-      light: '#f59e0b', 
+    introduction: {
+      base: '#d97706',
+      light: '#f59e0b',
       dark: '#b45309',
       bg: 'bg-amber-50',
       darkBg: 'bg-amber-900/40',
@@ -103,9 +113,9 @@ jest.mock('@/utils/themeColors', () => ({
       text: 'text-amber-800',
       darkText: 'text-amber-200'
     },
-    mainPart: { 
-      base: '#2563eb', 
-      light: '#3b82f6', 
+    mainPart: {
+      base: '#2563eb',
+      light: '#3b82f6',
       dark: '#1d4ed8',
       bg: 'bg-blue-50',
       darkBg: 'bg-blue-900/20',
@@ -116,9 +126,9 @@ jest.mock('@/utils/themeColors', () => ({
       text: 'text-blue-800',
       darkText: 'text-blue-200'
     },
-    conclusion: { 
-      base: '#16a34a', 
-      light: '#22c55e', 
+    conclusion: {
+      base: '#16a34a',
+      light: '#22c55e',
       dark: '#15803d',
       bg: 'bg-green-50',
       darkBg: 'bg-green-900/30',
@@ -163,12 +173,12 @@ jest.mock('remark-gfm', () => ({}));
 jest.mock('../../app/components/AudioRecorder', () => {
   return function MockAudioRecorder(props: any) {
     return (
-      <div 
-        data-testid="audio-recorder-component" 
+      <div
+        data-testid="audio-recorder-component"
         className={`${props.className || ''} ${props.variant === "mini" ? "space-y-2" : "space-y-4"}`}
       >
         <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 ${props.variant === "mini" ? "flex-col gap-2" : ""}`}>
-          <button 
+          <button
             data-testid="record-button"
             className={`${props.variant === "mini" ? "min-w-full px-3 py-2 text-sm" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium`}
             onClick={props.onRecordingComplete ? () => props.onRecordingComplete(new Blob()) : undefined}
@@ -373,7 +383,7 @@ describe('Column Component', () => {
                 items={mockItems}
                 showFocusButton={true}
                 isFocusMode={true}
-                onToggleFocusMode={() => {}}
+                onToggleFocusMode={() => { }}
               />
             );
             expect(container.querySelector('.space-y-3')).toBeInTheDocument();
@@ -387,28 +397,28 @@ describe('Column Component', () => {
   // New tests for outline point operations in focus mode
   describe('SermonOutline Point Operations in Focus Mode', () => {
     const mockToggleFocus = jest.fn();
-    
+
     beforeEach(() => {
       // Reset mocks
-      getSermonOutline.mockClear();
-      updateSermonOutline.mockClear();
+      (getSermonOutline as jest.Mock).mockClear();
+      (updateSermonOutline as jest.Mock).mockClear();
       mockToggleFocus.mockClear();
-      toast.success.mockClear();
-      toast.error.mockClear();
-      
+      (toast.success as jest.Mock).mockClear();
+      (toast.error as jest.Mock).mockClear();
+
       // Mock the implementation of updateSermonOutline (service call)
-      updateSermonOutline.mockImplementation(() => Promise.resolve({ success: true }));
+      (updateSermonOutline as jest.Mock).mockImplementation(() => Promise.resolve({ success: true }));
       // Explicitly mock getSermonOutline to resolve
-      getSermonOutline.mockResolvedValue({ introduction: [], main: [], conclusion: [] });
-      
+      (getSermonOutline as jest.Mock).mockResolvedValue({ introduction: [], main: [], conclusion: [] });
+
       // Mock setTimeout to execute immediately
       jest.useFakeTimers();
     });
-    
+
     afterEach(() => {
       jest.useRealTimers();
     });
-    
+
     it('adds/edits/deletes outline points flows are available (covered by SermonOutline tests)', async () => {
       expect(true).toBe(true);
     });
@@ -539,7 +549,7 @@ describe('Column Component', () => {
       mainPart: [],
       conclusion: []
     };
-    
+
     const mockToggleFocus = jest.fn();
     const mockAiSort = jest.fn();
     const focusScaffold = {
@@ -1111,4 +1121,90 @@ describe('Column Component', () => {
   it('AudioRecorder integration available (popover tested elsewhere)', () => {
     expect(true).toBe(true);
   });
-}); 
+
+  // Tests for Focus Mode Navigation Arrows and Header Styling
+  describe('Focus Mode Navigation and Header Styling', () => {
+    const mockNavigate = jest.fn();
+    const commonProps = {
+      items: [],
+      isFocusMode: true,
+      onNavigateToSection: mockNavigate,
+      showFocusButton: true
+    };
+
+    beforeEach(() => {
+      mockNavigate.mockClear();
+    });
+
+    it('validates navigation arrows and header styles through scenarios', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'shows only Next arrow for introduction',
+            run: () => {
+              render(<Column {...commonProps} id="introduction" title="Introduction" />);
+              expect(screen.queryByTestId('icon-chevron-left')).not.toBeInTheDocument();
+              expect(screen.getByTestId('icon-chevron-right')).toBeInTheDocument();
+
+              fireEvent.click(screen.getByTestId('icon-chevron-right').closest('button')!);
+              expect(mockNavigate).toHaveBeenCalledWith('main');
+            }
+          },
+          {
+            name: 'shows both arrows for main part',
+            run: () => {
+              render(<Column {...commonProps} id="main" title="Main Part" />);
+              expect(screen.getByTestId('icon-chevron-left')).toBeInTheDocument();
+              expect(screen.getByTestId('icon-chevron-right')).toBeInTheDocument();
+
+              fireEvent.click(screen.getByTestId('icon-chevron-left').closest('button')!);
+              expect(mockNavigate).toHaveBeenCalledWith('introduction');
+
+              mockNavigate.mockClear();
+              fireEvent.click(screen.getByTestId('icon-chevron-right').closest('button')!);
+              expect(mockNavigate).toHaveBeenCalledWith('conclusion');
+            }
+          },
+          {
+            name: 'shows only Previous arrow for conclusion',
+            run: () => {
+              render(<Column {...commonProps} id="conclusion" title="Conclusion" />);
+              expect(screen.getByTestId('icon-chevron-left')).toBeInTheDocument();
+              expect(screen.queryByTestId('icon-chevron-right')).not.toBeInTheDocument();
+
+              fireEvent.click(screen.getByTestId('icon-chevron-left').closest('button')!);
+              expect(mockNavigate).toHaveBeenCalledWith('main');
+            }
+          },
+          {
+            name: 'verifies centered header styling and title size',
+            run: () => {
+              const { container } = render(<Column {...commonProps} id="main" title="Main Part" />);
+              const titleHeader = screen.getByText('Main Part');
+
+              // Verify font size class text-xl (down from text-2xl)
+              expect(titleHeader).toHaveClass('text-xl');
+
+              // Verify centering container classes using flex-1 and justify-center
+              const flexOneContainer = container.querySelector('.flex-1');
+              expect(flexOneContainer).toHaveClass('justify-center');
+
+              // Verify navigation buttons have premium hover classes
+              const nextButton = screen.getByTestId('icon-chevron-right').closest('button');
+              expect(nextButton).toHaveClass('hover:scale-110');
+            }
+          },
+          {
+            name: 'hides arrows when onNavigateToSection is missing',
+            run: () => {
+              render(<Column {...commonProps} id="main" title="Main Part" onNavigateToSection={undefined} />);
+              expect(screen.queryByTestId('icon-chevron-left')).not.toBeInTheDocument();
+              expect(screen.queryByTestId('icon-chevron-right')).not.toBeInTheDocument();
+            }
+          }
+        ],
+        { afterEachScenario: cleanup }
+      );
+    });
+  });
+});

@@ -51,7 +51,7 @@ export default function SortableItem({
       data: { container: containerId },
       disabled: isDragDisabled,
     });
-  
+
   const { t } = useTranslation();
 
   // Determine if this item is actively being dragged
@@ -59,16 +59,16 @@ export default function SortableItem({
 
   const getHighlightStyles = () => {
     if (!isHighlighted) return {};
-    
-    return highlightType === 'assigned' 
+
+    return highlightType === 'assigned'
       ? { borderColor: 'rgb(250, 204, 21)', backgroundColor: 'rgb(254, 249, 195)' }
       : { borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgb(219, 234, 254)' };
   };
 
   const getHighlightIcon = () => {
     if (!isHighlighted) return null;
-    
-    return highlightType === 'assigned' 
+
+    return highlightType === 'assigned'
       ? <span className="ml-1 text-yellow-500">✨</span>
       : <span className="ml-1 text-blue-500">➡️</span>;
   };
@@ -111,11 +111,9 @@ export default function SortableItem({
       {...attributes}
       {...(isDragDisabled ? {} : (listeners || {}))}
       aria-disabled={isDragDisabled}
-      className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white dark:bg-gray-800 rounded-md ${
-        isHighlighted ? `border-2 shadow-lg ${
-          highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
-        }` : 'border border-gray-200 dark:border-gray-700 shadow-md'
-      } ${hoverShadowClass} ${isDeleting ? 'pointer-events-none' : ''} ${isDragDisabled ? `opacity-75 ${cursorClass}` : cursorClass}`}
+      className={`relative group flex items-start space-x-2 mb-6 p-5 bg-white dark:bg-gray-800 rounded-md ${isHighlighted ? `border-2 shadow-lg ${highlightType === 'assigned' ? 'border-yellow-400 shadow-yellow-200' : 'border-blue-400 shadow-blue-200'
+          }` : 'border border-gray-200 dark:border-gray-700 shadow-md'
+        } ${hoverShadowClass} ${isDeleting ? 'pointer-events-none' : ''} ${isDragDisabled ? `opacity-75 ${cursorClass}` : cursorClass}`}
     >
       <div className="flex-grow">
         {disabled && (
@@ -126,36 +124,58 @@ export default function SortableItem({
         )}
         <CardContent item={item} />
         {isHighlighted && (
-          <div className={`mt-2 py-1 px-2 text-sm font-medium rounded-md inline-flex items-center bg-white ${
-            highlightType === 'assigned' 
+          <div className={`mt-2 py-1 px-2 text-sm font-medium rounded-md inline-flex items-center bg-white ${highlightType === 'assigned'
               ? 'text-yellow-800 border border-red-300'
               : 'text-blue-800 border border-red-300'
-          }`}>
-            {highlightType === 'assigned' 
+            }`}>
+            {highlightType === 'assigned'
               ? t('structure.aiAssigned', { defaultValue: 'AI assigned to outline point' })
               : t('structure.aiMoved', { defaultValue: 'AI moved this item' })}
             {getHighlightIcon()}
           </div>
         )}
       </div>
-      
-      <div className={`flex flex-col space-y-1 ${
-        isHighlighted 
+
+      <div className={`flex flex-col space-y-1 ${isHighlighted
           ? 'opacity-100'
           : 'opacity-0 group-hover:opacity-100'
-      } transition-opacity ${isDragging || isDeleting ? 'invisible' : ''}`}>
+        } transition-opacity ${isDragging || isDeleting ? 'invisible' : ''}`}>
+        {onEdit && (
+          <button
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onEdit(item);
+            }}
+            className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
+            title={t('structure.editThought', { defaultValue: 'Edit Thought' })}
+            disabled={isDeleting}
+          >
+            <EditIcon className={`h-5 w-5 ${sectionIconColorClasses} hover:opacity-90`} />
+          </button>
+        )}
         {/* Move to ambiguous (unassigned) button - hide in ambiguous container */}
         {onMoveToAmbiguous && containerId !== 'ambiguous' && (
           <button
-            onPointerDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
-            onMouseDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -169,47 +189,23 @@ export default function SortableItem({
             <ArrowTopRightOnSquareIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
           </button>
         )}
-        {onEdit && (
-          <button
-            onPointerDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
-            }}
-            onMouseDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
-            }}
-            onClick={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault();
-              onEdit(item);
-            }}
-            className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
-            title={t('structure.editThought', { defaultValue: 'Edit Thought' })}
-            disabled={isDeleting}
-          >
-            <EditIcon className={`h-5 w-5 ${sectionIconColorClasses} hover:opacity-90`} />
-          </button>
-        )}
 
         {showDeleteIcon && onDelete && (
           <button
-            onPointerDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
-            onMouseDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
             onClick={(e) => {
-              e.stopPropagation(); 
+              e.stopPropagation();
               e.preventDefault();
-              onDelete(item.id, containerId); 
+              onDelete(item.id, containerId);
             }}
             className="focus:outline-none rounded-full p-1.5 border border-transparent bg-white dark:bg-gray-700 hover:border-gray-200 dark:hover:border-gray-600 shadow-sm hover:shadow-md"
             title={t('structure.removeFromStructure', { defaultValue: 'Remove from ThoughtsBySection' })}
@@ -218,18 +214,18 @@ export default function SortableItem({
             <TrashIcon className="h-5 w-5 text-red-500 hover:text-red-600" />
           </button>
         )}
-        
+
         {isHighlighted && onKeep && (
           <button
-            onPointerDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
-            onMouseDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -242,18 +238,18 @@ export default function SortableItem({
             <CheckIcon className="h-5 w-5 text-green-500 hover:text-green-700" />
           </button>
         )}
-        
+
         {isHighlighted && onRevert && (
           <button
-            onPointerDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
-            onMouseDown={(e) => { 
-              e.stopPropagation(); 
-              e.preventDefault(); 
-              if(e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation(); 
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
             }}
             onClick={(e) => {
               e.stopPropagation();

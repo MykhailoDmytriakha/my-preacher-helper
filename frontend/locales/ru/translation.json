@@ -508,6 +508,8 @@
     "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
+    "next": "Далее",
+    "previous": "Назад",
     "search": "Поиск",
     "comingSoon": "Скоро будет доступно",
     "implementedSoon": "Скоро будет реализовано",

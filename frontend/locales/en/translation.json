@@ -508,6 +508,8 @@
     "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
+    "next": "Next",
+    "previous": "Previous",
     "search": "Search",
     "comingSoon": "Coming Soon",
     "implementedSoon": "Will be implemented soon",

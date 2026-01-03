@@ -302,6 +302,24 @@ Second paragraph with indentation.
     expect(mockOnMoveToAmbiguous).toHaveBeenCalledWith(mockItem.id, mockContainerId);
   });
 
+  test('renders buttons in the correct order (edit then move-to-ambiguous)', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    const editBtn = screen.getByTitle('structure.editThought');
+    const moveBtn = screen.getByTitle('structure.moveToUnderConsideration');
+
+    // Edit button should come before move button in DOM
+    const editBtnPosition = editBtn.compareDocumentPosition(moveBtn);
+    expect(editBtnPosition).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   test('does not render move button in ambiguous container', () => {
     render(
       <SortableItem

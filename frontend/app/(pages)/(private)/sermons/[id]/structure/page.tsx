@@ -170,13 +170,13 @@ function StructurePageContent() {
   // Safety timeout to prevent stuck drag state (especially on touch devices)
   useEffect(() => {
     if (!dndActiveId) return;
-    
+
     // If drag is active for more than 30 seconds, something went wrong - reset state
     const safetyTimeout = setTimeout(() => {
       console.warn('[DnD Safety Guard] Drag state timeout detected, resetting');
       // The state will be cleared by the DnD hook's cleanup
     }, 30000);
-    
+
     return () => clearTimeout(safetyTimeout);
   }, [dndActiveId]);
 
@@ -193,7 +193,7 @@ function StructurePageContent() {
       customTagNames: [],
       outlinePointId,
     };
-    
+
     // Set as the editing item with the specific section
     setEditingItem(emptyThought);
     setAddingThoughtToSection(sectionId);
@@ -211,8 +211,8 @@ function StructurePageContent() {
       const customTags = (thought.tags || []).filter((tag) => {
         const norm = (tag || '').trim().toLowerCase();
         return norm !== sectionTag.trim().toLowerCase() &&
-               norm !== 'introduction' && norm !== 'main part' && norm !== 'conclusion' &&
-               norm !== 'вступление' && norm !== 'основная часть' && norm !== 'заключение';
+          norm !== 'introduction' && norm !== 'main part' && norm !== 'conclusion' &&
+          norm !== 'вступление' && norm !== 'основная часть' && norm !== 'заключение';
       });
 
       // Build UI item
@@ -276,12 +276,12 @@ function StructurePageContent() {
 
   const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
     if (!sermon) return;
-    
+
     // Check if we're adding a new thought or editing an existing one
     if (editingItem && editingItem.id.startsWith('temp-')) {
       // This is a new thought being added
       const section = addingThoughtToSection;
-      
+
       // Construct the new thought data with the required date property
       const newThought = {
         id: Date.now().toString(), // Will be replaced by server
@@ -294,17 +294,17 @@ function StructurePageContent() {
         outlinePointId: outlinePointId,
         date: new Date().toISOString() // Adding the required date property
       };
-      
+
       try {
         // Add the thought using the thought service
         const thoughtService = await import('@/services/thought.service');
         const addedThought = await thoughtService.createManualThought(sermon.id, newThought);
-        
+
         // Find outline point info if available
         let outlinePoint: { text: string; section: string } | undefined;
         if (outlinePointId && sermon.outline) {
           const sections = ['introduction', 'main', 'conclusion'] as const;
-          
+
           for (const section of sections) {
             const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
             if (point) {
@@ -316,7 +316,7 @@ function StructurePageContent() {
             }
           }
         }
-        
+
         // Create item for UI
         const newItem: Item = {
           id: addedThought.id,
@@ -331,7 +331,7 @@ function StructurePageContent() {
           outlinePointId: outlinePointId,
           outlinePoint: outlinePoint
         };
-        
+
         // Update sermon state
         setSermon((prevSermon: Sermon | null) => {
           if (!prevSermon) return null;
@@ -340,25 +340,25 @@ function StructurePageContent() {
             thoughts: [...prevSermon.thoughts, addedThought]
           };
         });
-        
+
         // Update containers
         if (section) {
           setContainers(prev => ({
             ...prev,
             [section]: [...prev[section], newItem]
           }));
-          
+
           // Update structure in database
           const currentStructure = sermon.structure || {};
-          const newStructure = typeof currentStructure === 'string' 
-            ? JSON.parse(currentStructure) 
+          const newStructure = typeof currentStructure === 'string'
+            ? JSON.parse(currentStructure)
             : { ...currentStructure };
-          
+
           if (!newStructure[section]) {
             newStructure[section] = [];
           }
           newStructure[section] = [...newStructure[section], newItem.id];
-          
+
           await updateStructure(sermon.id, newStructure);
         }
       } catch (error) {
@@ -390,7 +390,7 @@ function StructurePageContent() {
         let outlinePoint: { text: string; section: string } | undefined;
         if (outlinePointId && sermon.outline) {
           const sections = ['introduction', 'main', 'conclusion'] as const;
-          
+
           for (const section of sections) {
             const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
             if (point) {
@@ -408,16 +408,16 @@ function StructurePageContent() {
             acc[key] = containers[key].map((item) =>
               item.id === updatedItem.id
                 ? {
-                    ...item,
-                    content: updatedText,
-                    customTagNames: updatedTags.map((tagName) => ({
-                      name: tagName,
-                      color:
-                        allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-                    })),
-                    outlinePointId: outlinePointId,
-                    outlinePoint: outlinePoint
-                  }
+                  ...item,
+                  content: updatedText,
+                  customTagNames: updatedTags.map((tagName) => ({
+                    name: tagName,
+                    color:
+                      allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+                  })),
+                  outlinePointId: outlinePointId,
+                  outlinePoint: outlinePoint
+                }
                 : item
             );
             return acc;
@@ -495,10 +495,10 @@ function StructurePageContent() {
     if (!focusedColumn || !sermon) {
       return '';
     }
-    
+
     // Pass format and includeTags parameters to getExportContent
-    return getExportContent(sermon, focusedColumn, { 
-      format, 
+    return getExportContent(sermon, focusedColumn, {
+      format,
       includeTags: options?.includeTags
     });
   };
@@ -517,7 +517,7 @@ function StructurePageContent() {
       return;
     }
 
-    const confirmMessage = t('sermon.deleteThoughtConfirm', { 
+    const confirmMessage = t('sermon.deleteThoughtConfirm', {
       defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`,
       text: thoughtToDelete.text
     });
@@ -529,12 +529,12 @@ function StructurePageContent() {
     setDeletingItemId(itemId);
 
     try {
-      await deleteThought(sermonId, thoughtToDelete); 
-      
+      await deleteThought(sermonId, thoughtToDelete);
+
       // --- Update State on Successful Deletion ---
       // Capture previous state for potential rollback (though less critical here)
-      const previousSermon = sermon; 
-      const previousContainers = { ...containersRef.current }; 
+      const previousSermon = sermon;
+      const previousContainers = { ...containersRef.current };
 
       // 1. Update main sermon state (using a loop instead of filter)
       const updatedThoughts: Thought[] = [];
@@ -544,22 +544,22 @@ function StructurePageContent() {
         }
       }
       const sermonWithDeletedThought = { ...previousSermon, thoughts: updatedThoughts };
-      
+
       // 2. Update local containers state
       const updatedAmbiguous = previousContainers.ambiguous.filter((item: Item) => item.id !== itemId);
       const newContainers: Record<string, Item[]> = {
-          ...previousContainers,
-          ambiguous: updatedAmbiguous
+        ...previousContainers,
+        ambiguous: updatedAmbiguous
       };
 
       // 3. Recalculate structure for DB update (based on updated containers)
       const newStructure: ThoughtsBySection = {
-          introduction: (newContainers.introduction || []).map((item: Item) => item.id),
-          main: (newContainers.main || []).map((item: Item) => item.id),
-          conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
-          ambiguous: (newContainers.ambiguous || []).map((item: Item) => item.id),
+        introduction: (newContainers.introduction || []).map((item: Item) => item.id),
+        main: (newContainers.main || []).map((item: Item) => item.id),
+        conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
+        ambiguous: (newContainers.ambiguous || []).map((item: Item) => item.id),
       };
-      
+
       // 4. Update UI *after* successful deletion confirmation
       setSermon(sermonWithDeletedThought); // Update sermon state 
       setContainers(newContainers); // Update containers state
@@ -568,11 +568,11 @@ function StructurePageContent() {
       // 5. Update structure in DB (if changed)
       const structureDidChange = isStructureChanged(previousSermon.structure || {}, newStructure);
       if (structureDidChange) {
-          try {
-              await updateStructure(sermonId, newStructure);
-          } catch {
-              toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR) || "Error saving structure changes after deleting item.");
-          }
+        try {
+          await updateStructure(sermonId, newStructure);
+        } catch {
+          toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR) || "Error saving structure changes after deleting item.");
+        }
       }
 
       toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
@@ -684,7 +684,7 @@ function StructurePageContent() {
             onNavigateToSection={navigateToSection}
           />
         </div>
-        
+
         <DndContext
           data-testid="dnd-context"
           sensors={dndSensors}
@@ -704,7 +704,7 @@ function StructurePageContent() {
             focusedColumn={focusedColumn}
             columnTitle={columnTitles["ambiguous"]}
           />
-          
+
           <div className={`${!focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'flex flex-col'} w-full mt-8`}>
             {/* Introduction column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "introduction") && (
@@ -737,9 +737,10 @@ function StructurePageContent() {
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
+                onNavigateToSection={navigateToSection}
               />
             )}
-            
+
             {/* Main column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "main") && (
               <Column
@@ -771,9 +772,10 @@ function StructurePageContent() {
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
+                onNavigateToSection={navigateToSection}
               />
             )}
-            
+
             {/* Conclusion column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "conclusion") && (
               <Column
@@ -805,6 +807,7 @@ function StructurePageContent() {
                 onMoveToAmbiguous={handleMoveToAmbiguous}
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
+                onNavigateToSection={navigateToSection}
               />
             )}
           </div>
@@ -813,15 +816,15 @@ function StructurePageContent() {
               const containerKey = Object.keys(containers).find(
                 (key) => containers[key].some((item) => item.id === dndActiveId)
               );
-              
+
               const activeItem = containerKey
                 ? containers[containerKey].find((item) => item.id === dndActiveId)
                 : null;
-                
+
               return activeItem ? (
-                <div 
+                <div
                   className="flex items-start space-x-2 p-4 bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 shadow-lg"
-                  style={{ 
+                  style={{
                     width: 'auto',
                     opacity: 1,                    // Always fully visible
                     zIndex: 9999,                  // Above everything
@@ -846,7 +849,7 @@ function StructurePageContent() {
             initialSermonPointId={editingItem.outlinePointId || undefined}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
-            containerSection={addingThoughtToSection || Object.keys(containers).find(key => 
+            containerSection={addingThoughtToSection || Object.keys(containers).find(key =>
               containers[key].some(item => item.id === editingItem.id)
             )}
             onSave={handleSaveEdit}
