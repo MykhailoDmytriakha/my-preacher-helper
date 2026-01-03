@@ -231,33 +231,7 @@ const SermonPointPlaceholder: React.FC<{
                 </button>
               )}
               {/* Quick help for outline point */}
-              <div className="relative" ref={hintRef}>
-                <button
-                  onClick={() => setShowHint(v => !v)}
-                  className="group p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-                  title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
-                  aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
-                  aria-expanded={showHint}
-                >
-                  <InformationCircleIcon className="h-5 w-5 text-blue-600 dark:text-blue-300 group-hover:text-blue-700 dark:group-hover:text-blue-200" />
-                </button>
-                {showHint && (
-                  <div className="absolute right-0 mt-2 z-50 w-[300px]">
-                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
-                      <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
-                        {t('structure.outlineHelp.title')}
-                      </div>
-                      <ul className="list-disc pl-4 space-y-1 text-gray-700 dark:text-gray-200">
-                        <li>{t('structure.outlineHelp.verse')}</li>
-                        <li>{t('structure.outlineHelp.explanation')}</li>
-                        <li>{t('structure.outlineHelp.illustration')}</li>
-                        <li>{t('structure.outlineHelp.argumentation')}</li>
-                        <li>{t('structure.outlineHelp.application')}</li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <PointQuickHelp t={t} popoverAlignment="right" />
               <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
                 {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
               </span>
@@ -536,6 +510,61 @@ const ConclusionInfo: React.FC<{
               <li>{t('structure.conclusionInfo.apply', { defaultValue: 'Give application: what to do and how to apply the truths discussed' })}</li>
               <li>{t('structure.conclusionInfo.call', { defaultValue: 'Call to repentance and action (not only hearers but doers)' })}</li>
               <li>{t('structure.conclusionInfo.hammer', { defaultValue: '“Drive the nail” with the final clear phrases; you may end with “Thus says the Lord”; 1 Pet 4:11' })}</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PointQuickHelp: React.FC<{
+  t: (key: string, options?: Record<string, unknown>) => string;
+  popoverAlignment?: 'left' | 'right';
+}> = ({ t, popoverAlignment = 'left' }) => {
+  const [showHint, setShowHint] = React.useState(false);
+  const hintRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!showHint) return;
+    const onDocClick = (e: MouseEvent | TouchEvent) => {
+      if (!hintRef.current) return;
+      const target = e.target as Node;
+      if (!hintRef.current.contains(target)) {
+        setShowHint(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick, true);
+    document.addEventListener('touchstart', onDocClick, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick, true);
+      document.removeEventListener('touchstart', onDocClick, true);
+    };
+  }, [showHint]);
+
+  return (
+    <div className="relative shrink-0" ref={hintRef}>
+      <button
+        onClick={() => setShowHint(v => !v)}
+        className="group p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+        title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+        aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
+        aria-expanded={showHint}
+      >
+        <InformationCircleIcon className="h-5 w-5 text-blue-500 dark:text-blue-300 group-hover:text-blue-600 dark:group-hover:text-blue-200" />
+      </button>
+      {showHint && (
+        <div className={`absolute bottom-full mb-2 z-[60] w-[300px] ${popoverAlignment === 'right' ? 'right-0' : 'left-0'}`}>
+          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs text-left">
+            <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
+              {t('structure.outlineHelp.title')}
+            </div>
+            <ul className="list-disc pl-4 space-y-1 text-gray-700 dark:text-gray-200">
+              <li>{t('structure.outlineHelp.verse')}</li>
+              <li>{t('structure.outlineHelp.explanation')}</li>
+              <li>{t('structure.outlineHelp.illustration')}</li>
+              <li>{t('structure.outlineHelp.argumentation')}</li>
+              <li>{t('structure.outlineHelp.application')}</li>
             </ul>
           </div>
         </div>
@@ -871,7 +900,7 @@ export default function Column({
           >
             {/* Column title with navigation arrows */}
             <div className="p-5 border-b border-white dark:border-gray-600">
-              <div className="flex items-center justify-between w-full overflow-hidden">
+              <div className="flex items-center justify-between w-full">
                 {prevSectionId && onNavigateToSection ? (
                   <button
                     onClick={() => onNavigateToSection(prevSectionId)}
@@ -1128,6 +1157,8 @@ export default function Column({
                                       )}
                                     </span>
                                     <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {/* Quick help for outline point */}
+                                      <PointQuickHelp t={t} popoverAlignment="right" />
                                       <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                                         <PencilIcon className="h-4 w-4" />
                                       </button>
