@@ -334,6 +334,9 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
     conclusion: getSectionLabel(t, 'conclusion'),
   };
 
+  const countBadgeBaseClass =
+    'inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs leading-none align-middle tabular-nums';
+
   // Get total thoughts count per section
   const getTotalThoughtsForSection = (sectionType: SectionType) => {
     return sectionPoints[sectionType].reduce((total, point) => {
@@ -367,7 +370,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
             className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
           >
             <span>{sectionTitles[sectionType]}</span>
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${colors.badge}`}>
+            <span className={`ml-2 ${countBadgeBaseClass} ${colors.badge}`}>
               {points.length}
             </span>
             {totalThoughts > 0 && (
@@ -421,7 +424,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                     </div>
                     <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
                     {getThoughtCount(point.id) > 0 && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full mr-2">
+                      <span className={`${countBadgeBaseClass} mr-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
                         {getThoughtCount(point.id)}
                       </span>
                     )}
@@ -478,7 +481,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                               </div>
                               {/* Thought count badge */}
                               {getThoughtCount(point.id) > 0 && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded-full ml-2">
+                                <span className={`${countBadgeBaseClass} ml-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
                                   {getThoughtCount(point.id)}
                                 </span>
                               )}

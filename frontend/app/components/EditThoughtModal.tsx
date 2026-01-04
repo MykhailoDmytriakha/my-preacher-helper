@@ -6,10 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SermonPoint, SermonOutline } from '@/models/models';
-import "@locales/i18n";
-import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
+import "@locales/i18n";
 
 interface EditThoughtModalProps {
   initialText: string;

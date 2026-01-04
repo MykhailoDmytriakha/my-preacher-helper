@@ -252,7 +252,7 @@ jest.mock('@/components/Icons', () => ({
   SwitchViewIcon: (props: any) => <svg {...props} data-testid="switch-view-icon" />
 }));
 
-import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
@@ -687,6 +687,32 @@ describe('Column Component', () => {
                 />
               );
               expect(screen.getAllByText('1')).toHaveLength(2);
+            }
+          },
+          {
+            name: 'keeps outline badge aligned as a sibling flex item',
+            run: () => {
+              render(
+                <Column
+                  id="introduction"
+                  title="Introduction"
+                  items={mockItems}
+                  isFocusMode={true}
+                  outlinePoints={mockSermonPoints}
+                  thoughtsPerSermonPoint={{ point1: 1, point2: 1 }}
+                />
+              );
+              const pointLabel = screen.getAllByText('Introduction Point 1')
+                .map(el => el.closest('li'))
+                .find(Boolean) as HTMLElement;
+              expect(pointLabel).toBeInTheDocument();
+              const badge = within(pointLabel).getByText('1');
+              const badgeContainer = badge.parentElement as HTMLElement;
+              const textNode = within(pointLabel).getByText('Introduction Point 1');
+              expect(badgeContainer).toHaveClass('flex');
+              expect(badgeContainer).toHaveClass('items-center');
+              expect(textNode.parentElement).toBe(badgeContainer);
+              expect(textNode).not.toContainElement(badge);
             }
           },
           {

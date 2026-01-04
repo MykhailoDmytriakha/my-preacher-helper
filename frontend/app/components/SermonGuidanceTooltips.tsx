@@ -1,5 +1,5 @@
-import React from "react";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import React from "react";
 
 type PopoverAlignment = 'left' | 'right';
 

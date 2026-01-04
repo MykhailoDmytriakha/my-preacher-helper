@@ -26,8 +26,8 @@ const BG_GRAY_LIGHTER_DARK = 'bg-gray-100 dark:bg-gray-700';
 
 import { AudioRecorder } from "./AudioRecorder";
 import ExportButtons from "./ExportButtons";
-import { FocusRecorderButton } from "./FocusRecorderButton";
 import FocusModeLayout from "./FocusModeLayout";
+import { FocusRecorderButton } from "./FocusRecorderButton";
 import FocusSidebar from "./FocusSidebar";
 import { OutlinePointGuidanceTooltip, SermonSectionGuidanceTooltip } from "./SermonGuidanceTooltips";
 import SortableItem from "./SortableItem";
@@ -945,7 +945,7 @@ export default function Column({
                       <li
                         ref={providedDraggable.innerRef}
                         {...providedDraggable.draggableProps}
-                        className={`flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
+                        className={`relative flex items-center group p-2 rounded ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
                         style={providedDraggable.draggableProps.style}
                       >
                         {/* Drag handle */}
@@ -974,15 +974,20 @@ export default function Column({
                           </div>
                         ) : (
                           <>
-                            <span className="text-sm text-white dark:text-gray-100 flex-grow mr-2" onDoubleClick={() => handleStartEdit(point)}>
-                              {point.text}
+                            <div className="flex flex-1 min-w-0 items-center gap-2 pr-8 mr-2">
+                              <span
+                                className="text-sm text-white dark:text-gray-100 flex-1 min-w-0"
+                                onDoubleClick={() => handleStartEdit(point)}
+                              >
+                                {point.text}
+                              </span>
                               {thoughtsPerSermonPoint[point.id] > 0 && (
-                                <span className="ml-2 px-1.5 py-0.5 text-xs bg-white dark:bg-gray-200 text-gray-700 dark:text-gray-700 rounded-full">
+                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700">
                                   {thoughtsPerSermonPoint[point.id]}
                                 </span>
                               )}
-                            </span>
-                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            </div>
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
                               {/* Quick help for outline point */}
                               <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                                 <PencilIcon className="h-4 w-4" />
@@ -1330,7 +1335,7 @@ export default function Column({
                 <li key={point.id} className="flex items-center">
                   <span>{point.text}</span>
                   {thoughtsPerSermonPoint[point.id] > 0 && (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-white text-gray-700 rounded-full">
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700">
                       {thoughtsPerSermonPoint[point.id]}
                     </span>
                   )}

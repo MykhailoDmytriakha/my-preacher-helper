@@ -1,6 +1,6 @@
 ---
 name: session-start-memory
-description: Session-start routine for this project. Use when beginning a new session or onboarding to this repo to load MEMORY.md and core project context (README/AGENTS/FEATURE_CONCEPTS), then summarize context and confirm readiness.
+description: Session-start routine for this project. Use when beginning a new session or onboarding to this repo to load MEMORY.md and core project context (README), then summarize context and confirm readiness.
 ---
 
 # Session Start Memory

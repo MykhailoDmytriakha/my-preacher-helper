@@ -135,9 +135,15 @@ describe('SermonOutline Component', () => {
     
     // Find count badges and verify their values
     // Look within each section's header for the counts
-    expect(within(introSection).getByText('2')).toBeInTheDocument();
-    expect(within(mainSection).getByText('3')).toBeInTheDocument();
-    expect(within(conclSection).getByText('1')).toBeInTheDocument();
+    const introCount = within(introSection).getByText('2');
+    const mainCount = within(mainSection).getByText('3');
+    const conclCount = within(conclSection).getByText('1');
+    expect(introCount).toBeInTheDocument();
+    expect(mainCount).toBeInTheDocument();
+    expect(conclCount).toBeInTheDocument();
+    expect(introCount).toHaveClass('inline-flex');
+    expect(mainCount).toHaveClass('inline-flex');
+    expect(conclCount).toHaveClass('inline-flex');
   });
 
   test('displays thought counts when thoughtsPerSermonPoint prop is provided', async () => {
@@ -167,9 +173,15 @@ describe('SermonOutline Component', () => {
     const conclSection = screen.getByTestId('outline-section-conclusion');
     
     // Check individual thought counts for each point
-    expect(within(introSection).getByText('3')).toBeInTheDocument();
-    expect(within(mainSection).getByText('5')).toBeInTheDocument();
-    expect(within(conclSection).getByText('2')).toBeInTheDocument();
+    const introThoughtCount = within(introSection).getByText('3');
+    const mainThoughtCount = within(mainSection).getByText('5');
+    const conclThoughtCount = within(conclSection).getByText('2');
+    expect(introThoughtCount).toBeInTheDocument();
+    expect(mainThoughtCount).toBeInTheDocument();
+    expect(conclThoughtCount).toBeInTheDocument();
+    expect(introThoughtCount).toHaveClass('inline-flex');
+    expect(mainThoughtCount).toHaveClass('inline-flex');
+    expect(conclThoughtCount).toHaveClass('inline-flex');
     
     // Check the total entries in section headers
     expect(within(introSection).getByText('3 structure.entries')).toBeInTheDocument();

@@ -9,6 +9,26 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-04 Badge alignment in wrapped outline titles
+**Problem:** In the Focus sidebar outline list, count badges looked mis-centered when titles wrapped to multiple lines.
+**Attempts:** Centered the digits inside the badge with `inline-flex` + fixed height.
+**Solution:** Move the badge out of the inline text flow into a sibling flex item so it aligns to the full text block, not the last line baseline.
+**Why it worked:** Inline badges align to the last line’s baseline in multi-line text, which makes them appear off-center; flex siblings align to the block’s center.
+**Principle:** For multi-line text with trailing badges, render the badge as a sibling in a flex row rather than inline text.
+
+### 2026-01-04 Coverage requires changed-line verification
+**Problem:** Tests passed, but it was unclear whether the new UI changes were actually exercised.
+**Attempts:** Relying on overall coverage numbers and green test status.
+**Solution:** Add targeted tests that assert the specific new DOM structure/classes introduced by the change and verify those lines are covered.
+**Why it worked:** Green tests can miss changed logic; explicit assertions map test execution to the modified lines.
+**Principle:** Treat “tests green” as insufficient—always validate that the changed lines are executed and asserted.
+
+### 2026-01-04 Focus sidebar refactor boundaries
+**Problem:** Фокус‑режим в `Column.tsx` был монолитным, требовалось вынести sidebar, не ломая UI и тесты.
+**Attempts:** Сначала вынес структуру в layout/sidebar компоненты и увидел, что пропал блок Unassigned Thoughts в focus‑content.
+**Solution:** Вынес focus‑layout в `FocusModeLayout` и `FocusSidebar` со слотами (header/actions/points), сохранил классы (`bg-gray-50`, `dark:bg-gray-800`, `lg:w-72`) и вернул Unassigned Thoughts в focus‑content.
+**Why it worked:** Слотовая композиция сохранила DOM‑структуру и CSS‑классы, а восстановление Unassigned‑блока вернуло ожидаемое поведение и тесты.
+**Principle:** При рефакторинге UI‑контейнеров сохраняй ключевые классы/DOM и проверяй логические секции (например, Unassigned) в обоих режимах.
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении

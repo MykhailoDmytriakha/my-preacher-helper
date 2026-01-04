@@ -14,6 +14,7 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
 - **Evidence-based reasoning:** Observe → Hypothesize → Predict → Test → Conclude.
 - **Scope150:** Fully cover the core (what is directly asked) and then cover boundary (adjacent or dependent areas).
 - **Traceability:** Every key finding is recorded in a research log.
+- **Project search protocol:** When locating code, follow an ordered search: interface → domain → patterns → usage.
 
 ## Research log (mandatory)
 
@@ -56,11 +57,16 @@ If `.temp/` does not exist, create it. This file is the working memory for the i
 
 1. **Define core question** in the log.
 2. **List scope**: core (100%) and boundary (50%).
-3. **Start observations** (search/read/run commands). Record every solid finding in the log.
+3. **Start observations** (search/read/run commands). Use the project search protocol:
+   - Interface: routes, UI text, public methods, endpoints, schemas.
+   - Domain: model/entity names, i18n keys, enums.
+   - Patterns: hooks, API clients, controllers, services.
+   - Usage: imports, call sites, references.
+   Record every solid finding in the log.
 4. **Form hypotheses** based on evidence; record predictions and tests.
 5. **Review log**, then decide next branch; update scope if it expands.
 6. **Repeat** until the question is answered or all branches are exhausted.
-7. **Summarize**: write a concise summary in the log and in the response.
+7. **Close out**: write a concise summary in the log and in the response, and report completion status (see Output expectations).
 
 ## Using web search
 
@@ -72,3 +78,6 @@ If `.temp/` does not exist, create it. This file is the working memory for the i
 - Provide a short summary of findings.
 - Provide the path to the investigation log file.
 - Ask for confirmation before large changes based on the research.
+- Explicitly report completion status using technical criteria:
+  - "Complete" only if all branches in the log are addressed, all hypotheses are confirmed/rejected, and no open scope items remain.
+  - If not complete, list remaining branches or unknowns from the log.
