@@ -320,7 +320,11 @@ function separateThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, 
 /**
  * Process thoughts assigned to specific outline points.
  */
-function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, SermonPoint>): OrganizedBlock[] {
+function processThoughtsByOutline(
+  thoughts: Thought[],
+  outlineMap: Map<string, SermonPoint>,
+  sectionOrderIds?: string[]
+): OrganizedBlock[] {
   // Group thoughts by outline point ID
   const thoughtsByOutline = new Map<string, Thought[]>();
   thoughts.forEach(thought => {
@@ -332,13 +336,12 @@ function processThoughtsByOutline(thoughts: Thought[], outlineMap: Map<string, S
   });
   
   // Get outline points in the order they appear in the map (insertion order from sermon.outline)
-  // Remove the unnecessary sort based on a non-existent 'order' property
   const pointsInOrder = Array.from(outlineMap.values());
 
   // Create a block for each outline point that has thoughts
   return pointsInOrder.map(point => {
     const pointThoughts = thoughtsByOutline.get(point.id) || [];
-    const sortedThoughts = sortThoughtsForOutlinePoint(pointThoughts); // Prefer position order, fallback to date
+    const sortedThoughts = sortThoughtsForOutlinePoint(pointThoughts, sectionOrderIds); // Prefer structure order, then position/date
     return {
       type: 'outline' as const,
       title: point.text, // Use outline point text as block title
@@ -468,13 +471,16 @@ function processSection(
   if (outlinePoints.length > 0) {
     debugLog(`processSection - Processing with outline points for ${sectionKey}`);
     const outlineMap = new Map<string, SermonPoint>(outlinePoints.map(p => [p.id, p]));
+    const sectionOrderIds = structure && sectionKey !== 'ambiguous'
+      ? structure[sectionKey as keyof ThoughtsBySection]
+      : undefined;
 
     // Separate thoughts based on assignment to *these* outline points
     const { assignedThoughts, unassignedThoughts } = separateThoughtsByOutline(thoughtsToProcess, outlineMap);
     
     // Create blocks for thoughts assigned to outline points
     if (assignedThoughts.length > 0) {
-      const outlineBlocks = processThoughtsByOutline(assignedThoughts, outlineMap);
+      const outlineBlocks = processThoughtsByOutline(assignedThoughts, outlineMap, sectionOrderIds);
       organizedBlocks.push(...outlineBlocks);
       debugLog(`processSection - Added outline blocks for ${sectionKey}`, { count: outlineBlocks.length });
     }
@@ -525,16 +531,29 @@ function sortThoughtsByDate(thoughts: Thought[]): Thought[] {
 }
 
 /** Sort thoughts within an outline point using position when available, then date */
-function sortThoughtsForOutlinePoint(thoughts: Thought[]): Thought[] {
+function sortThoughtsForOutlinePoint(thoughts: Thought[], sectionOrderIds?: string[]): Thought[] {
   if (!thoughts) return [];
-  const hasAnyPosition = thoughts.some(thought => typeof thought.position === 'number');
-  if (!hasAnyPosition) return sortThoughtsByDate(thoughts);
-  return [...thoughts].sort((a, b) => {
-    const posA = typeof a.position === 'number' ? a.position : Number.POSITIVE_INFINITY;
-    const posB = typeof b.position === 'number' ? b.position : Number.POSITIVE_INFINITY;
-    if (posA !== posB) return posA - posB;
-    return sortByDateHelper(a, b);
-  });
+  if (sectionOrderIds && sectionOrderIds.length > 0) {
+    const orderIndex = new Map(sectionOrderIds.map((id, index) => [id, index]));
+    return [...thoughts].sort((a, b) => {
+      const orderA = orderIndex.get(a.id);
+      const orderB = orderIndex.get(b.id);
+      if (orderA !== undefined || orderB !== undefined) {
+        const idxA = orderA ?? Number.POSITIVE_INFINITY;
+        const idxB = orderB ?? Number.POSITIVE_INFINITY;
+        if (idxA !== idxB) return idxA - idxB;
+      }
+      return compareThoughtsByPositionThenDate(a, b);
+    });
+  }
+  return [...thoughts].sort(compareThoughtsByPositionThenDate);
+}
+
+function compareThoughtsByPositionThenDate(a: Thought, b: Thought): number {
+  const posA = typeof a.position === 'number' ? a.position : Number.POSITIVE_INFINITY;
+  const posB = typeof b.position === 'number' ? b.position : Number.POSITIVE_INFINITY;
+  if (posA !== posB) return posA - posB;
+  return sortByDateHelper(a, b);
 }
 
 /** Helper for date comparison */

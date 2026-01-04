@@ -211,6 +211,66 @@ describe('exportContent', () => {
           },
         },
         {
+          name: 'outline point respects structure order over position',
+          run: async () => {
+            const structureOrderSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [
+                {
+                  id: 't-struct-first',
+                  text: 'Structure first',
+                  tags: ['intro'],
+                  date: '2024-01-03',
+                  outlinePointId: 'point1',
+                  position: -100,
+                },
+                {
+                  id: 't-struct-second',
+                  text: 'Structure second',
+                  tags: ['intro'],
+                  date: '2024-01-01',
+                  outlinePointId: 'point1',
+                  position: 100,
+                },
+              ],
+              outline: { introduction: [{ id: 'point1', text: 'Intro Point' }], main: [], conclusion: [] },
+              structure: { introduction: ['t-struct-second', 't-struct-first'], main: [], conclusion: [], ambiguous: [] },
+            };
+            const result = await getExportContent(structureOrderSermon);
+            expect(result.indexOf('Structure second')).toBeLessThan(result.indexOf('Structure first'));
+          },
+        },
+        {
+          name: 'structure order keeps known ids ahead of unknown ids',
+          run: async () => {
+            const partialStructureSermon: Sermon = {
+              ...mockSermon,
+              thoughts: [
+                {
+                  id: 't-struct-known',
+                  text: 'Known in structure',
+                  tags: ['intro'],
+                  date: '2024-01-05',
+                  outlinePointId: 'point1',
+                  position: 50,
+                },
+                {
+                  id: 't-struct-unknown',
+                  text: 'Missing from structure',
+                  tags: ['intro'],
+                  date: '2024-01-01',
+                  outlinePointId: 'point1',
+                  position: -50,
+                },
+              ],
+              outline: { introduction: [{ id: 'point1', text: 'Intro Point' }], main: [], conclusion: [] },
+              structure: { introduction: ['t-struct-known'], main: [], conclusion: [], ambiguous: [] },
+            };
+            const result = await getExportContent(partialStructureSermon);
+            expect(result.indexOf('Known in structure')).toBeLessThan(result.indexOf('Missing from structure'));
+          },
+        },
+        {
           name: 'structure fallbacks and empty sections',
           run: async () => {
             const emptyThoughts = await getExportContent({ ...mockSermon, thoughts: [] });

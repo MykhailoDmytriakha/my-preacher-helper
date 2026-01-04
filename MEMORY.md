@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-04 Export order mismatch in focus mode
+**Problem:** In focus mode (`/sermons/[id]/structure?mode=focus&section=...`) the export (TXT/Markdown/Word) order differed from the Column UI order.
+**Attempts:** Root-caused by comparing export ordering vs UI ordering sources.
+**Solution:** Align export ordering to `sermon.structure` order when outline points exist; fall back to position/date only when structure order is missing.
+**Why it worked:** Columns derive order from structure, while export previously used position/date; using structure in export makes both paths consistent for all sections.
+**Principle:** When UI order is driven by `ThoughtsBySection`, export should use the same ordering source to avoid divergence.
+
 ### 2026-01-04 Badge alignment in wrapped outline titles
 **Problem:** In the Focus sidebar outline list, count badges looked mis-centered when titles wrapped to multiple lines.
 **Attempts:** Centered the digits inside the badge with `inline-flex` + fixed height.
