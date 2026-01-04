@@ -29,6 +29,13 @@
 **Solution:** Вынес focus‑layout в `FocusModeLayout` и `FocusSidebar` со слотами (header/actions/points), сохранил классы (`bg-gray-50`, `dark:bg-gray-800`, `lg:w-72`) и вернул Unassigned Thoughts в focus‑content.
 **Why it worked:** Слотовая композиция сохранила DOM‑структуру и CSS‑классы, а восстановление Unassigned‑блока вернуло ожидаемое поведение и тесты.
 **Principle:** При рефакторинге UI‑контейнеров сохраняй ключевые классы/DOM и проверяй логические секции (например, Unassigned) в обоих режимах.
+
+### 2026-01-04 Plan prompt refactor regression guard
+**Problem:** After extracting helpers in `generatePlanPointContent`, tests started returning `{ success: false }` because the refactor referenced a removed local (`detectedLanguage`).
+**Attempts:** Ran full coverage to identify failing tests and inspected the refactor for missing variables.
+**Solution:** Replace the stale reference with `languageInfo.detectedLanguage` and add a Cyrillic test case to exercise the language branch.
+**Why it worked:** The refactor preserved behavior, and the new test caught the missing handoff between helper outputs and the main function.
+**Principle:** After extracting helpers, audit all former locals used in downstream objects and add a targeted test that drives the new helper path.
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении

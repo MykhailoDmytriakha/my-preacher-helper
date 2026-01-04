@@ -139,43 +139,120 @@ function cleanPotentiallyInvalidJsonString(jsonString: string): string {
   }
 }
 
+function looksLikeJsonSchema(parsed: unknown): boolean {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const record = parsed as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(record, 'properties')) return true;
+  if (Object.prototype.hasOwnProperty.call(record, 'type')) {
+    return record.type === 'object' || record.type === 'array';
+  }
+  return false;
+}
+
+function tryParseDirectJson<T>(trimmed: string): T | null {
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return null;
+  }
+}
+
+function tryParseArgumentsJson<T>(responseContent: string): T | null {
+  const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
+  if (!argumentsMatch || !argumentsMatch[1]) {
+    return null;
+  }
+
+  let jsonString = argumentsMatch[1].trim();
+  jsonString = cleanPotentiallyInvalidJsonString(jsonString);
+  try {
+    const parsed = JSON.parse(jsonString);
+    if (looksLikeJsonSchema(parsed)) {
+      console.warn('Detected schema-like content inside <arguments>; attempting alternative extraction for data.');
+      return null;
+    }
+    return parsed as T;
+  } catch (parseError) {
+    console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
+    return null;
+  }
+}
+
+function tryParseCodeBlockJson<T>(responseContent: string): T | null {
+  const codeBlockMatches = [...responseContent.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
+  if (codeBlockMatches.length === 0) {
+    return null;
+  }
+
+  let codeBlockContent = codeBlockMatches[codeBlockMatches.length - 1][1].trim();
+  try {
+    const lastBrace = codeBlockContent.lastIndexOf('}');
+    const lastBracket = codeBlockContent.lastIndexOf(']');
+    const lastValidCharIndex = Math.max(lastBrace, lastBracket);
+
+    if (lastValidCharIndex > -1) {
+      let openBraces = 0;
+      let openBrackets = 0;
+      for (let i = 0; i <= lastValidCharIndex; i++) {
+        if (codeBlockContent[i] === '{') openBraces++;
+        else if (codeBlockContent[i] === '}') openBraces--;
+        else if (codeBlockContent[i] === '[') openBrackets++;
+        else if (codeBlockContent[i] === ']') openBrackets--;
+      }
+      if (openBraces >= 0 && openBrackets >= 0) {
+        codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
+      }
+    }
+
+    const cleanedJson = cleanPotentiallyInvalidJsonString(codeBlockContent)
+      .replace(/,\s*}/g, '}')
+      .replace(/,\s*\]/g, ']');
+    return JSON.parse(cleanedJson) as T;
+  } catch (e) {
+    console.log("Failed to parse JSON from potentially truncated code block, trying other methods:", e);
+    return null;
+  }
+}
+
+function tryParseEmbeddedJson<T>(responseContent: string): T | null {
+  const jsonMatches = [...responseContent.matchAll(/\{[\s\S]*\}|\[[\s\S]*\]/g)];
+  const jsonMatch = jsonMatches.length > 0
+    ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest))
+    : null;
+
+  if (!jsonMatch) {
+    return null;
+  }
+
+  try {
+    const jsonString = jsonMatch[0];
+    const cleanedJson = cleanPotentiallyInvalidJsonString(jsonString)
+      .replace(/,\s*}/g, '}')
+      .replace(/,\s*\]/g, ']');
+    return JSON.parse(cleanedJson) as T;
+  } catch (e) {
+    console.log("Failed to parse JSON object, trying more specific extraction:", e);
+    return null;
+  }
+}
+
 function extractStructuredResponseFromContent<T>(responseContent: string): T {
   try {
     // Zeroth try: If the whole content is valid JSON, parse it directly
     // This covers cases where the model returns plain JSON as the message content
     const trimmed = responseContent.trim();
-    try {
-      // Only attempt if it looks like a JSON object/array to avoid obvious failures
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        return JSON.parse(trimmed) as T;
-      }
-    } catch {
-      // Ignore and continue with other extraction strategies
+    const directJson = tryParseDirectJson<T>(trimmed);
+    if (directJson) {
+      return directJson;
     }
 
     // First try: Extract JSON from within the <arguments> tags
-    const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
-    if (argumentsMatch && argumentsMatch[1]) {
-      let jsonString = argumentsMatch[1].trim();
-      // Clean the string before parsing
-      jsonString = cleanPotentiallyInvalidJsonString(jsonString);
-      try {
-        const parsed = JSON.parse(jsonString);
-        // If the parsed content looks like a JSON Schema (e.g., has 'type' and/or 'properties'),
-        // it's likely the model echoed the schema rather than actual arguments. In that case, fall through
-        // to try other extraction methods (like a subsequent JSON block with real data).
-        const looksLikeSchema = parsed && typeof parsed === 'object' && (
-          (Object.prototype.hasOwnProperty.call(parsed, 'properties')) ||
-          (Object.prototype.hasOwnProperty.call(parsed, 'type') && (parsed.type === 'object' || parsed.type === 'array'))
-        );
-        if (!looksLikeSchema) {
-          return parsed as T;
-        }
-        console.warn('Detected schema-like content inside <arguments>; attempting alternative extraction for data.');
-      } catch (parseError) {
-        console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
-        // Fall through if parsing still fails
-      }
+    const argumentsJson = tryParseArgumentsJson<T>(responseContent);
+    if (argumentsJson) {
+      return argumentsJson;
     }
 
     // Second try: Look for a JSON object
@@ -183,59 +260,16 @@ function extractStructuredResponseFromContent<T>(responseContent: string): T {
 
     // Try to extract JSON from code blocks
     // If multiple code blocks exist, try the last one first as it often contains the final data
-    const codeBlockMatches = [...responseContent.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
-    if (codeBlockMatches.length > 0) {
-      let codeBlockContent = codeBlockMatches[codeBlockMatches.length - 1][1].trim();
-      try {
-        // Attempt to salvage truncated JSON (existing logic)
-        const lastBrace = codeBlockContent.lastIndexOf('}');
-        const lastBracket = codeBlockContent.lastIndexOf(']');
-        const lastValidCharIndex = Math.max(lastBrace, lastBracket);
-
-        if (lastValidCharIndex > -1) {
-          let openBraces = 0;
-          let openBrackets = 0;
-          for (let i = 0; i <= lastValidCharIndex; i++) {
-            if (codeBlockContent[i] === '{') openBraces++;
-            else if (codeBlockContent[i] === '}') openBraces--;
-            else if (codeBlockContent[i] === '[') openBrackets++;
-            else if (codeBlockContent[i] === ']') openBrackets--;
-          }
-          if (openBraces >= 0 && openBrackets >= 0) {
-            codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
-          }
-        }
-
-        // Clean up the potentially truncated JSON string
-        const cleanedJson = cleanPotentiallyInvalidJsonString(codeBlockContent) // Clean here
-          .replace(/,\s*}/g, '}')
-          .replace(/,\s*\]/g, ']');
-        return JSON.parse(cleanedJson) as T;
-      } catch (e) {
-        console.log("Failed to parse JSON from potentially truncated code block, trying other methods:", e);
-        // Fall through to try other extraction methods if parsing still fails
-      }
+    const codeBlockJson = tryParseCodeBlockJson<T>(responseContent);
+    if (codeBlockJson) {
+      return codeBlockJson;
     }
 
     // Try to extract any JSON object/array in the response
     // Prefer the largest balanced block rather than the smallest non-greedy match
-    const jsonMatches = [...responseContent.matchAll(/\{[\s\S]*\}|\[[\s\S]*\]/g)];
-    // Choose the longest match which is more likely to be the outer structure
-    const jsonMatch = jsonMatches.length > 0
-      ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest))
-      : null;
-
-    if (jsonMatch) {
-      try {
-        // Clean up the JSON string
-        const jsonString = jsonMatch[0];
-        const cleanedJson = cleanPotentiallyInvalidJsonString(jsonString) // Clean here
-          .replace(/,\s*}/g, '}')
-          .replace(/,\s*\]/g, ']');
-        return JSON.parse(cleanedJson) as T;
-      } catch (e) {
-        console.log("Failed to parse JSON object, trying more specific extraction:", e);
-      }
+    const embeddedJson = tryParseEmbeddedJson<T>(responseContent);
+    if (embeddedJson) {
+      return embeddedJson;
     }
 
     // Specific handling for known structures (outline, directions, sortedItems)
@@ -273,6 +307,45 @@ function createMessagesArray(systemPrompt: string, userContent: string): Array<O
   ];
 }
 
+function logPayload(
+  operationName: string,
+  label: string,
+  payload: unknown,
+  logFullResponse: boolean,
+  logMaxLength: number
+) {
+  const payloadStr = JSON.stringify(payload, null, 2);
+  if (payloadStr.length > logMaxLength && !logFullResponse) {
+    logger.info(operationName, `${label} (truncated to ${logMaxLength} chars)`, payloadStr.substring(0, logMaxLength) + '...');
+    return;
+  }
+  logger.info(operationName, label, payload);
+}
+
+function extractPrettyResponse(response: unknown): unknown {
+  const responseObj = response as Record<string, unknown>;
+  if (responseObj.choices && Array.isArray(responseObj.choices) && responseObj.choices[0] && typeof responseObj.choices[0] === 'object' && responseObj.choices[0] !== null) {
+    const firstChoice = responseObj.choices[0] as Record<string, unknown>;
+    if (firstChoice.message && typeof firstChoice.message === 'object' && firstChoice.message !== null) {
+      const message = firstChoice.message as Record<string, unknown>;
+      if (message.content) {
+        return message.content;
+      }
+      if (message.function_call && typeof message.function_call === 'object' && message.function_call !== null) {
+        const functionCall = message.function_call as Record<string, unknown>;
+        if (typeof functionCall.arguments === 'string') {
+          return JSON.parse(functionCall.arguments);
+        }
+      }
+    }
+    return undefined;
+  }
+  if (responseObj.text) {
+    return responseObj.text;
+  }
+  return response;
+}
+
 /**
  * Wraps OpenAI API calls with enhanced logging and timing
  * @param apiCallFn The actual API call function
@@ -301,13 +374,7 @@ async function withOpenAILogging<T>(
   logger.info(operationName, "Starting operation");
   logger.info(operationName, "Input info", inputInfo);
 
-  // Truncate request data logging if it's too large
-  const requestStr = JSON.stringify(requestData, null, 2);
-  if (requestStr.length > logMaxLength && !logFullResponse) {
-    logger.info(operationName, `Request data (truncated to ${logMaxLength} chars)`, requestStr.substring(0, logMaxLength) + '...');
-  } else {
-    logger.info(operationName, "Request data", requestData);
-  }
+  logPayload(operationName, "Request data", requestData, logFullResponse, logMaxLength);
 
   const startTime = performance.now();
 
@@ -319,48 +386,10 @@ async function withOpenAILogging<T>(
 
     logger.success(operationName, `Completed in ${formattedDuration}`);
 
-    // Truncate response logging if it's too large
-    const responseStr = JSON.stringify(response, null, 2);
-    if (responseStr.length > logMaxLength && !logFullResponse) {
-      logger.info(operationName, `Raw response (truncated to ${logMaxLength} chars)`, responseStr.substring(0, logMaxLength) + '...');
-    } else {
-      logger.info(operationName, "Raw response", response);
-    }
+    logPayload(operationName, "Raw response", response, logFullResponse, logMaxLength);
 
-    let prettyResponse: unknown;
-
-    // Handle different response formats based on the operation
-    const responseObj = response as Record<string, unknown>;
-    if (responseObj.choices && Array.isArray(responseObj.choices) && responseObj.choices[0] && typeof responseObj.choices[0] === 'object' && responseObj.choices[0] !== null) {
-      const firstChoice = responseObj.choices[0] as Record<string, unknown>;
-      if (firstChoice.message && typeof firstChoice.message === 'object' && firstChoice.message !== null) {
-        const message = firstChoice.message as Record<string, unknown>;
-        if (message.content) {
-          // For content-based responses (Claude-style)
-          prettyResponse = message.content;
-        } else if (message.function_call && typeof message.function_call === 'object' && message.function_call !== null) {
-          // For function call responses
-          const functionCall = message.function_call as Record<string, unknown>;
-          if (typeof functionCall.arguments === 'string') {
-            prettyResponse = JSON.parse(functionCall.arguments);
-          }
-        }
-      }
-    } else if (responseObj.text) {
-      // For transcription responses
-      prettyResponse = responseObj.text;
-    } else {
-      // Default case
-      prettyResponse = response;
-    }
-
-    // Truncate pretty response logging if it's too large
-    const prettyStr = JSON.stringify(prettyResponse, null, 2);
-    if (prettyStr.length > logMaxLength && !logFullResponse) {
-      logger.info(operationName, `Pretty response (truncated to ${logMaxLength} chars)`, prettyStr.substring(0, logMaxLength) + '...');
-    } else {
-      logger.info(operationName, "Pretty response", prettyResponse);
-    }
+    const prettyResponse = extractPrettyResponse(response);
+    logPayload(operationName, "Pretty response", prettyResponse, logFullResponse, logMaxLength);
 
     return response;
   } catch (error) {
@@ -463,6 +492,61 @@ interface GenerateThoughtResult {
   meaningSuccessfullyPreserved: boolean;
 }
 
+interface ThoughtResponse {
+  originalText: string;
+  formattedText: string; // Renamed from 'text'
+  tags: string[];
+  meaningPreserved: boolean;
+}
+
+function buildFailedThoughtResult(content: string): GenerateThoughtResult {
+  return {
+    originalText: content,
+    formattedText: null,
+    tags: null,
+    meaningSuccessfullyPreserved: false,
+  };
+}
+
+function isValidThoughtResponse(result: ThoughtResponse | null | undefined): result is ThoughtResponse {
+  return Boolean(
+    result &&
+    typeof result.originalText === "string" &&
+    typeof result.formattedText === "string" &&
+    result.formattedText.trim() !== '' &&
+    Array.isArray(result.tags) &&
+    typeof result.meaningPreserved === "boolean"
+  );
+}
+
+function buildSuccessfulThoughtResult(
+  result: ThoughtResponse,
+  attempt: number,
+  forceTag?: string | null
+): GenerateThoughtResult {
+  logger.success('GenerateThought', `Success on attempt ${attempt}. Meaning preserved.`);
+  logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`);
+  logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`);
+  logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
+
+  let finalTags = result.tags;
+  if (forceTag) {
+    logger.info('GenerateThought', `Force tag "${forceTag}" applied. Overwriting tags: ${result.tags.join(", ")} -> [${forceTag}]`);
+    finalTags = [forceTag];
+  }
+
+  return {
+    originalText: result.originalText,
+    formattedText: result.formattedText,
+    tags: finalTags,
+    meaningSuccessfullyPreserved: true,
+  };
+}
+
+function delayBeforeRetry(attempt: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 500 * attempt));
+}
+
 // Generate a single thought from audio transcription or text, with retry logic
 /**
  * @deprecated Use generateThoughtStructured from @clients/thought.structured.ts instead
@@ -475,7 +559,6 @@ export async function generateThought(
 ): Promise<GenerateThoughtResult> {
   console.warn("generateThought is deprecated. Use generateThoughtStructured instead.");
   const MAX_RETRIES = 3;
-  let attempts = 0;
 
   // Create user message, now passing sermon.thoughts
   const userMessage = createThoughtUserMessage(content, sermon, availableTags, sermon.thoughts);
@@ -488,10 +571,8 @@ export async function generateThought(
     }
   }
 
-  while (attempts < MAX_RETRIES) {
-    attempts++;
-    logger.info('GenerateThought', `Attempt ${attempts}/${MAX_RETRIES}`);
-
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    logger.info('GenerateThought', `Attempt ${attempt}/${MAX_RETRIES}`);
     try {
       const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
 
@@ -504,7 +585,7 @@ export async function generateThought(
         contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
         sermonTitle: sermon.title,
         availableTags,
-        attempt: attempts
+        attempt
       };
 
       const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
@@ -514,87 +595,36 @@ export async function generateThought(
         inputInfo
       );
 
-      // Define the expected structure including the new field
-      interface ThoughtResponse {
-        originalText: string;
-        formattedText: string; // Renamed from 'text'
-        tags: string[];
-        meaningPreserved: boolean;
-      }
-
       const result = extractFunctionResponse<ThoughtResponse>(response);
 
       // **Validation and Meaning Check**
-      if (
-        result &&
-        typeof result.originalText === "string" &&
-        typeof result.formattedText === "string" && // Renamed from 'text'
-        result.formattedText.trim() !== '' && // Ensure formattedText is not empty
-        Array.isArray(result.tags) &&
-        typeof result.meaningPreserved === "boolean"
-      ) {
-        if (result.meaningPreserved) {
-          // Success! Meaning preserved according to AI
-          logger.success('GenerateThought', `Success on attempt ${attempts}. Meaning preserved.`);
-          logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`); // Log original
-          logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`); // Log formatted
-          logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
-
-          // Apply force tag if provided
-          let finalTags = result.tags;
-          if (forceTag) {
-            logger.info('GenerateThought', `Force tag "${forceTag}" applied. Overwriting tags: ${result.tags.join(", ")} -> [${forceTag}]`);
-            finalTags = [forceTag];
-          }
-
-          return {
-            originalText: result.originalText,
-            formattedText: result.formattedText, // Renamed from 'text'
-            tags: finalTags,
-            meaningSuccessfullyPreserved: true,
-          };
-        } else {
-          // Valid response, but AI indicated meaning was NOT preserved
-          logger.warn('GenerateThought', `Attempt ${attempts} failed: AI indicated meaning not preserved. Retrying...`);
-          // Continue to the next attempt
-        }
-      } else {
+      if (!isValidThoughtResponse(result)) {
         // Invalid response structure
-        logger.warn('GenerateThought', `Attempt ${attempts} failed: Invalid response structure received.`, result);
+        logger.warn('GenerateThought', `Attempt ${attempt} failed: Invalid response structure received.`, result);
         // **Immediately return failure on invalid structure**
-        return {
-          originalText: content,
-          formattedText: null,
-          tags: null,
-          meaningSuccessfullyPreserved: false,
-        };
+        return buildFailedThoughtResult(content);
       }
+
+      if (!result.meaningPreserved) {
+        // Valid response, but AI indicated meaning was NOT preserved
+        logger.warn('GenerateThought', `Attempt ${attempt} failed: AI indicated meaning not preserved. Retrying...`);
+        if (attempt < MAX_RETRIES) {
+          await delayBeforeRetry(attempt);
+        }
+        continue;
+      }
+
+      return buildSuccessfulThoughtResult(result, attempt, forceTag);
     } catch (error) {
       // **Immediately return failure on any exception**
-      logger.error('GenerateThought', `Attempt ${attempts} failed with error. Failing operation.`, error);
-      return {
-        originalText: content,
-        formattedText: null,
-        tags: null,
-        meaningSuccessfullyPreserved: false,
-      };
-      // Removed retry logic from catch block
-    }
-
-    // If we reach here, it means meaningPreserved was false, add a delay before retrying
-    if (attempts < MAX_RETRIES) {
-      await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+      logger.error('GenerateThought', `Attempt ${attempt} failed with error. Failing operation.`, error);
+      return buildFailedThoughtResult(content);
     }
   }
 
   // If loop finishes without success (all attempts had meaningPreserved: false)
   logger.error('GenerateThought', "Failed to generate thought with preserved meaning after all retries.");
-  return {
-    originalText: content, // Return original input content on failure
-    formattedText: null,
-    tags: null,
-    meaningSuccessfullyPreserved: false,
-  };
+  return buildFailedThoughtResult(content);
 }
 
 /**
@@ -769,6 +799,193 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
   }
 }
 
+type SortedItemResponse = { key: string; outlinePoint?: string; content?: string };
+
+function buildItemsMap(items: ThoughtInStructure[]): {
+  itemsMapByKey: Record<string, ThoughtInStructure>;
+  itemsWithExistingSermonPoints: Record<string, string>;
+} {
+  const itemsMapByKey: Record<string, ThoughtInStructure> = {};
+  const itemsWithExistingSermonPoints: Record<string, string> = {};
+
+  items.forEach(item => {
+    const shortKey = item.id.slice(0, 4);
+    itemsMapByKey[shortKey] = item;
+
+    if (item.outlinePointId) {
+      itemsWithExistingSermonPoints[shortKey] = item.outlinePointId;
+    }
+  });
+
+  return { itemsMapByKey, itemsWithExistingSermonPoints };
+}
+
+function logItemKeyMapping(itemsMapByKey: Record<string, ThoughtInStructure>) {
+  if (!isDebugMode) return;
+
+  console.log("Sort AI: Item key to ID mapping:");
+  Object.entries(itemsMapByKey).forEach(([key, item]) => {
+    console.log(`  ${key} -> ${item.id.slice(0, 8)}`);
+  });
+}
+
+function logOriginalItemOrdering(items: ThoughtInStructure[]) {
+  if (!isDebugMode) return;
+
+  console.log("DEBUG: Original item ordering:");
+  items.forEach((item, index) => {
+    console.log(`  [${index}] ${item.id.slice(0, 4)}: "${item.content.substring(0, 30)}..."`);
+  });
+}
+
+function parseSortItemsResponse(response: OpenAI.Chat.ChatCompletion): { sortedItems: SortedItemResponse[] } {
+  try {
+    const content = response.choices[0].message.content || '';
+    return extractStructuredResponseFromContent(content);
+  } catch (error) {
+    console.error("Failed to parse function response from model:", error);
+    throw new Error("Invalid response format from AI model");
+  }
+}
+
+function extractSortedKeysAndAssignments(
+  sortedItems: SortedItemResponse[],
+  itemsMapByKey: Record<string, ThoughtInStructure>
+): { aiSortedKeys: string[]; outlinePointAssignments: Record<string, string> } {
+  const extractedKeys: string[] = [];
+  sortedItems.forEach((item, pos) => {
+    if (item && typeof item.key === 'string') {
+      extractedKeys.push(item.key);
+      if (isDebugMode) {
+        console.log(`DEBUG: AI sorted item [${pos}]: ${item.key}`);
+      }
+    }
+  });
+
+  const outlinePointAssignments: Record<string, string> = {};
+  const aiSortedKeys = sortedItems
+    .map((aiItem: SortedItemResponse) => {
+      if (aiItem && typeof aiItem.key === 'string') {
+        const itemKey = aiItem.key.trim();
+
+        if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
+          outlinePointAssignments[itemKey] = aiItem.outlinePoint;
+          if (isDebugMode) {
+            console.log(`DEBUG: Assigned outline point "${aiItem.outlinePoint}" to item ${itemKey}`);
+          }
+        }
+
+        return itemsMapByKey[itemKey] ? itemKey : null;
+      }
+      return null;
+    })
+    .filter((key: string | null): key is string => key !== null);
+
+  return { aiSortedKeys, outlinePointAssignments };
+}
+
+function findMatchingOutlinePoint(aiAssignedOutlineText: string, outlinePoints: SermonPoint[]): SermonPoint | undefined {
+  if (outlinePoints.length === 0) {
+    return undefined;
+  }
+
+  const normalizedAssignment = aiAssignedOutlineText.toLowerCase();
+
+  let matchingSermonPoint = outlinePoints.find(op =>
+    op.text.toLowerCase() === normalizedAssignment
+  );
+
+  if (!matchingSermonPoint) {
+    matchingSermonPoint = outlinePoints.find(op =>
+      op.text.toLowerCase().includes(normalizedAssignment) ||
+      normalizedAssignment.includes(op.text.toLowerCase())
+    );
+  }
+
+  if (!matchingSermonPoint) {
+    const aiWords = new Set(normalizedAssignment.split(/\s+/).filter(word => word.length > 3));
+    let bestMatchScore = 0;
+    let bestMatch: SermonPoint | undefined;
+
+    for (const op of outlinePoints) {
+      const opWords = new Set(op.text.toLowerCase().split(/\s+/).filter(word => word.length > 3));
+      let matchScore = 0;
+
+      for (const word of aiWords) {
+        if (opWords.has(word)) matchScore++;
+      }
+
+      if (matchScore > bestMatchScore) {
+        bestMatchScore = matchScore;
+        bestMatch = op;
+      }
+    }
+
+    if (bestMatchScore > 0) {
+      matchingSermonPoint = bestMatch;
+    }
+  }
+
+  return matchingSermonPoint;
+}
+
+function buildSortedItem(
+  key: string,
+  itemsMapByKey: Record<string, ThoughtInStructure>,
+  itemsWithExistingSermonPoints: Record<string, string>,
+  outlinePointAssignments: Record<string, string>,
+  outlinePoints: SermonPoint[]
+): ThoughtInStructure {
+  const item = itemsMapByKey[key];
+
+  if (itemsWithExistingSermonPoints[key]) {
+    if (isDebugMode) {
+      console.log(`DEBUG: Preserving existing outline point for item ${key}`);
+    }
+    return item;
+  }
+
+  const aiAssignedOutlineText = outlinePointAssignments[key];
+  if (aiAssignedOutlineText && outlinePoints.length > 0) {
+    const matchingSermonPoint = findMatchingOutlinePoint(aiAssignedOutlineText, outlinePoints);
+
+    if (matchingSermonPoint) {
+      if (isDebugMode) {
+        console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
+      }
+
+      return {
+        ...item,
+        outlinePointId: matchingSermonPoint.id,
+        outlinePoint: {
+          text: matchingSermonPoint.text,
+          section: ''
+        }
+      };
+    }
+
+    if (isDebugMode) {
+      console.log(`DEBUG: Could not match "${aiAssignedOutlineText}" to any outline point`);
+    }
+  }
+
+  return item;
+}
+
+function appendMissingSortedItems(
+  sortedItems: ThoughtInStructure[],
+  itemsMapByKey: Record<string, ThoughtInStructure>,
+  aiSortedKeys: string[]
+) {
+  const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));
+  if (missingSortedKeys.length > 0) {
+    console.log(`DEBUG: ${missingSortedKeys.length} items were missing in the AI sorted order, appending them to the end`);
+    missingSortedKeys.forEach(key => {
+      sortedItems.push(itemsMapByKey[key]);
+    });
+  }
+}
+
 /**
  * Sort items within a column using AI
  * @param columnId - ID of the column containing the items
@@ -780,27 +997,8 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
 export async function sortItemsWithAI(columnId: string, items: ThoughtInStructure[], sermon: Sermon, outlinePoints: SermonPoint[] = []): Promise<ThoughtInStructure[]> {
   try {
     // Create a map for quick lookup by ID
-    const itemsMapByKey: Record<string, ThoughtInStructure> = {};
-    const itemsWithExistingSermonPoints: Record<string, string> = {}; // Store items that already have outlinePointId
-
-    items.forEach(item => {
-      // Add the item to lookup maps, using just the first 4 chars of the ID as key
-      const shortKey = item.id.slice(0, 4);
-      itemsMapByKey[shortKey] = item;
-
-      // Remember which items already have an outline point assigned
-      if (item.outlinePointId) {
-        itemsWithExistingSermonPoints[shortKey] = item.outlinePointId;
-      }
-    });
-
-    // Log the mapping for debugging
-    if (isDebugMode) {
-      console.log("Sort AI: Item key to ID mapping:");
-      Object.entries(itemsMapByKey).forEach(([key, item]) => {
-        console.log(`  ${key} -> ${item.id.slice(0, 8)}`);
-      });
-    }
+    const { itemsMapByKey, itemsWithExistingSermonPoints } = buildItemsMap(items);
+    logItemKeyMapping(itemsMapByKey);
 
     // Create user message for the AI model
     const userMessage = createSortingUserMessage(columnId, items, sermon, outlinePoints);
@@ -832,23 +1030,10 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
     );
 
     // Extract the response
-    let sortedData: { sortedItems: Array<{ key: string, outlinePoint?: string, content?: string }> };
-
-    try {
-      const content = response.choices[0].message.content || '';
-      sortedData = extractStructuredResponseFromContent(content);
-    } catch (error) {
-      console.error("Failed to parse function response from model:", error);
-      throw new Error("Invalid response format from AI model");
-    }
+    const sortedData = parseSortItemsResponse(response);
 
     // Log original item order for comparison
-    if (isDebugMode) {
-      console.log("DEBUG: Original item ordering:");
-      items.forEach((item, index) => {
-        console.log(`  [${index}] ${item.id.slice(0, 4)}: "${item.content.substring(0, 30)}..."`);
-      });
-    }
+    logOriginalItemOrdering(items);
 
     // Validate and extract keys from the AI response
     if (!sortedData.sortedItems || !Array.isArray(sortedData.sortedItems)) {
@@ -856,131 +1041,21 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       return items; // Return original order if malformed
     }
 
-    const extractedKeys: string[] = [];
-    sortedData.sortedItems.forEach((item: Record<string, unknown>, pos: number) => {
-      if (item && typeof item.key === 'string') {
-        extractedKeys.push(item.key);
-        if (isDebugMode) {
-          console.log(`DEBUG: AI sorted item [${pos}]: ${item.key}`);
-        }
-      }
-    });
-
-    // Map of item keys to AI-suggested outline points
-    const outlinePointAssignments: Record<string, string> = {};
-
-    // Extract AI's suggestions
-    const aiSortedKeys = sortedData.sortedItems
-      .map((aiItem: Record<string, unknown>) => {
-        if (aiItem && typeof aiItem.key === 'string') {
-          const itemKey = aiItem.key.trim();
-
-          // Store the outline point assignment if available
-          if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
-            outlinePointAssignments[itemKey] = aiItem.outlinePoint;
-            if (isDebugMode) {
-              console.log(`DEBUG: Assigned outline point "${aiItem.outlinePoint}" to item ${itemKey}`);
-            }
-          }
-
-          return itemsMapByKey[itemKey] ? itemKey : null;
-        }
-        return null;
-      })
-      .filter((key: string | null): key is string => key !== null);
+    const { aiSortedKeys, outlinePointAssignments } = extractSortedKeysAndAssignments(sortedData.sortedItems, itemsMapByKey);
 
     // Create a new array with the sorted items
     const sortedItems: ThoughtInStructure[] = aiSortedKeys.map((key: string) => {
-      const item = itemsMapByKey[key];
-
-      // Check if this item already had an outline point assigned
-      if (itemsWithExistingSermonPoints[key]) {
-        // Keep the existing outline point
-        if (isDebugMode) {
-          console.log(`DEBUG: Preserving existing outline point for item ${key}`);
-        }
-        return item;
-      }
-
-      // Find matching outline point ID based on the AI-assigned outline text for unassigned items
-      if (outlinePointAssignments[key] && outlinePoints.length > 0) {
-        const aiAssignedOutlineText = outlinePointAssignments[key];
-
-        // First try exact match
-        let matchingSermonPoint = outlinePoints.find(op =>
-          op.text.toLowerCase() === aiAssignedOutlineText.toLowerCase()
-        );
-
-        // If no exact match, try substring matching
-        if (!matchingSermonPoint) {
-          matchingSermonPoint = outlinePoints.find(op =>
-            op.text.toLowerCase().includes(aiAssignedOutlineText.toLowerCase()) ||
-            aiAssignedOutlineText.toLowerCase().includes(op.text.toLowerCase())
-          );
-        }
-
-        // If still no match, try fuzzy matching
-        if (!matchingSermonPoint && outlinePoints.length > 0) {
-          // Find the closest match based on word overlap
-          const aiWords = new Set(aiAssignedOutlineText.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-
-          let bestMatchScore = 0;
-          let bestMatch: SermonPoint | undefined;
-
-          for (const op of outlinePoints) {
-            const opWords = new Set(op.text.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-            let matchScore = 0;
-
-            // Count word overlaps
-            for (const word of aiWords) {
-              if (opWords.has(word)) matchScore++;
-            }
-
-            if (matchScore > bestMatchScore) {
-              bestMatchScore = matchScore;
-              bestMatch = op;
-            }
-          }
-
-          // Only use if we have some word overlap
-          if (bestMatchScore > 0) {
-            matchingSermonPoint = bestMatch;
-          }
-        }
-
-        if (matchingSermonPoint) {
-          // Create a new item with the assigned outline point
-          if (isDebugMode) {
-            console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
-          }
-
-          // No need for section mapping since we don't want to show the section name
-          return {
-            ...item,
-            outlinePointId: matchingSermonPoint.id,
-            outlinePoint: {
-              text: matchingSermonPoint.text,
-              section: ''  // Empty string instead of section name
-            }
-          };
-        } else {
-          if (isDebugMode) {
-            console.log(`DEBUG: Could not match "${aiAssignedOutlineText}" to any outline point`);
-          }
-        }
-      }
-
-      return item;
+      return buildSortedItem(
+        key,
+        itemsMapByKey,
+        itemsWithExistingSermonPoints,
+        outlinePointAssignments,
+        outlinePoints
+      );
     });
 
     // Check if all items were included in the sorted result
-    const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));
-    if (missingSortedKeys.length > 0) {
-      console.log(`DEBUG: ${missingSortedKeys.length} items were missing in the AI sorted order, appending them to the end`);
-      missingSortedKeys.forEach(key => {
-        sortedItems.push(itemsMapByKey[key]);
-      });
-    }
+    appendMissingSortedItems(sortedItems, itemsMapByKey, aiSortedKeys);
 
     return sortedItems;
   } catch (error) {
@@ -1242,72 +1317,68 @@ You may include special content blocks if the THOUGHTS contain them. Format them
 Use these blocks ONLY if the content is explicitly present in the input THOUGHTS. Do not invent illustrations or quotes.`;
 }
 
-/**
- * Generate plan content for a specific outline point based on related thoughts
- * @param sermonTitle The title of the sermon
- * @param sermonVerse The Bible verse for the sermon
- * @param outlinePointText The text of the outline point
- * @param relatedThoughtsTexts Array of texts from related thoughts
- * @param sectionName The section name (introduction, main, conclusion)
- * @param keyFragments Array of key fragments to include in the prompt
- * @param context Optional context about adjacent points to improve flow
- * @param style Optional style for the plan generation (default: 'memory')
- * @returns The generated content and success status
- */
-export async function generatePlanPointContent(
-  sermonTitle: string,
-  sermonVerse: string,
-  outlinePointText: string,
+interface PlanPointLanguageInfo {
+  detectedLanguage: string;
+  hasNonLatinChars: boolean;
+  isCyrillic: boolean;
+  languageDirective: string;
+  formatExample: string;
+  languageRequirementLabel: string;
+}
+
+function getPlanPointLanguageInfo(
   relatedThoughtsTexts: string[],
-  sectionName: string,
-  keyFragments: string[] = [],
-  context?: PlanContext,
-  style: PlanStyle = 'memory'
-): Promise<{ content: string; success: boolean }> {
-  // Detect language — base primarily on THOUGHTS text to avoid
-  // generating a different language than the thoughts themselves
+  sermonTitle: string,
+  sermonVerse: string
+): PlanPointLanguageInfo {
   const languageProbe = `${relatedThoughtsTexts.join(' ')} ${sermonTitle || ''} ${sermonVerse || ''}`;
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(languageProbe);
-  // Explicitly detect Cyrillic presence to enforce alphabet-level constraints
   const isCyrillic = /[\u0400-\u04FF]/.test(languageProbe);
   const detectedLanguage = isCyrillic
     ? "Cyrillic (likely Russian/Ukrainian)"
     : (hasNonLatinChars ? "non-English" : "English");
 
-  if (isDebugMode) {
-    console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
-    console.log(`DEBUG: Generating structured plan for outline point in ${sectionName} section`);
-    console.log(`DEBUG: Style=${style}`);
-    if (keyFragments.length > 0) {
-      console.log(`DEBUG: Including ${keyFragments.length} key fragments in the generation`);
-    }
-    if (context) {
-      console.log(`DEBUG: context provided: prev=${!!context.previousPoint}, next=${!!context.nextPoint}`);
-    }
-  }
+  const languageDirective = isCyrillic
+    ? `OUTPUT LANGUAGE: Use only Cyrillic characters. Keep the entire response in the exact same language as the THOUGHTS (e.g., Russian/Ukrainian). Do NOT use any Latin letters in headings or bullets.`
+    : `OUTPUT LANGUAGE: Use English consistently.`;
 
-  try {
-    // Construct the prompt for generating a structured plan for the outline point
-    // Provide a language-specific directive and example to avoid mixed-language outputs
-    const languageDirective = isCyrillic
-      ? `OUTPUT LANGUAGE: Use only Cyrillic characters. Keep the entire response in the exact same language as the THOUGHTS (e.g., Russian/Ukrainian). Do NOT use any Latin letters in headings or bullets.`
-      : `OUTPUT LANGUAGE: Use English consistently.`;
-
-    const formatExample = isCyrillic
-      ? `### **Краткий, ясный заголовок**
+  const formatExample = isCyrillic
+    ? `### **Краткий, ясный заголовок**
 *Короткая поддерживающая деталь*
 [Illustration: История о рыбаке]
 
 * Подпункт (1–2 слова)
 * Другой подпункт`
-      : `### **Main Concept** 
+    : `### **Main Concept** 
 *Supporting detail or Bible verse*
 [Application: Challenge to the congregation]
 
 * Key subpoint
 * Another subpoint`;
 
-    const systemPrompt = `You are a sermon planning assistant specializing in creating memory-friendly outlines for preachers.
+  const languageRequirementLabel = isCyrillic
+    ? 'same Cyrillic language as the THOUGHTS (no Latin letters)'
+    : (hasNonLatinChars ? 'same non-English language' : 'English');
+
+  return {
+    detectedLanguage,
+    hasNonLatinChars,
+    isCyrillic,
+    languageDirective,
+    formatExample,
+    languageRequirementLabel
+  };
+}
+
+function buildPlanPointSystemPrompt(options: {
+  style: PlanStyle;
+  languageDirective: string;
+  keyFragments: string[];
+  context?: PlanContext;
+}): string {
+  const { style, languageDirective, keyFragments, context } = options;
+
+  return `You are a sermon planning assistant specializing in creating memory-friendly outlines for preachers.
 
 Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can be quickly scanned during sermon delivery.
 
@@ -1360,9 +1431,34 @@ ${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments 
 ${context?.previousPoint ? `14. Context Connection: Ensure the opening of this point flows naturally from the previous point context provided.` : ''}
 
 Your response should be a simple outline optimized for quick preaching reference.`;
+}
 
-    // Prepare the user message
-    const userMessage = `Create a PREACHING-FRIENDLY plan for the following point in the ${sectionName.toUpperCase()} section that can be quickly scanned during sermon delivery:
+function buildPlanPointUserMessage(options: {
+  sermonTitle: string;
+  sermonVerse: string;
+  outlinePointText: string;
+  relatedThoughtsTexts: string[];
+  sectionName: string;
+  keyFragments: string[];
+  context?: PlanContext;
+  formatExample: string;
+  languageRequirementLabel: string;
+  isCyrillic: boolean;
+}): string {
+  const {
+    sermonTitle,
+    sermonVerse,
+    outlinePointText,
+    relatedThoughtsTexts,
+    sectionName,
+    keyFragments,
+    context,
+    formatExample,
+    languageRequirementLabel,
+    isCyrillic
+  } = options;
+
+  return `Create a PREACHING-FRIENDLY plan for the following point in the ${sectionName.toUpperCase()} section that can be quickly scanned during sermon delivery:
 
 SERMON TITLE: ${sermonTitle}
 SCRIPTURE (TEXT BANK — use only when the same reference appears in THOUGHTS or OUTLINE POINT): ${sermonVerse}
@@ -1376,8 +1472,7 @@ The following key fragments should be naturally integrated as supporting details
 ${keyFragments.map(frag => `- "${frag}"`).join('\n')}
 ====================================
 
-` : ''}
-Based on these related thoughts (maintain this order in your plan):
+` : ''}Based on these related thoughts (maintain this order in your plan):
 ${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
 
 CRITICAL REQUIREMENTS FOR PREACHING:
@@ -1419,7 +1514,7 @@ LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the THOUGHTS. DO NOT tran
 ${isCyrillic ? 'For Cyrillic languages, absolutely do not use Latin letters anywhere in the output.' : ''}
 
 IMPORTANT INSTRUCTIONS:
-1. Generate the plan in the ${isCyrillic ? 'same Cyrillic language as the THOUGHTS (no Latin letters)' : (hasNonLatinChars ? 'same non-English language' : 'English')} detected from the THOUGHTS.
+1. Generate the plan in the ${languageRequirementLabel} detected from the THOUGHTS.
 2. Provide only main points (###) and a single level of bullet points (* ) - DO NOT create a deeply nested hierarchy.
 3. Keep it concise - only high-level structure, not detailed development.
 4. Create exactly ${relatedThoughtsTexts.length} main headings (###) — one per THOUGHT in the same order. No extra headings.
@@ -1438,6 +1533,102 @@ FORMAT EXAMPLE:
 ${formatExample}
 
 FINAL CHECK: Each point should be scannable in under 2 seconds and immediately trigger the full context for the preacher.`;
+}
+
+function trimPlanPointHeadings(
+  content: string,
+  thoughtsCount: number,
+  keyFragmentsCount: number
+): string {
+  try {
+    const maxHeadings = keyFragmentsCount > 0 ? Number.MAX_SAFE_INTEGER : thoughtsCount;
+    let headingCount = 0;
+    const lines = content.split(/\r?\n/);
+    const kept: string[] = [];
+    let keepingBlock = true;
+
+    for (const line of lines) {
+      if (/^###\s/.test(line.trim())) {
+        headingCount += 1;
+        if (headingCount <= maxHeadings) {
+          keepingBlock = true;
+          kept.push(line);
+        } else {
+          keepingBlock = false;
+        }
+        continue;
+      }
+
+      if (keepingBlock) kept.push(line);
+    }
+
+    return kept.join("\n");
+  } catch {
+    return content;
+  }
+}
+
+/**
+ * Generate plan content for a specific outline point based on related thoughts
+ * @param sermonTitle The title of the sermon
+ * @param sermonVerse The Bible verse for the sermon
+ * @param outlinePointText The text of the outline point
+ * @param relatedThoughtsTexts Array of texts from related thoughts
+ * @param sectionName The section name (introduction, main, conclusion)
+ * @param keyFragments Array of key fragments to include in the prompt
+ * @param context Optional context about adjacent points to improve flow
+ * @param style Optional style for the plan generation (default: 'memory')
+ * @returns The generated content and success status
+ */
+export async function generatePlanPointContent(
+  sermonTitle: string,
+  sermonVerse: string,
+  outlinePointText: string,
+  relatedThoughtsTexts: string[],
+  sectionName: string,
+  keyFragments: string[] = [],
+  context?: PlanContext,
+  style: PlanStyle = 'memory'
+): Promise<{ content: string; success: boolean }> {
+  // Detect language — base primarily on THOUGHTS text to avoid
+  // generating a different language than the thoughts themselves
+  const languageInfo = getPlanPointLanguageInfo(relatedThoughtsTexts, sermonTitle, sermonVerse);
+
+  if (isDebugMode) {
+    console.log(`DEBUG: Detected sermon language: ${languageInfo.detectedLanguage}`);
+    console.log(`DEBUG: Generating structured plan for outline point in ${sectionName} section`);
+    console.log(`DEBUG: Style=${style}`);
+    if (keyFragments.length > 0) {
+      console.log(`DEBUG: Including ${keyFragments.length} key fragments in the generation`);
+    }
+    if (context) {
+      console.log(`DEBUG: context provided: prev=${!!context.previousPoint}, next=${!!context.nextPoint}`);
+    }
+  }
+
+  try {
+    // Construct the prompt for generating a structured plan for the outline point
+    // Provide a language-specific directive and example to avoid mixed-language outputs
+    const systemPrompt = buildPlanPointSystemPrompt({
+      style,
+      languageDirective: languageInfo.languageDirective,
+      keyFragments,
+      context
+    });
+
+    // Prepare the user message
+    const userMessage = buildPlanPointUserMessage({
+      sermonTitle,
+      sermonVerse,
+      outlinePointText,
+      relatedThoughtsTexts,
+      sectionName,
+      keyFragments,
+      context,
+      formatExample: languageInfo.formatExample,
+      languageRequirementLabel: languageInfo.languageRequirementLabel,
+      isCyrillic: languageInfo.isCyrillic
+    });
 
     // Prepare request options
     const requestOptions = {
@@ -1453,7 +1644,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
       sectionName,
       thoughtsCount: relatedThoughtsTexts.length,
       keyFragmentsCount: keyFragments.length,
-      detectedLanguage,
+      detectedLanguage: languageInfo.detectedLanguage,
       hasContext: !!context,
       style
     };
@@ -1471,31 +1662,7 @@ FINAL CHECK: Each point should be scannable in under 2 seconds and immediately t
 
     // Post-process: limit the number of main headings (###) to the number of THOUGHTS
     // But if key fragments are present, allow more headings as AI may need them for better structure
-    try {
-      const maxHeadings = keyFragments.length > 0 ? Number.MAX_SAFE_INTEGER : relatedThoughtsTexts.length;
-      let headingCount = 0;
-      const lines = content.split(/\r?\n/);
-      const kept: string[] = [];
-      let keepingBlock = true;
-      for (const line of lines) {
-        if (/^###\s/.test(line.trim())) {
-          headingCount += 1;
-          if (headingCount <= maxHeadings) {
-            keepingBlock = true;
-            kept.push(line);
-          } else {
-            // Skip extra headings and their following content until next heading
-            keepingBlock = false;
-          }
-          continue;
-        }
-        // Keep non-heading lines only if within an allowed block
-        if (keepingBlock) kept.push(line);
-      }
-      content = kept.join("\n");
-    } catch {
-      // If anything goes wrong, return the original content
-    }
+    content = trimPlanPointHeadings(content, relatedThoughtsTexts.length, keyFragments.length);
 
     return { content, success: content.length > 0 };
   } catch (error) {
