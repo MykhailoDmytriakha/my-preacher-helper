@@ -47,3 +47,6 @@ next-env.d.ts
 
 # firebase
 *firebase-adminsdk*.json
+
+# agetns 
+.temp
