@@ -13,6 +13,8 @@ interface CalendarHeaderProps {
 export default function CalendarHeader({ view, onViewChange, currentMonth, onGoToToday }: CalendarHeaderProps) {
     const { t } = useTranslation();
     const inactiveViewClasses = "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
+    const viewButtonBaseClasses = "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors";
+    const activeViewClasses = "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm";
 
     const isCurrentMonth = currentMonth ? (
         currentMonth.getMonth() === new Date().getMonth() &&
@@ -41,8 +43,8 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
             <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                 <button
                     onClick={() => onViewChange('month')}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'month'
-                        ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                    className={`${viewButtonBaseClasses} ${view === 'month'
+                        ? activeViewClasses
                         : inactiveViewClasses
                         }`}
                 >
@@ -51,8 +53,8 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
                 </button>
                 <button
                     onClick={() => onViewChange('agenda')}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'agenda'
-                        ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                    className={`${viewButtonBaseClasses} ${view === 'agenda'
+                        ? activeViewClasses
                         : inactiveViewClasses
                         }`}
                 >
@@ -61,8 +63,8 @@ export default function CalendarHeader({ view, onViewChange, currentMonth, onGoT
                 </button>
                 <button
                     onClick={() => onViewChange('analytics')}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'analytics'
-                        ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                    className={`${viewButtonBaseClasses} ${view === 'analytics'
+                        ? activeViewClasses
                         : inactiveViewClasses
                         }`}
                 >

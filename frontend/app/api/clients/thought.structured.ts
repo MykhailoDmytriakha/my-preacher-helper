@@ -74,7 +74,6 @@ export async function generateThoughtStructured(
   options: GenerateThoughtOptions = {}
 ): Promise<GenerateThoughtResult> {
   const { forceTag = null, maxRetries = 3 } = options;
-  let attempts = 0;
 
   // Create user message with sermon context
   const userMessage = createThoughtUserMessage(
@@ -92,78 +91,23 @@ export async function generateThoughtStructured(
     });
   }
 
-  while (attempts < maxRetries) {
-    attempts++;
-    logger.info('GenerateThoughtStructured', `Attempt ${attempts}/${maxRetries}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    logger.info('GenerateThoughtStructured', `Attempt ${attempt}/${maxRetries}`);
 
-    try {
-      // Make structured output call
-      const result: StructuredOutputResult<ThoughtResponse> = await callWithStructuredOutput(
-        thoughtSystemPrompt,
-        userMessage,
-        ThoughtResponseSchema,
-        {
-          formatName: "thought",
-          logContext: {
-            sermonTitle: sermon.title,
-            contentLength: content.length,
-            attempt: attempts,
-          }
-        }
-      );
+    const attemptResult = await runThoughtAttempt({
+      content,
+      sermon,
+      userMessage,
+      forceTag,
+      attempt,
+    });
 
-      // Handle refusal
-      if (result.refusal) {
-        logger.warn('GenerateThoughtStructured', `Model refused: ${result.refusal}`);
-        return createFailureResult(content);
-      }
+    if (attemptResult.type === "success" || attemptResult.type === "fail") {
+      return attemptResult.result;
+    }
 
-      // Handle error
-      if (result.error || !result.data) {
-        logger.error('GenerateThoughtStructured', `No data received`, result.error);
-        return createFailureResult(content);
-      }
-
-      const response = result.data;
-
-      // Validate response structure
-      if (!isValidResponse(response)) {
-        logger.warn('GenerateThoughtStructured', `Invalid response structure`, response);
-        return createFailureResult(content);
-      }
-
-      // Check meaning preservation
-      if (response.meaningPreserved) {
-        logger.success('GenerateThoughtStructured', `Success on attempt ${attempts}. Meaning preserved.`);
-        
-        // Apply force tag if provided
-        const finalTags = forceTag ? [forceTag] : response.tags;
-        
-        if (forceTag) {
-          logger.info('GenerateThoughtStructured', 
-            `Force tag "${forceTag}" applied. Original tags: [${response.tags.join(", ")}]`);
-        }
-
-        return {
-          originalText: response.originalText,
-          formattedText: response.formattedText,
-          tags: finalTags,
-          meaningSuccessfullyPreserved: true,
-        };
-      } else {
-        // Meaning not preserved - retry
-        logger.warn('GenerateThoughtStructured', 
-          `Attempt ${attempts} failed: AI indicated meaning not preserved. Retrying...`);
-        
-        // Delay before retry
-        if (attempts < maxRetries) {
-          await delay(500 * attempts);
-        }
-      }
-
-    } catch (error) {
-      logger.error('GenerateThoughtStructured', `Attempt ${attempts} failed with error`, error);
-      return createFailureResult(content);
+    if (attempt < maxRetries) {
+      await delay(500 * attempt);
     }
   }
 
@@ -171,6 +115,96 @@ export async function generateThoughtStructured(
   logger.error('GenerateThoughtStructured', 
     "Failed to generate thought with preserved meaning after all retries.");
   return createFailureResult(content);
+}
+
+type AttemptOutcome =
+  | { type: "success"; result: GenerateThoughtResult }
+  | { type: "fail"; result: GenerateThoughtResult }
+  | { type: "retry" };
+
+async function runThoughtAttempt(params: {
+  content: string;
+  sermon: Sermon;
+  userMessage: string;
+  forceTag: string | null;
+  attempt: number;
+}): Promise<AttemptOutcome> {
+  const { content, sermon, userMessage, forceTag, attempt } = params;
+
+  try {
+    const result: StructuredOutputResult<ThoughtResponse> = await callWithStructuredOutput(
+      thoughtSystemPrompt,
+      userMessage,
+      ThoughtResponseSchema,
+      {
+        formatName: "thought",
+        logContext: {
+          sermonTitle: sermon.title,
+          contentLength: content.length,
+          attempt,
+        }
+      }
+    );
+
+    return handleStructuredResult({
+      result,
+      content,
+      forceTag,
+      attempt,
+    });
+  } catch (error) {
+    logger.error('GenerateThoughtStructured', `Attempt ${attempt} failed with error`, error);
+    return { type: "fail", result: createFailureResult(content) };
+  }
+}
+
+function handleStructuredResult(params: {
+  result: StructuredOutputResult<ThoughtResponse>;
+  content: string;
+  forceTag: string | null;
+  attempt: number;
+}): AttemptOutcome {
+  const { result, content, forceTag, attempt } = params;
+
+  if (result.refusal) {
+    logger.warn('GenerateThoughtStructured', `Model refused: ${result.refusal}`);
+    return { type: "fail", result: createFailureResult(content) };
+  }
+
+  if (result.error || !result.data) {
+    logger.error('GenerateThoughtStructured', `No data received`, result.error);
+    return { type: "fail", result: createFailureResult(content) };
+  }
+
+  const response = result.data;
+
+  if (!isValidResponse(response)) {
+    logger.warn('GenerateThoughtStructured', `Invalid response structure`, response);
+    return { type: "fail", result: createFailureResult(content) };
+  }
+
+  if (response.meaningPreserved) {
+    logger.success('GenerateThoughtStructured', `Success on attempt ${attempt}. Meaning preserved.`);
+    if (forceTag) {
+      logger.info('GenerateThoughtStructured', 
+        `Force tag "${forceTag}" applied. Original tags: [${response.tags.join(", ")}]`);
+    }
+    return { type: "success", result: createSuccessResult(response, forceTag) };
+  }
+
+  logger.warn('GenerateThoughtStructured', 
+    `Attempt ${attempt} failed: AI indicated meaning not preserved. Retrying...`);
+  return { type: "retry" };
+}
+
+function createSuccessResult(response: ThoughtResponse, forceTag: string | null): GenerateThoughtResult {
+  const finalTags = forceTag ? [forceTag] : response.tags;
+  return {
+    originalText: response.originalText,
+    formattedText: response.formattedText,
+    tags: finalTags,
+    meaningSuccessfullyPreserved: true,
+  };
 }
 
 /**
@@ -204,4 +238,3 @@ function createFailureResult(originalContent: string): GenerateThoughtResult {
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-

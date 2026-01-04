@@ -79,6 +79,11 @@ export const usePreachingTimer = (
 
   // Refs for interval management
   const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventsRef = useRef<typeof events>(events);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
 
   // Calculate current phase and progress
   const calculateCurrentPhase = useCallback((elapsedSeconds: number): TimerPhase => {
@@ -163,7 +168,7 @@ export const usePreachingTimer = (
             triggerCompletionBlink();
 
             // Call the finish event callback
-            events?.onFinish?.();
+            eventsRef.current?.onFinish?.();
 
             return {
               ...prevState,

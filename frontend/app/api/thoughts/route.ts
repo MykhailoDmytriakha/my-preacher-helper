@@ -14,73 +14,107 @@ const ERROR_MESSAGES = {
   SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
 } as const;
 
+function isCompleteThought(thought: Thought): boolean {
+  return Boolean(thought.id && thought.text && thought.tags && thought.date);
+}
 
+function buildManualThought(thought: Record<string, unknown>): Thought {
+  const thoughtWithId: Thought = {
+    id: uuidv4(),
+    text: thought.text as string,
+    tags: (thought.tags as string[]) || [],
+    date: (thought.date as string) || new Date().toISOString(),
+  };
 
-// POST api/thoughts
-export async function POST(request: Request) {
-  // TODO: i want to know what is the length of this audio, and leter to track this data
-  // TODO: check length to limit time, no more that defined in constant
-  console.log("Thoughts route: Received POST request.");
-
-  const url = new URL(request.url);
-  if (url.searchParams.get('manual') === 'true') {
-    try {
-      console.log("Thoughts route: Processing manual thought creation.");
-      const body = await request.json();
-      const { sermonId, thought } = body;
-      if (!sermonId || !thought) {
-        return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
-      }
-      console.log("Thoughts route: Manual thought:", thought);
-      console.log("Will not apply AI to manual thought");
-
-      // Add id and date to the thought, and use the tags provided in the request
-      const thoughtWithId: Thought = {
-        id: uuidv4(),
-        text: thought.text,
-        tags: thought.tags || [], // Use tags from the request or default to empty array
-        date: thought.date || new Date().toISOString(),
-      };
-
-      // Only add outlinePointId if it exists and is not undefined
-      if (thought.outlinePointId) {
-        thoughtWithId.outlinePointId = thought.outlinePointId;
-      }
-
-      // Include optional fields if provided
-      if (typeof thought.position === 'number') {
-        (thoughtWithId as unknown as Record<string, unknown>).position = thought.position;
-      }
-
-      //verify that thought has everything that is needed
-      if (!thoughtWithId.id || !thoughtWithId.text || !thoughtWithId.tags || !thoughtWithId.date) {
-        return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
-      }
-
-      console.log("Manual thought with tags:", thoughtWithId);
-
-      // Use Admin SDK instead of client SDK
-      const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
-      await sermonDocRef.update({
-        thoughts: FieldValue.arrayUnion(thoughtWithId)
-      });
-
-      console.log("Firestore update: Stored new manual thought into sermon document.");
-      return NextResponse.json(thoughtWithId);
-    } catch (error) {
-      console.error('Thoughts route: Manual POST error:', error);
-      return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
-    }
+  if (thought.outlinePointId) {
+    thoughtWithId.outlinePointId = thought.outlinePointId as string;
   }
 
+  if (typeof thought.position === 'number') {
+    (thoughtWithId as unknown as Record<string, unknown>).position = thought.position;
+  }
+
+  return thoughtWithId;
+}
+
+async function appendThoughtToSermon(sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
+  const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
+  await sermonDocRef.update({
+    thoughts: union(thought)
+  });
+}
+
+function normalizeGenerationResult(params: {
+  generationResult: { meaningSuccessfullyPreserved: boolean; formattedText: string | null; tags: string[] | null };
+  transcriptionText: string;
+}): { formattedText: string; tags: string[]; usedFallback: boolean } {
+  const { generationResult, transcriptionText } = params;
+  if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {
+    return { formattedText: transcriptionText, tags: [], usedFallback: true };
+  }
+  return {
+    formattedText: generationResult.formattedText,
+    tags: generationResult.tags,
+    usedFallback: false,
+  };
+}
+
+function mapTranscriptionError(transcriptionError: unknown): { status: number; error: string } | null {
+  if (!(transcriptionError instanceof Error)) {
+    return null;
+  }
+
+  const errorMessage = transcriptionError.message.toLowerCase();
+  if (errorMessage.includes('audio file might be corrupted or unsupported')) {
+    return { status: 400, error: 'Audio file might be corrupted or unsupported. Please try recording again.' };
+  }
+  if (errorMessage.includes('audio file is empty')) {
+    return { status: 400, error: 'Audio recording failed - file is empty. Please try recording again.' };
+  }
+  if (errorMessage.includes('audio file is too small')) {
+    return { status: 400, error: 'Audio recording is too short. Please record for at least 1 second.' };
+  }
+  if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
+    return { status: 400, error: 'Audio file format not supported. Please try recording again.' };
+  }
+  return null;
+}
+
+async function handleManualPost(request: Request) {
+  try {
+    console.log("Thoughts route: Processing manual thought creation.");
+    const body = await request.json();
+    const { sermonId, thought } = body as { sermonId?: string; thought?: Record<string, unknown> };
+    if (!sermonId || !thought) {
+      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
+    }
+    console.log("Thoughts route: Manual thought:", thought);
+    console.log("Will not apply AI to manual thought");
+
+    const thoughtWithId = buildManualThought(thought);
+    if (!isCompleteThought(thoughtWithId)) {
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+    }
+
+    console.log("Manual thought with tags:", thoughtWithId);
+    await appendThoughtToSermon(sermonId, thoughtWithId, FieldValue.arrayUnion);
+    console.log("Firestore update: Stored new manual thought into sermon document.");
+    return NextResponse.json(thoughtWithId);
+  } catch (error) {
+    console.error('Thoughts route: Manual POST error:', error);
+    return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
+  }
+}
+
+async function handleAutoPost(request: Request) {
   try {
     console.log("Thoughts route: Starting transcription process.");
 
     const formData = await request.formData();
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
-    const forceTag = formData.get('forceTag') as string | null; // Extract forceTag from form data
-    const outlinePointId = formData.get('outlinePointId') as string | null; // NEW: outline point to attach
+    const forceTag = formData.get('forceTag') as string | null;
+    const outlinePointId = formData.get('outlinePointId') as string | null;
 
     if (!sermonId) {
       console.error("Thoughts route: sermonId is null.");
@@ -103,91 +137,48 @@ export async function POST(request: Request) {
 
     let transcriptionText: string;
     try {
-      // Pass Blob directly to avoid double conversion Blob -> File -> File
       transcriptionText = await createTranscription(audioFile as Blob);
     } catch (transcriptionError) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
-
-      // Check if it's a specific OpenAI or validation error
-      if (transcriptionError instanceof Error) {
-        const errorMessage = transcriptionError.message.toLowerCase();
-        if (errorMessage.includes('audio file might be corrupted or unsupported')) {
-          return NextResponse.json(
-            { error: 'Audio file might be corrupted or unsupported. Please try recording again.' },
-            { status: 400 }
-          );
-        } else if (errorMessage.includes('audio file is empty')) {
-          return NextResponse.json(
-            { error: 'Audio recording failed - file is empty. Please try recording again.' },
-            { status: 400 }
-          );
-        } else if (errorMessage.includes('audio file is too small')) {
-          return NextResponse.json(
-            { error: 'Audio recording is too short. Please record for at least 1 second.' },
-            { status: 400 }
-          );
-        } else if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
-          return NextResponse.json(
-            { error: 'Audio file format not supported. Please try recording again.' },
-            { status: 400 }
-          );
-        }
+      const mappedError = mapTranscriptionError(transcriptionError);
+      if (mappedError) {
+        return NextResponse.json({ error: mappedError.error }, { status: mappedError.status });
       }
-
       return NextResponse.json(
         { error: 'Failed to transcribe audio. Please try again.' },
         { status: 500 }
       );
     }
 
-    // Call generateThought using structured output implementation
     const generationResult = await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag });
-
-
-
-    // Check if the generation was successful and meaning was preserved
-    if (!generationResult.meaningSuccessfullyPreserved || !generationResult.formattedText || !generationResult.tags) {
-      // Handle generation failure or meaning not preserved
+    const normalized = normalizeGenerationResult({ generationResult, transcriptionText });
+    if (normalized.usedFallback) {
       console.warn("Thoughts route: Failed to generate thought or meaning not preserved. Falling back to raw transcription.", generationResult);
-
-      // Fallback: Use the original transcription text standard thought
-      generationResult.formattedText = transcriptionText;
-      generationResult.tags = []; // Fallback to empty tags
-      // Continue execution to save the thought...
     }
 
-    // Proceed with the successfully generated thought
     console.log("Thoughts route: Thought generation successful. Original Text:", generationResult.originalText);
     if (forceTag) {
-      console.log(`Thoughts route: Force tag "${forceTag}" applied. Tags overridden from [${generationResult.tags.join(", ")}] to [${forceTag}]`);
+      console.log(`Thoughts route: Force tag "${forceTag}" applied. Tags overridden from [${normalized.tags.join(", ")}] to [${forceTag}]`);
     }
 
     const thought: Thought = {
       id: uuidv4(),
-      text: generationResult.formattedText, // Use formattedText
-      tags: generationResult.tags, // Use tags (already processed with forceTag if applicable)
+      text: normalized.formattedText,
+      tags: normalized.tags,
       date: new Date().toISOString()
-      // originalText: generationResult.originalText // Optionally add originalText to the Thought model if needed
     };
 
-    // Attach outlinePointId if provided
     if (outlinePointId) {
       thought.outlinePointId = outlinePointId;
     }
 
-    //verify that thought has everything that is needed
-    if (!thought.id || !thought.text || !thought.tags || !thought.date) {
+    if (!isCompleteThought(thought)) {
       console.error("Thoughts route: Generated thought is missing required fields after processing", thought);
       return NextResponse.json({ error: "Generated thought is missing required fields after processing" }, { status: 500 });
     }
     console.log("Generated thought:", thought);
 
-    // Use Admin SDK instead of client SDK
-    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
-    await sermonDocRef.update({
-      thoughts: FieldValue.arrayUnion(thought)
-    });
-
+    await appendThoughtToSermon(sermonId, thought, FieldValue.arrayUnion);
     console.log("Firestore update: Stored new thought into sermon document.");
     return NextResponse.json(thought);
   } catch (error) {
@@ -197,6 +188,19 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+// POST api/thoughts
+export async function POST(request: Request) {
+  // TODO: i want to know what is the length of this audio, and leter to track this data
+  // TODO: check length to limit time, no more that defined in constant
+  console.log("Thoughts route: Received POST request.");
+
+  const url = new URL(request.url);
+  if (url.searchParams.get('manual') === 'true') {
+    return handleManualPost(request);
+  }
+  return handleAutoPost(request);
 }
 
 // Added DELETE method to remove a thought from a sermon

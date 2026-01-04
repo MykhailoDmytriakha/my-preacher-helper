@@ -15,6 +15,113 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
 - **Scope150:** Fully cover the core (what is directly asked) and then cover boundary (adjacent or dependent areas).
 - **Traceability:** Every key finding is recorded in a research log.
 - **Project search protocol:** When locating code, follow an ordered search: interface → domain → patterns → usage.
+- **Full-file + ecosystem reading:** Prefer whole files and surrounding context, not fragments; map dependencies, patterns, and interactions.
+- **Document all findings:** Research is incomplete without recorded evidence.
+
+## Investigation Protocol (mandatory)
+
+**Never stop at the first answer. Dig until you reach bedrock truth.**
+
+### Levels
+
+1. **Surface Observation (never stop here)**
+   - Read one file, see one pattern.
+   - Treat as a starting point, not a conclusion.
+2. **Cross-Reference Validation (minimum required)**
+   - Find 3+ independent sources confirming the same fact.
+   - Check production code, tests, models, and docs.
+3. **Contradiction Hunting (always do this)**
+   - Actively search for evidence that disproves the hypothesis.
+4. **Structural Logic Proof (gold standard)**
+   - Build a causal chain: X because Y because Z, each with evidence.
+   - Use impossibility tests: “If A were true, B would be impossible, but B exists, therefore not A.”
+
+### Exhaustive Investigation Checklist
+
+1. **Data structure definition** (models/entities)
+2. **API contract** (request/response models)
+3. **Production usage** (real call sites, not tests)
+4. **Test evidence** (mocks, edge cases, assertions)
+5. **Multiple implementations** (find 3+ usage patterns)
+6. **Logical impossibility test** (what would disprove the hypothesis?)
+
+### Red Flags (investigation incomplete)
+
+- “probably / likely / should / usually” without verification
+- “based on the name” or “seems like”
+- only one usage checked
+- no contradiction search performed
+
+### Iron Logic Test (must answer with concrete evidence)
+
+1. What facts support this?
+2. What would disprove this?
+3. Did you search for contradictions?
+4. Can you prove causality?
+5. Would a skeptical engineer accept this evidence trail?
+
+### Cognitive Forcing Phrases
+
+- “I see X, but I will verify with 3 independent sources.”
+- “This suggests Y, but what would disprove Y?”
+- “Found 1 example, need 2 more to confirm pattern.”
+- “Seems obvious, but can I prove causality?”
+
+### Investigation Workflow (mandatory)
+
+1. Form initial hypothesis.
+2. Find evidence source #1 (model/class).
+3. Find evidence source #2 (production usage).
+4. Find evidence source #3 (tests or docs).
+5. Search for contradictions.
+6. Build logical proof with evidence at each step.
+7. Test against skepticism; if not convincing, return to step 2.
+
+## Anti-patterns to avoid (research rigor)
+
+1. **Documentation-only implementation**
+   - Read docs for context, then verify in code. Code wins on conflict.
+2. **Boundary scope blindness**
+   - Always identify consumers/callers, configuration, and dependencies.
+3. **Assumption cascade**
+   - Detect assumption phrases, stop, and verify with evidence.
+4. **Test data as reality**
+   - Tests often simplify; verify behavior in production code.
+
+## Verification hierarchy (trust order)
+
+1. Executable/production code (highest truth)
+2. API response/request models
+3. Multiple production usages
+4. Integration tests
+5. Unit test mocks
+6. Documentation (lowest truth; may be outdated)
+
+## Assumption indicators (trigger verification)
+
+- “probably”, “likely”, “should”, “typically”, “usually”
+- “based on the name”, “seems like”, “appears to”
+- “I assume”, “I expect”, “this suggests”
+
+Replacement pattern: detect hedge → identify missing evidence → observe → state fact with reference.
+
+## Systematic exploration framework (unknown codebases)
+
+1. **Context layer**: environment, build system, configuration.
+2. **Structure layer**: directory layout, module boundaries.
+3. **Interface layer**: endpoints, public APIs, data models.
+4. **Implementation layer**: execution paths and conventions.
+
+Avoid jumping directly to implementation without context/structure/interface.
+
+## Communication protocol (complex tasks)
+
+For any investigation, design decision, or multi-step research:
+
+1. **Declare investigation strategy** before acting:
+   - Frameworks you will apply (Scope150, Evidence-Based Reasoning, Cross-Reference Validation, Anti-Pattern checks).
+   - Concrete steps and expected evidence sources.
+2. For simple, single-step actions, skip the declaration but still follow evidence-based reasoning.
 
 ## Research log (mandatory)
 
