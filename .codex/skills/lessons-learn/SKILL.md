@@ -1,6 +1,6 @@
 ---
 name: lessons-learn
-description: Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, or updating Session State to reflect learning.
+description: Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, updating Session State, or enhancing Project Architecture Quick Reference with new insights.
 ---
 
 # Lessons Learn
@@ -12,9 +12,10 @@ Capture durable learning from a solved problem and keep the Memory pipeline cons
 ## When to use
 
 Use this skill when:
-- The user confirms a fix worked (e.g., “works”, “fixed”, “отлично”).
+- The user confirms a fix worked (e.g., "works", "fixed", "отлично").
 - A non‑obvious bug or root cause was discovered.
 - A recurring pattern should be turned into a protocol.
+- New architectural insights emerge that should be documented in Project Architecture Quick Reference.
 
 ## Workflow
 
@@ -39,7 +40,14 @@ Use this skill when:
 
 5. **Update Session State** only if it affects the current task.
 
+6. **Review Project Architecture Quick Reference** and enhance if needed:
+   - Check if the lesson reveals new architectural insights (new directories, patterns, workflows)
+   - Add missing directories, workspaces, or key patterns discovered during work
+   - Update existing entries with new information or clarifications
+   - Keep the reference current and comprehensive
+
 ## Output expectations
 
 - Report exactly what you recorded or moved.
 - If you did **not** write a lesson, say why.
+- If you updated the Project Architecture Quick Reference, specify what was added or modified.

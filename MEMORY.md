@@ -9,73 +9,40 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
-### 2026-01-04 Export order mismatch in focus mode
-**Problem:** In focus mode (`/sermons/[id]/structure?mode=focus&section=...`) the export (TXT/Markdown/Word) order differed from the Column UI order.
-**Attempts:** Root-caused by comparing export ordering vs UI ordering sources.
-**Solution:** Align export ordering to `sermon.structure` order when outline points exist; fall back to position/date only when structure order is missing.
-**Why it worked:** Columns derive order from structure, while export previously used position/date; using structure in export makes both paths consistent for all sections.
-**Principle:** When UI order is driven by `ThoughtsBySection`, export should use the same ordering source to avoid divergence.
-
-### 2026-01-04 Badge alignment in wrapped outline titles
-**Problem:** In the Focus sidebar outline list, count badges looked mis-centered when titles wrapped to multiple lines.
-**Attempts:** Centered the digits inside the badge with `inline-flex` + fixed height.
-**Solution:** Move the badge out of the inline text flow into a sibling flex item so it aligns to the full text block, not the last line baseline.
-**Why it worked:** Inline badges align to the last line’s baseline in multi-line text, which makes them appear off-center; flex siblings align to the block’s center.
-**Principle:** For multi-line text with trailing badges, render the badge as a sibling in a flex row rather than inline text.
-
-### 2026-01-04 Coverage requires changed-line verification
-**Problem:** Tests passed, but it was unclear whether the new UI changes were actually exercised.
-**Attempts:** Relying on overall coverage numbers and green test status.
-**Solution:** Add targeted tests that assert the specific new DOM structure/classes introduced by the change and verify those lines are covered.
-**Why it worked:** Green tests can miss changed logic; explicit assertions map test execution to the modified lines.
-**Principle:** Treat “tests green” as insufficient—always validate that the changed lines are executed and asserted.
-
-### 2026-01-04 Focus sidebar refactor boundaries
-**Problem:** Фокус‑режим в `Column.tsx` был монолитным, требовалось вынести sidebar, не ломая UI и тесты.
-**Attempts:** Сначала вынес структуру в layout/sidebar компоненты и увидел, что пропал блок Unassigned Thoughts в focus‑content.
-**Solution:** Вынес focus‑layout в `FocusModeLayout` и `FocusSidebar` со слотами (header/actions/points), сохранил классы (`bg-gray-50`, `dark:bg-gray-800`, `lg:w-72`) и вернул Unassigned Thoughts в focus‑content.
-**Why it worked:** Слотовая композиция сохранила DOM‑структуру и CSS‑классы, а восстановление Unassigned‑блока вернуло ожидаемое поведение и тесты.
-**Principle:** При рефакторинге UI‑контейнеров сохраняй ключевые классы/DOM и проверяй логические секции (например, Unassigned) в обоих режимах.
-
-### 2026-01-04 Plan prompt refactor regression guard
-**Problem:** After extracting helpers in `generatePlanPointContent`, tests started returning `{ success: false }` because the refactor referenced a removed local (`detectedLanguage`).
-**Attempts:** Ran full coverage to identify failing tests and inspected the refactor for missing variables.
-**Solution:** Replace the stale reference with `languageInfo.detectedLanguage` and add a Cyrillic test case to exercise the language branch.
-**Why it worked:** The refactor preserved behavior, and the new test caught the missing handoff between helper outputs and the main function.
-**Principle:** After extracting helpers, audit all former locals used in downstream objects and add a targeted test that drives the new helper path.
-
-### 2026-01-05 Duplicate label tests need specific queries
-**Problem:** A test using `getByText('Preached')` failed once the label appeared twice (date pill + badge).
-**Attempts:** Initially asserted with a single `getByText`.
-**Solution:** Use `getAllByText` or a more specific query when UI repeats the same label.
-**Why it worked:** The test stopped assuming uniqueness and aligned with the rendered DOM.
-**Principle:** When UI repeats labels, tests should use plural or more specific queries.
-
-### 2026-01-05 Mock override must beat default beforeEach
-**Problem:** A test intended a custom data set, but the default mock from `beforeEach` still applied.
-**Attempts:** Used `mockReturnValueOnce`, which didn't guarantee override across the test flow.
-**Solution:** Use `mockReturnValue` (or reset) inside the test to fully override the shared mock.
-**Why it worked:** It ensured the test used the intended data, not the default fallback.
-**Principle:** If a shared mock is set in `beforeEach`, override with `mockReturnValue` or reset explicitly.
-
-### 2026-01-05 Safe UI modularization preserves DOM
-**Problem:** Refactoring `SermonCard` risked breaking DOM‑sensitive tests.
-**Attempts:** Considered file splits and shared components.
-**Solution:** Split into internal subcomponents within the same file while preserving DOM order and classNames.
-**Why it worked:** Internal extraction kept structure stable, so tests and styles remained intact.
-**Principle:** For UI refactors with DOM‑sensitive tests, prefer internal subcomponents first and keep structure unchanged.
-
-### 2026-01-05 Compile failures from typed test fixtures
-**Problem:** `npm run compile` failed because tests used incomplete `Sermon/Thought/Series/PreachDate` mocks and mismatched hook returns.
-**Attempts:** Reran `tsc --noEmit` to surface file-by-file errors, then fixed them iteratively.
-**Solution:** Align test fixtures with current model types (add required fields like `userId`, `date`, `createdAt`, proper `outline` shapes), and adjust mocks to match updated hook/service signatures.
-**Why it worked:** Tests are part of the TS program; satisfying the model contracts removes structural type errors at compile time.
-**Principle:** When TypeScript includes tests, treat test fixtures as first‑class types—update mocks alongside model changes to keep compile green.
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
+
+### UI/UX Consistency & Refactoring (3 lessons)
+**Common Pattern:** UI changes that affect layout, alignment, and component structure
+- Badge alignment in wrapped outline titles (2026-01-04)
+- Focus sidebar refactor boundaries (2026-01-04)
+- Safe UI modularization preserves DOM (2026-01-05)
+
+**Emerging Principle:** UI refactoring requires preserving DOM structure and testing logical sections across all modes.
+
+### Testing Quality & Coverage (4 lessons)
+**Common Pattern:** Test failures and coverage gaps after changes
+- Coverage requires changed-line verification (2026-01-04)
+- Duplicate label tests need specific queries (2026-01-05)
+- Mock override must beat default beforeEach (2026-01-05)
+- Compile failures from typed test fixtures (2026-01-05)
+
+**Emerging Principle:** Tests must explicitly verify changed lines and handle UI label duplication; mocks need explicit override.
+
+### Data Consistency (1 lesson)
+**Pattern:** Export order divergence from UI order
+- Export order mismatch in focus mode (2026-01-04)
+
+**Emerging Principle:** Export ordering should match UI ordering source to prevent divergence.
+
+### Refactoring Safety (1 lesson)
+**Pattern:** Regression after helper extraction
+- Plan prompt refactor regression guard (2026-01-04)
+
+**Emerging Principle:** After helper extraction, audit downstream usage and add targeted tests for new paths.
 
 
 ---
@@ -223,6 +190,41 @@
 *   **Context:** Парсинг библейских ссылок.
 *   **Protocol:** Запрашивать названия книг **НА АНГЛИЙСКОМ** в промптах.
 *   **Reasoning:** Наш `referenceParser.ts` работает с английскими названиями для унификации.
+
+**UI Refactoring Preservation**
+*   **Context:** Рефакторинг UI компонентов с DOM-сенситивными тестами.
+*   **Protocol:** Сохраняй ключевые классы/DOM структуру и проверяй логические секции в обоих режимах.
+*   **Reasoning:** Предотвращает поломку UI и тестов при рефакторинге фокус-мода.
+
+**Test Coverage Verification**
+*   **Context:** Проверка что изменения покрыты тестами.
+*   **Protocol:** Добавляй таргетированные тесты для новых DOM структур/классов и проверяй покрытие измененных строк.
+*   **Reasoning:** Зеленые тесты могут не покрывать логику; явные assertions гарантируют выполнение.
+
+**Mock Override Strategy**
+*   **Context:** Переопределение shared моков в тестах.
+*   **Protocol:** Используй `mockReturnValue` или reset внутри теста для полного переопределения beforeEach мока.
+*   **Reasoning:** Гарантирует использование intended данных, а не дефолтного fallback.
+
+**UI Label Duplication Handling**
+*   **Context:** Тесты с повторяющимися лейблами в UI.
+*   **Protocol:** Используй `getAllByText` или специфические селекторы когда UI дублирует лейблы.
+*   **Reasoning:** Тесты перестают предполагать уникальность и соответствуют rendered DOM.
+
+**Type-Safe Test Fixtures**
+*   **Context:** TypeScript тесты с неполными моками.
+*   **Protocol:** Трактуй test fixtures как first-class types — обновляй моки вместе с изменениями модели.
+*   **Reasoning:** Tests являются частью TS программы; соблюдение контрактов модели убирает структурные ошибки.
+
+**Export Order Alignment**
+*   **Context:** Согласование порядка экспорта с UI порядком.
+*   **Protocol:** Когда UI порядок определяется `ThoughtsBySection`, экспорт должен использовать тот же источник порядка.
+*   **Reasoning:** Предотвращает расхождения между UI и экспортированными данными.
+
+**Helper Extraction Audit**
+*   **Context:** Рефакторинг с извлечением helper функций.
+*   **Protocol:** После извлечения хелперов проверяй downstream использование и добавляй таргетированные тесты для новых путей.
+*   **Reasoning:** Рефакторинг сохраняет поведение, новые тесты ловят пропущенные handoff между outputs.
 
 ---
 
