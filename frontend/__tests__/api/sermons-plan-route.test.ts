@@ -99,7 +99,7 @@ describe('Sermon Plan Route', () => {
 
   describe('GET /api/sermons/:id/plan', () => {
     it('should generate full plan successfully', async () => {
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Verify repository calls
@@ -138,7 +138,7 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockUndefinedResult);
 
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       await response.json();
 
       // Verify that undefined/null values are converted to empty strings
@@ -163,7 +163,7 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockInvalidResult);
 
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       await response.json();
 
       // Verify fallback plan is used
@@ -184,7 +184,7 @@ describe('Sermon Plan Route', () => {
         .mockResolvedValueOnce({ plan: { main: { outline: '' } }, success: false })
         .mockResolvedValueOnce({ plan: { conclusion: { outline: 'Conclusion' } }, success: true });
 
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
 
       // Verify 206 Partial Content status
       expect(response.status).toBe(206);
@@ -196,7 +196,7 @@ describe('Sermon Plan Route', () => {
         new Error('Firestore error')
       );
 
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should still return the plan even if saving fails
@@ -209,7 +209,7 @@ describe('Sermon Plan Route', () => {
       // Mock sermon not found
       (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
 
-      const response = await GET(mockRequest, { params: { id: 'nonexistent-sermon' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'nonexistent-sermon' }) });
       const responseData = await response.json();
 
       expect(response.status).toBe(404);
@@ -228,7 +228,7 @@ describe('Sermon Plan Route', () => {
       };
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockInvalidResult);
 
-      await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
 
       // Verify that invalid types are converted to empty strings
       expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
@@ -248,7 +248,7 @@ describe('Sermon Plan Route', () => {
         .mockRejectedValueOnce(new Error('Main section failed'))
         .mockResolvedValueOnce({ plan: { conclusion: { outline: 'Conclusion' } }, success: true });
 
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Verify error handling for individual sections
@@ -284,7 +284,7 @@ describe('Sermon Plan Route', () => {
         }
       } as unknown as NextRequest;
 
-      const response = await GET(mockRequestWithSection, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Verify only one section was generated
@@ -310,7 +310,7 @@ describe('Sermon Plan Route', () => {
         }
       } as unknown as NextRequest;
 
-      const response = await GET(mockRequestWithInvalidSection, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequestWithInvalidSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       expect(response.status).toBe(400);

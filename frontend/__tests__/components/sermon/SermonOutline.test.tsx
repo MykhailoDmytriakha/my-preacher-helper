@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act, within } from '@testing-librar
 import React from 'react';
 
 import { Sermon } from '@/models/models';
+import type { SermonOutline as SermonOutlineType } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock translations (simplified)
@@ -251,7 +252,7 @@ describe('SermonOutline Component', () => {
 
     // Verify the API was called correctly
     await waitFor(() => {
-      const expectedOutline: SermonOutline = {
+      const expectedOutline: SermonOutlineType = {
           introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: 'New intro point' })],
           main: [{ id: 'main1', text: 'Main point 1' }],
           conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
@@ -342,7 +343,7 @@ describe('SermonOutline Component', () => {
       
       // Check if updateSermonOutline was called with the updated outline
       await waitFor(() => {
-        const expectedOutline: SermonOutline = {
+        const expectedOutline: SermonOutlineType = {
           introduction: [],
           main: [{ id: 'main1', text: 'Main point 1' }],
           conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
@@ -390,7 +391,7 @@ describe('SermonOutline Component', () => {
     
     // Check if updateSermonOutline was called with the updated outline
     await waitFor(() => {
-      const expectedOutline: SermonOutline = {
+      const expectedOutline: SermonOutlineType = {
         introduction: [{ id: 'intro1', text: 'Edited introduction point' }],
         main: [{ id: 'main1', text: 'Main point 1' }],
         conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]

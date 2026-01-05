@@ -406,9 +406,9 @@ describe('openAI.client additional coverage', () => {
   describe('sortItemsWithAI', () => {
     const outlinePoints: SermonPoint[] = [{ id: 'op-1', text: 'Main Point' }];
     const items: ThoughtInStructure[] = [
-      { id: 'abcd-1111-1111-1111-111111111111', content: 'First thought', section: 'introduction', outlinePointId: 'op-existing' },
-      { id: 'efgh-2222-2222-2222-222222222222', content: 'Second thought', section: 'main' },
-      { id: 'ijkl-3333-3333-3333-333333333333', content: 'Third thought', section: 'main' },
+      { id: 'abcd-1111-1111-1111-111111111111', content: 'First thought', outlinePointId: 'op-existing' },
+      { id: 'efgh-2222-2222-2222-222222222222', content: 'Second thought' },
+      { id: 'ijkl-3333-3333-3333-333333333333', content: 'Third thought' },
     ];
 
     it('sorts items and assigns outline points when provided', async () => {
@@ -441,7 +441,7 @@ describe('openAI.client additional coverage', () => {
 
     it('matches outline points by substring when exact match fails', async () => {
       const substringItems: ThoughtInStructure[] = [
-        { id: 'zzzz-1111-1111-1111-111111111111', content: 'Substring thought', section: 'main' },
+        { id: 'zzzz-1111-1111-1111-111111111111', content: 'Substring thought' },
       ];
       const substringOutlinePoints: SermonPoint[] = [{ id: 'op-sub', text: 'Main Point' }];
 
@@ -465,7 +465,7 @@ describe('openAI.client additional coverage', () => {
 
     it('matches outline points by fuzzy word overlap when needed', async () => {
       const fuzzyItems: ThoughtInStructure[] = [
-        { id: 'yyyy-2222-2222-2222-222222222222', content: 'Fuzzy thought', section: 'main' },
+        { id: 'yyyy-2222-2222-2222-222222222222', content: 'Fuzzy thought' },
       ];
       const fuzzyOutlinePoints: SermonPoint[] = [{ id: 'op-fuzzy', text: 'Victory of Faith' }];
 
@@ -640,7 +640,7 @@ describe('openAI.client additional coverage', () => {
             content: JSON.stringify({
               suggestion: {
                 text: 'Try a different angle',
-                type: 'Question',
+                type: 'question',
               } as Omit<BrainstormSuggestion, 'id'>,
             }),
           },
@@ -745,7 +745,7 @@ describe('openAI.client additional coverage', () => {
     await openAIClient.generateSermonVerses(baseSermon);
 
     const debugItems: ThoughtInStructure[] = [
-      { id: 'efgh-2222-2222-2222-222222222222', content: 'Second thought', section: 'main' },
+      { id: 'efgh-2222-2222-2222-222222222222', content: 'Second thought' },
     ];
     const debugOutlinePoints: SermonPoint[] = [{ id: 'op-1', text: 'Main Point' }];
 

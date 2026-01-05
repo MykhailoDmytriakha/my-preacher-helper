@@ -82,11 +82,12 @@ jest.mock('@/components/navigation/LanguageInitializer', () => ({
 // Import the actual component after all mocks
 
 describe('Settings Page Integration', () => {
+  const mockOnAuthStateChanged = mockAuth.onAuthStateChanged as jest.MockedFunction<typeof mockAuth.onAuthStateChanged>;
   const resetScenario = () => {
     jest.clearAllMocks();
     mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
-    mockAuth.onAuthStateChanged.mockImplementation((callback) => {
-      callback({ uid: 'test-user-id' });
+    mockOnAuthStateChanged.mockImplementation((callback: any) => {
+      callback({ uid: 'test-user-id' } as any);
       return jest.fn();
     });
   };

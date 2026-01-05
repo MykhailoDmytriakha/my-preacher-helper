@@ -17,6 +17,8 @@ import HighlightedText from "../HighlightedText";
 
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
+import type { TFunction } from "i18next";
+
 const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
 const DASHBOARD_PREACHED_KEY = "dashboard.preached";
 
@@ -35,7 +37,7 @@ interface SermonCardHeaderProps {
   formattedPreachedDate: string | null;
   onDelete: (id: string) => void;
   onUpdate: (updatedSermon: Sermon) => void;
-  t: (key: string) => string;
+  t: TFunction;
 }
 
 interface SermonCardTitleVerseProps {
@@ -54,12 +56,12 @@ interface SermonCardBadgesProps {
   sermonSeries?: Series;
   thoughtCount: number;
   hasOutline: number | undefined;
-  t: (key: string) => string;
+  t: TFunction;
 }
 
 interface SermonCardFooterProps {
   sermon: Sermon;
-  t: (key: string) => string;
+  t: TFunction;
 }
 
 function SermonCardHeader({

@@ -35,6 +35,8 @@ describe('Sort API Route', () => {
       id: 'sermon123',
       title: 'Test Sermon',
       verse: 'John 3:16',
+      date: '2024-01-01',
+      thoughts: [],
       outline: {
         introduction: [
           { id: 'outline1', text: 'Introduction point 1' },
@@ -42,6 +44,7 @@ describe('Sort API Route', () => {
         main: [],
         conclusion: [],
       },
+      userId: 'user-123',
     });
     
     // Default POST handler behavior

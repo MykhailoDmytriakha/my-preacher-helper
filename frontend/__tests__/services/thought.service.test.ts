@@ -380,7 +380,6 @@ describe('Thought Service', () => {
         ok: true,
         json: () => Promise.resolve({ id: 't1', text: 'ok', tags: [forceTag], date: new Date().toISOString(), outlinePointId }),
       });
-      // @ts-expect-error - mocking global fetch in test scope
       global.fetch = fetchMock;
 
       await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag, 0, 3, outlinePointId);

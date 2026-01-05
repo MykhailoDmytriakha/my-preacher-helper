@@ -16,6 +16,9 @@ describe('useStructureDnd', () => {
   const mockSermon: Sermon = {
     id: 'sermon-1',
     title: 'Test Sermon',
+    verse: 'John 3:16',
+    date: new Date().toISOString(),
+    userId: 'user-1',
     thoughts: [
       { id: 'thought-1', text: 'Test thought 1', tags: ['introduction'], date: new Date().toISOString() },
       { id: 'thought-2', text: 'Test thought 2', tags: ['main'], date: new Date().toISOString() },
@@ -26,7 +29,7 @@ describe('useStructureDnd', () => {
       conclusion: [],
       ambiguous: []
     }
-  } as Sermon;
+  };
 
   const mockContainers: Record<string, Item[]> = {
     introduction: [

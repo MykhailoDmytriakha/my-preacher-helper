@@ -103,7 +103,7 @@ describe('SermonHeader Component', () => {
     id: 'test-sermon-id',
     title: 'Test Sermon Title',
     verse: 'John 3:16 - For God so loved the world that he gave his one and only Son',
-    date: new Date('2024-01-15'),
+    date: '2024-01-15',
     userId: 'test-user-id',
     thoughts: [],
     outline: {
@@ -330,8 +330,9 @@ describe('SermonHeader Component', () => {
         color: '#FF6B6B',
         userId: 'test-user-id',
         sermonIds: ['sermon-1'],
-        createdAt: new Date(),
-        updatedAt: new Date()
+        status: 'active',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-02T00:00:00Z'
       }
     ];
 

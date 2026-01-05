@@ -54,7 +54,7 @@ describe('usePersistence', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUpdateStructure.mockResolvedValue(undefined);
-    mockUpdateThought.mockResolvedValue(undefined);
+    mockUpdateThought.mockResolvedValue(mockThought);
   });
 
   describe('initialization', () => {

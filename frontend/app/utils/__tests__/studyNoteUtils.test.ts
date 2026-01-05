@@ -12,6 +12,8 @@ jest.mock('../../(pages)/(private)/studies/bibleData', () => ({
   BibleLocale: {},
 }));
 
+const mockFormatScriptureRef = formatScriptureRef as jest.MockedFunction<typeof formatScriptureRef>;
+
 describe('formatStudyNoteForCopy', () => {
   const baseNote: StudyNote = {
     id: '1',
@@ -50,7 +52,7 @@ describe('formatStudyNoteForCopy', () => {
   });
 
   it('formats note with scripture references in English', () => {
-    formatScriptureRef
+    mockFormatScriptureRef
       .mockReturnValueOnce('John.3:16')
       .mockReturnValueOnce('Rom.8');
 
@@ -82,7 +84,7 @@ describe('formatStudyNoteForCopy', () => {
   });
 
   it('formats note with scripture references in Russian', () => {
-    formatScriptureRef
+    mockFormatScriptureRef
       .mockReturnValueOnce('Ин.3:16')
       .mockReturnValueOnce('Рим.8');
 
@@ -114,7 +116,7 @@ describe('formatStudyNoteForCopy', () => {
   });
 
   it('handles Psalm chapter conversion for Russian locale', () => {
-    formatScriptureRef.mockReturnValue('Пс.23:1');
+    mockFormatScriptureRef.mockReturnValue('Пс.23:1');
 
     const note: StudyNote = {
       ...baseNote,
@@ -189,7 +191,7 @@ describe('formatStudyNoteForCopy', () => {
   });
 
   it('formats verse ranges correctly', () => {
-    formatScriptureRef.mockReturnValue('Matt.5:3-12');
+    mockFormatScriptureRef.mockReturnValue('Matt.5:3-12');
 
     const note: StudyNote = {
       ...baseNote,

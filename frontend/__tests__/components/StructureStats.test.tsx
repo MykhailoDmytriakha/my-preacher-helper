@@ -171,8 +171,8 @@ describe('StructureStats Component', () => {
 
   it('renders plan toggle buttons with hover, active, and disabled styling', () => {
     renderStats({ hasInconsistentThoughts: true })
-    const structureButton = screen.getByText('Work on ThoughtsBySection')
-    const planButton = screen.getByText('Plan')
+    const structureButton = screen.getByText('Work on ThoughtsBySection') as HTMLButtonElement
+    const planButton = screen.getByText('Plan') as HTMLButtonElement
 
     ;[structureButton, planButton].forEach((button) => {
       expect(button).toHaveClass('relative', 'z-10', 'px-4', 'py-2', 'text-sm', 'font-medium')

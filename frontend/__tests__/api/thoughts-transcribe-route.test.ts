@@ -34,9 +34,23 @@ interface MockRequest {
 class FakeBlob {
   public size: number;
   public type: string;
-  constructor(size: number, type = 'audio/webm') {
-    this.size = size;
-    this.type = type;
+  constructor(blobParts: BlobPart[] = [], options: BlobPropertyBag = {}) {
+    this.size = blobParts.reduce((total, part) => {
+      if (typeof part === 'string') {
+        return total + part.length;
+      }
+      if (part instanceof ArrayBuffer) {
+        return total + part.byteLength;
+      }
+      if (ArrayBuffer.isView(part)) {
+        return total + part.byteLength;
+      }
+      if (part && typeof (part as Blob).size === 'number') {
+        return total + (part as Blob).size;
+      }
+      return total;
+    }, 0);
+    this.type = options.type ?? 'audio/webm';
   }
 }
 
@@ -65,7 +79,7 @@ describe('Thoughts transcribe route', () => {
   });
 
   it('returns 400 when audio is empty', async () => {
-    const request = buildRequest(new FakeBlob(0));
+    const request = buildRequest(new FakeBlob([]));
     const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
     const data = await response.json();
 
@@ -82,7 +96,7 @@ describe('Thoughts transcribe route', () => {
       error: null,
     });
 
-    const request = buildRequest(new FakeBlob(1024));
+    const request = buildRequest(new FakeBlob([new Uint8Array(1024)]));
     const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
     const data = await response.json();
 
@@ -102,7 +116,7 @@ describe('Thoughts transcribe route', () => {
       error: 'Could not preserve meaning while cleaning',
     });
 
-    const request = buildRequest(new FakeBlob(1024));
+    const request = buildRequest(new FakeBlob([new Uint8Array(1024)]));
     const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
     const data = await response.json();
 
@@ -118,7 +132,7 @@ describe('Thoughts transcribe route', () => {
       new Error('audio file is too small')
     );
 
-    const request = buildRequest(new FakeBlob(1024));
+    const request = buildRequest(new FakeBlob([new Uint8Array(1024)]));
     const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
     const data = await response.json();
 

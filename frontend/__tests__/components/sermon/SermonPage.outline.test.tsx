@@ -139,7 +139,6 @@ const TestSermonPage = () => {
       </button>
       {editingModalData && (
         <EditThoughtModal
-          thoughtId={editingModalData.thought.id}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
           initialSermonPointId={undefined} 

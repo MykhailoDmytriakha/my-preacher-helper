@@ -5,6 +5,10 @@ import enTranslations from '../../locales/en/translation.json';
 import ruTranslations from '../../locales/ru/translation.json';
 import ukTranslations from '../../locales/uk/translation.json';
 
+const en = enTranslations as Record<string, any>;
+const ru = ruTranslations as Record<string, any>;
+const uk = ukTranslations as Record<string, any>;
+
 describe('Prep Mode Translation Coverage', () => {
   const resetScenario = () => {
     // No mocks needed for this test
@@ -19,33 +23,33 @@ describe('Prep Mode Translation Coverage', () => {
           {
             name: 'english translations include prep mode keys',
             run: () => {
-              expect(enTranslations.settings?.prepMode).toBeDefined();
-              expect(enTranslations.settings.prepMode.title).toBe('Preparation Mode (Beta)');
-              expect(enTranslations.settings.prepMode.description).toBe('Enable access to the new preparation mode workflow');
+              expect(en.settings?.prepMode).toBeDefined();
+              expect(en.settings.prepMode.title).toBe('Preparation Mode (Beta)');
+              expect(en.settings.prepMode.description).toBe('Enable access to the new preparation mode workflow');
             }
           },
           {
             name: 'russian translations include prep mode keys',
             run: () => {
-              expect(ruTranslations.settings?.prepMode).toBeDefined();
-              expect(ruTranslations.settings.prepMode.title).toBeDefined();
-              expect(ruTranslations.settings.prepMode.description).toBeDefined();
-              expect(typeof ruTranslations.settings.prepMode.title).toBe('string');
-              expect(typeof ruTranslations.settings.prepMode.description).toBe('string');
-              expect(ruTranslations.settings.prepMode.title.length).toBeGreaterThan(0);
-              expect(ruTranslations.settings.prepMode.description.length).toBeGreaterThan(0);
+              expect(ru.settings?.prepMode).toBeDefined();
+              expect(ru.settings.prepMode.title).toBeDefined();
+              expect(ru.settings.prepMode.description).toBeDefined();
+              expect(typeof ru.settings.prepMode.title).toBe('string');
+              expect(typeof ru.settings.prepMode.description).toBe('string');
+              expect(ru.settings.prepMode.title.length).toBeGreaterThan(0);
+              expect(ru.settings.prepMode.description.length).toBeGreaterThan(0);
             }
           },
           {
             name: 'ukrainian translations include prep mode keys',
             run: () => {
-              expect(ukTranslations.settings?.prepMode).toBeDefined();
-              expect(ukTranslations.settings.prepMode.title).toBeDefined();
-              expect(ukTranslations.settings.prepMode.description).toBeDefined();
-              expect(typeof ukTranslations.settings.prepMode.title).toBe('string');
-              expect(typeof ukTranslations.settings.prepMode.description).toBe('string');
-              expect(ukTranslations.settings.prepMode.title.length).toBeGreaterThan(0);
-              expect(ukTranslations.settings.prepMode.description.length).toBeGreaterThan(0);
+              expect(uk.settings?.prepMode).toBeDefined();
+              expect(uk.settings.prepMode.title).toBeDefined();
+              expect(uk.settings.prepMode.description).toBeDefined();
+              expect(typeof uk.settings.prepMode.title).toBe('string');
+              expect(typeof uk.settings.prepMode.description).toBe('string');
+              expect(uk.settings.prepMode.title.length).toBeGreaterThan(0);
+              expect(uk.settings.prepMode.description.length).toBeGreaterThan(0);
             }
           }
         ],
@@ -62,9 +66,9 @@ describe('Prep Mode Translation Coverage', () => {
             name: 'all translations are non-empty strings',
             run: () => {
               const languages = [
-                { name: 'English', translations: enTranslations },
-                { name: 'Russian', translations: ruTranslations },
-                { name: 'Ukrainian', translations: ukTranslations }
+                { name: 'English', translations: en },
+                { name: 'Russian', translations: ru },
+                { name: 'Ukrainian', translations: uk }
               ];
 
               languages.forEach(({ translations }) => {
@@ -90,14 +94,14 @@ describe('Prep Mode Translation Coverage', () => {
             name: 'russian and ukrainian translations are properly localized',
             run: () => {
               // Russian translations should contain Cyrillic characters
-              const ruTitle = ruTranslations.settings.prepMode.title;
-              const ruDesc = ruTranslations.settings.prepMode.description;
+              const ruTitle = ru.settings.prepMode.title;
+              const ruDesc = ru.settings.prepMode.description;
               expect(/[а-яё]/i.test(ruTitle)).toBe(true);
               expect(/[а-яё]/i.test(ruDesc)).toBe(true);
 
               // Ukrainian translations should contain Cyrillic characters
-              const ukTitle = ukTranslations.settings.prepMode.title;
-              const ukDesc = ukTranslations.settings.prepMode.description;
+              const ukTitle = uk.settings.prepMode.title;
+              const ukDesc = uk.settings.prepMode.description;
               expect(/[а-яё]/i.test(ukTitle)).toBe(true);
               expect(/[а-яё]/i.test(ukDesc)).toBe(true);
             }
@@ -105,8 +109,8 @@ describe('Prep Mode Translation Coverage', () => {
           {
             name: 'english translation maintains consistent terminology',
             run: () => {
-              const enTitle = enTranslations.settings.prepMode.title;
-              const enDesc = enTranslations.settings.prepMode.description;
+              const enTitle = en.settings.prepMode.title;
+              const enDesc = en.settings.prepMode.description;
 
               // Should contain "Preparation Mode" consistently
               expect(enTitle.toLowerCase()).toContain('preparation mode');
@@ -127,7 +131,7 @@ describe('Prep Mode Translation Coverage', () => {
           {
             name: 'all languages have identical prep mode key structure',
             run: () => {
-              const languages = [enTranslations, ruTranslations, ukTranslations];
+              const languages = [en, ru, uk];
 
               languages.forEach((translations) => {
 
@@ -148,7 +152,7 @@ describe('Prep Mode Translation Coverage', () => {
           {
             name: 'prep mode translations are nested under settings section',
             run: () => {
-              const languages = [enTranslations, ruTranslations, ukTranslations];
+              const languages = [en, ru, uk];
 
               languages.forEach((translations) => {
                 expect(translations.settings).toBeDefined();
@@ -173,8 +177,8 @@ describe('Prep Mode Translation Coverage', () => {
             name: 'translation keys use dot notation and lowercase',
             run: () => {
               // The keys should be accessible via dot notation
-              expect(enTranslations.settings.prepMode.title).toBeDefined();
-              expect(enTranslations.settings.prepMode.description).toBeDefined();
+              expect(en.settings.prepMode.title).toBeDefined();
+              expect(en.settings.prepMode.description).toBeDefined();
 
               // Keys should be lowercase with underscores for word separation
               // (This is validated by the structure we access them with)

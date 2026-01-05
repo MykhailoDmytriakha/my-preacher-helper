@@ -22,6 +22,8 @@ jest.mock('file-saver', () => ({
   saveAs: jest.fn(),
 }))
 
+const mockSaveAs = saveAs as jest.MockedFunction<typeof saveAs>
+
 // Mock URL methods
 global.URL.createObjectURL = jest.fn(() => 'blob:mock-url')
 global.URL.revokeObjectURL = jest.fn()
@@ -83,7 +85,7 @@ describe('wordExport', () => {
             jest.clearAllMocks()
             await exportToWord({ data: getPlanData() })
 
-            const [[, resolvedFilename]] = (saveAs as jest.Mock).mock.calls
+            const [[, resolvedFilename]] = mockSaveAs.mock.calls
             expect(resolvedFilename).toContain('план-проповеди-test-sermon')
           },
         },

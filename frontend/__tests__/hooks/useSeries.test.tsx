@@ -37,7 +37,7 @@ const mockReorderSermons = reorderSermons as jest.MockedFunction<typeof reorderS
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, cacheTime: 0, staleTime: 0 },
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
     },
   });
   return ({ children }: { children: ReactNode }) => (

@@ -121,11 +121,29 @@ describe('exportContent', () => {
         {
           name: 'empty sermon and no-thoughts fallback',
           run: async () => {
-            const emptySermon: Sermon = { id: 'empty', title: '', thoughts: [], outline: { introduction: [], main: [], conclusion: [] }, structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
+            const emptySermon: Sermon = {
+              id: 'empty',
+              title: '',
+              verse: '',
+              date: '2024-01-01',
+              userId: 'user1',
+              thoughts: [],
+              outline: { introduction: [], main: [], conclusion: [] },
+              structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+            };
             const emptyResult = await getExportContent(emptySermon);
             expect(typeof emptyResult).toBe('string');
 
-            const noThoughtsSermon: Sermon = { id: 'no-thoughts', title: 'No Thoughts Sermon', thoughts: [], outline: { introduction: [], main: [], conclusion: [] }, structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
+            const noThoughtsSermon: Sermon = {
+              id: 'no-thoughts',
+              title: 'No Thoughts Sermon',
+              verse: '',
+              date: '2024-01-01',
+              userId: 'user1',
+              thoughts: [],
+              outline: { introduction: [], main: [], conclusion: [] },
+              structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+            };
             const noThoughtsResult = await getExportContent(noThoughtsSermon);
             expect(noThoughtsResult).toContain('No Thoughts Sermon');
           },
@@ -282,10 +300,16 @@ describe('exportContent', () => {
             });
             expect(typeof noStructure).toBe('string');
 
-            const emptyStructure = await getExportContent({ ...mockSermon, structure: {} });
+            const emptyStructure = await getExportContent({
+              ...mockSermon,
+              structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+            });
             expect(typeof emptyStructure).toBe('string');
 
-            const emptyOutline = await getExportContent({ ...mockSermon, outline: {} });
+            const emptyOutline = await getExportContent({
+              ...mockSermon,
+              outline: { introduction: [], main: [], conclusion: [] },
+            });
             expect(typeof emptyOutline).toBe('string');
           },
         },
@@ -344,7 +368,7 @@ describe('exportContent', () => {
 
             const noDateSermon: Sermon = {
               ...mockSermon,
-              thoughts: [...mockSermon.thoughts!, { id: 'no-date', text: 'No date thought', tags: ['intro'] }],
+              thoughts: [...mockSermon.thoughts!, { id: 'no-date', text: 'No date thought', tags: ['intro'], date: '' }],
             };
             const noDateResult = await getExportContent(noDateSermon);
             expect(noDateResult).toContain('No date thought');

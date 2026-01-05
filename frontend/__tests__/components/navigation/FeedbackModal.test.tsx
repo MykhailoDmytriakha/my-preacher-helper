@@ -7,24 +7,34 @@ import * as reactI18next from 'react-i18next';
 
 // Mock dependencies
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
+  useTranslation: () => {
+    const t = (key: string) => {
       const translations: { [key: string]: string } = {
         'feedback.title': 'Send Feedback'
       };
       return translations[key] || key;
-    }
-  })
+    };
+    return Object.assign([t, { language: 'en' }, true], {
+      t,
+      i18n: { language: 'en' },
+      ready: true,
+    });
+  }
 }));
 
 // Alternative mock for testing fallback values
-const mockUseTranslationWithMissingKeys = () => ({
-  t: (key: string) => {
+const mockUseTranslationWithMissingKeys = () => {
+  const t = (key: string) => {
     // Return undefined for feedback.title to test fallback
     if (key === 'feedback.title') return '';
     return key;
-  }
-});
+  };
+  return Object.assign([t, { language: 'en' }, true], {
+    t,
+    i18n: { language: 'en' },
+    ready: true,
+  });
+};
 
 // Mock FeedbackForm component
 jest.mock('@/components/navigation/FeedbackForm', () => {
@@ -85,7 +95,7 @@ describe('FeedbackModal Component', () => {
 
   test('uses fallback title when translation is missing', () => {
     // Temporarily replace the mock implementation
-    jest.spyOn(reactI18next, 'useTranslation').mockImplementation(mockUseTranslationWithMissingKeys);
+    jest.spyOn(reactI18next, 'useTranslation').mockImplementation(mockUseTranslationWithMissingKeys as any);
     
     render(
       <FeedbackModal 

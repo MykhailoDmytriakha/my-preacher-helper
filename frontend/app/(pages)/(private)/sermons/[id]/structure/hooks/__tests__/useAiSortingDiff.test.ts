@@ -18,6 +18,9 @@ describe('useAiSortingDiff', () => {
   const mockSermon: Sermon = {
     id: 'sermon-1',
     title: 'Test Sermon',
+    verse: 'John 3:16',
+    date: new Date().toISOString(),
+    userId: 'user-1',
     thoughts: [
       { id: 'thought-1', text: 'Test thought 1', tags: ['introduction'], date: new Date().toISOString() },
       { id: 'thought-2', text: 'Test thought 2', tags: ['main'], date: new Date().toISOString() },
@@ -29,7 +32,7 @@ describe('useAiSortingDiff', () => {
       conclusion: ['thought-3'],
       ambiguous: []
     }
-  } as Sermon;
+  };
 
   const mockContainers: Record<string, Item[]> = {
     introduction: [
@@ -62,14 +65,7 @@ describe('useAiSortingDiff', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSortItemsWithAI.mockResolvedValue({
-      success: true,
-      sortedItems: ['thought-2', 'thought-1', 'thought-3'],
-      changes: [
-        { itemId: 'thought-1', oldPosition: 0, newPosition: 1, section: 'introduction' },
-        { itemId: 'thought-2', oldPosition: 0, newPosition: 0, section: 'main' }
-      ]
-    });
+    mockSortItemsWithAI.mockResolvedValue([...mockContainers.introduction]);
   });
 
   describe('initialization', () => {
@@ -207,7 +203,7 @@ describe('useAiSortingDiff', () => {
       expect(mockSetContainers).toHaveBeenCalled();
 
       mockSetContainers.mockClear();
-      act(() => result.current.handleKeepAll('introduction'));
+      act(() => result.current.handleKeepAll());
       expect(result.current.isDiffModeActive).toBe(false);
 
       // Re-activate diff mode and revert all
@@ -237,12 +233,12 @@ describe('useAiSortingDiff', () => {
       });
       expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
 
-      act(() => result.current.setHighlightedItems(['test-item']));
-      expect(result.current.highlightedItems).toEqual(['test-item']);
+      act(() => result.current.setHighlightedItems({ 'test-item': { type: 'moved' } }));
+      expect(result.current.highlightedItems).toEqual({ 'test-item': { type: 'moved' } });
       act(() => result.current.setIsDiffModeActive(true));
       expect(result.current.isDiffModeActive).toBe(true);
-      act(() => result.current.setPreSortState([]));
-      expect(result.current.preSortState).toEqual([]);
+      act(() => result.current.setPreSortState({ introduction: [] }));
+      expect(result.current.preSortState).toEqual({ introduction: [] });
     });
   });
 
@@ -334,7 +330,7 @@ describe('useAiSortingDiff', () => {
       await act(async () => {
         await hook.result.current.handleAiSort('introduction');
       });
-      act(() => hook.result.current.handleKeepAll('introduction'));
+      act(() => hook.result.current.handleKeepAll());
       expect(hook.result.current.isDiffModeActive).toBe(false);
       expect(mockSetContainers).toHaveBeenCalled();
     });

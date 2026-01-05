@@ -232,8 +232,8 @@ describe('OptionMenu Component', () => {
       ...mockSermon,
       isPreached: true,
       preachDates: [
-        { id: 'pd1', date: '2024-01-15', church: { id: 'c1', name: 'Test Church', city: 'City' } },
-        { id: 'pd2', date: '2024-01-20', church: { id: 'c2', name: 'Another Church', city: 'City2' } }
+        { id: 'pd1', date: '2024-01-15', church: { id: 'c1', name: 'Test Church', city: 'City' }, createdAt: '2024-01-01T00:00:00Z' },
+        { id: 'pd2', date: '2024-01-20', church: { id: 'c2', name: 'Another Church', city: 'City2' }, createdAt: '2024-01-01T00:00:00Z' }
       ]
     };
 

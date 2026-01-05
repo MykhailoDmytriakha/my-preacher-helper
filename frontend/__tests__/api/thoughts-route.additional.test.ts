@@ -361,7 +361,7 @@ describe('Thoughts API route additional coverage', () => {
         userId: 'user-1',
       });
 
-      const sermonDocRef = { id: 'sermon-1' };
+      const sermonDocRef = { id: 'sermon-1', update: jest.fn() };
       docMock.mockReturnValueOnce(sermonDocRef);
 
       const transactionUpdateMock = jest.fn();

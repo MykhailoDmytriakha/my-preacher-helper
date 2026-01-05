@@ -19,7 +19,7 @@ jest.mock('next/server', () => ({
     };
   }),
   NextResponse: {
-    json: jest.fn((data, options) => ({ data, options, status: options?.status || 200 }))
+    json: jest.fn((data, options) => ({ status: options?.status || 200, json: async () => data }))
   }
 }));
 
@@ -61,10 +61,11 @@ describe('User Settings API Route', () => {
 
               const request = new NextRequest('http://localhost/api/user/settings?userId=user1');
               const response = await GET(request);
+              const data = await response.json();
 
               expect(mockGetByUserId).toHaveBeenCalledWith('user1');
               expect(response.status).toBe(200);
-              expect(response.data).toEqual({ settings: mockSettings });
+              expect(data).toEqual({ settings: mockSettings });
             }
           },
           {
@@ -74,10 +75,11 @@ describe('User Settings API Route', () => {
 
               const request = new NextRequest('http://localhost/api/user/settings?userId=nonexistent');
               const response = await GET(request);
+              const data = await response.json();
 
               expect(mockGetByUserId).toHaveBeenCalledWith('nonexistent');
               expect(response.status).toBe(200);
-              expect(response.data).toEqual({ settings: null });
+              expect(data).toEqual({ settings: null });
             }
           },
           {
@@ -85,10 +87,11 @@ describe('User Settings API Route', () => {
             run: async () => {
               const request = new NextRequest('http://localhost/api/user/settings');
               const response = await GET(request);
+              const data = await response.json();
 
               expect(mockGetByUserId).not.toHaveBeenCalled();
               expect(response.status).toBe(400);
-              expect(response.data).toEqual({ error: 'User ID is required' });
+              expect(data).toEqual({ error: 'User ID is required' });
             }
           },
           {
@@ -100,9 +103,10 @@ describe('User Settings API Route', () => {
 
               const request = new NextRequest('http://localhost/api/user/settings?userId=user1');
               const response = await GET(request);
+              const data = await response.json();
 
               expect(response.status).toBe(500);
-              expect(response.data).toEqual({ error: 'Failed to fetch user settings' });
+              expect(data).toEqual({ error: 'Failed to fetch user settings' });
 
               expect(consoleSpy).toHaveBeenCalledWith('Error fetching user settings:', expect.any(Error));
 
@@ -136,6 +140,7 @@ describe('User Settings API Route', () => {
               });
 
               const response = await PUT(request);
+              const data = await response.json();
 
               expect(mockCreateOrUpdate).toHaveBeenCalledWith(
                 'user1',
@@ -145,7 +150,7 @@ describe('User Settings API Route', () => {
                 true
               );
               expect(response.status).toBe(200);
-              expect(response.data).toEqual({ success: true });
+              expect(data).toEqual({ success: true });
             }
           },
           {
@@ -212,11 +217,12 @@ describe('User Settings API Route', () => {
               });
 
               const response = await PUT(request);
+              const data = await response.json();
 
               expect(mockCreateOrUpdate).not.toHaveBeenCalled();
               expect(response.status).toBe(400);
 
-              expect(response.data).toEqual({ error: 'User ID is required' });
+              expect(data).toEqual({ error: 'User ID is required' });
             }
           },
           {
@@ -235,9 +241,10 @@ describe('User Settings API Route', () => {
               });
 
               const response = await PUT(request);
+              const data = await response.json();
 
               expect(response.status).toBe(500);
-              expect(response.data).toEqual({ error: 'Failed to update user settings' });
+              expect(data).toEqual({ error: 'Failed to update user settings' });
 
               expect(consoleSpy).toHaveBeenCalledWith('Error updating user settings:', expect.any(Error));
 
@@ -284,6 +291,7 @@ describe('User Settings API Route', () => {
               });
 
               const response = await POST(request);
+              const data = await response.json();
 
               expect(mockCreateOrUpdate).toHaveBeenCalledWith(
                 'new-user',
@@ -293,7 +301,7 @@ describe('User Settings API Route', () => {
                 true
               );
               expect(response.status).toBe(200);
-              expect(response.data).toEqual({ success: true });
+              expect(data).toEqual({ success: true });
             }
           },
           {
@@ -357,11 +365,12 @@ describe('User Settings API Route', () => {
               });
 
               const response = await POST(request);
+              const data = await response.json();
 
               expect(mockCreateOrUpdate).not.toHaveBeenCalled();
               expect(response.status).toBe(400);
 
-              expect(response.data).toEqual({ error: 'User ID is required' });
+              expect(data).toEqual({ error: 'User ID is required' });
             }
           },
           {
@@ -380,9 +389,10 @@ describe('User Settings API Route', () => {
               });
 
               const response = await POST(request);
+              const data = await response.json();
 
               expect(response.status).toBe(500);
-              expect(response.data).toEqual({ error: 'Failed to create user settings' });
+              expect(data).toEqual({ error: 'Failed to create user settings' });
 
               expect(consoleSpy).toHaveBeenCalledWith('Error creating user settings:', expect.any(Error));
 

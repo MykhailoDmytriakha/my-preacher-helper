@@ -246,7 +246,7 @@ Second paragraph with indentation.
     );
 
     // Check container has expected style
-    const container = screen.getByText('Test content for the item').closest('div[role="button"]');
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
     expect(container).toHaveClass('pointer-events-none');
     expect(container).toHaveStyle('opacity: 0.5');
 
@@ -274,7 +274,7 @@ Second paragraph with indentation.
       expect.objectContaining({ disabled: true, id: mockItem.id })
     );
 
-    const container = screen.getByText('Test content for the item').closest('div[role="button"]');
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
     expect(container).toHaveAttribute('aria-disabled', 'true');
     expect(container?.className).toContain('cursor-default');
     expect(container?.className).not.toContain('hover:shadow-xl');

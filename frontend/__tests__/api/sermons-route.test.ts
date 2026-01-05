@@ -83,7 +83,7 @@ describe('Sermons API Route', () => {
     });
 
     // Apply the mocks
-    const mockedAdminDb = adminDb as { collection: jest.Mock };
+    const mockedAdminDb = adminDb as unknown as { collection: jest.Mock };
     mockedAdminDb.collection.mockImplementation(mockCollection);
 
     // Set up basic request object

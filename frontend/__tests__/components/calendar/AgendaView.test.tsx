@@ -54,8 +54,9 @@ describe('AgendaView', () => {
         id: 'sermon-1',
         title: 'Test Sermon',
         verse: 'John 3:16',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
         isPreached: false,
         preachDates: [
             {
@@ -125,7 +126,7 @@ describe('AgendaView', () => {
     });
 
     it('renders sermons with different outcomes', () => {
-        const goodSermon = {
+        const goodSermon: Sermon = {
             ...mockSermon,
             preachDates: [{
                 ...mockSermon.preachDates![0],

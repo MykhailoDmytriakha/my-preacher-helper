@@ -55,8 +55,9 @@ describe('SeriesSelector Component', () => {
       color: '#FF6B6B',
       userId: 'test-user-id',
       sermonIds: ['sermon-1', 'sermon-2'],
-      createdAt: new Date(),
-      updatedAt: new Date()
+      status: 'active',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-02T00:00:00Z'
     },
     {
       id: 'series-2',
@@ -66,30 +67,40 @@ describe('SeriesSelector Component', () => {
       color: '#4ECDC4',
       userId: 'test-user-id',
       sermonIds: ['sermon-3'],
-      createdAt: new Date(),
-      updatedAt: new Date()
+      status: 'active',
+      createdAt: '2024-01-03T00:00:00Z',
+      updatedAt: '2024-01-04T00:00:00Z'
     },
     {
       id: 'series-3',
       title: 'Love Series',
       theme: 'God\'s Love',
       bookOrTopic: '1 John',
-      color: null,
+      color: undefined,
       userId: 'test-user-id',
       sermonIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
+      status: 'draft',
+      createdAt: '2024-01-05T00:00:00Z',
+      updatedAt: '2024-01-06T00:00:00Z'
     }
   ];
 
+  const mockSeriesHookValue = {
+    series: mockSeries,
+    loading: false,
+    error: null,
+    refreshSeries: jest.fn(),
+    createNewSeries: jest.fn(),
+    updateExistingSeries: jest.fn(),
+    deleteExistingSeries: jest.fn(),
+    addSermon: jest.fn(),
+    removeSermon: jest.fn(),
+    reorderSeriesSermons: jest.fn(),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseSeries.mockReturnValue({
-      series: mockSeries,
-      loading: false,
-      error: null,
-      refetch: jest.fn()
-    });
+    mockUseSeries.mockReturnValue(mockSeriesHookValue);
   });
 
   describe('Basic Rendering', () => {
@@ -111,7 +122,13 @@ describe('SeriesSelector Component', () => {
         series: [],
         loading: true,
         error: null,
-        refetch: jest.fn()
+        refreshSeries: jest.fn(),
+        createNewSeries: jest.fn(),
+        updateExistingSeries: jest.fn(),
+        deleteExistingSeries: jest.fn(),
+        addSermon: jest.fn(),
+        removeSermon: jest.fn(),
+        reorderSeriesSermons: jest.fn(),
       });
 
       render(
@@ -129,7 +146,13 @@ describe('SeriesSelector Component', () => {
         series: [],
         loading: false,
         error: null,
-        refetch: jest.fn()
+        refreshSeries: jest.fn(),
+        createNewSeries: jest.fn(),
+        updateExistingSeries: jest.fn(),
+        deleteExistingSeries: jest.fn(),
+        addSermon: jest.fn(),
+        removeSermon: jest.fn(),
+        reorderSeriesSermons: jest.fn(),
       });
 
       render(

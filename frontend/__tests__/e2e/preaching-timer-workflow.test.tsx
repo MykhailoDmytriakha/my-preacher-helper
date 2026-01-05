@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import * as nextNavigation from 'next/navigation';
 import React from 'react';
+import type { Sermon } from '@/models/models';
 
 
 
@@ -57,7 +58,19 @@ type TimerInstance = {
 // Store component instances for testing
 const timerInstances: TimerInstance[] = [];
 
-const MockPreachingTimer = ({ initialDuration, className }: { initialDuration?: number; className?: string }) => {
+const MockPreachingTimer = ({
+  initialDuration,
+  className,
+  sermonId,
+  onExitPreaching,
+}: {
+  initialDuration?: number;
+  className?: string;
+  sermonId?: string;
+  onExitPreaching?: () => void;
+}) => {
+  void sermonId;
+  void onExitPreaching;
   const [phase, setPhase] = React.useState<PreachingPhase>('introduction');
   const [timeRemaining, setTimeRemaining] = React.useState(initialDuration || 1200);
   const [isRunning, setIsRunning] = React.useState(true);
@@ -202,14 +215,19 @@ const mockGetSermonById = jest.fn();
 
 let currentSearchParams = new URLSearchParams();
 
+type RouterType = ReturnType<typeof nextNavigation.useRouter>;
 const mockRouter = {
   replace: jest.fn(),
   push: jest.fn(),
-};
+  back: jest.fn(),
+  forward: jest.fn(),
+  refresh: jest.fn(),
+  prefetch: jest.fn(),
+} as RouterType;
 
 jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
   const PlanPageMock = () => {
-    const params = nextNavigation.useParams?.() || { id: 'sermon-1' };
+    const params = (nextNavigation.useParams?.() || { id: 'sermon-1' }) as { id?: string };
     const router = mockRouter;
     const t = translate;
 
@@ -217,8 +235,8 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
     const defaultDuration = 1200;
 
     const [loading, setLoading] = React.useState(true);
-    const [sermon, setSermon] = React.useState(null);
-    const [error, setError] = React.useState(null);
+    const [sermon, setSermon] = React.useState<Sermon | null>(null);
+    const [error, setError] = React.useState<string | null>(null);
     const [preachingDuration, setPreachingDuration] = React.useState<number | null>(
       initialPlanView === 'preaching' ? defaultDuration : null
     );
@@ -226,7 +244,7 @@ jest.mock('../../app/(pages)/(private)/sermons/[id]/plan/page', () => {
     React.useEffect(() => {
       let active = true;
       setLoading(true);
-      mockGetSermonById(params?.id || 'sermon-1')
+      (mockGetSermonById as unknown as (id: string) => Promise<Sermon | null>)(params?.id || 'sermon-1')
         .then((data: any) => {
           if (!active) return;
           if (data) {
@@ -325,10 +343,10 @@ let PlanPage: typeof import('../../app/(pages)/(private)/sermons/[id]/plan/page'
 // Mock visual effects
 jest.mock('../../app/utils/visualEffects', () => ({
   triggerScreenBlink: mockTriggerScreenBlink,
-  triggerTextHighlight: jest.fn().mockResolvedValue(undefined),
+  triggerTextHighlight: jest.fn().mockImplementation(() => Promise.resolve()),
   triggerPhaseTransition: mockTriggerPhaseTransition,
-  triggerEmergencyAlert: jest.fn().mockResolvedValue(undefined),
-  triggerSuccessEffect: jest.fn().mockResolvedValue(undefined),
+  triggerEmergencyAlert: jest.fn().mockImplementation(() => Promise.resolve()),
+  triggerSuccessEffect: jest.fn().mockImplementation(() => Promise.resolve()),
   cancelVisualEffects: jest.fn(),
   areVisualEffectsSupported: jest.fn().mockReturnValue(true),
 }));
@@ -352,9 +370,9 @@ beforeAll(async () => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
-    value: jest.fn().mockImplementation((query: string) => ({
+    value: jest.fn().mockImplementation((query: unknown) => ({
       matches: true,
-      media: query,
+      media: String(query),
       onchange: null,
       addEventListener: jest.fn(),
       removeEventListener: jest.fn(),
@@ -366,7 +384,7 @@ beforeAll(async () => {
 
   if (!window.requestAnimationFrame) {
     window.requestAnimationFrame = ((callback: FrameRequestCallback): number =>
-      setTimeout(() => callback(Date.now()), 16)) as unknown as typeof window.requestAnimationFrame;
+      (setTimeout(() => callback(Date.now()), 16) as unknown as number)) as unknown as typeof window.requestAnimationFrame;
   }
 
   if (!window.cancelAnimationFrame) {
@@ -399,17 +417,19 @@ afterAll(() => {
 });
 
 describe('Preaching Timer - End-to-End Workflow', () => {
-  const mockSermon = {
+  const mockSermon: Sermon = {
     id: 'sermon-1',
     title: 'Test Sermon',
     verse: 'John 3:16',
+    date: '2024-01-01',
+    userId: 'user-1',
     outline: {
       introduction: [{ id: 'intro-1', text: 'Introduction Point' }],
       main: [{ id: 'main-1', text: 'Main Point' }],
       conclusion: [{ id: 'conc-1', text: 'Conclusion Point' }],
     },
     thoughts: [
-      { id: 'thought-1', text: 'Test thought', outlinePointId: 'intro-1' }
+      { id: 'thought-1', text: 'Test thought', outlinePointId: 'intro-1', date: '2024-01-01', tags: [] }
     ],
     plan: {
       introduction: { outline: '# Introduction\n\nWelcome and context' },
@@ -420,8 +440,8 @@ describe('Preaching Timer - End-to-End Workflow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetSermonById.mockReset();
-    mockGetSermonById.mockResolvedValue(mockSermon);
+    (mockGetSermonById as jest.Mock).mockReset();
+    (mockGetSermonById as jest.Mock).mockImplementation(() => Promise.resolve(mockSermon));
 
     currentSearchParams = new URLSearchParams();
     const searchParamsProxy = {
@@ -432,7 +452,7 @@ describe('Preaching Timer - End-to-End Workflow', () => {
       values: () => currentSearchParams.values(),
       has: (key: string) => currentSearchParams.has(key),
       forEach: (callback: (value: string, key: string) => void) => currentSearchParams.forEach(callback),
-    } as unknown as URLSearchParams;
+    } as unknown as ReturnType<typeof nextNavigation.useSearchParams>;
 
     useSearchParamsSpy.mockImplementation(() => searchParamsProxy);
 
@@ -442,11 +462,11 @@ describe('Preaching Timer - End-to-End Workflow', () => {
       currentSearchParams = new URLSearchParams(queryString);
     };
 
-    mockRouter.replace.mockImplementation((url: any) => {
+    (mockRouter.replace as jest.Mock).mockImplementation((url: any) => {
       updateSearchParamsFromUrl(url);
     });
 
-    mockRouter.push.mockImplementation((url: any) => {
+    (mockRouter.push as jest.Mock).mockImplementation((url: any) => {
       updateSearchParamsFromUrl(url);
     });
 
@@ -612,7 +632,7 @@ describe('Preaching Timer - End-to-End Workflow', () => {
   it('handles edge cases gracefully', async () => {
     // Test with sermon that has no plan
     const sermonWithoutPlan = { ...mockSermon, plan: undefined };
-    mockGetSermonById.mockResolvedValueOnce(sermonWithoutPlan);
+    (mockGetSermonById as jest.Mock).mockImplementationOnce(() => Promise.resolve(sermonWithoutPlan));
 
     currentSearchParams = new URLSearchParams('planView=preaching');
 

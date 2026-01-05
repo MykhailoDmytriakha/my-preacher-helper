@@ -49,7 +49,12 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
    - Ensure lint is green and **fix lint errors** introduced or surfaced in the process.
    - Do not leave lint in a failing state.
 
-9. **Report**
+9. **Run compile**
+   - Execute the standard compile command for the repo. like `npm run compile`
+   - Ensure compile is green and **fix compile errors** introduced or surfaced in the process.
+   - Do not leave compile in a failing state.
+
+10. **Report**
    - Summarize added tests, coverage changes, and full test results.
    - Note any files intentionally excluded or skipped and why.
 
@@ -63,6 +68,7 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
 - [ ] Full test suite executed.
 - [ ] All tests are green.
 - [ ] Lint executed and green.
+- [ ] Compile executed and green.
 
 ## Output expectations
 
@@ -72,3 +78,4 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
 - List which files were targeted and why.
 - Confirm the final threshold is met for changed files, or report remaining gaps.
 - Confirm all tests and lint are green.
+- Confirm compile is green.

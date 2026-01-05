@@ -6,7 +6,7 @@ import PrepModeToggle from '@/components/settings/PrepModeToggle';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mocks
-const mockUseAuth = jest.fn(() => ({ user: { uid: 'test-user-id' } }));
+const mockUseAuth = jest.fn<{ user: { uid: string } | null }, []>(() => ({ user: { uid: 'test-user-id' } }));
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockUseAuth()
 }));

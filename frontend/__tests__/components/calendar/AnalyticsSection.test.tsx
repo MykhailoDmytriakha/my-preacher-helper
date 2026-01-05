@@ -195,13 +195,13 @@ describe('AnalyticsSection', () => {
                     ...mockSermons[0],
                     id: 'russian1',
                     verse: 'Быт 1:1',
-                    preachDates: [{ ...mockSermons[0].preachDates[0], id: 'pd-russian1' }]
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-russian1' }]
                 },
                 {
                     ...mockSermons[1],
                     id: 'russian2',
                     verse: 'Исх 2:1',
-                    preachDates: [{ ...mockSermons[1].preachDates[0], id: 'pd-russian2' }]
+                    preachDates: [{ ...mockSermons[1].preachDates![0], id: 'pd-russian2' }]
                 }
             ];
 
@@ -222,7 +222,7 @@ describe('AnalyticsSection', () => {
                     ...mockSermons[0],
                     id: 'fuzzy1',
                     verse: 'Прит 1:1', // Common abbreviation for Proverbs
-                    preachDates: [{ ...mockSermons[0].preachDates[0], id: 'pd-fuzzy1' }]
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-fuzzy1' }]
                 }
             ];
 
@@ -241,7 +241,7 @@ describe('AnalyticsSection', () => {
                 ...mockSermons[0],
                 id: 'multi-book',
                 verse: '- Мат 1:1\n- Мар 1:1',
-                preachDates: [{ ...mockSermons[0].preachDates[0], id: 'pd-multi' }]
+                preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-multi' }]
             };
 
             const sermonsByDateMulti = {
@@ -278,7 +278,7 @@ describe('AnalyticsSection', () => {
                     ...mockSermons[0],
                     id: 'localized1',
                     verse: 'Быт 1:1', // Russian abbreviation
-                    preachDates: [{ ...mockSermons[0].preachDates[0], id: 'pd-localized1' }]
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-localized1' }]
                 }
             ];
 
@@ -316,7 +316,7 @@ describe('AnalyticsSection', () => {
                         id: 'sermon-2024-b',
                         preachDates: [
                             {
-                                ...mockSermons[1].preachDates[0],
+                                ...mockSermons[1].preachDates![0],
                                 id: 'pd-2024-b',
                                 date: '2024-02-05'
                             }
@@ -329,7 +329,7 @@ describe('AnalyticsSection', () => {
                         id: 'sermon-2025',
                         preachDates: [
                             {
-                                ...mockSermons[2].preachDates[0],
+                                ...mockSermons[2].preachDates![0],
                                 id: 'pd-2025',
                                 date: '2025-03-12'
                             }

@@ -30,7 +30,7 @@ const mockUpdateSeries = updateSeries as jest.MockedFunction<typeof updateSeries
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, cacheTime: 0, staleTime: 0 } },
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
   });
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -60,7 +60,7 @@ describe('useSeriesDetail', () => {
       date: '2024-01-01',
       userId: 'user-1',
       thoughts: [],
-      outline: {},
+      outline: { introduction: [], main: [], conclusion: [] },
       isPreached: false,
       seriesPosition: 1,
     },
@@ -71,7 +71,7 @@ describe('useSeriesDetail', () => {
       date: '2024-01-08',
       userId: 'user-1',
       thoughts: [],
-      outline: {},
+      outline: { introduction: [], main: [], conclusion: [] },
       isPreached: false,
       seriesPosition: 2,
     },
@@ -233,7 +233,7 @@ describe('useSeriesDetail', () => {
           date: '2024-01-15',
           userId: 'user-1',
           thoughts: [],
-          outline: {},
+          outline: { introduction: [], main: [], conclusion: [] },
           isPreached: false,
           seriesId: 'series-1',
           seriesPosition: 3,
@@ -245,7 +245,7 @@ describe('useSeriesDetail', () => {
           date: '2024-01-22',
           userId: 'user-1',
           thoughts: [],
-          outline: {},
+          outline: { introduction: [], main: [], conclusion: [] },
           isPreached: false,
           seriesId: 'series-1',
           seriesPosition: 4,

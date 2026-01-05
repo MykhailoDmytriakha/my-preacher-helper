@@ -56,7 +56,7 @@ describe('SermonsRepository', () => {
     };
 
     // Mock the collection().doc() chain
-    const mockedAdminDb = adminDb as { collection: jest.Mock };
+    const mockedAdminDb = adminDb as unknown as { collection: jest.Mock };
     mockedAdminDb.collection.mockReturnValue({
       doc: jest.fn().mockReturnValue(mockDocRef)
     });

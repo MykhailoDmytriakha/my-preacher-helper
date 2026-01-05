@@ -633,7 +633,9 @@ describe('SermonPointSelector', () => {
           }
         ],
         {
-          beforeEachScenario: () => jest.clearAllMocks(),
+          beforeEachScenario: () => {
+            jest.clearAllMocks();
+          },
           afterEachScenario: cleanup
         }
       );

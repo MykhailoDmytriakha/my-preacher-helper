@@ -57,8 +57,8 @@ describe('LegacyDataWarning', () => {
         title: 'Test Sermon',
         verse: 'John 3:16',
         date: '2024-01-01',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
+        thoughts: [],
+        userId: 'user-1',
         isPreached: true,
         preachDates: [] // Empty to trigger legacy data warning
     };

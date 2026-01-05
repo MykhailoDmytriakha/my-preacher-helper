@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import CalendarPage from '../../../app/(pages)/(private)/calendar/page';
-import { Sermon } from '@/models/models';
+import { PreachDate, Sermon } from '@/models/models';
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
 import { useSeries } from '@/hooks/useSeries';
 import '@testing-library/jest-dom';
@@ -122,8 +122,9 @@ describe('CalendarPage', () => {
     id: 'sermon-1',
     title: 'Test Sermon',
     verse: 'John 3:16',
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
+    date: '2024-01-01',
+    thoughts: [],
+    userId: 'user-1',
     isPreached: true,
     preachDates: [
       {
@@ -142,8 +143,9 @@ describe('CalendarPage', () => {
     id: 'sermon-2',
     title: 'Pending Sermon',
     verse: 'Romans 8:28',
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-02T00:00:00Z',
+    date: '2024-01-02',
+    thoughts: [],
+    userId: 'user-1',
     isPreached: false,
     preachDates: []
   };
@@ -155,7 +157,11 @@ describe('CalendarPage', () => {
   it('renders calendar header and components', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [],
       isLoading: false,
       error: null,
@@ -185,7 +191,11 @@ describe('CalendarPage', () => {
   it('displays Quick Summary with total preachings count', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [],
       isLoading: false,
       error: null,
@@ -215,7 +225,11 @@ describe('CalendarPage', () => {
   it('shows pending sermons count when there are pending sermons', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon, mockSermonWithoutDates],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [mockSermonWithoutDates],
       isLoading: false,
       error: null,
@@ -247,7 +261,11 @@ describe('CalendarPage', () => {
   it('hides pending sermons section when count is 0', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [], // Empty array
       isLoading: false,
       error: null,
@@ -279,12 +297,12 @@ describe('CalendarPage', () => {
     const sermonsInDifferentMonths = [
       {
         ...mockSermon,
-        preachDates: [{ ...mockSermon.preachDates[0], date: '2024-01-15' }] // January
+        preachDates: [{ ...mockSermon.preachDates![0], date: '2024-01-15' }] // January
       },
       {
         ...mockSermon,
         id: 'sermon-feb',
-        preachDates: [{ ...mockSermon.preachDates[0], date: '2024-02-15' }] // February
+        preachDates: [{ ...mockSermon.preachDates![0], date: '2024-02-15' }] // February
       }
     ];
 
@@ -304,8 +322,12 @@ describe('CalendarPage', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: sermonsInDifferentMonths,
       sermonsByDate: {
-        '2024-01-15': [sermonsInDifferentMonths[0]],
-        '2024-02-15': [sermonsInDifferentMonths[1]]
+        '2024-01-15': [
+          { ...sermonsInDifferentMonths[0], currentPreachDate: sermonsInDifferentMonths[0].preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ],
+        '2024-02-15': [
+          { ...sermonsInDifferentMonths[1], currentPreachDate: sermonsInDifferentMonths[1].preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
       },
       pendingSermons: [],
       isLoading: false,
@@ -346,7 +368,11 @@ describe('CalendarPage', () => {
 
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [],
       isLoading: false,
       error: null,
@@ -443,7 +469,11 @@ describe('CalendarPage', () => {
 
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [],
       isLoading: false,
       error: null,
@@ -459,7 +489,11 @@ describe('CalendarPage', () => {
   it('shows legacy data warning when there are pending sermons', () => {
     mockUseCalendarSermons.mockReturnValue({
       sermons: [mockSermon, mockSermonWithoutDates],
-      sermonsByDate: { '2024-01-15': [mockSermon] },
+      sermonsByDate: {
+        '2024-01-15': [
+          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
       pendingSermons: [mockSermonWithoutDates],
       isLoading: false,
       error: null,

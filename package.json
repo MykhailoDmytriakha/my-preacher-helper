@@ -15,6 +15,7 @@
     "test:translations": "cd frontend && npm run test:translations",
     "test:summary": "cd frontend && npm run test:summary",
     "test:perf": "cd frontend && npm run test:perf",
-    "lint": "cd frontend && npm run lint"
+    "lint": "cd frontend && npm run lint",
+    "compile": "cd frontend && npx tsc --noEmit"
   }
 }

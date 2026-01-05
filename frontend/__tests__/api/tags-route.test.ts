@@ -26,14 +26,20 @@ jest.mock('@/api/clients/firestore.client', () => ({
   updateTagInDb: jest.fn(),
 }));
 
+const mockClients = clients as jest.Mocked<typeof clients>;
+
 describe('Tags API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('GET returns required and custom tags', async () => {
-    clients.getRequiredTags.mockResolvedValue([{ id: 'intro', name: 'Intro', color: '#111', required: true }]);
-    clients.getCustomTags.mockResolvedValue([{ id: 'c1', name: 'Custom', color: '#222', required: false }]);
+    mockClients.getRequiredTags.mockResolvedValue([
+      { id: 'intro', name: 'Intro', color: '#111', required: true, userId: 'u1' },
+    ]);
+    mockClients.getCustomTags.mockResolvedValue([
+      { id: 'c1', name: 'Custom', color: '#222', required: false, userId: 'u1' },
+    ]);
 
     const req = { url: 'https://example.com/api/tags?userId=u1' } as unknown as Request;
     const res = await route.GET(req);
@@ -44,7 +50,7 @@ describe('Tags API Route', () => {
   });
 
   it('POST rejects reserved names with 400', async () => {
-    clients.saveTag.mockRejectedValueOnce(new Error('RESERVED_NAME'));
+    mockClients.saveTag.mockRejectedValueOnce(new Error('RESERVED_NAME'));
     const body = { name: 'Introduction', userId: 'u1', color: '#fff', required: false };
     // Mock Next.js Request with minimal shape used in handler
     const req = { json: async () => body } as any;
@@ -64,7 +70,7 @@ describe('Tags API Route', () => {
   });
 
   it('DELETE performs cascade and returns affectedThoughts', async () => {
-    clients.deleteTag.mockResolvedValue({ affectedThoughts: 3 });
+    mockClients.deleteTag.mockResolvedValue({ affectedThoughts: 3 });
     const req = { url: 'https://example.com/api/tags?userId=u1&tagName=Custom' } as any;
     const res = await route.DELETE(req);
     expect(res.status).toBe(200);
@@ -72,4 +78,3 @@ describe('Tags API Route', () => {
     expect(data.affectedThoughts).toBe(3);
   });
 });
-

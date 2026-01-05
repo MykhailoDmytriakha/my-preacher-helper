@@ -50,8 +50,9 @@ describe('DateEventList', () => {
         id: 'sermon-1',
         title: 'Test Sermon',
         verse: 'John 3:16',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
         isPreached: true,
         preachDates: [
             {
@@ -70,8 +71,9 @@ describe('DateEventList', () => {
         id: 'sermon-2',
         title: 'Another Sermon',
         verse: 'Romans 8:28',
-        createdAt: '2024-01-02T00:00:00Z',
-        updatedAt: '2024-01-02T00:00:00Z',
+        date: '2024-01-02',
+        thoughts: [],
+        userId: 'user-1',
         isPreached: true,
         preachDates: [
             {
@@ -287,8 +289,9 @@ describe('DateEventList', () => {
             id: 'sermon-3',
             title: 'No Dates Sermon',
             verse: 'Genesis 1:1',
-            createdAt: '2024-01-01T00:00:00Z',
-            updatedAt: '2024-01-01T00:00:00Z',
+            date: '2024-01-01',
+            thoughts: [],
+            userId: 'user-1',
             isPreached: false,
             preachDates: []
         };
@@ -309,8 +312,9 @@ describe('DateEventList', () => {
             id: 'sermon-3',
             title: 'Same Date Sermon',
             verse: 'Psalm 23:1',
-            createdAt: '2024-01-03T00:00:00Z',
-            updatedAt: '2024-01-03T00:00:00Z',
+            date: '2024-01-03',
+            thoughts: [],
+            userId: 'user-1',
             isPreached: true,
             preachDates: [
                 {

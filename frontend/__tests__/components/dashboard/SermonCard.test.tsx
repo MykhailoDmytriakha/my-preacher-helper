@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 import SermonCard from '@/components/dashboard/SermonCard';
-import { Sermon } from '@/models/models';
+import { Sermon, Series } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock services used by OptionMenu
@@ -138,9 +138,9 @@ describe('SermonCard Component', () => {
     const sermonWithOutline: Sermon = {
       ...baseSermon,
       outline: {
-        introduction: ['Intro point'],
-        main: ['Main point'],
-        conclusion: ['Conclusion point'],
+        introduction: [{ id: 'intro-1', text: 'Intro point' }],
+        main: [{ id: 'main-1', text: 'Main point' }],
+        conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }],
       },
     };
 
@@ -214,12 +214,18 @@ describe('SermonCard Component', () => {
       seriesId: 'test-series-id',
     };
 
-    const series = [
+    const series: Series[] = [
       {
         id: 'test-series-id',
         title: 'Test Series',
         color: '#FF0000',
         userId: 'test-user-id',
+        theme: 'Test Theme',
+        bookOrTopic: 'Romans',
+        sermonIds: ['test-sermon-id'],
+        status: 'active',
+        createdAt: '2024-01-01',
+        updatedAt: '2024-01-02',
       },
     ];
 

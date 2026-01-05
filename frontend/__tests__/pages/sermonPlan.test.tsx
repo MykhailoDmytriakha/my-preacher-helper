@@ -150,10 +150,11 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       title: 'Test Sermon', 
       verse: 'Test Verse',
       date: new Date().toISOString(),
+      userId: 'user-1',
       thoughts: [
-        { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'] },
-        { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'] },
-        { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
+        { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'], date: '2024-01-01' },
+        { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'], date: '2024-01-01' },
+        { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'], date: '2024-01-01' },
       ],
       plan: {
         introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
@@ -170,9 +171,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
         main: ['t2'],
         conclusion: ['t3'],
       },
-      goal: 'Mock Goal', 
-      audience: 'Mock Audience',
-      keyFragments: ['frag1'],
     });
   });
 
@@ -189,17 +187,15 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       title: 'Test Sermon', 
       verse: 'Test Verse',
       date: new Date().toISOString(),
+      userId: 'user-1',
       thoughts: [
-        { id: 't1', text: 'Thought 1', outlinePointId: null, tags: ['introduction'] },
-        { id: 't2', text: 'Thought 2', outlinePointId: null, tags: ['main'] },
-        { id: 't3', text: 'Thought 3', outlinePointId: null, tags: ['conclusion'] },
+        { id: 't1', text: 'Thought 1', outlinePointId: null, tags: ['introduction'], date: '2024-01-01' },
+        { id: 't2', text: 'Thought 2', outlinePointId: null, tags: ['main'], date: '2024-01-01' },
+        { id: 't3', text: 'Thought 3', outlinePointId: null, tags: ['conclusion'], date: '2024-01-01' },
       ],
-      plan: null,
-      outline: null,
-      structure: null,
-      goal: 'Mock Goal', 
-      audience: 'Mock Audience',
-      keyFragments: [],
+      plan: undefined,
+      outline: undefined,
+      structure: undefined,
     };
 
     // Set the mock to return unassigned thoughts

@@ -21,6 +21,8 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/hooks/useSermonStructureData');
 const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
+const mockUpdateSermonOutline = updateSermonOutline as jest.MockedFunction<typeof updateSermonOutline>;
+const mockToast = toast as jest.Mocked<typeof toast>;
 
 jest.mock('@/services/structure.service', () => ({
   updateStructure: jest.fn().mockResolvedValue({}),
@@ -232,10 +234,10 @@ describe('ThoughtsBySection Page', () => {
       });
       mockSetSermon = jest.fn();
 
-      updateSermonOutline.mockClear();
-      updateSermonOutline.mockResolvedValue({});
-      toast.success.mockClear();
-      toast.error.mockClear();
+      mockUpdateSermonOutline.mockClear();
+      mockUpdateSermonOutline.mockResolvedValue({ introduction: [], main: [], conclusion: [] });
+      mockToast.success.mockClear();
+      mockToast.error.mockClear();
     });
 
     it('covers all toggle transitions and failures in a single table-driven test', async () => {
@@ -277,16 +279,16 @@ describe('ThoughtsBySection Page', () => {
           name: 'handles persistence errors gracefully',
           outlinePointId: 'op1',
           isReviewed: true,
-          configureMock: () => updateSermonOutline.mockRejectedValueOnce(new Error('Network error')),
+          configureMock: () => mockUpdateSermonOutline.mockRejectedValueOnce(new Error('Network error')),
           expectedToast: { error: 'Error saving' },
         },
       ];
 
       for (const scenario of scenarios) {
         mockSetSermon.mockClear();
-        toast.success.mockClear();
-        toast.error.mockClear();
-        updateSermonOutline.mockClear();
+        mockToast.success.mockClear();
+        mockToast.error.mockClear();
+        mockUpdateSermonOutline.mockClear();
 
         scenario.configureMock?.();
 
@@ -297,19 +299,19 @@ describe('ThoughtsBySection Page', () => {
             ...mockSermon,
             outline: scenario.expectedOutline,
           });
-          expect(updateSermonOutline).toHaveBeenCalledWith('test-sermon', scenario.expectedOutline);
+          expect(mockUpdateSermonOutline).toHaveBeenCalledWith('test-sermon', scenario.expectedOutline);
         }
 
         if (scenario.expectedToast?.success) {
-          expect(toast.success).toHaveBeenCalledWith(scenario.expectedToast.success);
+          expect(mockToast.success).toHaveBeenCalledWith(scenario.expectedToast.success);
         } else {
-          expect(toast.success).not.toHaveBeenCalled();
+          expect(mockToast.success).not.toHaveBeenCalled();
         }
 
         if (scenario.expectedToast?.error) {
-          expect(toast.error).toHaveBeenCalledWith(scenario.expectedToast.error);
+          expect(mockToast.error).toHaveBeenCalledWith(scenario.expectedToast.error);
         } else {
-          expect(toast.error).not.toHaveBeenCalled();
+          expect(mockToast.error).not.toHaveBeenCalled();
         }
       }
     });

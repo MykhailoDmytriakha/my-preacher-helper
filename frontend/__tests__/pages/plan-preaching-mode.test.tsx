@@ -29,6 +29,12 @@ describe('PreachingTimer - Plan Integration', () => {
       isEmergency: false,
       animationClass: '',
     },
+    progress: {
+      totalProgress: 0,
+      phaseProgress: 0,
+      timeElapsed: 0,
+      timeRemaining: 1200,
+    },
     actions: {
       start: jest.fn(),
       pause: jest.fn(),
@@ -44,6 +50,11 @@ describe('PreachingTimer - Plan Integration', () => {
       mainRatio: 0.8,
       conclusionRatio: 0.0,
       updateSettings: jest.fn(),
+    },
+    events: {
+      onPhaseChange: undefined,
+      onFinish: undefined,
+      onEmergency: undefined,
     },
   };
 

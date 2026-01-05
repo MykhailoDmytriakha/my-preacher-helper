@@ -28,8 +28,9 @@ describe('PreachCalendar', () => {
         id: 'sermon-1',
         title: 'Test Sermon',
         verse: 'John 3:16',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
         isPreached: true,
         preachDates: [
           {

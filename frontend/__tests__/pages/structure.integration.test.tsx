@@ -9,7 +9,9 @@ import { updateStructure } from '@/services/structure.service';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
-const searchParamsGetMock = jest.fn((param: string) => (param === 'sermonId' ? 'sermon-123' : null));
+const searchParamsGetMock = jest.fn<string | null, [string]>((param) =>
+  param === 'sermonId' ? 'sermon-123' : null
+);
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),

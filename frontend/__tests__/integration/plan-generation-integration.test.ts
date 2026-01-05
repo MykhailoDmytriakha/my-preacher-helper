@@ -94,7 +94,7 @@ describe('Plan Generation Integration', () => {
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockAIResponseWithUndefined);
 
       // Import and call the route handler      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Verify that undefined/null values are converted to empty strings
@@ -129,7 +129,7 @@ describe('Plan Generation Integration', () => {
           plan: { conclusion: { outline: 'Valid conclusion' } },
           success: true
         });      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       await response.json();
 
       // Verify that the final plan sent to database has no undefined values
@@ -155,7 +155,7 @@ describe('Plan Generation Integration', () => {
       };
 
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockAIResponseWithNonStrings);      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       await response.json();
 
       // Verify that non-string values are converted to empty strings
@@ -186,7 +186,7 @@ describe('Plan Generation Integration', () => {
       (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValue(
         new Error('Invalid plan structure - outline values must be strings')
       );      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should still return the plan even if repository validation fails
@@ -198,7 +198,7 @@ describe('Plan Generation Integration', () => {
     it('should handle complete failure scenario', async () => {
       // Mock AI failure
       (generatePlanForSection as jest.Mock).mockRejectedValue(new Error('AI API failed'));      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should return error response
@@ -219,7 +219,7 @@ describe('Plan Generation Integration', () => {
           plan: { conclusion: { outline: 'Conclusion' } },
           success: true
         });      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should return 206 Partial Content
@@ -243,7 +243,7 @@ describe('Plan Generation Integration', () => {
       };
 
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockAIResponseWithUndefined);      
-      await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
 
       // Verify that the repository receives valid data
       const updateCall = (sermonsRepository.updateSermonContent as jest.Mock).mock.calls[0];
@@ -289,7 +289,7 @@ describe('Plan Generation Integration', () => {
       };
 
       (generatePlanForSection as jest.Mock).mockResolvedValue(mockAIResponseWithInvalidData);      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should still return a response even if repository validation fails
@@ -315,7 +315,7 @@ describe('Plan Generation Integration', () => {
           plan: { conclusion: { outline: 'Conclusion' } },
           success: true
         });      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
 
       // Should still save the plan with available sections
       expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith(
@@ -333,7 +333,7 @@ describe('Plan Generation Integration', () => {
     it('should handle complete AI failure gracefully', async () => {
       // Mock all AI calls to fail
       (generatePlanForSection as jest.Mock).mockRejectedValue(new Error('AI service unavailable'));      
-      const response = await GET(mockRequest, { params: { id: 'test-sermon-123' } });
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
       // Should return error response
