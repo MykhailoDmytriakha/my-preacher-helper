@@ -64,6 +64,13 @@
 **Solution:** Split into internal subcomponents within the same file while preserving DOM order and classNames.
 **Why it worked:** Internal extraction kept structure stable, so tests and styles remained intact.
 **Principle:** For UI refactors with DOM‑sensitive tests, prefer internal subcomponents first and keep structure unchanged.
+
+### 2026-01-05 Compile failures from typed test fixtures
+**Problem:** `npm run compile` failed because tests used incomplete `Sermon/Thought/Series/PreachDate` mocks and mismatched hook returns.
+**Attempts:** Reran `tsc --noEmit` to surface file-by-file errors, then fixed them iteratively.
+**Solution:** Align test fixtures with current model types (add required fields like `userId`, `date`, `createdAt`, proper `outline` shapes), and adjust mocks to match updated hook/service signatures.
+**Why it worked:** Tests are part of the TS program; satisfying the model contracts removes structural type errors at compile time.
+**Principle:** When TypeScript includes tests, treat test fixtures as first‑class types—update mocks alongside model changes to keep compile green.
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении

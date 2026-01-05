@@ -21,7 +21,7 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
    - If unclear, search for Jest/Vitest config files and default coverage options.
 
 3. **Run coverage**
-   - Execute the project’s coverage command.
+   - Execute the project's coverage command.
    - Save the exact overall percentage and per‑file coverage for changed files (lines/branches).
    - Passing tests ≠ coverage: verify that **the changed lines** are executed (use coverage reports to confirm).
 
