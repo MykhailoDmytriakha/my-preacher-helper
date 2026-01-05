@@ -43,6 +43,27 @@
 **Solution:** Replace the stale reference with `languageInfo.detectedLanguage` and add a Cyrillic test case to exercise the language branch.
 **Why it worked:** The refactor preserved behavior, and the new test caught the missing handoff between helper outputs and the main function.
 **Principle:** After extracting helpers, audit all former locals used in downstream objects and add a targeted test that drives the new helper path.
+
+### 2026-01-05 Duplicate label tests need specific queries
+**Problem:** A test using `getByText('Preached')` failed once the label appeared twice (date pill + badge).
+**Attempts:** Initially asserted with a single `getByText`.
+**Solution:** Use `getAllByText` or a more specific query when UI repeats the same label.
+**Why it worked:** The test stopped assuming uniqueness and aligned with the rendered DOM.
+**Principle:** When UI repeats labels, tests should use plural or more specific queries.
+
+### 2026-01-05 Mock override must beat default beforeEach
+**Problem:** A test intended a custom data set, but the default mock from `beforeEach` still applied.
+**Attempts:** Used `mockReturnValueOnce`, which didn't guarantee override across the test flow.
+**Solution:** Use `mockReturnValue` (or reset) inside the test to fully override the shared mock.
+**Why it worked:** It ensured the test used the intended data, not the default fallback.
+**Principle:** If a shared mock is set in `beforeEach`, override with `mockReturnValue` or reset explicitly.
+
+### 2026-01-05 Safe UI modularization preserves DOM
+**Problem:** Refactoring `SermonCard` risked breaking DOM‑sensitive tests.
+**Attempts:** Considered file splits and shared components.
+**Solution:** Split into internal subcomponents within the same file while preserving DOM order and classNames.
+**Why it worked:** Internal extraction kept structure stable, so tests and styles remained intact.
+**Principle:** For UI refactors with DOM‑sensitive tests, prefer internal subcomponents first and keep structure unchanged.
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
