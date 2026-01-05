@@ -20,6 +20,31 @@ const TAB_BASE_CLASSES = "whitespace-nowrap py-4 px-1 border-b-2 font-medium tex
 const TAB_INACTIVE_CLASSES = "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300";
 const BADGE_INACTIVE_CLASSES = "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300";
 
+const getLatestPreachTimestamp = (sermon: Sermon) => {
+  if (!sermon.isPreached || !sermon.preachDates || sermon.preachDates.length === 0) {
+    return null;
+  }
+
+  const timestamps = sermon.preachDates
+    .map((preachDate) => new Date(preachDate.date).getTime())
+    .filter((timestamp) => !Number.isNaN(timestamp));
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
+};
+
+const getSortTimestamp = (sermon: Sermon) => {
+  const preachedTimestamp = getLatestPreachTimestamp(sermon);
+  if (preachedTimestamp !== null) {
+    return preachedTimestamp;
+  }
+
+  return new Date(sermon.date).getTime();
+};
+
 export default function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -87,9 +112,9 @@ export default function DashboardPage() {
     const sorted = filtered.sort((a, b) => {
       switch (sortOption) {
         case "newest":
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
+          return getSortTimestamp(b) - getSortTimestamp(a);
         case "oldest":
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
+          return getSortTimestamp(a) - getSortTimestamp(b);
         case "alphabetical":
           return a.title.localeCompare(b.title);
         default:

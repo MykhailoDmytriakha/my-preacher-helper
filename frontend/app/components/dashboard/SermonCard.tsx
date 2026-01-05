@@ -17,6 +17,9 @@ import HighlightedText from "../HighlightedText";
 
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
+const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
+const DASHBOARD_PREACHED_KEY = "dashboard.preached";
+
 interface SermonCardProps {
   sermon: Sermon;
   series?: Series[];
@@ -36,7 +39,15 @@ export default function SermonCard({
 }: SermonCardProps) {
   const { t } = useTranslation();
 
-  const formattedDate = formatDate(sermon.date);
+  const formattedCreatedDate = formatDate(sermon.date);
+  const latestPreachDate = sermon.isPreached
+    ? sermon.preachDates?.reduce<string | null>((latest, preachDate) => {
+        if (!preachDate.date) return latest;
+        if (!latest) return preachDate.date;
+        return new Date(preachDate.date) > new Date(latest) ? preachDate.date : latest;
+      }, null) ?? null
+    : null;
+  const formattedPreachedDate = latestPreachDate ? formatDate(latestPreachDate) : null;
   const thoughtCount = sermon.thoughts?.length || 0;
   const hasOutline = sermon.outline?.introduction?.length ||
     sermon.outline?.main?.length ||
@@ -64,14 +75,27 @@ export default function SermonCard({
       <div className="flex flex-col h-full">
         {/* Main Content Area */}
         <div className="p-5 flex flex-col flex-grow relative">
-          {/* Header: Date & Menu */}
+          {/* Header: Dates & Menu */}
           <div className="flex items-start justify-between mb-2">
-            <div className={`flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${sermon.isPreached
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-              }`}>
-              <Calendar className="w-3 h-3 mr-1.5" />
-              {formattedDate}
+            <div className="flex flex-col gap-1.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 px-2 py-0.5 text-xs font-medium">
+                <Calendar className="w-3 h-3" />
+                <span className="uppercase tracking-wide text-[10px]">{t('dashboard.created')}</span>
+                <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
+              </div>
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  formattedPreachedDate
+                    ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                    : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span className="uppercase tracking-wide text-[10px]">{t(DASHBOARD_PREACHED_KEY)}</span>
+                <span className={formattedPreachedDate ? TEXT_PRIMARY_CLASSES : ''}>
+                  {formattedPreachedDate ?? '-'}
+                </span>
+              </div>
             </div>
 
             <div className="z-20 -mr-2 -mt-1">
@@ -86,7 +110,7 @@ export default function SermonCard({
           {/* Title */}
           <Link href={`/sermons/${sermon.id}`} className="group/title block mb-2">
             <h3 className={`text-lg font-bold leading-tight transition-colors ${sermon.isPreached
-                ? 'text-gray-800 dark:text-gray-100 group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
+                ? `${TEXT_PRIMARY_CLASSES} group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400`
                 : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
               }`}>
               <HighlightedText text={sermon.title} searchQuery={searchQuery} />
@@ -179,9 +203,9 @@ export default function SermonCard({
 
             {/* Preached Status (Icon only) */}
             {sermon.isPreached && (
-              <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t('dashboard.preached')}>
+              <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t(DASHBOARD_PREACHED_KEY)}>
                 <CheckCircle2 className="w-3 h-3 mr-1.5" />
-                <span>{t('dashboard.preached')}</span>
+                <span>{t(DASHBOARD_PREACHED_KEY)}</span>
               </div>
             )}
 

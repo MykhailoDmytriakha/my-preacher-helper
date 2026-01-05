@@ -30,6 +30,7 @@ jest.mock('react-i18next', () => ({
         'dashboard.thought': 'thought',
         'dashboard.thoughts': 'thoughts',
         'dashboard.hasOutline': 'Has outline',
+        'dashboard.created': 'Created',
         'dashboard.preached': 'Preached',
         'dashboard.plan': 'Plan',
         'dashboard.toStructure': 'To structure',
@@ -91,6 +92,9 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
     expect(screen.getByText('John 3:16')).toBeInTheDocument();
     expect(screen.getByText('18.02.2025, 11:24')).toBeInTheDocument();
+    expect(screen.getByText('Created')).toBeInTheDocument();
+    expect(screen.getByText('Preached')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
   });
 
   it('displays thought count correctly for singular', () => {
@@ -165,7 +169,7 @@ describe('SermonCard Component', () => {
       />
     );
 
-    expect(screen.getByText('Preached')).toBeInTheDocument();
+    expect(screen.getAllByText('Preached')).toHaveLength(2);
   });
 
   it('applies consistent styling for all sermons regardless of preached status', () => {

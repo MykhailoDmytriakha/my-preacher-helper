@@ -17,6 +17,7 @@ jest.mock('react-i18next', () => ({
         t: (key: string) => {
             const translations: { [key: string]: string } = {
                 'calendar.noPreachDatesWarning': 'Missing preach dates',
+                'dashboard.created': 'Created',
                 'dashboard.preached': 'Preached',
             };
             return translations[key] || key;

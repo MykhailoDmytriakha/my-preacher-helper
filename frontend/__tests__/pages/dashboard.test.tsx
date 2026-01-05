@@ -195,6 +195,60 @@ describe('Dashboard Page', () => {
     });
   });
 
+  describe('Sorting', () => {
+    it('sorts preached sermons by latest preach date (newest first)', async () => {
+      const preachedSermons = [
+        {
+          id: 'preached-older',
+          title: 'Older Preached Date',
+          date: '2024-02-01',
+          verse: 'John 1:1',
+          thoughts: [],
+          isPreached: true,
+          preachDates: [
+            {
+              id: 'pd-1',
+              date: '2024-01-10',
+              church: { id: 'c1', name: 'Church One' },
+              createdAt: '2024-01-10T10:00:00Z',
+            },
+          ],
+        },
+        {
+          id: 'preached-newer',
+          title: 'Newer Preached Date',
+          date: '2023-12-31',
+          verse: 'John 1:2',
+          thoughts: [],
+          isPreached: true,
+          preachDates: [
+            {
+              id: 'pd-2',
+              date: '2024-03-05',
+              church: { id: 'c2', name: 'Church Two' },
+              createdAt: '2024-03-05T10:00:00Z',
+            },
+          ],
+        },
+      ];
+
+      mockUseDashboardSermons.mockReturnValue({
+        sermons: preachedSermons,
+        loading: false,
+        error: null,
+        refresh: jest.fn(),
+      });
+
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('Preached'));
+
+      const cards = screen.getAllByTestId(/sermon-card-/);
+      expect(cards[0]).toHaveTextContent('Newer Preached Date');
+      expect(cards[1]).toHaveTextContent('Older Preached Date');
+    });
+  });
+
   describe('Search Functionality', () => {
     it('filters sermons', async () => {
       render(<DashboardPage />);
