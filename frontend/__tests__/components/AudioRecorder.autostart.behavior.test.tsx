@@ -21,6 +21,8 @@ type DataHandler = ((e: { data: Blob }) => void) | null;
 type VoidHandler = (() => void) | null;
 
 class MockMediaRecorder {
+  static shouldErrorOnStart = false;
+  static shouldEmitDataOnStart = true;
   public ondataavailable: DataHandler = null;
   public onstop: VoidHandler = null;
   public onerror: VoidHandler = null;
@@ -35,8 +37,14 @@ class MockMediaRecorder {
 
   start = () => {
     this.state = 'recording';
+    if (MockMediaRecorder.shouldErrorOnStart) {
+      if (this.onerror) {
+        this.onerror();
+      }
+      return;
+    }
     // Immediately emit one non-empty chunk so onstop can build a Blob
-    if (this.ondataavailable && !this.emittedChunk) {
+    if (this.ondataavailable && !this.emittedChunk && MockMediaRecorder.shouldEmitDataOnStart) {
       const blob = new Blob([new Uint8Array([1, 2, 3])], { type: this.mimeType });
       this.ondataavailable({ data: blob });
       this.emittedChunk = true;
@@ -63,6 +71,8 @@ const origAudioContext = (global as any).AudioContext;
 
 beforeEach(() => {
   jest.useFakeTimers();
+  MockMediaRecorder.shouldErrorOnStart = false;
+  MockMediaRecorder.shouldEmitDataOnStart = true;
 
   // getUserMedia mock
   (navigator as any).mediaDevices = {
@@ -178,7 +188,10 @@ describe('AudioRecorder pause/resume behavior', () => {
 describe('AudioRecorder responsive variant', () => {
   it('switches to the mini variant automatically on narrow screens', async () => {
     const originalMatchMedia = window.matchMedia;
-    const addEventListener = jest.fn();
+    const changeListeners: Array<(event: MediaQueryListEvent) => void> = [];
+    const addEventListener = jest.fn((_event: string, handler: (event: MediaQueryListEvent) => void) => {
+      changeListeners.push(handler);
+    });
     const removeEventListener = jest.fn();
 
     window.matchMedia = jest.fn().mockImplementation((query: string) => ({
@@ -200,7 +213,150 @@ describe('AudioRecorder responsive variant', () => {
       expect(container.firstChild).toHaveClass('space-y-3');
     });
 
+    act(() => {
+      changeListeners[0]({ matches: false } as MediaQueryListEvent);
+    });
+
+    await waitFor(() => {
+      expect(container.firstChild).not.toHaveClass('space-y-3');
+    });
+
+    unmount();
+    expect(removeEventListener).toHaveBeenCalled();
+    window.matchMedia = originalMatchMedia;
+  });
+});
+
+describe('AudioRecorder interactions and errors', () => {
+  it('starts and stops recording via keyboard shortcuts', async () => {
+    const onComplete = jest.fn();
+    render(<AudioRecorder variant="standard" onRecordingComplete={onComplete} />);
+
+    fireEvent.keyDown(document, { code: 'Space', ctrlKey: true });
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'audio.stopRecording' })).toBeInTheDocument());
+
+    fireEvent.keyDown(document, { code: 'Space', ctrlKey: true });
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+  });
+
+  it('cancels recording with Escape key', async () => {
+    const onComplete = jest.fn();
+    render(<AudioRecorder variant="standard" onRecordingComplete={onComplete} />);
+
+    fireEvent.keyDown(document, { code: 'Space', ctrlKey: true });
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    fireEvent.keyDown(document, { code: 'Escape' });
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('calls onError when MediaRecorder errors on start', async () => {
+    MockMediaRecorder.shouldErrorOnStart = true;
+    const onError = jest.fn();
+
+    render(
+      <AudioRecorder variant="standard" onRecordingComplete={jest.fn()} onError={onError} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+  });
+
+  it('closes the transcription error banner', async () => {
+    const onClearError = jest.fn();
+    render(
+      <AudioRecorder
+        onRecordingComplete={jest.fn()}
+        transcriptionError="transcription failed"
+        onClearError={onClearError}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.closeError' }));
+    expect(onClearError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AudioRecorder matchMedia fallbacks', () => {
+  it('supports legacy matchMedia listeners', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const legacyListeners: Array<(event: MediaQueryListEvent) => void> = [];
+    const addListener = jest.fn((handler: (event: MediaQueryListEvent) => void) => {
+      legacyListeners.push(handler);
+    });
+
+    window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: undefined,
+      removeEventListener: undefined,
+      addListener,
+      removeListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+      onchange: null,
+    } as unknown as MediaQueryList));
+
+    const { container, unmount } = render(
+      <AudioRecorder onRecordingComplete={jest.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(container.firstChild).not.toHaveClass('space-y-3');
+    });
+
+    act(() => {
+      legacyListeners[0]({ matches: true } as MediaQueryListEvent);
+    });
+
+    await waitFor(() => {
+      expect(container.firstChild).toHaveClass('space-y-3');
+    });
+
     unmount();
     window.matchMedia = originalMatchMedia;
+  });
+
+  it('falls back to resize events when matchMedia is unavailable', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const originalInnerWidth = window.innerWidth;
+
+    (window as any).matchMedia = undefined;
+    Object.defineProperty(window, 'innerWidth', {
+      value: 500,
+      writable: true,
+      configurable: true,
+    });
+
+    const { container, unmount } = render(
+      <AudioRecorder onRecordingComplete={jest.fn()} />
+    );
+
+    await waitFor(() => {
+      expect(container.firstChild).toHaveClass('space-y-3');
+    });
+
+    act(() => {
+      (window as any).innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    await waitFor(() => {
+      expect(container.firstChild).not.toHaveClass('space-y-3');
+    });
+
+    unmount();
+    window.matchMedia = originalMatchMedia;
+    Object.defineProperty(window, 'innerWidth', {
+      value: originalInnerWidth,
+      writable: true,
+      configurable: true,
+    });
   });
 });

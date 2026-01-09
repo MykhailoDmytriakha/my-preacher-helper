@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-07 AudioRecorder test timing + matchMedia typing
+**Problem:** New AudioRecorder coverage tests failed (keyboard shortcut stop didn’t fire; TypeScript complained about matchMedia mocks with undefined addEventListener).
+**Attempts:** Triggered Ctrl+Space twice and asserted completion; mocked matchMedia with missing methods.
+**Solution:** Wait for the stop button to render before sending the stop shortcut; cast legacy matchMedia mocks via `as unknown as MediaQueryList`.
+**Why it worked:** The UI needs to transition to recording state before stop is handled; TS needs an explicit bridge when mocks intentionally omit interface members.
+**Principle:** For async UI keyboard flows, wait for state-driven DOM before asserting side effects; when mocking partial Web APIs in TS, use `unknown` casts to satisfy structural typing.
+
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении

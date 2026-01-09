@@ -1,9 +1,16 @@
 /**
  * Audio Format Utilities for OpenAI Transcription Compatibility
- * 
+ *
  * This module provides utilities to detect, validate, and convert audio formats
  * to ensure maximum compatibility with OpenAI's transcription API.
  */
+
+// Types for MediaRecorder configuration
+export interface MediaRecorderConfig {
+  onDataAvailable: (event: BlobEvent) => void;
+  onStop: () => Promise<void>;
+  onError: () => void;
+}
 
 // Constants for repeated strings
 const AUDIO_MIME_PREFIX = 'audio/';
@@ -264,4 +271,26 @@ export async function logAudioInfo(blob: Blob, context: string = 'Audio'): Promi
     console.error(`❌ FORMAT MISMATCH: Browser claims "${blob.type}" but file is actually "${actualFormat}"`);
     console.error(`❌ This is a browser bug - MediaRecorder lied about the format it produced`);
   }
+}
+
+/**
+ * Creates and configures a MediaRecorder with proper event handlers
+ *
+ * This function encapsulates the complex MediaRecorder setup logic to reduce
+ * cognitive complexity in components that use audio recording.
+ */
+export function createConfiguredMediaRecorder(
+  stream: MediaStream,
+  mimeType: string,
+  onDataAvailable: (event: BlobEvent) => void,
+  onStop: () => Promise<void>,
+  onError: () => void
+): MediaRecorder {
+  const mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+  mediaRecorder.ondataavailable = onDataAvailable;
+  mediaRecorder.onstop = onStop;
+  mediaRecorder.onerror = onError;
+
+  return mediaRecorder;
 }

@@ -16,6 +16,8 @@
     "test:summary": "cd frontend && npm run test:summary",
     "test:perf": "cd frontend && npm run test:perf",
     "lint": "cd frontend && npm run lint",
-    "compile": "cd frontend && npx tsc --noEmit"
+    "compile": "cd frontend && npx tsc --noEmit",
+    "lint:unused": "cd frontend && npm run lint:unused",
+    "lint:full": "npm run lint && npm run compile && npm run lint:unused"
   }
 }
