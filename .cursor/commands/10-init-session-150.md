@@ -1,9 +1,9 @@
 ---
-name: session-start-memory
-description: Session-start routine for this project. Use when beginning a new session or onboarding to this repo to load MEMORY.md and core project context (README), then summarize context and confirm readiness.
+name: 10-init-session-150
+description: "[10] INIT. Session-start routine for this project. Use when beginning a new session or onboarding to this repo to load MEMORY.md and core project context (README), then summarize context and confirm readiness."
 ---
 
-# Session Start Memory
+# Init-Session 150 Protocol
 
 ## Primary workflow
 

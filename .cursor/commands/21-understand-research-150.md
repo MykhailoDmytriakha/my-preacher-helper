@@ -1,9 +1,9 @@
 ---
-name: research-150
-description: Deep research workflow for this project using 150% scope (100% core + 50% boundary), evidence-based reasoning, and structured investigation notes. Use when the task requires investigation, root-cause analysis, or mapping unknown areas. Always maintain a research log file that captures findings, hypotheses, and next branches; use web.run when external verification is needed.
+name: 21-understand-research-150
+description: "[21] UNDERSTAND. Deep research workflow for this project using 150% scope (100% core + 50% boundary), evidence-based reasoning, and structured investigation notes. Use when the task requires investigation, root-cause analysis, or mapping unknown areas. Always maintain a research log file that captures findings, hypotheses, and next branches; use web.run when external verification is needed."
 ---
 
-# Research 150
+# Understand-Research 150 Protocol
 
 ## Goal
 
@@ -34,7 +34,7 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
    - Actively search for evidence that disproves the hypothesis.
 4. **Structural Logic Proof (gold standard)**
    - Build a causal chain: X because Y because Z, each with evidence.
-   - Use impossibility tests: "If A were true, B would be impossible, but B exists, therefore not A."
+   - Use impossibility tests: “If A were true, B would be impossible, but B exists, therefore not A.”
 
 ### Exhaustive Investigation Checklist
 
@@ -47,8 +47,8 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
 
 ### Red Flags (investigation incomplete)
 
-- "probably / likely / should / usually" without verification
-- "based on the name" or "seems like"
+- “probably / likely / should / usually” without verification
+- “based on the name” or “seems like”
 - only one usage checked
 - no contradiction search performed
 
@@ -62,10 +62,10 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
 
 ### Cognitive Forcing Phrases
 
-- "I see X, but I will verify with 3 independent sources."
-- "This suggests Y, but what would disprove Y?"
-- "Found 1 example, need 2 more to confirm pattern."
-- "Seems obvious, but can I prove causality?"
+- “I see X, but I will verify with 3 independent sources.”
+- “This suggests Y, but what would disprove Y?”
+- “Found 1 example, need 2 more to confirm pattern.”
+- “Seems obvious, but can I prove causality?”
 
 ### Investigation Workflow (mandatory)
 
@@ -99,9 +99,9 @@ Perform deep, evidence-based research by mapping both core scope (100%) and boun
 
 ## Assumption indicators (trigger verification)
 
-- "probably", "likely", "should", "typically", "usually"
-- "based on the name", "seems like", "appears to"
-- "I assume", "I expect", "this suggests"
+- “probably”, “likely”, “should”, “typically”, “usually”
+- “based on the name”, “seems like”, “appears to”
+- “I assume”, “I expect”, “this suggests”
 
 Replacement pattern: detect hedge → identify missing evidence → observe → state fact with reference.
 

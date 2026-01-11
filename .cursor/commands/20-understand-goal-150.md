@@ -1,9 +1,9 @@
 ---
-name: goal-clarity-150
-description: Achieve complete clarity on goals, expectations, and success criteria. Use when starting new tasks, when requirements seem unclear, when scope is ambiguous, or anytime you need full understanding of what success looks like. Triggers on "clarify goal", "understand requirements", "what exactly needed", "define success", or when facing unclear expectations.
+name: 20-understand-goal-150
+description: "[20] UNDERSTAND. Achieve complete clarity on goals, expectations, and success criteria. Use when starting new tasks, when requirements seem unclear, when scope is ambiguous, or anytime you need full understanding of what success looks like. Triggers on \"clarify goal\", \"understand requirements\", \"what exactly needed\", \"define success\", or when facing unclear expectations."
 ---
 
-# Goal-Clarity 150 Protocol
+# Understand-Goal 150 Protocol
 
 **Core Principle:** Achieve complete clarity, not just confirm understanding. Know the WHAT, WHY, and HOW of success before acting.
 
@@ -214,3 +214,4 @@ Use together: **Clarity** on what to do → **Think** deeply about how → **Exe
 ---
 
 **Remember:** Clarity is not a one-time event. Goals can shift, requirements can change, understanding can be incomplete. Use this skill whenever you need to be sure you're solving the right problem the right way.
+

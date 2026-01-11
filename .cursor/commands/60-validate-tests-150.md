@@ -1,9 +1,9 @@
 ---
-name: coverage-70-tests
-description: Ensure new (staged and unstaged) changes are covered by tests at >70% and the full test suite is green. Use when asked to validate coverage for recent changes, add tests for modified code, or verify nothing else broke.
+name: 60-validate-tests-150
+description: "[60] VALIDATE. Ensure new (staged and unstaged) changes are covered by tests at >70% and the full test suite is green. Use when asked to validate coverage for recent changes, add tests for modified code, or verify nothing else broke."
 ---
 
-# Coverage 70 Tests
+# Validate-Tests 150 Protocol
 
 ## Goal
 
@@ -21,7 +21,7 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
    - If unclear, search for Jest/Vitest config files and default coverage options.
 
 3. **Run coverage**
-   - Execute the project's coverage command.
+   - Execute the project’s coverage command.
    - Save the exact overall percentage and per‑file coverage for changed files (lines/branches).
    - Passing tests ≠ coverage: verify that **the changed lines** are executed (use coverage reports to confirm).
 

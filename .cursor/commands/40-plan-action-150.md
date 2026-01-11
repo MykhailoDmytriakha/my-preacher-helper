@@ -1,9 +1,9 @@
 ---
-name: action-plan-150
-description: Create clear action plans with steps, success criteria, and risk awareness. Use before implementing features, making changes, starting projects, or anytime you need a roadmap to success. Triggers on "plan this", "how should we approach", "what's the strategy", "steps to complete", or when facing complex multi-step work.
+name: 40-plan-action-150
+description: "[40] PLAN. Create clear action plans with steps, success criteria, and risk awareness. Use before implementing features, making changes, starting projects, or anytime you need a roadmap to success. Triggers on \"plan this\", \"how should we approach\", \"what's the strategy\", \"steps to complete\", or when facing complex multi-step work."
 ---
 
-# Action-Plan 150 Protocol
+# Plan-Action 150 Protocol
 
 **Core Principle:** Know the path before walking. Have clear steps, know what success looks like, and be ready for what could go wrong.
 
@@ -143,7 +143,7 @@ Ready to execute?
 ```
 Task: "Add user authentication"
 Approach: "Just start coding"
-Result: 3 days in, realized need for database changes,
+Result: 3 days in, realized need for database changes, 
 session handling unclear, no tests, rollback impossible
 ```
 
@@ -233,3 +233,4 @@ goal-clarity → research-deep → impact-map → action-plan → execute
 ---
 
 **Remember:** A plan isn't bureaucracy — it's a map. You can deviate from a map, but you can't deviate from nothing. Plans prevent the chaos of "figuring it out as we go."
+

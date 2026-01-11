@@ -1,9 +1,9 @@
 ---
-name: chain-flow-150
-description: Orchestrate skills into dynamic chains for complex tasks. Analyzes the task, discovers available skills, builds an optimal chain, explains why each skill is needed, and executes step-by-step with user confirmation. Use for any complex task requiring multiple thinking/research/analysis steps. Triggers on "plan this", "how to approach", "what's the strategy", "build a plan", or any multi-step problem requiring skill orchestration.
+name: 00-meta-chain-flow-150
+description: "[00] META. Orchestrate skills into dynamic chains for complex tasks. Analyzes the task, discovers available skills, builds an optimal chain, explains why each skill is needed, and executes step-by-step with user confirmation. Use for any complex task requiring multiple thinking/research/analysis steps. Triggers on \"plan this\", \"how to approach\", \"what's the strategy\", \"build a plan\", or any multi-step problem requiring skill orchestration."
 ---
 
-# Chain-Flow 150 Protocol
+# Meta-Chain-Flow 150 Protocol
 
 **Core Principle:** Orchestrate skills dynamically. Analyze the task, discover available skills, build the right chain, explain the reasoning, execute step-by-step with confirmation.
 
@@ -135,7 +135,7 @@ Justify each skill:
 1. goal-clarity-150
    WHY: Task requirements are ambiguous, need to clarify first
 
-2. research-deep-150
+2. research-deep-150  
    WHY: Need to understand current system + best practices
 
 3. impact-map-150
@@ -186,7 +186,7 @@ When using Chain-Flow 150:
 **Proposed Chain:**
 ```
 1. [skill-name] → WHY: [justification]
-2. [skill-name] → WHY: [justification]
+2. [skill-name] → WHY: [justification]  
 3. [skill-name] → WHY: [justification]
 ...
 ```
@@ -221,37 +221,37 @@ During execution:
 
 ### Pattern: New Feature Development
 ```
-goal-clarity-150 → research-deep-150 → impact-map-150 →
+goal-clarity-150 → research-deep-150 → impact-map-150 → 
 action-plan-150 → max-quality-150
 ```
 
 ### Pattern: Complex Project
 ```
-goal-clarity-150 → research-deep-150 → impact-map-150 →
+goal-clarity-150 → research-deep-150 → impact-map-150 → 
 deep-think-150 → action-plan-150 → max-quality-150
 ```
 
 ### Pattern: Bug Investigation
 ```
-research-deep-150 (logs, git) → impact-map-150 →
+research-deep-150 (logs, git) → impact-map-150 → 
 deep-think-150 → action-plan-150 (fix steps) → max-quality-150
 ```
 
 ### Pattern: Architecture Decision
 ```
-goal-clarity-150 → research-deep-150 (options) →
+goal-clarity-150 → research-deep-150 (options) → 
 deep-think-150 (trade-offs) → impact-map-150 → action-plan-150
 ```
 
 ### Pattern: Code Review
 ```
-research-deep-150 (understand) → impact-map-150 →
+research-deep-150 (understand) → impact-map-150 → 
 deep-think-150 (issues) → max-quality-150 (feedback)
 ```
 
 ### Pattern: Migration/Refactoring
 ```
-goal-clarity-150 → impact-map-150 → research-deep-150 →
+goal-clarity-150 → impact-map-150 → research-deep-150 → 
 action-plan-150 (detailed steps) → max-quality-150
 ```
 
@@ -280,7 +280,7 @@ action-plan-150 (detailed steps) → max-quality-150
 ```
 User: "Add payment processing to the app"
 AI: [Jumps straight to coding]
-Result: Missed security requirements, broke existing checkout,
+Result: Missed security requirements, broke existing checkout, 
 no understanding of payment gateway options
 ```
 
@@ -291,7 +291,7 @@ User: "Add payment processing to the app"
 🔗 Chain-Flow 150 Activated
 
 Task Analysis:
-Complex integration task with security, external APIs,
+Complex integration task with security, external APIs, 
 and business logic implications.
 
 Skills Discovered:
@@ -302,19 +302,19 @@ Proposed Chain:
 
 1. goal-clarity-150
    WHY: Payment requirements vary (subscriptions? one-time? refunds?)
-
+   
 2. research-deep-150
    WHY: Need to evaluate Stripe vs PayPal vs others + security standards
-
+   
 3. impact-map-150
    WHY: Touches checkout, user accounts, database, notifications
-
+   
 4. deep-think-150
    WHY: Architecture decision for payment service integration
 
 5. action-plan-150
    WHY: Create detailed implementation plan with rollback points
-
+   
 6. max-quality-150
    WHY: Payment code must be high quality (money involved)
 
@@ -362,3 +362,4 @@ deep-think         max-quality          [others]
 ---
 
 **Remember:** Complex problems need chains of skills, not single skills. Chain-Flow builds the right chain, explains why, and executes step-by-step with your confirmation. You stay in control while getting the benefit of orchestrated skill application.
+

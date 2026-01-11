@@ -1,9 +1,9 @@
 ---
-name: refactor-150
-description: "Three-stage refactoring workflow: (1) iterative research of refactor/modularization options, (2) plan + risk/edge-case analysis + Scope150 validation, then implement with tests after user confirmation, and (3) apply Scout105 cleanup protocol. Use when asked to refactor, modularize, or restructure code safely."
+name: 52-execute-refactor-150
+description: "[52] EXECUTE. Three-stage refactoring workflow: (1) iterative research of refactor/modularization options, (2) plan + risk/edge-case analysis + Scope150 validation, then implement with tests after user confirmation, and (3) apply Scout105 cleanup protocol. Use when asked to refactor, modularize, or restructure code safely."
 ---
 
-# Refactor 150
+# Execute-Refactor 150 Protocol
 
 ## Overview
 
@@ -19,13 +19,13 @@ Run in three stages:
    - Keep all research notes in this file only (no scattered notes in chat).
 
 2. **Define the core question** (the refactor goal).
-   - Write a single sentence: "We need to refactor X to achieve Y."
-   - Example: "Refactor SermonCard to reduce duplication and isolate date logic."
+   - Write a single sentence: “We need to refactor X to achieve Y.”
+   - Example: “Refactor SermonCard to reduce duplication and isolate date logic.”
 
 3. **Define scope (Scope150)**.
    - **Core (100%)**: list files and behaviors you will directly change.
    - **Boundary (50%)**: list callers, dependent modules, tests, configs, and data flow.
-   - If unsure, add a "to verify" bullet and resolve it during observations.
+   - If unsure, add a “to verify” bullet and resolve it during observations.
 
 4. **Perform observations (search/read) in ordered layers**.
    - **Interface layer**: find entry points (routes, public APIs, UI entry points).
@@ -43,7 +43,7 @@ Run in three stages:
    - Prefer at least 2 options so tradeoffs are explicit.
 
 7. **Decide if more research is needed**.
-   - If user says "research more", expand scope or inspect new files.
+   - If user says “research more”, expand scope or inspect new files.
    - Update the log with new branches and continue Stage 1.
 
 8. **Stop before implementation**.
@@ -127,7 +127,7 @@ Apply only **objective** cleanup after a Key Point (phase complete). Do not add 
 ### Allowed cleanup categories (objective only)
 - **Unused code**: unused imports/vars/fields (provable by grep/IDE).
 - **Typos**: spelling errors in comments/strings (spellcheckable).
-- **Formatting inconsistencies**: breaks the file's own pattern.
+- **Formatting inconsistencies**: breaks the file’s own pattern.
 - **Dead code**: commented debug lines or unreachable code.
 - **Obviously wrong logic**: provably incorrect (duplicate checks, impossible types).
 

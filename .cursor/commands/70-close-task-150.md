@@ -1,9 +1,9 @@
 ---
-name: task-track-150
-description: Manage task lifecycle with correct statuses and no duplicates. Ensure each task has one status, artifacts match claims, and no task appears in multiple places. Use when managing task lists, updating progress, or ensuring task tracking integrity across systems.
+name: 70-close-task-150
+description: "[70] CLOSE. Manage task lifecycle with correct statuses and no duplicates. Ensure each task has one status, artifacts match claims, and no task appears in multiple places. Use when managing task lists, updating progress, or ensuring task tracking integrity across systems."
 ---
 
-# Task-Track 150 Protocol
+# Close-Task 150 Protocol
 
 **Core Principle:** One task, one status, one location. Status matches reality. Artifacts prove completion. No duplicates anywhere.
 
@@ -275,3 +275,4 @@ Status: ✅ Verified
 ---
 
 **Remember:** Task tracking isn't bureaucracy — it's clarity. One status, one location, artifacts that prove completion. When everyone knows the real state, work flows smoothly.
+

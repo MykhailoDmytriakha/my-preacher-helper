@@ -1,9 +1,9 @@
 ---
-name: tidy-up-150
-description: Quick, safe cleanup after completing a milestone. Fix objective issues only (syntax errors, dead code, poor naming). Must be <5% of main task time, <30 seconds per fix, and reversible. Use after key points, not after every small change.
+name: 71-close-tidy-150
+description: "[71] CLOSE. Quick, safe cleanup after completing a milestone. Fix objective issues only (syntax errors, dead code, poor naming). Must be <5% of main task time, <30 seconds per fix, and reversible. Use after key points, not after every small change."
 ---
 
-# Tidy-Up 150 Protocol
+# Close-Tidy 150 Protocol
 
 **Core Principle:** Clean as you go — but safely. After milestones, fix obvious issues quickly. Objective problems only. Time-boxed. Reversible. User-approved.
 
@@ -267,3 +267,4 @@ Changes:
 ---
 
 **Remember:** Tidy-up is housekeeping, not renovation. Quick fixes for obvious issues. If you're thinking about it for more than 30 seconds, it's not a tidy-up item — it's a separate task.
+

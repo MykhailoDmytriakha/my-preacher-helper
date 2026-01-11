@@ -1,9 +1,9 @@
 ---
-name: skill-forge-150
-description: Create new skills when existing ones don't cover the task. Analyze unique requirements, build framework (Frame → Research → Plan → Execute), integrate risks, and declare new skill. Use when facing novel problems that existing skills can't address.
+name: 02-meta-skill-forge-150
+description: "[02] META. Create new skills when existing ones don't cover the task. Analyze unique requirements, build framework (Frame → Research → Plan → Execute), integrate risks, and declare new skill. Use when facing novel problems that existing skills can't address."
 ---
 
-# Skill-Forge 150 Protocol
+# Meta-Skill-Forge 150 Protocol
 
 **Core Principle:** When existing skills don't fit, forge a new one. Analyze the unique task, build a proper framework, integrate specific risks, and create a reusable skill.
 
@@ -384,3 +384,4 @@ Approve creation? Yes
 ---
 
 **Remember:** Skill-forge is for genuine gaps, not for making simple things complex. A well-forged skill becomes a reusable asset. A poorly-forged skill becomes technical debt. Forge wisely.
+

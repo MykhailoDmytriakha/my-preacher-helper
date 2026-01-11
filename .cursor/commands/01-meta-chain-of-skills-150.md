@@ -1,9 +1,9 @@
 ---
-name: chain-of-skills
-description: Сканирует доступные skills, создает план выполнения и идет шаг за шагом с подтверждением каждого этапа. Triggers on complex tasks, multi-step work, or when structured execution is needed.
+name: 01-meta-chain-of-skills-150
+description: "[01] META. Сканирует доступные skills, создает план выполнения и идет шаг за шагом с подтверждением каждого этапа. Triggers on complex tasks, multi-step work, or when structured execution is needed."
 ---
 
-# Chain-of-Skills Protocol
+# Meta-Chain-of-Skills 150 Protocol
 
 **Core Principle:** Найди skills → создай план → выполняй по шагам → подтверждай каждый шаг.
 

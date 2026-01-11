@@ -1,9 +1,9 @@
 ---
-name: session-save-150
-description: Save and restore session context between conversations. Use when ending a session to preserve progress, or starting a new session to restore context. Triggers on "save session", "end session", "preserve context", "handoff", "continue from last time", or when context window is running low.
+name: 72-close-session-150
+description: "[72] CLOSE. Save and restore session context between conversations. Use when ending a session to preserve progress, or starting a new session to restore context. Triggers on \"save session\", \"end session\", \"preserve context\", \"handoff\", \"continue from last time\", or when context window is running low."
 ---
 
-# Session-Save 150 Protocol
+# Close-Session 150 Protocol
 
 **Core Principle:** Never lose progress. Save context before ending, restore context when starting.
 
@@ -216,3 +216,4 @@ Handoff Status: ✅ Ready
 ---
 
 **Remember:** Future you (or next session) will thank present you for good notes. Context loss is expensive — prevention is cheap.
+

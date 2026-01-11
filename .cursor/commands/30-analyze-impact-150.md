@@ -1,9 +1,9 @@
 ---
-name: impact-map-150
-description: Understand how changes impact the system — what's the core, what's affected, what depends on what. Use when planning changes, analyzing systems, debugging issues, or anytime you need to see the full picture of cause and effect. Triggers on "what's affected", "impact analysis", "dependencies", "scope mapping", or when you need to understand ripple effects.
+name: 30-analyze-impact-150
+description: "[30] ANALYZE. Understand how changes impact the system — what's the core, what's affected, what depends on what. Use when planning changes, analyzing systems, debugging issues, or anytime you need to see the full picture of cause and effect. Triggers on \"what's affected\", \"impact analysis\", \"dependencies\", \"scope mapping\", or when you need to understand ripple effects."
 ---
 
-# Impact-Map 150 Protocol
+# Analyze-Impact 150 Protocol
 
 **Core Principle:** Understand the ripple effects. See how changes in one part affect the whole system.
 
@@ -248,3 +248,4 @@ goal-clarity-150 → impact-map-150 → deep-think-150 → max-quality-150
 ---
 
 **Remember:** Every change has ripple effects. The question isn't "will something else be affected?" but "what will be affected and how much?" Impact mapping turns surprises into planned awareness.
+

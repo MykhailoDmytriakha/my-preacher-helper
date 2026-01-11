@@ -1,9 +1,9 @@
 ---
-name: ask-ai-150
-description: Consult external AI models when internal sources are exhausted. Build quality prompts using Prompt150 formula (Context + Query + Method + Style). Use when Loop150 exhausts internal sources, need real-world precedents, confidence <75%, or require reasoning from specialized AI models.
+name: 23-understand-ask-ai-150
+description: "[23] UNDERSTAND. Consult external AI models when internal sources are exhausted. Build quality prompts using Prompt150 formula (Context + Query + Method + Style). Use when Loop150 exhausts internal sources, need real-world precedents, confidence <75%, or require reasoning from specialized AI models."
 ---
 
-# Ask-AI 150 Protocol
+# Understand-Ask-AI 150 Protocol
 
 **Core Principle:** When internal knowledge isn't enough, consult external AI expertise. Build quality prompts that get quality answers. Validate what comes back.
 
@@ -207,6 +207,7 @@ STYLE:
 - Confidence per claim
 - Facts vs assumptions
 ---
+
 **Target:** [AI Model]
 **Approve?**
 ```
@@ -283,8 +284,8 @@ CONTEXT:
 - Complaints filed with AG and HHS/OCR
 
 QUERY:
-"What were actual timelines and outcomes for SSN data
-breach cases similar to this (5-500 people affected) in
+"What were actual timelines and outcomes for SSN data 
+breach cases similar to this (5-500 people affected) in 
 the past 5 years?"
 
 METHOD:
@@ -319,7 +320,7 @@ Validation:
 Confidence Update: 65% → 82%
 Remaining Gaps: Specific WA state precedents
 
-Next Steps: Use timeline estimates for planning,
+Next Steps: Use timeline estimates for planning, 
 continue monitoring for WA-specific cases
 ```
 
@@ -332,3 +333,4 @@ continue monitoring for WA-specific cases
 ---
 
 **Remember:** Ask-AI is like calling a consultant — you don't call before doing your homework, you come with specific questions, and you verify their advice. Quality in, quality out.
+

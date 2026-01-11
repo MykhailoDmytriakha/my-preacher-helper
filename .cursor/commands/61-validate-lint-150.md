@@ -1,9 +1,9 @@
 ---
-name: lint-150
-description: Comprehensive code quality check combining ESLint, TypeScript compilation, and unused code detection. Runs full lint suite with detailed error reporting and fix suggestions. Use before commits, after major changes, or when ensuring code quality standards.
+name: 61-validate-lint-150
+description: "[61] VALIDATE. Comprehensive code quality check combining ESLint, TypeScript compilation, and unused code detection. Runs full lint suite with detailed error reporting and fix suggestions. Use before commits, after major changes, or when ensuring code quality standards."
 ---
 
-# Lint 150 Protocol
+# Validate-Lint 150 Protocol
 
 **Core Principle:** Code quality is non-negotiable. Run comprehensive checks before any delivery. Catch issues early, fix systematically.
 
@@ -43,6 +43,7 @@ ENHANCED VALIDATION (50% Enhancement)
 
 ## Command Execution
 
+from `my-preacher-helper/`
 ```bash
 npm run lint:full
 ```

@@ -1,9 +1,9 @@
 ---
-name: lessons-learn
-description: Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, updating Session State, or enhancing Project Architecture Quick Reference with new insights.
+name: 73-close-lessons-learn-150
+description: "[73] CLOSE. Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, updating Session State, or enhancing Project Architecture Quick Reference with new insights."
 ---
 
-# Lessons Learn
+# Close-Lessons-Learn 150 Protocol
 
 ## Goal
 

@@ -1,9 +1,9 @@
 ---
-name: proof-grade-150
-description: Ensure every critical claim has verifiable evidence with confidence levels. Each fact must have source + confidence percentage. If confidence <85%, enter Loop150 to find more sources. Use for critical decisions, factual claims, legal/compliance work, or any situation where unverified claims are dangerous.
+name: 32-analyze-verify-150
+description: "[32] ANALYZE. Ensure every critical claim has verifiable evidence with confidence levels. Each fact must have source + confidence percentage. If confidence <85%, enter Loop150 to find more sources. Use for critical decisions, factual claims, legal/compliance work, or any situation where unverified claims are dangerous."
 ---
 
-# Proof-Grade 150 Protocol
+# Analyze-Verify 150 Protocol
 
 **Core Principle:** No claim without proof. Every critical fact needs: source + confidence level. If unsure, keep digging until confident or escalate to user.
 
@@ -80,7 +80,7 @@ Calculate confidence:
 
 ### Step 5: DECISION
 ```
-Confidence ≥85%?
+Confidence ≥85%? 
 ├─ YES → Use fact with stated confidence
 └─ NO → Enter Loop150
 ```
@@ -139,7 +139,7 @@ Continue loop until:
 
 **Claim:** [Precise factual statement]
 
-**Primary Source:**
+**Primary Source:** 
 - [File/location/date]
 - "[Direct quote or data]"
 
@@ -147,7 +147,7 @@ Continue loop until:
 - [Source 2]: [Confirmation]
 - [Source 3]: [Confirmation]
 
-**Confidence Level:** [X]%
+**Confidence Level:** [X]% 
 **Reasoning:** [Why this level]
 
 **Validation Method:** [How verified]
@@ -215,3 +215,4 @@ Status: ✅ VERIFIED FOR USE
 ---
 
 **Remember:** Proof-grade isn't about being slow — it's about being trustworthy. A 95% confidence claim is more valuable than an unverified assertion. When stakes are high, proof-grade protects everyone.
+

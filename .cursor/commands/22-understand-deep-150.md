@@ -1,9 +1,9 @@
 ---
-name: research-deep-150
-description: Deep research from all sources — internal (code, git, logs) AND external (web, docs, best practices). Use when choosing libraries, investigating solutions, understanding legal/technical questions, comparing approaches, or anytime you need comprehensive knowledge from both project context and world knowledge. Triggers on "research", "investigate", "find best approach", "what do others do", "compare options", or complex questions requiring multiple sources.
+name: 22-understand-deep-150
+description: "[22] UNDERSTAND. Deep research from all sources — internal (code, git, logs) AND external (web, docs, best practices). Use when choosing libraries, investigating solutions, understanding legal/technical questions, comparing approaches, or anytime you need comprehensive knowledge from both project context and world knowledge. Triggers on \"research\", \"investigate\", \"find best approach\", \"what do others do\", \"compare options\", or complex questions requiring multiple sources."
 ---
 
-# Research-Deep 150 Protocol
+# Understand-Deep 150 Protocol
 
 **Core Principle:** Research deeply from ALL sources — internal context AND external knowledge. Don't limit yourself to one world.
 
@@ -312,3 +312,4 @@ Confidence: 95%
 ---
 
 **Remember:** Most questions need BOTH worlds. Internal context tells you "what we have and why". External knowledge tells you "what's possible and what others learned". Deep research combines both for complete understanding.
+

@@ -1,9 +1,9 @@
 ---
-name: deep-think-150
-description: Universal deep thinking methodology for any situation requiring quality reasoning. Use when solving problems, debugging, making decisions, analyzing code, planning, reviewing, or anytime you need thorough thinking instead of surface-level responses. Triggers on "think deeply", "analyze thoroughly", "reason carefully", "deep thinking", "understand completely", or any task requiring careful thought.
+name: 31-analyze-think-150
+description: "[31] ANALYZE. Universal deep thinking methodology for any situation requiring quality reasoning. Use when solving problems, debugging, making decisions, analyzing code, planning, reviewing, or anytime you need thorough thinking instead of surface-level responses. Triggers on \"think deeply\", \"analyze thoroughly\", \"reason carefully\", \"deep thinking\", \"understand completely\", or any task requiring careful thought."
 ---
 
-# Deep-Think 150 Protocol
+# Analyze-Think 150 Protocol
 
 **Core Principle:** Think deeply, reason thoroughly, understand completely. Quality thinking for any situation.
 
@@ -134,7 +134,7 @@ Alternative Perspectives:
 
 Risks: Fixing symptom without finding root cause = bug returns
 
-Conclusion: First, I'll trace the full authentication flow and check
+Conclusion: First, I'll trace the full authentication flow and check 
 error logs before proposing a fix. Let me investigate..."
 ```
 
@@ -159,3 +159,4 @@ This Skill is **universal** and applies to any situation requiring quality think
 ---
 
 **Remember:** Deep-Think 150 is not about slowing down — it's about thinking better. Apply the depth appropriate to the complexity. Simple questions get simple analysis; complex problems get full Deep-Think treatment.
+

@@ -1,9 +1,9 @@
 ---
-name: integrity-check-150
-description: Final self-check before delivery. Verify goal alignment, completeness, correctness, and identify residual risks. Produces quality score (0-100) and delivery status. Use when completing any significant work, before handoff, or when you need confidence that work is ready.
+name: 62-validate-integrity-150
+description: "[62] VALIDATE. Final self-check before delivery. Verify goal alignment, completeness, correctness, and identify residual risks. Produces quality score (0-100) and delivery status. Use when completing any significant work, before handoff, or when you need confidence that work is ready."
 ---
 
-# Integrity-Check 150 Protocol
+# Validate-Integrity 150 Protocol
 
 **Core Principle:** Check yourself before delivery. Verify goal alignment, completeness, correctness. Identify what could still go wrong. Score the quality honestly.
 
@@ -160,7 +160,7 @@ Calculate and declare:
 
 **🚫 CRITICAL ISSUES:** [None / List blockers]
 
-**📋 DELIVERY STATUS:**
+**📋 DELIVERY STATUS:** 
 [✅ Ready | ⚠️ Conditional | ❌ Not Ready]
 
 **🎯 CONFIDENCE LEVEL:** [High/Medium/Low]
@@ -245,7 +245,7 @@ Quality Score: 88/100 (Good)
 📋 DELIVERY STATUS: ✅ Ready
 
 🎯 CONFIDENCE: High
-Reasoning: All core requirements met, tested on multiple
+Reasoning: All core requirements met, tested on multiple 
 devices, no blocking issues found.
 
 RECOMMENDATIONS:
@@ -263,3 +263,4 @@ RECOMMENDATIONS:
 ---
 
 **Remember:** Integrity-check isn't criticism — it's quality assurance. An honest 85 score with documented issues is more valuable than a false 100. The check protects you and the user from preventable problems.
+

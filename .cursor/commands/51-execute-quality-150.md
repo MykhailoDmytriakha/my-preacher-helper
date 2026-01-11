@@ -1,9 +1,9 @@
 ---
-name: max-quality-150
-description: Commitment to maximum quality work with 150% coverage. Use when you need the highest quality output for critical tasks, complex problems, important decisions, or when standard work isn't enough. Triggers on "maximum quality", "150% mode", "full quality", "critical task", or when you explicitly want AI to work at its best.
+name: 51-execute-quality-150
+description: "[51] EXECUTE. Commitment to maximum quality work with 150% coverage. Use when you need the highest quality output for critical tasks, complex problems, important decisions, or when standard work isn't enough. Triggers on \"maximum quality\", \"150% mode\", \"full quality\", \"critical task\", or when you explicitly want AI to work at its best."
 ---
 
-# Max-Quality 150 Protocol
+# Execute-Quality 150 Protocol
 
 **Core Principle:** Commit to excellence. Work at 150% — 100% core delivery + 50% strengthening through verification, alternatives, and risk awareness.
 
@@ -198,3 +198,4 @@ Use both when task requires excellent thinking AND excellent execution.
 ---
 
 **Remember:** max-quality-150 is not about being slow — it's about being thorough. The extra effort upfront prevents costly mistakes later. Quality is an investment, not an expense.
+

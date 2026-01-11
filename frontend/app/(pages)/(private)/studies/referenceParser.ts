@@ -173,6 +173,62 @@ const BOOK_ALIASES = BOOK_ALIAS_ENTRIES.reduce<Record<string, string>>((acc, [al
   return acc;
 }, {});
 
+const normalizeInput = (raw: string): { dashNormalized: string; normalized: string } => {
+  const dashNormalized = raw.replace(/[–—−‒‑﹘﹣]/g, '-');
+  const normalized = dashNormalized.replace(/[:,.;]/g, ' ');
+  return { dashNormalized, normalized };
+};
+
+const splitTokensNaive = (normalized: string): string[] =>
+  normalized
+    .split(/\s+/)
+    .flatMap((token) =>
+      token
+        .split('-')
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+    )
+    .filter(Boolean);
+
+const splitTokensPreservingHyphen = (normalized: string): string[] => normalized.split(/\s+/).filter(Boolean);
+
+const countNumericTokens = (tokens: string[]): number => {
+  let count = 0;
+  for (const token of tokens) {
+    if (/^\d+(-\d+)?$/.test(token)) {
+      count += 1;
+    }
+  }
+  return count;
+};
+
+const resolveParsingTokens = ({
+  normalized,
+  dashNormalized,
+  allTokensNaive,
+  tokensPreservingHyphen,
+}: {
+  normalized: string;
+  dashNormalized: string;
+  allTokensNaive: string[];
+  tokensPreservingHyphen: string[];
+}): { tokens: string[]; isChapterRangeFormat: boolean; rangeMatch: RegExpMatchArray | null } => {
+  const rangeMatch = dashNormalized.match(/(\d+)\s*-\s*(\d+)$/);
+  const hasRange = rangeMatch !== null;
+  const numericTokenCount = countNumericTokens(tokensPreservingHyphen);
+
+  if (hasRange && numericTokenCount === 1) {
+    const beforeRange = normalized.replace(/\d+\s*-\s*\d+$/, '').trim();
+    return {
+      tokens: beforeRange.split(/\s+/).filter(Boolean),
+      isChapterRangeFormat: true,
+      rangeMatch,
+    };
+  }
+
+  return { tokens: allTokensNaive, isChapterRangeFormat: false, rangeMatch };
+};
+
 const resolveBook = (input: string): BookMatch | null => {
   const normalized = input.toLowerCase();
   const direct = BOOK_ALIASES[normalized];
@@ -191,6 +247,103 @@ const resolveBook = (input: string): BookMatch | null => {
 };
 
 type ParsedReference = Omit<ScriptureReference, 'id'>;
+
+const resolveBookFromTokens = (
+  tokens: string[]
+): {
+  matched: BookMatch;
+  consumed: number;
+} | null => {
+  const maybeBookParts: string[] = [];
+  const maxBookTokens = Math.min(4, tokens.length);
+  for (let i = 1; i <= maxBookTokens; i += 1) {
+    maybeBookParts.push(tokens.slice(0, i).join(' '));
+  }
+
+  let matched: BookMatch | null = null;
+  let consumed = 0;
+  for (let i = maybeBookParts.length - 1; i >= 0; i -= 1) {
+    const candidate = maybeBookParts[i];
+    const res = resolveBook(candidate);
+    if (res) {
+      matched = res;
+      consumed = i + 1;
+      break;
+    }
+  }
+
+  if (!matched) return null;
+  return { matched, consumed };
+};
+
+const isLxxLocale = (locale?: BibleLocale): locale is 'ru' | 'uk' => locale === 'ru' || locale === 'uk';
+
+const convertPsalmIfNeeded = (book: string, chapter: number, locale?: BibleLocale): number => {
+  if (book === 'Psalms' && isLxxLocale(locale)) {
+    return psalmSeptuagintToHebrew(chapter);
+  }
+  return chapter;
+};
+
+const parseChapterRangeReference = (
+  book: string,
+  rangeMatch: RegExpMatchArray,
+  locale?: BibleLocale
+): ParsedReference | null => {
+  let fromChapter = Number(rangeMatch[1]);
+  let toChapter = Number(rangeMatch[2]);
+
+  if (isNaN(fromChapter) || isNaN(toChapter) || fromChapter <= 0 || toChapter <= 0) {
+    return null;
+  }
+
+  fromChapter = convertPsalmIfNeeded(book, fromChapter, locale);
+  toChapter = convertPsalmIfNeeded(book, toChapter, locale);
+
+  return {
+    book,
+    chapter: fromChapter,
+    toChapter,
+  };
+};
+
+const buildReferenceFromNumbers = (
+  book: string,
+  numbers: number[],
+  locale?: BibleLocale
+): ParsedReference | null => {
+  if (numbers.length === 0) {
+    return { book };
+  }
+
+  if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
+
+  const [rawChapter, fromVerse, maybeTo] = numbers;
+  let chapter = rawChapter;
+
+  if (numbers.length === 1) {
+    chapter = convertPsalmIfNeeded(book, chapter, locale);
+    return {
+      book,
+      chapter,
+    };
+  }
+
+  if (!chapter || !fromVerse) return null;
+
+  chapter = convertPsalmIfNeeded(book, chapter, locale);
+
+  const parsed: ParsedReference = {
+    book,
+    chapter,
+    fromVerse,
+  };
+  if (maybeTo && maybeTo >= fromVerse) {
+    parsed.toVerse = maybeTo;
+  }
+
+  return parsed;
+};
 
 /**
  * Parse a Scripture reference string into structured data.
@@ -212,145 +365,34 @@ type ParsedReference = Omit<ScriptureReference, 'id'>;
  * @param locale - The user's locale for proper Psalm numbering conversion
  */
 export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedReference | null {
-  // Normalize separators and dash variants (e.g., en/em dash) to a standard hyphen
-  const dashNormalized = raw.replace(/[–—−‒‑﹘﹣]/g, '-');
-  const normalized = dashNormalized.replace(/[:,.;]/g, ' ');
-
-  // First, split all tokens naively (splitting hyphens too)
-  const allTokensNaive = normalized
-    .split(/\s+/)
-    .flatMap((token) =>
-      token
-        .split('-')
-        .map((segment) => segment.trim())
-        .filter(Boolean)
-    )
-    .filter(Boolean);
+  const { dashNormalized, normalized } = normalizeInput(raw);
+  const allTokensNaive = splitTokensNaive(normalized);
 
   // Need at least 1 token for book-only references
   if (allTokensNaive.length < 1) return null;
 
-  // Count how many non-book tokens we'd have for format detection
-  // This helps distinguish "book 5-7" (chapter range) from "book 4 5-6" (verse range)
-  const rangeMatch = dashNormalized.match(/(\d+)\s*-\s*(\d+)$/);
-  const hasRange = rangeMatch !== null;
-
-  // Simpler approach: split first, then determine format
-  // Split WITHOUT splitting on hyphen first to count numeric tokens
-  const tokensPreservingHyphen = normalized.split(/\s+/).filter(Boolean);
-
-  // Find how many tokens look like numbers (including hyphenated like "5-7")
-  let numericTokenCount = 0;
-  for (const token of tokensPreservingHyphen) {
-    if (/^\d+(-\d+)?$/.test(token)) {
-      numericTokenCount++;
-    }
-  }
-
-  // Now split everything for book resolution
-  let tokens: string[];
-  let isChapterRangeFormat = false;
-
-  // Chapter range format: exactly 1 numeric token that contains a hyphen (e.g., "book 5-7")
-  // Verse range format: 2+ numeric tokens, last may contain hyphen (e.g., "book 4 5-6")
-  if (hasRange && numericTokenCount === 1) {
-    // This is a chapter range: "book 5-7"
-    isChapterRangeFormat = true;
-    const beforeRange = normalized.replace(/\d+\s*-\s*\d+$/, '').trim();
-    tokens = beforeRange.split(/\s+/).filter(Boolean);
-  } else {
-    // Normal parsing - split hyphens to get individual numbers
-    tokens = allTokensNaive;
-  }
+  const tokensPreservingHyphen = splitTokensPreservingHyphen(normalized);
+  const { tokens, isChapterRangeFormat, rangeMatch } = resolveParsingTokens({
+    normalized,
+    dashNormalized,
+    allTokensNaive,
+    tokensPreservingHyphen,
+  });
 
   // Need at least 1 token for book-only references
   if (tokens.length < 1) return null;
 
-  // Try to match book name (1-4 tokens)
-  const maybeBookParts: string[] = [];
-  const maxBookTokens = Math.min(4, tokens.length);
-  for (let i = 1; i <= maxBookTokens; i += 1) {
-    maybeBookParts.push(tokens.slice(0, i).join(' '));
-  }
-
-  let matched: BookMatch | null = null;
-  let consumed = 0;
-  for (let i = maybeBookParts.length - 1; i >= 0; i -= 1) {
-    const candidate = maybeBookParts[i];
-    const res = resolveBook(candidate);
-    if (res) {
-      matched = res;
-      consumed = i + 1;
-      break;
-    }
-  }
-  if (!matched) return null;
+  const matchResult = resolveBookFromTokens(tokens);
+  if (!matchResult) return null;
+  const { matched, consumed } = matchResult;
 
   // Handle chapter range pattern
   if (isChapterRangeFormat && rangeMatch) {
-    let fromChapter = Number(rangeMatch[1]);
-    let toChapter = Number(rangeMatch[2]);
-
-    if (isNaN(fromChapter) || isNaN(toChapter) || fromChapter <= 0 || toChapter <= 0) {
-      return null;
-    }
-
-    // Convert Psalm numbers for storage
-    if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-      fromChapter = psalmSeptuagintToHebrew(fromChapter);
-      toChapter = psalmSeptuagintToHebrew(toChapter);
-    }
-
-    return {
-      book: matched.book,
-      chapter: fromChapter,
-      toChapter: toChapter,
-    };
+    return parseChapterRangeReference(matched.book, rangeMatch, locale);
   }
 
   // Get remaining numbers after book name
   const numbers = tokens.slice(consumed).map((t) => Number(t));
 
-  // Book-only reference (no numbers after book name)
-  if (numbers.length === 0) {
-    return { book: matched.book };
-  }
-
-  // Filter out invalid numbers
-  if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
-
-  const [rawChapter, fromVerse, maybeTo] = numbers;
-  let chapter = rawChapter;
-
-  // Chapter-only reference (one number after book name)
-  if (numbers.length === 1) {
-    // Convert Psalm number for storage
-    if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-      chapter = psalmSeptuagintToHebrew(chapter);
-    }
-    return {
-      book: matched.book,
-      chapter,
-    };
-  }
-
-  // Verse reference (chapter and verse(s))
-  if (!chapter || !fromVerse) return null;
-
-  // Convert Psalm number from Septuagint (RU/UK) to Hebrew (EN) for storage
-  if (matched.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-    chapter = psalmSeptuagintToHebrew(chapter);
-  }
-
-  const parsed: ParsedReference = {
-    book: matched.book,
-    chapter,
-    fromVerse,
-  };
-  if (maybeTo && maybeTo >= fromVerse) {
-    parsed.toVerse = maybeTo;
-  }
-
-  return parsed;
+  return buildReferenceFromNumbers(matched.book, numbers, locale);
 }
-
