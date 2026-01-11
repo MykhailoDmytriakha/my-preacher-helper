@@ -21,6 +21,12 @@
 **Why it worked:** The component updates labels in `useEffect`, so waiting avoids race conditions; multiple matches are expected by design.
 **Principle:** For i18n/mounted labels, use `waitFor` and `getAllByText` (or scoped queries) instead of assuming unique immediate text.
 
+### 2026-01-11 Testing conditional visual states in UI components
+**Problem:** Needed to test conditional styling (emerald vs gray) for share link icon based on hasShareLink prop, but no existing pattern for testing CSS classes in complex conditional logic.
+**Solution:** Use `screen.getByRole('button', { name: 'aria-label' })` to target the specific button, then `expect(button).toHaveClass('expected-classes')` for each conditional class, testing both light and dark variants separately.
+**Why it worked:** RTL's className assertions work reliably for conditional Tailwind classes; testing both states (hasShareLink true/false) ensures complete coverage.
+**Principle:** For conditional visual states, test both true/false branches with explicit className assertions on targeted elements using ARIA labels for reliable selection.
+
 ### 2026-01-07 AudioRecorder test timing + matchMedia typing
 **Problem:** New AudioRecorder coverage tests failed (keyboard shortcut stop didn’t fire; TypeScript complained about matchMedia mocks with undefined addEventListener).
 **Attempts:** Triggered Ctrl+Space twice and asserted completion; mocked matchMedia with missing methods.

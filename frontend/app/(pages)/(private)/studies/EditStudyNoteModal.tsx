@@ -12,11 +12,12 @@ import {
 import { useState, useEffect, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 import { StudyNote, ScriptureReference } from '@/models/models';
 
 import { BibleLocale } from './bibleData';
-import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
+import { STUDIES_INPUT_SHARED_CLASSES, getNoteModalWidth } from './constants';
 import { parseReferenceText } from './referenceParser';
 import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
@@ -197,7 +198,8 @@ export default function EditStudyNoteModal({
       onClick={handleClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 flex flex-col"
+        data-testid="edit-study-note-modal-container"
+        className={`relative w-full ${getNoteModalWidth(content.length)} max-h-[95vh] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 flex flex-col transition-all duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -258,11 +260,12 @@ export default function EditStudyNoteModal({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
               {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
             </label>
-            <textarea
+            <TextareaAutosize
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={t('studiesWorkspace.contentPlaceholder')}
-              rows={8}
+              minRows={10}
+              maxRows={35}
               className={`w-full resize-none ${STUDIES_INPUT_SHARED_CLASSES}`}
             />
           </div>

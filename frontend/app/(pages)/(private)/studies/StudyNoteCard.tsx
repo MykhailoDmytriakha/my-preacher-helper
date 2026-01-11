@@ -40,6 +40,8 @@ interface StudyNoteCardProps {
   /** Called when user clicks the card body to open Focus Mode */
   onCardClick?: () => void;
   onShare?: (note: StudyNote) => void;
+  /** Whether this note has an active share link */
+  hasShareLink?: boolean;
 }
 
 const SNIPPET_CONTAINER_CLASS = [
@@ -123,6 +125,7 @@ export default function StudyNoteCard({
   searchQuery = '',
   onCardClick,
   onShare,
+  hasShareLink = false,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
 
@@ -357,7 +360,11 @@ export default function StudyNoteCard({
                       e.stopPropagation();
                       handleShareNote();
                     }}
-                    className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                    className={`rounded-md p-1.5 transition disabled:opacity-50 ${
+                      hasShareLink
+                        ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
+                    }`}
                     title={t('studiesWorkspace.shareLinks.shareButton')}
                     aria-label={t('studiesWorkspace.shareLinks.shareButton')}
                   >

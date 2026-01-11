@@ -139,5 +139,36 @@ describe('FocusView', () => {
 
     expect(screen.queryByText('studiesWorkspace.aiAnalyze.button')).not.toBeInTheDocument();
   });
+
+  describe('Share button styling', () => {
+    it('shows gray share button when hasShareLink is false (default)', () => {
+      render(<FocusView {...defaultProps} onShare={jest.fn()} hasShareLink={false} />);
+
+      const shareButton = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' });
+      expect(shareButton).toHaveClass('bg-gray-100');
+      expect(shareButton).toHaveClass('text-gray-700');
+      expect(shareButton).toHaveClass('hover:bg-gray-200');
+      expect(shareButton).toHaveClass('dark:bg-gray-700');
+      expect(shareButton).toHaveClass('dark:text-gray-200');
+      expect(shareButton).toHaveClass('dark:hover:bg-gray-600');
+    });
+
+    it('shows emerald share button when hasShareLink is true', () => {
+      render(<FocusView {...defaultProps} onShare={jest.fn()} hasShareLink={true} />);
+
+      const shareButton = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' });
+      expect(shareButton).toHaveClass('bg-emerald-50');
+      expect(shareButton).toHaveClass('text-emerald-700');
+      expect(shareButton).toHaveClass('hover:bg-emerald-100');
+      expect(shareButton).toHaveClass('dark:bg-emerald-900/30');
+      expect(shareButton).toHaveClass('dark:text-emerald-300');
+      expect(shareButton).toHaveClass('dark:hover:bg-emerald-900/50');
+
+      // Check that LinkIcon has emerald color
+      const linkIcon = shareButton.querySelector('svg');
+      expect(linkIcon).toHaveClass('text-emerald-600');
+      expect(linkIcon).toHaveClass('dark:text-emerald-400');
+    });
+  });
 });
 

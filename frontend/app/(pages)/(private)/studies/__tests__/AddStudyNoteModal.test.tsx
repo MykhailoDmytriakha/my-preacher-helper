@@ -108,4 +108,49 @@ describe('AddStudyNoteModal', () => {
     expect(innerHeader).toHaveClass('flex-col');
     expect(innerHeader).toHaveClass('sm:flex-row');
   });
+
+  it('initial modal width is max-w-2xl and height is max-h-[95vh]', () => {
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const container = screen.getByTestId('study-note-modal-container');
+    expect(container).toHaveClass('max-w-2xl');
+    expect(container).toHaveClass('max-h-[95vh]');
+  });
+
+  it('updates modal width to max-w-4xl for long content', async () => {
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+    fireEvent.change(contentInput, { target: { value: 'a'.repeat(1100) } });
+
+    const container = screen.getByTestId('study-note-modal-container');
+    await waitFor(() => expect(container).toHaveClass('max-w-4xl'));
+  });
+
+  it('updates modal width to max-w-5xl for very long content', async () => {
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+    fireEvent.change(contentInput, { target: { value: 'a'.repeat(2100) } });
+
+    const container = screen.getByTestId('study-note-modal-container');
+    await waitFor(() => expect(container).toHaveClass('max-w-5xl'));
+  });
 });

@@ -235,4 +235,34 @@ describe('StudyNoteDrawer', () => {
 
         expect(onClose).toHaveBeenCalled();
     });
+
+    it('auto-expands to medium size if content is long (>1000 chars)', async () => {
+        const longNote = createTestNote({ content: 'a'.repeat(1100) });
+
+        // Initial state narrow
+        localStorage.setItem('studyNoteDrawer:size', 'narrow');
+
+        render(<StudyNoteDrawer {...defaultProps} note={longNote} />);
+
+        // Should be medium now because of auto-expansion
+        await waitFor(() => {
+            const mediumButton = screen.getByRole('button', { name: '50%' });
+            expect(mediumButton).toHaveClass('bg-white');
+        });
+    });
+
+    it('auto-expands to fullscreen size if content is very long (>2000 chars)', async () => {
+        const veryLongNote = createTestNote({ content: 'a'.repeat(2100) });
+
+        // Initial state narrow
+        localStorage.setItem('studyNoteDrawer:size', 'narrow');
+
+        render(<StudyNoteDrawer {...defaultProps} note={veryLongNote} />);
+
+        // Should be fullscreen now
+        await waitFor(() => {
+            const fullscreenButton = screen.getByRole('button', { name: '100%' });
+            expect(fullscreenButton).toHaveClass('bg-white');
+        });
+    });
 });

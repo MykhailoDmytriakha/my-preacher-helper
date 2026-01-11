@@ -12,6 +12,7 @@ import {
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 import { StudyNote, ScriptureReference } from '@/models/models';
 
@@ -136,6 +137,13 @@ export default function StudyNoteDrawer({
             setAnalyzeError(null);
             setEditingRefIndex(null);
             setShowRefPicker(false);
+
+            // Auto-expand drawer based on content length
+            if (note.content.length > 2000) {
+                setSize((prev) => (prev !== 'fullscreen' ? 'fullscreen' : prev));
+            } else if (note.content.length > 1000) {
+                setSize((prev) => (prev === 'narrow' ? 'medium' : prev));
+            }
         }
     }, [note, isOpen]);
 
@@ -432,12 +440,12 @@ export default function StudyNoteDrawer({
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
                             {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
                         </label>
-                        <textarea
+                        <TextareaAutosize
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             placeholder={t('studiesWorkspace.contentPlaceholder')}
-                            className={`w-full min-h-[300px] resize-y ${STUDIES_INPUT_SHARED_CLASSES}`}
-                            style={{ height: size === 'fullscreen' ? 'calc(100vh - 400px)' : undefined }}
+                            minRows={18}
+                            className={`w-full resize-none ${STUDIES_INPUT_SHARED_CLASSES}`}
                         />
                     </div>
 

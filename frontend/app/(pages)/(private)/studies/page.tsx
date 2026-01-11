@@ -612,6 +612,7 @@ export default function StudiesPage() {
               searchQuery={searchQuery}
               onCardClick={() => enterFocus(note.id)}
               onShare={handleShareNote}
+              hasShareLink={shareLinksByNoteId.has(note.id)}
             />
           ))}
         </div>
@@ -671,6 +672,7 @@ export default function StudiesPage() {
           isAnalyzing={analyzingNoteId === focusedNote.id}
           searchQuery={searchQuery}
           onShare={handleShareNote}
+          hasShareLink={shareLinksByNoteId.has(focusedNote.id)}
         />
       )}
 

@@ -40,6 +40,8 @@ interface FocusViewProps {
   isAnalyzing?: boolean;
   searchQuery?: string;
   onShare?: (note: StudyNote) => void;
+  /** Whether this note has an active share link */
+  hasShareLink?: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export default function FocusView({
   isAnalyzing = false,
   searchQuery = '',
   onShare,
+  hasShareLink = false,
 }: FocusViewProps) {
   const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
@@ -276,9 +279,13 @@ export default function FocusView({
               <button
                 type="button"
                 onClick={handleShareNote}
-                className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 disabled:opacity-60 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:opacity-60 ${
+                  hasShareLink
+                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                }`}
               >
-                <LinkIcon className="h-3.5 w-3.5" />
+                <LinkIcon className={`h-3.5 w-3.5 ${hasShareLink ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
                 {t('studiesWorkspace.shareLinks.shareButton')}
               </button>
             )}

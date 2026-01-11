@@ -13,11 +13,12 @@ import dynamic from 'next/dynamic';
 import { useState, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 import { ScriptureReference } from '@/models/models';
 
 import { BibleLocale } from './bibleData';
-import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
+import { STUDIES_INPUT_SHARED_CLASSES, getNoteModalWidth } from './constants';
 import { parseReferenceText } from './referenceParser';
 import ScriptureRefBadge from './ScriptureRefBadge';
 import ScriptureRefPicker from './ScriptureRefPicker';
@@ -267,7 +268,8 @@ export default function AddStudyNoteModal({
       onClick={handleClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 flex flex-col"
+        data-testid="study-note-modal-container"
+        className={`relative w-full ${getNoteModalWidth(formState.content.length)} max-h-[95vh] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 flex flex-col transition-all duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -332,11 +334,12 @@ export default function AddStudyNoteModal({
                 />
               </div>
             </div>
-            <textarea
+            <TextareaAutosize
               value={formState.content}
               onChange={(e) => setFormState((s) => ({ ...s, content: e.target.value }))}
               placeholder={t('studiesWorkspace.contentPlaceholder')}
-              rows={6}
+              minRows={8}
+              maxRows={25}
               className={`w-full resize-none ${STUDIES_INPUT_SHARED_CLASSES}`}
               autoFocus
             />

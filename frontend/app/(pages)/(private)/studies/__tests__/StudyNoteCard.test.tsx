@@ -569,4 +569,63 @@ describe('StudyNoteCard', () => {
       expect(copyButtons.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Share link icon styling', () => {
+    it('shows gray share link icon when hasShareLink is false (default)', () => {
+      const onShare = jest.fn();
+      const note = createTestNote({
+        title: 'Test Title',
+        content: 'Test content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          onShare={onShare}
+          hasShareLink={false}
+        />
+      );
+
+      const shareButton = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' });
+      expect(shareButton).toHaveClass('text-gray-400');
+      expect(shareButton).toHaveClass('hover:bg-gray-100');
+      expect(shareButton).toHaveClass('hover:text-gray-600');
+      expect(shareButton).toHaveClass('dark:hover:bg-gray-700');
+      expect(shareButton).toHaveClass('dark:hover:text-gray-200');
+    });
+
+    it('shows emerald share link icon when hasShareLink is true', () => {
+      const onShare = jest.fn();
+      const note = createTestNote({
+        title: 'Test Title',
+        content: 'Test content',
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onDelete={jest.fn()}
+          onShare={onShare}
+          hasShareLink={true}
+        />
+      );
+
+      const shareButton = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' });
+      expect(shareButton).toHaveClass('text-emerald-600');
+      expect(shareButton).toHaveClass('hover:bg-emerald-50');
+      expect(shareButton).toHaveClass('hover:text-emerald-700');
+      expect(shareButton).toHaveClass('dark:text-emerald-400');
+      expect(shareButton).toHaveClass('dark:hover:bg-emerald-900/30');
+      expect(shareButton).toHaveClass('dark:hover:text-emerald-300');
+    });
+  });
 });
