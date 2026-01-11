@@ -3,6 +3,7 @@
 import {
   BookmarkIcon,
   CheckIcon,
+  LinkIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
@@ -38,6 +39,7 @@ interface FocusViewProps {
   onAnalyze?: (note: StudyNote) => void;
   isAnalyzing?: boolean;
   searchQuery?: string;
+  onShare?: (note: StudyNote) => void;
 }
 
 /**
@@ -59,6 +61,7 @@ export default function FocusView({
   onAnalyze,
   isAnalyzing = false,
   searchQuery = '',
+  onShare,
 }: FocusViewProps) {
   const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
@@ -127,6 +130,11 @@ export default function FocusView({
     const markdownContent = formatStudyNoteForCopy(note, bibleLocale);
     await copyToClipboard(markdownContent);
   }, [note, bibleLocale, copyToClipboard]);
+
+  const handleShareNote = useCallback(() => {
+    if (!onShare) return;
+    onShare(note);
+  }, [onShare, note]);
 
   // Memoize border class based on note type
   const panelBorderClass = useMemo(
@@ -264,6 +272,17 @@ export default function FocusView({
               {t('common.edit')}
             </button>
 
+            {onShare && (
+              <button
+                type="button"
+                onClick={handleShareNote}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 disabled:opacity-60 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              >
+                <LinkIcon className="h-3.5 w-3.5" />
+                {t('studiesWorkspace.shareLinks.shareButton')}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleCopyNote}
@@ -315,4 +334,3 @@ export default function FocusView({
 
   return createPortal(focusContent, document.body);
 }
-

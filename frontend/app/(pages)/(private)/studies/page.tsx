@@ -8,20 +8,24 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
+  LinkIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import Link from 'next/link';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { StudyNote } from '@/models/models';
 import { getTags } from '@/services/tag.service';
 
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import FocusView from './components/FocusView';
+import ShareNoteModal from './components/ShareNoteModal';
 import EditStudyNoteModal from './EditStudyNoteModal';
 import { useStudiesFocusMode } from './hooks/useStudiesFocusMode';
 import StudyNoteCard from './StudyNoteCard';
@@ -38,6 +42,12 @@ export default function StudiesPage() {
     updateNote,
     deleteNote,
   } = useStudyNotes();
+  const {
+    shareLinks,
+    loading: shareLinksLoading,
+    createShareLink,
+    deleteShareLink,
+  } = useStudyNoteShareLinks();
 
   // Responsive: use Modal on mobile, Drawer on desktop
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -71,6 +81,13 @@ export default function StudiesPage() {
     notes: notes.filter(n => n.type !== 'question').length,
     questions: notes.filter(n => n.type === 'question').length,
   }), [notes]);
+
+  const shareLinksByNoteId = useMemo(
+    () => new Map(shareLinks.map((link) => [link.noteId, link])),
+    [shareLinks]
+  );
+
+  const [shareNote, setShareNote] = useState<StudyNote | null>(null);
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
@@ -341,6 +358,10 @@ export default function StudiesPage() {
     }
   };
 
+  const handleShareNote = useCallback((note: StudyNote) => {
+    setShareNote(note);
+  }, []);
+
   const clearFilters = () => {
     setSearch('');
     setTagFilter('');
@@ -368,13 +389,22 @@ export default function StudiesPage() {
           </div>
 
           {/* Add button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 md:w-auto"
-          >
-            <PlusIcon className="h-5 w-5" />
-            {t('studiesWorkspace.newNote')}
-          </button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+            <Link
+              href="/studies/share-links"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 md:w-auto"
+            >
+              <LinkIcon className="h-5 w-5" />
+              {t('studiesWorkspace.shareLinks.manageButton')}
+            </Link>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 md:w-auto"
+            >
+              <PlusIcon className="h-5 w-5" />
+              {t('studiesWorkspace.newNote')}
+            </button>
+          </div>
         </div>
 
         {/* Stats bar */}
@@ -581,6 +611,7 @@ export default function StudiesPage() {
               isAnalyzing={analyzingNoteId === note.id}
               searchQuery={searchQuery}
               onCardClick={() => enterFocus(note.id)}
+              onShare={handleShareNote}
             />
           ))}
         </div>
@@ -639,8 +670,19 @@ export default function StudiesPage() {
           onAnalyze={handleAnalyzeNote}
           isAnalyzing={analyzingNoteId === focusedNote.id}
           searchQuery={searchQuery}
+          onShare={handleShareNote}
         />
       )}
+
+      <ShareNoteModal
+        isOpen={shareNote !== null}
+        note={shareNote}
+        shareLink={shareNote ? shareLinksByNoteId.get(shareNote.id) : undefined}
+        loading={shareLinksLoading}
+        onClose={() => setShareNote(null)}
+        onCreate={createShareLink}
+        onDelete={deleteShareLink}
+      />
     </section>
   );
 }

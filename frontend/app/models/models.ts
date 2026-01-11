@@ -314,6 +314,15 @@ export interface StudyNote {
   type?: 'note' | 'question';
 }
 
+export interface StudyNoteShareLink {
+  id: string;
+  noteId: string;
+  ownerId: string;
+  token: string;
+  createdAt: string;
+  viewCount: number;
+}
+
 export type StudyMaterialType = 'sermon' | 'study' | 'group' | 'guide';
 
 export interface MaterialSection {

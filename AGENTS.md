@@ -155,7 +155,8 @@ At session start or when facing complex task:
 | **refactor-150** | Quality code refactoring | Code improvements |
 | **research-150** | Research and analysis | General investigation |
 | **research-deep-150** | Deep research from all sources | Comprehensive info needed |
-| **session-save-150** | Save session context | Before long breaks |
+| **mid-session-save-150** | Quick checkpoint during work | Context running low, multiple times |
+| **close-session-150** | Full session handoff | End of session, before long breaks |
 | **session-start-memory** | Load MEMORY.md at start | Every session start |
 | **skill-forge-150** | Create new skills | Gap in existing skills |
 | **task-track-150** | Manage task lifecycle | Complex projects |
@@ -172,8 +173,8 @@ SESSION START                                                              SESSI
      │                                                                          │
      ▼                                                                          ▼
 ┌─────────────┐                                                         ┌──────────────┐
-│session-start│                                                         │session-save  │
-│   memory    │                                                         │    -150      │
+│session-start│                                                         │ close-session│
+│   memory    │                                                         │     -150     │
 └──────┬──────┘                                                         └──────────────┘
        │                                                                       ▲
        │ LOADS CONTEXT                                                SAVES CONTEXT
@@ -188,6 +189,10 @@ SESSION START                                                              SESSI
 │  │ research-deep  │    │ proof-grade  │    │              │    │ refactor-150     │     │
 │  └────────────────┘    └──────────────┘    └──────────────┘    └──────────────────┘     │
 │           │                    │                   │                    │               │
+│           │         ┌─────────────────────────────────────────────────────┐             │
+│           │         │  ⏱️ MID-SESSION CHECKPOINTS (multiple times)        │             │
+│           │         │  mid-session-save-150 — quick saves during work     │             │
+│           │         └─────────────────────────────────────────────────────┘             │
 │           └────────────────────┼───────────────────┼────────────────────┘               │
 │                                │                   │                                    │
 │                                ▼                   ▼                                    │
@@ -244,6 +249,11 @@ SESSION START                                                              SESSI
 │  9. chain-flow-150               ← Orchestrate skill chain for execution       │
 │     └─ skill-forge-150          ← [Optional] If existing skills insufficient   │
 ├────────────────────────────────────────────────────────────────────────────────┤
+│  ⏱️ MID-SESSION CHECKPOINTS (use multiple times during work)                   │
+│  ───────────────────────────────────────────────────────────────────────────── │
+│  ∞. mid-session-save-150        ← Quick checkpoint when context low / progress │
+│     (invoke between any phases, as often as needed)                            │
+├────────────────────────────────────────────────────────────────────────────────┤
 │  PHASE 4: EXECUTE                                                              │
 │  ───────────────────────────────────────────────────────────────────────────── │
 │  10. gated-exec-150              ← Step-by-step with confirmation gates        │
@@ -260,7 +270,7 @@ SESSION START                                                              SESSI
 ├────────────────────────────────────────────────────────────────────────────────┤
 │  PHASE 6: SESSION END                                                          │
 ├─────────────────────────────────────────────────────────────────────────────── │
-│  15. session-save-150            ← Save context for next session               │
+│  15. close-session-150           ← Full handoff for next session               │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 ---

@@ -554,6 +554,12 @@
     "expand": "Expand",
     "collapse": "Collapse"
   },
+  "shareNotes": {
+    "title": "Shared note",
+    "subtitle": "Read-only access",
+    "notFound": "This shared note is not available",
+    "error": "Unable to load the shared note"
+  },
   "outline": {
     "introduction": "Introduction",
     "mainPoints": "Main Points",
@@ -1483,6 +1489,34 @@
       "prevNote": "Previous note",
       "nextNote": "Next note",
       "keyboardHint": "Use ← → arrows to navigate, ESC to exit"
+    },
+    "shareLinks": {
+      "title": "Share links",
+      "subtitle": "Public read-only links for individual notes",
+      "manageButton": "Manage share links",
+      "shareButton": "Share",
+      "modalTitle": "Share note",
+      "modalSubtitle": "Anyone with the link can view this note",
+      "statusOffTitle": "Link is off",
+      "statusOffDescription": "Create a link to enable public view-only access.",
+      "statusOnTitle": "Public link enabled",
+      "statusOnDescription": "Anyone with the link can view this note.",
+      "loadingLink": "Loading link...",
+      "linkLabel": "Link",
+      "linkPlaceholder": "Create a link to generate a URL",
+      "accessLabel": "Access",
+      "accessValue": "Anyone with link · View only",
+      "viewsLabel": "Unique views (24h)",
+      "createButton": "Create link",
+      "selectPlaceholder": "Select a note",
+      "empty": "No share links yet",
+      "noteLabel": "Note",
+      "createdLabel": "Created",
+      "uniqueViews": "unique views",
+      "copyLink": "Copy link",
+      "deleteLink": "Delete link",
+      "revokeLink": "Disable link",
+      "openLink": "Open"
     },
     "aiAnalyze": {
       "button": "AI Analyze",

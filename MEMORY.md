@@ -9,6 +9,18 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-11 JSDOM window override for SSR branches
+**Problem:** Needed to cover the `typeof window === 'undefined'` branch in share URL tests, but JSDOM always provides `window`.
+**Solution:** Override `global.window` using `Object.defineProperty` during the test and restore it afterward.
+**Principle:** To exercise SSR-only branches in JSDOM, temporarily redefine `window` with `Object.defineProperty` instead of direct assignment.
+
+### 2026-01-11 i18n labels update after mount in ThemeModeToggle
+**Problem:** Theme mode tests failed because translated labels render after mount, and duplicate labels exist in sr-only elements.
+**Attempts:** `getByText('System')` assertions failed with multiple matches and timing issues.
+**Solution:** Use `waitFor` for mounted text and `getAllByText` (or more specific queries) to handle duplicates.
+**Why it worked:** The component updates labels in `useEffect`, so waiting avoids race conditions; multiple matches are expected by design.
+**Principle:** For i18n/mounted labels, use `waitFor` and `getAllByText` (or scoped queries) instead of assuming unique immediate text.
+
 ### 2026-01-07 AudioRecorder test timing + matchMedia typing
 **Problem:** New AudioRecorder coverage tests failed (keyboard shortcut stop didn’t fire; TypeScript complained about matchMedia mocks with undefined addEventListener).
 **Attempts:** Triggered Ctrl+Space twice and asserted completion; mocked matchMedia with missing methods.
@@ -237,10 +249,6 @@
 
 ## 🔧 Session State — Текущая работа
 
-**Current task:** —
-**Recent changes:** —
-**Open questions:** —
-
 ---
 
 ## 📋 Memory Management Rules
@@ -273,6 +281,9 @@
 - `locales/{en,ru,uk}/translation.json` - All UI strings
 - `config/schemas/zod/` - AI structured output schemas
 - `api/clients/` - AI integration clients
+- `app/(pages)/(private)/` - Auth-protected pages via `ProtectedRoute` layout
+- `app/(pages)/share/` - Public share pages (no auth)
+- `app/api/share/` - Public API endpoints (no auth, must sanitize output)
 
 **Workspaces:**
 - `/dashboard` - Sermons list (main workspace)

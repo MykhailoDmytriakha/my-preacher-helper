@@ -5,6 +5,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  LinkIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
@@ -38,6 +39,7 @@ interface StudyNoteCardProps {
   searchQuery?: string;
   /** Called when user clicks the card body to open Focus Mode */
   onCardClick?: () => void;
+  onShare?: (note: StudyNote) => void;
 }
 
 const SNIPPET_CONTAINER_CLASS = [
@@ -120,6 +122,7 @@ export default function StudyNoteCard({
   isAnalyzing = false,
   searchQuery = '',
   onCardClick,
+  onShare,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
 
@@ -133,6 +136,11 @@ export default function StudyNoteCard({
   const handleCopyNote = async () => {
     const markdownContent = formatStudyNoteForCopy(note, bibleLocale);
     await copyToClipboard(markdownContent);
+  };
+
+  const handleShareNote = () => {
+    if (!onShare) return;
+    onShare(note);
   };
 
   // Format relative time
@@ -340,6 +348,20 @@ export default function StudyNoteCard({
                   >
                     <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
                     {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
+                  </button>
+                )}
+                {onShare && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareNote();
+                    }}
+                    className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                    title={t('studiesWorkspace.shareLinks.shareButton')}
+                    aria-label={t('studiesWorkspace.shareLinks.shareButton')}
+                  >
+                    <LinkIcon className="h-4 w-4" />
                   </button>
                 )}
                 <button
@@ -595,4 +617,3 @@ export default function StudyNoteCard({
     </article>
   );
 }
-

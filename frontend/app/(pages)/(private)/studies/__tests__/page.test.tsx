@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { StudyNote } from '@/models/models';
 
@@ -9,6 +10,10 @@ import StudiesPage from '../page';
 
 jest.mock('@/hooks/useStudyNotes', () => ({
   useStudyNotes: jest.fn(),
+}));
+
+jest.mock('@/hooks/useStudyNoteShareLinks', () => ({
+  useStudyNoteShareLinks: jest.fn(),
 }));
 
 jest.mock('@/hooks/useMediaQuery', () => ({
@@ -21,6 +26,7 @@ jest.mock('../bibleData', () => ({
 }));
 
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;
+const mockUseStudyNoteShareLinks = useStudyNoteShareLinks as jest.MockedFunction<typeof useStudyNoteShareLinks>;
 const mockUseMediaQuery = useMediaQuery as jest.MockedFunction<typeof useMediaQuery>;
 
 const createMockNote = (overrides: Partial<StudyNote> = {}): StudyNote => ({
@@ -49,9 +55,20 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   deleteNote: jest.fn(),
 });
 
+const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareLinks> => ({
+  uid: 'mock-user',
+  shareLinks: [],
+  loading: false,
+  error: null,
+  refetch: jest.fn(),
+  createShareLink: jest.fn(),
+  deleteShareLink: jest.fn(),
+});
+
 describe('StudiesPage', () => {
   beforeEach(() => {
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
+    mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseMediaQuery.mockReturnValue(false); // Default to desktop view
   });
 
@@ -124,9 +141,9 @@ describe('StudiesPage', () => {
       fireEvent.click(notesTab);
 
       // Should show only notes
-      expect(screen.getByText('Regular Note 1')).toBeInTheDocument();
-      expect(screen.getByText('Regular Note 2')).toBeInTheDocument();
-      expect(screen.queryByText('Question 1')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Regular Note 1' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Regular Note 2' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Question 1' })).not.toBeInTheDocument();
     });
 
     it('filters to show only questions when Questions tab is clicked', () => {
@@ -147,8 +164,8 @@ describe('StudiesPage', () => {
       fireEvent.click(questionsTab);
 
       // Should show only questions
-      expect(screen.getByText('My Question')).toBeInTheDocument();
-      expect(screen.queryByText('Regular Note')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'My Question' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Regular Note' })).not.toBeInTheDocument();
     });
 
     it('shows all notes when All tab is clicked after filtering', () => {
@@ -173,8 +190,8 @@ describe('StudiesPage', () => {
       fireEvent.click(allTab);
 
       // Should show all notes
-      expect(screen.getByText('Regular Note')).toBeInTheDocument();
-      expect(screen.getByText('My Question')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Regular Note' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'My Question' })).toBeInTheDocument();
     });
 
 
@@ -198,9 +215,9 @@ describe('StudiesPage', () => {
       fireEvent.click(questionsTab);
 
       // Verify the question is visible BEFORE searching
-      expect(screen.getByText('Genesis question')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Genesis question' })).toBeInTheDocument();
       // Verify the note is filtered out by tab
-      expect(screen.queryByText('Genesis study')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Genesis study' })).not.toBeInTheDocument();
 
       // Type search query
       const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
@@ -209,7 +226,7 @@ describe('StudiesPage', () => {
       // Should show only the Genesis question (not the Genesis note or Exodus question)
       // Using waitFor to ensure filtering applies (waiting for item to disappear)
       await waitFor(() => {
-        expect(screen.queryByText('Exodus question')).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Exodus question' })).not.toBeInTheDocument();
       });
 
       const visibleCards = screen.getAllByRole('article');
