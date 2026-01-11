@@ -1,7 +1,7 @@
 import { Item, ThoughtsBySection } from '@/models/models';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
-import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition } from '../structure';
+import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition, findOutlinePoint, buildItemForUI } from '../structure';
 
 describe('ThoughtsBySection Utilities', () => {
   describe('isStructureChanged', () => {
@@ -345,6 +345,99 @@ describe('ThoughtsBySection Utilities', () => {
       expect(cleaned.main).toHaveLength(1);
       expect(cleaned.conclusion).toHaveLength(0);
       expect(calculateGroupPosition(cleaned.main, 'thought-3')).toBe(1000);
+    });
+  });
+
+  describe('findOutlinePoint', () => {
+    const mockSermon: any = {
+      id: 'sermon-1',
+      outline: {
+        introduction: [{ id: 'intro-1', text: 'Intro Point 1' }],
+        main: [{ id: 'main-1', text: 'Main Point 1' }],
+        conclusion: [{ id: 'conc-1', text: 'Conc Point 1' }],
+      }
+    };
+
+    it('finds points in any section', async () => {
+      await runScenarios([
+        {
+          name: 'finds in introduction',
+          run: () => expect(findOutlinePoint('intro-1', mockSermon)).toEqual({ text: 'Intro Point 1', section: '' }),
+        },
+        {
+          name: 'finds in main',
+          run: () => expect(findOutlinePoint('main-1', mockSermon)).toEqual({ text: 'Main Point 1', section: '' }),
+        },
+        {
+          name: 'finds in conclusion',
+          run: () => expect(findOutlinePoint('conc-1', mockSermon)).toEqual({ text: 'Conc Point 1', section: '' }),
+        },
+        {
+          name: 'returns undefined for missing point',
+          run: () => expect(findOutlinePoint('missing-1', mockSermon)).toBeUndefined(),
+        },
+        {
+          name: 'returns undefined for empty outline',
+          run: () => expect(findOutlinePoint('intro-1', { id: 'sermon-2' } as any)).toBeUndefined(),
+        },
+        {
+          name: 'returns undefined for null sermon',
+          run: () => expect(findOutlinePoint('intro-1', null)).toBeUndefined(),
+        },
+        {
+          name: 'returns undefined for undefined id',
+          run: () => expect(findOutlinePoint(undefined, mockSermon)).toBeUndefined(),
+        },
+      ]);
+    });
+  });
+
+  describe('buildItemForUI', () => {
+    const allowedTags = [
+      { name: 'Tag A', color: '#ff0000' },
+      { name: 'Tag B', color: '#00ff00' },
+    ];
+
+    it('constructs correct item object', () => {
+      const result = buildItemForUI({
+        id: 'item-1',
+        text: 'Content',
+        tags: ['Tag A', 'Unknown Tag'],
+        allowedTags,
+        sectionTag: 'Introduction',
+        outlinePointId: 'point-1',
+        outlinePoint: { text: 'Point 1', section: '' }
+      });
+
+      expect(result).toEqual({
+        id: 'item-1',
+        content: 'Content',
+        customTagNames: [
+          { name: 'Tag A', color: '#ff0000' },
+          { name: 'Unknown Tag', color: '#4c51bf' }, // Fallback color
+        ],
+        requiredTags: ['Introduction'],
+        outlinePointId: 'point-1',
+        outlinePoint: { text: 'Point 1', section: '' }
+      });
+    });
+
+    it('handles minimal parameters', () => {
+      const result = buildItemForUI({
+        id: 'item-2',
+        text: 'Content 2',
+        tags: [],
+        allowedTags: []
+      });
+
+      expect(result).toEqual({
+        id: 'item-2',
+        content: 'Content 2',
+        customTagNames: [],
+        requiredTags: [],
+        outlinePointId: undefined,
+        outlinePoint: undefined
+      });
     });
   });
 });

@@ -1,4 +1,4 @@
-import { ThoughtsBySection, Item } from "@/models/models";
+import { ThoughtsBySection, Item, Sermon, SermonPoint } from "@/models/models";
 
 /**
  * Check if structure has changed between two states
@@ -58,8 +58,8 @@ export const ensureUniqueItems = (items: Item[]): Item[] => {
  * Remove an item ID from all sections except the specified one
  */
 export const removeIdFromOtherSections = (
-  all: Record<string, Item[]>, 
-  keepIn: string, 
+  all: Record<string, Item[]>,
+  keepIn: string,
   idToKeep: string
 ): Record<string, Item[]> => {
   const sections = ["introduction", "main", "conclusion", "ambiguous"] as const;
@@ -79,7 +79,7 @@ export const removeIdFromOtherSections = (
  * Calculate intermediate position between two items
  */
 export const calculateIntermediatePosition = (
-  prevPos?: number, 
+  prevPos?: number,
   nextPos?: number
 ): number => {
   if (prevPos !== undefined && nextPos !== undefined && prevPos < nextPos) {
@@ -144,3 +144,54 @@ export const calculateGroupPosition = (
 
   return calculateIntermediatePosition(prevPos, nextPos);
 };
+
+/**
+ * Helper function to find an outline point by ID within a sermon's outline
+ */
+export function findOutlinePoint(
+  outlinePointId: string | undefined,
+  sermon: Sermon | null
+): { text: string; section: string } | undefined {
+  if (!outlinePointId || !sermon?.outline) {
+    return undefined;
+  }
+
+  const sections = ['introduction', 'main', 'conclusion'] as const;
+  for (const section of sections) {
+    const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
+    if (point) {
+      return {
+        text: point.text,
+        section: '' // Don't show section in structure page
+      };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Helper function to build an Item object for UI rendering
+ */
+export function buildItemForUI(params: {
+  id: string;
+  text: string;
+  tags: string[];
+  allowedTags: { name: string; color: string }[];
+  sectionTag?: string;
+  outlinePointId?: string;
+  outlinePoint?: { text: string; section: string };
+}): Item {
+  const { id, text, tags, allowedTags, sectionTag, outlinePointId, outlinePoint } = params;
+
+  return {
+    id,
+    content: text,
+    customTagNames: tags.map((tagName) => ({
+      name: tagName,
+      color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+    })),
+    requiredTags: sectionTag ? [sectionTag] : [],
+    outlinePointId,
+    outlinePoint,
+  };
+}

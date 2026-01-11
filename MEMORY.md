@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-11 Decoupling Complex Component Logic (Refactoring Protocol 150)
+**Problem:** `handleSaveEdit` in `page.tsx` had a cognitive complexity of 42 due to nested loops, redundant state checks, and interleaved server/UI logic.
+**Attempts:** Initially extracted logic to sub-functions within the component, which reduced complexity but didn't improve testability or structural clarity.
+**Solution:** (1) Extracted pure data transformation helpers (`findOutlinePoint`, `buildItemForUI`) to `utils/structure.ts`. (2) Extracted interaction handlers and related state (`handleSaveEdit`, `handleCreateNewThought`, etc.) to a custom hook `useSermonActions.ts`. (3) Verified with 174 targeted unit tests and manual browser validation.
+**Why it worked:** Custom hooks allow encapsulating related state and effects, making the main component declarative. Pure utilities in separate files enable 100% test coverage without component overhead.
+**Principle:** When a component's handler logic exceeds complexity limits, decouple stateful interactions into custom hooks and pure business logic into utilities for isolation and testability.
+
 ### 2026-01-11 JSDOM window override for SSR branches
 **Problem:** Needed to cover the `typeof window === 'undefined'` branch in share URL tests, but JSDOM always provides `window`.
 **Solution:** Override `global.window` using `Object.defineProperty` during the test and restore it afterward.
@@ -71,15 +78,14 @@
 
 **Emerging Principle:** UI refactoring requires preserving DOM structure and testing logical sections across all modes.
 
-### Testing Quality & Coverage (4 lessons)
-**Common Pattern:** Test failures and coverage gaps after changes
-- Coverage requires changed-line verification (2026-01-04)
-- Duplicate label tests need specific queries (2026-01-05)
-- Mock override must beat default beforeEach (2026-01-05)
-- Compile failures from typed test fixtures (2026-01-05)
-- Dynamic UI class test failures (2026-01-11)
-
 **Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
+
+### Logic Decoupling & Protocol 150 (2 lessons)
+**Common Pattern:** Extracting logic from monolithic components and validating with multi-layered testing.
+- Refactor handleSaveEdit logic extraction (2026-01-11)
+- Plan prompt refactor regression guard (2026-01-04)
+
+**Emerging Principle:** Decoupling logic into hooks/utils allows for >70% specific coverage and eliminates cognitive complexity warnings.
 
 ### Data Consistency (1 lesson)
 **Pattern:** Export order divergence from UI order
@@ -148,10 +154,17 @@
 *   **Protocol:** Всегда запускать созданные мной тесты до ответа пользователю; добиваться green.
 *   **Reasoning:** Пользователь ожидает подтвержденный результат и зеленый тестовый статус.
 
-**Translation Mocking**
-*   **Context:** `react-i18next` тесты.
-*   **Protocol:** Мокать `t` функцию так, чтобы она возвращала ключ или интерполировала параметры, если они переданы.
 *   **Reasoning:** Тесты часто проверяют наличие конкретного текста, который зависит от переданных переменных.
+
+**Protocol 150 (Multi-Layered Validation)**
+*   **Context:** Рефакторинг сложной бизнес-логики или UI взаимодействий.
+*   **Protocol:** Follow the 5-step cycle:
+    1. **Plan**: Document changes in `implementation_plan.md`.
+    2. **Decouple**: Extract logic to custom hooks or pure `utils` files.
+    3. **Unit Test**: Create dedicated tests for each new hook/utility.
+    4. **Coverage**: Verify statement coverage > 70% for changed logic.
+    5. **Manual Verify**: Confirm success via Browser Agent recording.
+*   **Reasoning:** Гарантирует отсутствие регрессий, поддерживает низкую сложность и высокую поддерживаемость кода.
 
 ### 🔄 React & State Management Protocols
 
@@ -321,6 +334,11 @@
 - `/studies` - Bible notes workspace
 - `/groups` - Groups workspace (preview)
 - `/settings` - User settings
+
+**Sermon Structure Architecture:**
+- `app/(pages)/(private)/sermons/[id]/structure/hooks/` - Feature-specific hooks (e.g., `useSermonActions`, `usePersistence`)
+- `app/(pages)/(private)/sermons/[id]/structure/utils/` - Pure logic (e.g., `findOutlinePoint`, `buildItemForUI`)
+- `app/(pages)/(private)/sermons/[id]/structure/page.tsx` - Main page orchestrator
 
 - `app/(pages)/(private)/studies/constants.ts` - Shared study note constants and width utilities
 

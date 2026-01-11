@@ -12,7 +12,7 @@ import EditThoughtModal from "@/components/EditThoughtModal";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
-import { updateThought, deleteThought } from "@/services/thought.service";
+import { deleteThought } from "@/services/thought.service";
 import "@locales/i18n";
 import { getExportContent } from "@/utils/exportContent";
 import { getSectionLabel } from "@lib/sections";
@@ -23,8 +23,9 @@ import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
+import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
-import { isStructureChanged } from "./utils/structure";
+import { isStructureChanged, findOutlinePoint } from "./utils/structure";
 
 // Translation key constants
 const TRANSLATION_KEYS = {
@@ -102,13 +103,37 @@ function StructurePageContent() {
     containersRef.current = containers;
   }, [containers]);
 
-  // Local UI state
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
-  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
-
   // Persistence hook
   const { debouncedSaveThought, debouncedSaveStructure } = usePersistence({ setSermon });
+
+  const columnTitles = useMemo((): Record<string, string> => ({
+    introduction: getSectionLabel(t, 'introduction'),
+    main: getSectionLabel(t, 'main'),
+    conclusion: getSectionLabel(t, 'conclusion'),
+    ambiguous: getSectionLabel(t, 'ambiguous'),
+  }), [t]);
+
+  // Sermon actions hook
+  const {
+    editingItem,
+    addingThoughtToSection,
+    handleEdit,
+    handleCloseEdit,
+    handleAddThoughtToSection,
+    handleSaveEdit,
+    handleMoveToAmbiguous,
+  } = useSermonActions({
+    sermon,
+    setSermon,
+    containers,
+    setContainers,
+    allowedTags,
+    columnTitles,
+    debouncedSaveThought,
+    debouncedSaveStructure,
+  });
+
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   // Focus mode hook
   const {
@@ -143,12 +168,7 @@ function StructurePageContent() {
     debouncedSaveStructure,
   });
 
-  const columnTitles = useMemo((): Record<string, string> => ({
-    introduction: getSectionLabel(t, 'introduction'),
-    main: getSectionLabel(t, 'main'),
-    conclusion: getSectionLabel(t, 'conclusion'),
-    ambiguous: getSectionLabel(t, 'ambiguous'),
-  }), [t]);
+  // No changes needed here, just removing the old columnTitles definition later
 
   // DnD hook
   const {
@@ -180,25 +200,6 @@ function StructurePageContent() {
     return () => clearTimeout(safetyTimeout);
   }, [dndActiveId]);
 
-  const handleEdit = (item: Item) => {
-    setEditingItem(item);
-  };
-
-  const handleAddThoughtToSection = (sectionId: string, outlinePointId?: string) => {
-    // Create an empty thought with predefined section
-    const emptyThought: Item = {
-      id: `temp-${Date.now()}`, // Temporary ID that will be replaced when saved
-      content: '',
-      requiredTags: [],
-      customTagNames: [],
-      outlinePointId,
-    };
-
-    // Set as the editing item with the specific section
-    setEditingItem(emptyThought);
-    setAddingThoughtToSection(sectionId);
-  };
-
   // Handle a newly created audio thought: append to data model and UI, and persist structure
   const handleAudioThoughtCreated = useCallback(async (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => {
     if (!sermon) return;
@@ -215,19 +216,8 @@ function StructurePageContent() {
           norm !== 'вступление' && norm !== 'основная часть' && norm !== 'заключение';
       });
 
-      // Build UI item
-      // If thought is linked to an outline point, find its text (for bubble header use)
-      let outlinePoint: { text: string; section: string } | undefined = undefined;
-      if (thought.outlinePointId && sermon.outline) {
-        const sections = ['introduction', 'main', 'conclusion'] as const;
-        for (const sec of sections) {
-          const p = sermon.outline[sec]?.find((pt: SermonPoint) => pt.id === thought.outlinePointId);
-          if (p) {
-            outlinePoint = { text: p.text, section: '' };
-            break;
-          }
-        }
-      }
+      // Build UI item - find outline point if available
+      const outlinePoint = findOutlinePoint(thought.outlinePointId ?? undefined, sermon);
 
       const newItem: Item = {
         id: thought.id,
@@ -273,223 +263,6 @@ function StructurePageContent() {
       toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
     }
   }, [allowedTags, columnTitles, debouncedSaveStructure, sermon, t, setContainers, setSermon]);
-
-  const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
-    if (!sermon) return;
-
-    // Check if we're adding a new thought or editing an existing one
-    if (editingItem && editingItem.id.startsWith('temp-')) {
-      // This is a new thought being added
-      const section = addingThoughtToSection;
-
-      // Construct the new thought data with the required date property
-      const newThought = {
-        id: Date.now().toString(), // Will be replaced by server
-        text: updatedText,
-        tags: [
-          ...updatedTags,
-          // Add the required section tag based on the section
-          ...(section ? [columnTitles[section as keyof typeof columnTitles]] : [])
-        ],
-        outlinePointId: outlinePointId,
-        date: new Date().toISOString() // Adding the required date property
-      };
-
-      try {
-        // Add the thought using the thought service
-        const thoughtService = await import('@/services/thought.service');
-        const addedThought = await thoughtService.createManualThought(sermon.id, newThought);
-
-        // Find outline point info if available
-        let outlinePoint: { text: string; section: string } | undefined;
-        if (outlinePointId && sermon.outline) {
-          const sections = ['introduction', 'main', 'conclusion'] as const;
-
-          for (const section of sections) {
-            const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
-            if (point) {
-              outlinePoint = {
-                text: point.text,
-                section: '' // Don't show section in structure page
-              };
-              break;
-            }
-          }
-        }
-
-        // Create item for UI
-        const newItem: Item = {
-          id: addedThought.id,
-          content: updatedText,
-          customTagNames: updatedTags.map((tagName) => ({
-            name: tagName,
-            color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-          })),
-          requiredTags: section ? [
-            columnTitles[section as keyof typeof columnTitles] || ''
-          ] : [],
-          outlinePointId: outlinePointId,
-          outlinePoint: outlinePoint
-        };
-
-        // Update sermon state
-        setSermon((prevSermon: Sermon | null) => {
-          if (!prevSermon) return null;
-          return {
-            ...prevSermon,
-            thoughts: [...prevSermon.thoughts, addedThought]
-          };
-        });
-
-        // Update containers
-        if (section) {
-          setContainers(prev => ({
-            ...prev,
-            [section]: [...prev[section], newItem]
-          }));
-
-          // Update structure in database
-          const currentStructure = sermon.structure || {};
-          const newStructure = typeof currentStructure === 'string'
-            ? JSON.parse(currentStructure)
-            : { ...currentStructure };
-
-          if (!newStructure[section]) {
-            newStructure[section] = [];
-          }
-          newStructure[section] = [...newStructure[section], newItem.id];
-
-          await updateStructure(sermon.id, newStructure);
-        }
-      } catch (error) {
-        console.error("Error adding thought:", error);
-        toast.error(t('errors.failedToAddThought'));
-      } finally {
-        setEditingItem(null);
-        setAddingThoughtToSection(null);
-      }
-    } else {
-      // Existing code for updating thoughts
-      if (!editingItem) return;
-
-      const updatedItem: Thought = {
-        ...sermon.thoughts.find((thought: Thought) => thought.id === editingItem.id)!,
-        text: updatedText,
-        tags: [...(editingItem.requiredTags || []), ...updatedTags],
-        outlinePointId: outlinePointId
-      };
-
-      try {
-        const updatedThought = await updateThought(sermon.id, updatedItem);
-        const updatedThoughts = sermon.thoughts.map((thought: Thought) =>
-          thought.id === updatedItem.id ? updatedThought : thought
-        );
-        setSermon((prevSermon: Sermon | null) => prevSermon ? { ...prevSermon, thoughts: updatedThoughts } : null);
-
-        // Find outline point info if available
-        let outlinePoint: { text: string; section: string } | undefined;
-        if (outlinePointId && sermon.outline) {
-          const sections = ['introduction', 'main', 'conclusion'] as const;
-
-          for (const section of sections) {
-            const point = sermon.outline[section]?.find((p: SermonPoint) => p.id === outlinePointId);
-            if (point) {
-              outlinePoint = {
-                text: point.text,
-                section: '' // Don't show section in structure page
-              };
-              break;
-            }
-          }
-        }
-
-        const newContainers = Object.keys(containers).reduce(
-          (acc, key) => {
-            acc[key] = containers[key].map((item) =>
-              item.id === updatedItem.id
-                ? {
-                  ...item,
-                  content: updatedText,
-                  customTagNames: updatedTags.map((tagName) => ({
-                    name: tagName,
-                    color:
-                      allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-                  })),
-                  outlinePointId: outlinePointId,
-                  outlinePoint: outlinePoint
-                }
-                : item
-            );
-            return acc;
-          },
-          {} as Record<string, Item[]>
-        );
-
-        setContainers(newContainers);
-      } catch (error) {
-        console.error("Error updating thought:", error);
-      } finally {
-        setEditingItem(null);
-        setAddingThoughtToSection(null);
-      }
-    }
-  };
-
-  const handleCloseEdit = () => {
-    setEditingItem(null);
-    setAddingThoughtToSection(null);
-  };
-
-  // Move a thought from a concrete section to the ambiguous section
-  const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
-    if (!sermon) return;
-    if (!['introduction', 'main', 'conclusion'].includes(fromContainerId)) return;
-
-    // Find the item in the source container
-    const sourceItems = containers[fromContainerId];
-    const itemIndex = sourceItems.findIndex((it) => it.id === itemId);
-    if (itemIndex === -1) return;
-
-    const item = sourceItems[itemIndex];
-
-    // Prepare updated containers
-    const updatedSource = [...sourceItems.slice(0, itemIndex), ...sourceItems.slice(itemIndex + 1)];
-    const movedItem = { ...item, outlinePointId: null, requiredTags: [] as string[] };
-    const updatedAmbiguous = [...containers.ambiguous, movedItem];
-
-    const updatedContainers = {
-      ...containers,
-      [fromContainerId]: updatedSource,
-      ambiguous: updatedAmbiguous,
-    };
-
-    // Optimistically update UI
-    setContainers(updatedContainers);
-    containersRef.current = updatedContainers;
-
-    // Persist thought update (clear outlinePointId and section tag)
-    const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-    if (thought) {
-      const updatedThought: Thought = {
-        ...thought,
-        tags: [
-          ...(movedItem.requiredTags || []),
-          ...(movedItem.customTagNames || []).map((tag) => tag.name),
-        ],
-        outlinePointId: null,
-      };
-      debouncedSaveThought(sermon.id, updatedThought);
-    }
-
-    // Persist structure
-    const newStructure: ThoughtsBySection = {
-      introduction: updatedContainers.introduction.map((it) => it.id),
-      main: updatedContainers.main.map((it) => it.id),
-      conclusion: updatedContainers.conclusion.map((it) => it.id),
-      ambiguous: updatedContainers.ambiguous.map((it) => it.id),
-    };
-    debouncedSaveStructure(sermon.id, newStructure);
-  };
 
   const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !sermon) {
