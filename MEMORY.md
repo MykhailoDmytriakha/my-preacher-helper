@@ -14,6 +14,12 @@
 **Solution:** Override `global.window` using `Object.defineProperty` during the test and restore it afterward.
 **Principle:** To exercise SSR-only branches in JSDOM, temporarily redefine `window` with `Object.defineProperty` instead of direct assignment.
 
+### 2026-01-11 CSS Grid Header Alignment
+**Problem:** Column headers didn't match values vertically in a table using CSS Grid due to calculating widths based on different content (text vs buttons).
+**Solution:** Use fixed pixel widths for all metadata/action columns and only one `1fr` column for the primary flexible content.
+**Why it worked:** Constraining all but one column ensures identical grid calculation for both header and rows regardless of inner content size.
+**Principle:** For perfect Grid alignment between header and rows, use fixed widths for all metadata columns and only a single `1fr` column for flexible content.
+
 ### 2026-01-11 i18n labels update after mount in ThemeModeToggle
 **Problem:** Theme mode tests failed because translated labels render after mount, and duplicate labels exist in sr-only elements.
 **Attempts:** `getByText('System')` assertions failed with multiple matches and timing issues.
@@ -33,6 +39,23 @@
 **Solution:** Wait for the stop button to render before sending the stop shortcut; cast legacy matchMedia mocks via `as unknown as MediaQueryList`.
 **Why it worked:** The UI needs to transition to recording state before stop is handled; TS needs an explicit bridge when mocks intentionally omit interface members.
 **Principle:** For async UI keyboard flows, wait for state-driven DOM before asserting side effects; when mocking partial Web APIs in TS, use `unknown` casts to satisfy structural typing.
+
+### 2026-01-11 Testing dynamic UI class changes in React
+**Problem:** Tests for dynamic modal width and drawer expansion failed because assertions used stale element references or fired before state updates finished.
+**Attempts:** `expect(modalContainer).toHaveClass(...)` failed even after `userEvent.type`.
+**Solution:** (1) Re-find the element inside `waitFor` to ensure it targets the updated DOM node. (2) Use `data-testid` for stable selection. (3) Use `fireEvent.change` for large text blocks instead of `userEvent.type` to speed up tests.
+**Why it worked:** React re-renders might replace the DOM node; `waitFor` + fresh query ensures we check the latest state.
+**Principle:** For dynamic UI class assertions, always re-query the element inside `waitFor` and use stable `data-testid` anchors.
+
+### 2026-01-11 Threshold logic ordering for auto-expansion
+**Problem:** Drawer wouldn't expand to fullscreen because the `medium` threshold (1000) was checked before `fullscreen` (2000) in an `if/else if` block.
+**Solution:** Reorder logic to check the largest/most specific threshold first.
+**Principle:** When implementing multi-threshold triggers, always evaluate conditions from most restrictive (largest) to least restrictive.
+
+### 2026-01-11 exhaustive-deps vs functional updates
+**Problem:** `useEffect` for auto-expansion had a lint warning because `size` was used in the logic but omitted from deps to avoid loops.
+**Solution:** Use the functional update pattern `setSize((prev) => ...)` to read the current state without including it in the dependency array.
+**Principle:** To avoid `exhaustive-deps` warnings and unnecessary effect re-runs when state logic depends on previous state, use the functional update pattern.
 
 ---
 
@@ -54,8 +77,9 @@
 - Duplicate label tests need specific queries (2026-01-05)
 - Mock override must beat default beforeEach (2026-01-05)
 - Compile failures from typed test fixtures (2026-01-05)
+- Dynamic UI class test failures (2026-01-11)
 
-**Emerging Principle:** Tests must explicitly verify changed lines and handle UI label duplication; mocks need explicit override.
+**Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
 
 ### Data Consistency (1 lesson)
 **Pattern:** Export order divergence from UI order
@@ -298,7 +322,11 @@
 - `/groups` - Groups workspace (preview)
 - `/settings` - User settings
 
+- `app/(pages)/(private)/studies/constants.ts` - Shared study note constants and width utilities
+
 **Key Patterns:**
 - Tests: `npm run test` (NOT `npx jest` directly)
 - Colors: Use `@/utils/themeColors`, never hardcode
+- Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
+- Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Comments: English only in code

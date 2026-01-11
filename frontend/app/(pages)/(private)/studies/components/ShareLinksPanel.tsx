@@ -16,14 +16,13 @@ interface ShareLinksPanelProps {
   onDelete: (linkId: string) => Promise<void>;
 }
 
-const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800';
-const HEADER_CLASS = 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between';
-const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-center';
-const SELECT_CLASS = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white';
-const ACTION_BUTTON_CLASS = 'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50';
-const TABLE_HEADER_CLASS = 'grid grid-cols-1 gap-3 border-b border-gray-200 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400 md:grid-cols-[2fr_1.2fr_1fr_1fr_auto]';
-const ROW_CLASS = 'grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200 md:grid-cols-[2fr_1.2fr_1fr_1fr_auto]';
-const META_TEXT_CLASS = 'text-xs text-gray-500 dark:text-gray-400';
+const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800';
+const HEADER_CLASS = 'flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-gray-100 dark:border-gray-700 pb-5 mb-5';
+const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10';
+const SELECT_CLASS = 'w-full sm:w-[240px] h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white outline-none';
+const ACTION_BUTTON_CLASS = 'inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap';
+const TABLE_HEADER_CLASS = 'hidden md:grid gap-4 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 md:grid-cols-[1fr_200px_100px_80px_360px] items-center';
+const ROW_CLASS = 'grid grid-cols-1 gap-3 md:gap-4 px-3 py-3 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 md:grid-cols-[1fr_200px_100px_80px_360px] items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20';
 
 export default function ShareLinksPanel({
   notes,
@@ -93,14 +92,18 @@ export default function ShareLinksPanel({
   return (
     <section className={PANEL_CLASS}>
       <div className={HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <LinkIcon className="h-4 w-4 text-emerald-600" />
-            {t('studiesWorkspace.shareLinks.title')}
+        <div className="flex items-start gap-3">
+          <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/30">
+            <LinkIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {t('studiesWorkspace.shareLinks.subtitle')}
-          </p>
+          <div className="space-y-0.5">
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+              {t('studiesWorkspace.shareLinks.title')}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {t('studiesWorkspace.shareLinks.subtitle')}
+            </p>
+          </div>
         </div>
 
         <div className={ACTIONS_CLASS}>
@@ -145,9 +148,9 @@ export default function ShareLinksPanel({
           <div className="space-y-2">
             <div className={TABLE_HEADER_CLASS}>
               <span>{t('studiesWorkspace.shareLinks.noteLabel')}</span>
-              <span>{t('studiesWorkspace.shareLinks.accessLabel')}</span>
-              <span>{t('studiesWorkspace.shareLinks.createdLabel')}</span>
-              <span>{t('studiesWorkspace.shareLinks.viewsLabel')}</span>
+              <span className="text-center">{t('studiesWorkspace.shareLinks.accessLabel')}</span>
+              <span className="text-center">{t('studiesWorkspace.shareLinks.createdLabel')}</span>
+              <span className="text-center">{t('studiesWorkspace.shareLinks.viewsLabel')}</span>
               <span className="text-right">{t('common.actions')}</span>
             </div>
             {sortedLinks.map((link) => {
@@ -155,49 +158,59 @@ export default function ShareLinksPanel({
               const sharePath = getShareNotePath(link.token);
               return (
                 <div key={link.id} className={ROW_CLASS}>
-                  <div className="space-y-1">
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                  <div className="flex flex-col min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                       {note?.title || t('studiesWorkspace.untitled')}
                     </p>
-                    <p className={META_TEXT_CLASS}>{sharePath}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">
+                      {sharePath}
+                    </p>
                   </div>
-                  <div className={META_TEXT_CLASS}>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 md:text-center">
+                    <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.accessLabel')}:</span>
                     {t('studiesWorkspace.shareLinks.accessValue')}
                   </div>
-                  <div className={META_TEXT_CLASS}>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 md:text-center">
+                    <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.createdLabel')}:</span>
                     {new Date(link.createdAt).toLocaleDateString()}
                   </div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <div className="text-sm font-bold text-gray-900 dark:text-gray-100 md:text-center">
+                    <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.viewsLabel')}:</span>
                     {link.viewCount}
                   </div>
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => handleCopy(link.token)}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+                      className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                      title={t('studiesWorkspace.shareLinks.copyLink')}
                     >
-                      <DocumentDuplicateIcon className="h-4 w-4" />
-                      {copiedToken === link.token
-                        ? t('common.copied')
-                        : t('studiesWorkspace.shareLinks.copyLink')}
+                      <DocumentDuplicateIcon className="h-3.5 w-3.5" />
+                      <span className="hidden lg:inline">
+                        {copiedToken === link.token
+                          ? t('common.copied')
+                          : t('studiesWorkspace.shareLinks.copyLink')}
+                      </span>
                     </button>
                     <a
                       href={sharePath}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+                      className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                      title={t('studiesWorkspace.shareLinks.openLink')}
                     >
-                      <LinkIcon className="h-4 w-4" />
-                      {t('studiesWorkspace.shareLinks.openLink')}
+                      <LinkIcon className="h-3.5 w-3.5" />
+                      <span className="hidden lg:inline">{t('studiesWorkspace.shareLinks.openLink')}</span>
                     </a>
                     <button
                       type="button"
                       onClick={() => handleDelete(link.id)}
                       disabled={deletingId === link.id}
-                      className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/30"
+                      className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-100 bg-red-50/30 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
+                      title={t('studiesWorkspace.shareLinks.deleteLink')}
                     >
-                      <TrashIcon className="h-4 w-4" />
-                      {t('studiesWorkspace.shareLinks.deleteLink')}
+                      <TrashIcon className="h-3.5 w-3.5" />
+                      <span className="hidden lg:inline">{t('studiesWorkspace.shareLinks.deleteLink')}</span>
                     </button>
                   </div>
                 </div>
