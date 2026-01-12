@@ -77,6 +77,7 @@ export async function POST(request: Request) {
       title: payload.title || '',
       scriptureRefs: payload.scriptureRefs || [],
       tags: payload.tags || [],
+      type: payload.type || 'note',
       materialIds: payload.materialIds || [],
       relatedSermonIds: payload.relatedSermonIds || [],
     });

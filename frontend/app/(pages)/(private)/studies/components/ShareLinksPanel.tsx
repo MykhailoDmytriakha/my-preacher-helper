@@ -21,8 +21,9 @@ const HEADER_CLASS = 'flex flex-col gap-4 md:flex-row md:items-center md:justify
 const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10';
 const SELECT_CLASS = 'w-full sm:w-[240px] h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white outline-none';
 const ACTION_BUTTON_CLASS = 'inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap';
-const TABLE_HEADER_CLASS = 'hidden md:grid gap-4 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 md:grid-cols-[1fr_200px_100px_80px_360px] items-center';
-const ROW_CLASS = 'grid grid-cols-1 gap-3 md:gap-4 px-3 py-3 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 md:grid-cols-[1fr_200px_100px_80px_360px] items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20';
+const GRID_COLS_CLASS = 'md:grid-cols-[2fr_minmax(180px,1.2fr)_110px_90px_310px]';
+const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
+const ROW_CLASS = `grid grid-cols-1 gap-3 md:gap-4 px-4 py-4 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 ${GRID_COLS_CLASS} items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20`;
 
 export default function ShareLinksPanel({
   notes,
@@ -147,11 +148,11 @@ export default function ShareLinksPanel({
         {shareLinks.length > 0 ? (
           <div className="space-y-2">
             <div className={TABLE_HEADER_CLASS}>
-              <span>{t('studiesWorkspace.shareLinks.noteLabel')}</span>
+              <span className="text-left pl-1">{t('studiesWorkspace.shareLinks.noteLabel')}</span>
               <span className="text-center">{t('studiesWorkspace.shareLinks.accessLabel')}</span>
               <span className="text-center">{t('studiesWorkspace.shareLinks.createdLabel')}</span>
               <span className="text-center">{t('studiesWorkspace.shareLinks.viewsLabel')}</span>
-              <span className="text-right">{t('common.actions')}</span>
+              <span className="text-right pr-4">{t('common.actions')}</span>
             </div>
             {sortedLinks.map((link) => {
               const note = noteMap.get(link.noteId);
@@ -174,11 +175,11 @@ export default function ShareLinksPanel({
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.createdLabel')}:</span>
                     {new Date(link.createdAt).toLocaleDateString()}
                   </div>
-                  <div className="text-sm font-bold text-gray-900 dark:text-gray-100 md:text-center">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-center tabular-nums">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.viewsLabel')}:</span>
                     {link.viewCount}
                   </div>
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-1.5 pr-2">
                     <button
                       type="button"
                       onClick={() => handleCopy(link.token)}

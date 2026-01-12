@@ -320,12 +320,6 @@ export default function AddStudyNoteModal({
               </label>
               {/* Voice input button */}
               <div className="flex items-center gap-2">
-                {isVoiceProcessing && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                    <ArrowPathIcon className="h-3 w-3 animate-spin" />
-                    {t('studiesWorkspace.voiceInput.transcribing') || 'Processing...'}
-                  </span>
-                )}
                 <AudioRecorder
                   onRecordingComplete={handleVoiceRecordingComplete}
                   isProcessing={isVoiceProcessing}

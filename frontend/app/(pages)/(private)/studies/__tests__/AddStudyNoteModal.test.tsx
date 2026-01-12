@@ -153,4 +153,51 @@ describe('AddStudyNoteModal', () => {
     const container = screen.getByTestId('study-note-modal-container');
     await waitFor(() => expect(container).toHaveClass('max-w-5xl'));
   });
+  it('manages tags correctly', async () => {
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    await openAdvancedSection();
+
+    const tagInput = screen.getByPlaceholderText('studiesWorkspace.addTag');
+    fireEvent.change(tagInput, { target: { value: 'new-tag' } });
+    const addButton = screen.getByRole('button', { name: 'studiesWorkspace.addTag' });
+    fireEvent.click(addButton);
+
+    expect(await screen.findByText('new-tag')).toBeInTheDocument();
+
+    const removeButton = screen.getByText('×');
+    fireEvent.click(removeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByText('new-tag')).not.toBeInTheDocument();
+    });
+  });
+
+  it('calls onSave with correct details when submitted', async () => {
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <AddStudyNoteModal
+        {...baseProps}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />
+    );
+
+    const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+    fireEvent.change(contentInput, { target: { value: 'Test note content' } });
+
+    const saveButton = screen.getByRole('button', { name: 'studiesWorkspace.saveNote' });
+    await userEvent.click(saveButton);
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'Test note content',
+      type: 'note'
+    }));
+  });
 });
