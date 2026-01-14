@@ -1,19 +1,33 @@
 // Mock bibleData before any imports
-jest.mock('@/(pages)/(private)/studies/bibleData', () => ({
-    BIBLE_BOOKS_DATA: [
+jest.mock('@/(pages)/(private)/studies/bibleData', () => {
+    const baseBooks = [
         { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
         { id: 'Exodus', chapters: 40, names: { en: 'Exodus', ru: 'Исход', uk: 'Вихід' }, abbrev: { en: 'Exod', ru: 'Исх', uk: 'Вих' } },
         { id: 'Leviticus', chapters: 27, names: { en: 'Leviticus', ru: 'Левит', uk: 'Левит' }, abbrev: { en: 'Lev', ru: 'Лев', uk: 'Лев' } },
         { id: 'Numbers', chapters: 36, names: { en: 'Numbers', ru: 'Числа', uk: 'Числа' }, abbrev: { en: 'Num', ru: 'Чис', uk: 'Чис' } },
         { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
+        { id: '1 Samuel', chapters: 31, names: { en: '1 Samuel', ru: '1 Царств', uk: '1 Самуїлова' }, abbrev: { en: '1Sam', ru: '1Цар', uk: '1Сам' } },
         { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
         { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
         { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
         { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
-    ],
-    getBookByName: jest.fn((name: string, _locale?: string) => {
-        const books: Record<string, any> = {
-            'Genesis': { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
+    ];
+    const fillerCount = Math.max(0, 40 - baseBooks.length);
+    const fillerBooks = Array.from({ length: fillerCount }, (_, index) => {
+        const number = index + 1;
+        return {
+            id: `Filler ${number}`,
+            chapters: 1,
+            names: { en: `Filler ${number}`, ru: `Filler ${number}`, uk: `Filler ${number}` },
+            abbrev: { en: `F${number}`, ru: `F${number}`, uk: `F${number}` },
+        };
+    });
+
+    return {
+        BIBLE_BOOKS_DATA: [...baseBooks, ...fillerBooks],
+        getBookByName: jest.fn((name: string, _locale?: string) => {
+            const books: Record<string, any> = {
+                'Genesis': { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
             'Exodus': { id: 'Exodus', chapters: 40, names: { en: 'Exodus', ru: 'Исход', uk: 'Вихід' }, abbrev: { en: 'Exod', ru: 'Исх', uk: 'Вих' } },
             'Leviticus': { id: 'Leviticus', chapters: 27, names: { en: 'Leviticus', ru: 'Левит', uk: 'Левит' }, abbrev: { en: 'Lev', ru: 'Лев', uk: 'Лев' } },
             'Numbers': { id: 'Numbers', chapters: 36, names: { en: 'Numbers', ru: 'Числа', uk: 'Числа' }, abbrev: { en: 'Num', ru: 'Чис', uk: 'Чис' } },
@@ -35,40 +49,84 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => ({
             '2Пет': { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
         };
 
-        const lower = name.toLowerCase();
-        return books[name] || books[lower] || null;
-    }),
-    BibleLocale: { en: 'en', ru: 'ru', uk: 'uk' }
-}));
+            const lower = name.toLowerCase();
+            return books[name] || books[lower] || null;
+        }),
+        BibleLocale: { en: 'en', ru: 'ru', uk: 'uk' }
+    };
+});
 
 // Mock translation
+let currentLanguage: 'ru' | 'en' | 'uk' | 'en-US' = 'ru';
+
+const translationsByLocale: Record<string, Record<string, string>> = {
+    ru: {
+        'calendar.analytics.title': 'Аналитика',
+        'calendar.analytics.year': 'Год',
+        'calendar.analytics.allYears': 'Все годы',
+        'calendar.analytics.bibleBooks': 'Распределение по книгам Библии',
+        'calendar.analytics.oldTestament': 'Ветхий Завет',
+        'calendar.analytics.newTestament': 'Новый Завет',
+        'calendar.analytics.monthlyActivity': 'Активность по месяцам',
+        'calendar.analytics.sermons': 'проповедей',
+        'calendar.analytics.noSermons': 'Нет проповедей',
+        'calendar.analytics.mostSermons': 'Больше всего проповедей',
+        'calendar.analytics.noActivity': 'Нет активности',
+        'calendar.analytics.mostActivity': 'Наибольшая активность',
+        'calendar.analytics.totalPreachings': 'Всего проповедей',
+        'calendar.analytics.topChurches': 'Популярные церкви',
+        'calendar.analytics.avgPrepTime': 'Ср. время подг.',
+        'calendar.analytics.uniqueChurches': 'Уникальные церкви',
+        'calendar.analytics.busiestMonth': 'Самый активный месяц',
+    },
+    en: {
+        'calendar.analytics.title': 'Analytics',
+        'calendar.analytics.year': 'Year',
+        'calendar.analytics.allYears': 'All years',
+        'calendar.analytics.bibleBooks': 'Bible Books Distribution',
+        'calendar.analytics.oldTestament': 'Old Testament',
+        'calendar.analytics.newTestament': 'New Testament',
+        'calendar.analytics.monthlyActivity': 'Monthly Activity',
+        'calendar.analytics.sermons': 'sermons',
+        'calendar.analytics.noSermons': 'No sermons',
+        'calendar.analytics.mostSermons': 'Most sermons',
+        'calendar.analytics.noActivity': 'No activity',
+        'calendar.analytics.mostActivity': 'Most activity',
+        'calendar.analytics.totalPreachings': 'Total preachings',
+        'calendar.analytics.topChurches': 'Top Churches',
+        'calendar.analytics.avgPrepTime': 'Avg Prep Time',
+        'calendar.analytics.uniqueChurches': 'Unique Churches',
+        'calendar.analytics.busiestMonth': 'Busiest Month',
+    },
+    uk: {
+        'calendar.analytics.title': 'Аналітика',
+        'calendar.analytics.year': 'Рік',
+        'calendar.analytics.allYears': 'Усі роки',
+        'calendar.analytics.bibleBooks': 'Розподіл по книгах Біблії',
+        'calendar.analytics.oldTestament': 'Старий Завіт',
+        'calendar.analytics.newTestament': 'Новий Завіт',
+        'calendar.analytics.monthlyActivity': 'Активність за місяцями',
+        'calendar.analytics.sermons': 'проповідей',
+        'calendar.analytics.noSermons': 'Немає проповідей',
+        'calendar.analytics.mostSermons': 'Найбільше проповідей',
+        'calendar.analytics.noActivity': 'Немає активності',
+        'calendar.analytics.mostActivity': 'Найбільша активність',
+        'calendar.analytics.totalPreachings': 'Всього проповідей',
+        'calendar.analytics.topChurches': 'Популярні церкви',
+        'calendar.analytics.avgPrepTime': 'Сер. час підг.',
+        'calendar.analytics.uniqueChurches': 'Унікальні церкви',
+        'calendar.analytics.busiestMonth': 'Найактивніший місяць',
+    },
+};
+
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string, _options?: any) => {
-            // Return translated text for common keys (Russian)
-            const translations: Record<string, string> = {
-                'calendar.analytics.title': 'Аналитика',
-                'calendar.analytics.year': 'Год',
-                'calendar.analytics.allYears': 'Все годы',
-                'calendar.analytics.bibleBooks': 'Распределение по книгам Библии',
-                'calendar.analytics.oldTestament': 'Ветхий Завет',
-                'calendar.analytics.newTestament': 'Новый Завет',
-                'calendar.analytics.monthlyActivity': 'Активность по месяцам',
-                'calendar.analytics.sermons': 'проповедей',
-                'calendar.analytics.noSermons': 'Нет проповедей',
-                'calendar.analytics.mostSermons': 'Больше всего проповедей',
-                'calendar.analytics.noActivity': 'Нет активности',
-                'calendar.analytics.mostActivity': 'Наибольшая активность',
-                'calendar.analytics.totalPreachings': 'Всего проповедей',
-                'calendar.analytics.topChurches': 'Популярные церкви',
-                'calendar.analytics.avgPrepTime': 'Ср. время подг.',
-                'calendar.analytics.uniqueChurches': 'Уникальные церкви',
-                'calendar.analytics.busiestMonth': 'Самый активный месяц',
-            };
-            return translations[key] || key;
+        t: (key: string, options?: any) => {
+            const translations = translationsByLocale[currentLanguage] || {};
+            return translations[key] || options?.defaultValue || key;
         },
         i18n: {
-            language: 'ru' // Use Russian for tests since test data uses Russian abbreviations
+            language: currentLanguage
         }
     }),
 }));
@@ -89,6 +147,10 @@ describe('AnalyticsSection', () => {
     beforeAll(() => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date('2024-06-15T00:00:00Z'));
+    });
+
+    beforeEach(() => {
+        currentLanguage = 'ru';
     });
 
     afterAll(() => {
@@ -355,5 +417,190 @@ describe('AnalyticsSection', () => {
             fireEvent.change(yearSelect, { target: { value: 'all' } });
             expect(within(totalCard as HTMLElement).getByText('3')).toBeInTheDocument();
         });
+    });
+
+    it('shows N/A busiest month and zero prep time when there is no data', () => {
+        render(<AnalyticsSection sermonsByDate={{}} />);
+
+        const busiestLabel = screen.getByText('Самый активный месяц');
+        const busiestCard = busiestLabel.closest('div')?.parentElement;
+        expect(busiestCard).toBeTruthy();
+        expect(within(busiestCard as HTMLElement).getByText('N/A')).toBeInTheDocument();
+
+        const avgLabel = screen.getByText('Ср. время подг.');
+        const avgCard = avgLabel.closest('div')?.parentElement;
+        expect(avgCard).toBeTruthy();
+        expect(within(avgCard as HTMLElement).getByText('0')).toBeInTheDocument();
+    });
+
+    it('uses exact book match and omits missing church city', () => {
+        const sermonsByDateExact = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'exact-1',
+                    verse: 'Быт',
+                    preachDates: [
+                        {
+                            id: 'pd-exact',
+                            date: '2024-01-10',
+                            church: { id: 'c-exact', name: 'Alpha Church' },
+                            audience: '',
+                            createdAt: '2024-01-01',
+                        }
+                    ],
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateExact} />);
+
+        expect(screen.getByText('Alpha Church')).toBeInTheDocument();
+        expect(screen.queryByText(/Alpha Church,\s/)).not.toBeInTheDocument();
+        expect(screen.getByTitle(/Genesis.*: 1 проповедей/)).toBeInTheDocument();
+    });
+
+    it('renders default book order for non-Russian locale', () => {
+        currentLanguage = 'uk';
+        render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+
+        expect(screen.getByText('Старий Завіт')).toBeInTheDocument();
+        expect(screen.getByText('Новий Завіт')).toBeInTheDocument();
+    });
+
+    it('falls back to English abbreviations for unknown locale', () => {
+        currentLanguage = 'en-US';
+        render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+
+        expect(screen.getByText('Old Testament')).toBeInTheDocument();
+        expect(screen.getByText('New Testament')).toBeInTheDocument();
+        expect(screen.getByText('Gen')).toBeInTheDocument();
+    });
+
+    it('returns raw month key for invalid dates when viewing all years', () => {
+        const sermonsByDateInvalid = {
+            '2024-13-40': [
+                {
+                    ...mockSermons[0],
+                    id: 'invalid-date',
+                    verse: 'Мф 1:1',
+                    preachDates: [
+                        {
+                            id: 'pd-invalid',
+                            date: '2024-13-40',
+                            church: { id: 'c-invalid', name: 'Gamma Church', city: 'City C' },
+                            audience: '',
+                            createdAt: '2024-01-01',
+                        }
+                    ],
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateInvalid} />);
+
+        const yearSelect = screen.getByRole('combobox', { name: 'Год' });
+        fireEvent.change(yearSelect, { target: { value: 'all' } });
+
+        const busiestLabel = screen.getByText('Самый активный месяц');
+        const busiestCard = busiestLabel.closest('div')?.parentElement;
+        expect(busiestCard).toBeTruthy();
+        expect(within(busiestCard as HTMLElement).getByText('2024-13')).toBeInTheDocument();
+    });
+
+    it('handles Russian-specific abbreviations not covered by default matching', () => {
+        const verseWithNarrowNbsp = `1\u202Fцарств 1:1`;
+        const sermonsByDateRussianVariants = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'mat-variant',
+                    verse: 'Мат 1:1',
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-mat-variant' }]
+                },
+                {
+                    ...mockSermons[1],
+                    id: 'samuel-variant',
+                    verse: verseWithNarrowNbsp,
+                    preachDates: [{
+                        ...mockSermons[1].preachDates![0],
+                        id: 'pd-samuel-variant',
+                        date: '2024-01-10'
+                    }]
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateRussianVariants} />);
+
+        expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
+    });
+
+    it('falls back to Unknown topic when verse has no recognizable book token', () => {
+        const sermonsByDateNumericVerse = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'numeric-verse',
+                    verse: '123:45',
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-numeric' }]
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateNumericVerse} />);
+
+        expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
+    });
+
+    it('uses Unknown topic fallback when verse text is empty', () => {
+        const sermonsByDateEmptyVerse = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'empty-verse',
+                    verse: ' : ',
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-empty' }]
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateEmptyVerse} />);
+
+        expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
+    });
+
+    it('handles dash verse without a book token', () => {
+        const sermonsByDateDashNoBook = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'dash-no-book',
+                    verse: '- 123',
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-dash-no-book' }]
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateDashNoBook} />);
+
+        expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
+    });
+
+    it('handles dash verse with unknown book', () => {
+        const sermonsByDateDashUnknown = {
+            '2024-01-10': [
+                {
+                    ...mockSermons[0],
+                    id: 'dash-unknown-book',
+                    verse: '- UnknownBook 1:1',
+                    preachDates: [{ ...mockSermons[0].preachDates![0], id: 'pd-dash-unknown' }]
+                }
+            ],
+        };
+
+        render(<AnalyticsSection sermonsByDate={sermonsByDateDashUnknown} />);
+
+        expect(screen.getByText('Распределение по книгам Библии')).toBeInTheDocument();
     });
 });

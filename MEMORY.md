@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-14 Calendar Analytics Refactor Verified
+**Problem:** `AnalyticsSection.tsx` exceeded `sonarjs/cognitive-complexity`, and a safe refactor needed high-confidence behavior parity.
+**Attempts:** Researched refactor options and verified existing behavior boundaries via tests and data flow inspection.
+**Solution:** Extracted analytics computation into `calendarAnalytics.ts`, split logic into pure helpers, expanded unit tests, ran full test suite + lint, and manually compared prod vs localhost.
+**Why it worked:** Moving complex logic into pure utilities reduced complexity without UI changes; tests plus manual parity check validated behavior.
+**Principle:** To reduce cognitive complexity safely, extract pure logic into utilities, keep UI thin, and validate with targeted tests plus full-suite and real-world parity checks.
+
 ### 2026-01-14 KnowledgeSection Refresh Should Update sectionHints
 **Problem:** Refresh button in “Suggested Plan” visually referenced section hints but called full-plan generation, so UI appeared unchanged when sectionHints existed.
 **Attempts:** Investigated UI triggers and backend routes to verify actual API calls.
@@ -102,12 +109,13 @@
 
 **Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
 
-### Logic Decoupling & Protocol 150 (2 lessons)
+### Logic Decoupling & Protocol 150 (3 lessons)
 **Common Pattern:** Extracting logic from monolithic components and validating with multi-layered testing.
 - Refactor handleSaveEdit logic extraction (2026-01-11)
 - Plan prompt refactor regression guard (2026-01-04)
+- Calendar Analytics pure-logic extraction + parity verification (2026-01-14)
 
-**Emerging Principle:** Decoupling logic into hooks/utils allows for >70% specific coverage and eliminates cognitive complexity warnings.
+**Emerging Principle:** Decoupling logic into hooks/utils reduces cognitive complexity and enables focused tests; reinforce with full-suite + parity checks for confidence.
 
 ### Data Consistency (1 lesson)
 **Pattern:** Export order divergence from UI order
@@ -306,6 +314,8 @@
 ---
 
 ## 🔧 Session State — Текущая работа
+
+Cleared on 2026-01-14 per user request.
 
 ---
 
