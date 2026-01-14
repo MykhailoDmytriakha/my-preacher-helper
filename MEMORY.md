@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-14 KnowledgeSection Refresh Should Update sectionHints
+**Problem:** Refresh button in “Suggested Plan” visually referenced section hints but called full-plan generation, so UI appeared unchanged when sectionHints existed.
+**Attempts:** Investigated UI triggers and backend routes to verify actual API calls.
+**Solution:** Wire the refresh action to `generateThoughtsBasedPlan` (`POST /api/insights/plan`) and update tests to assert this call.
+**Why it worked:** The button now refreshes the data source it renders (`insights.sectionHints`), eliminating the mismatch between UI expectations and side effects.
+**Principle:** Refresh actions must update the same data source that the UI section renders; otherwise users perceive a “no-op” and confusion.
+
 ### 2026-01-11 Decoupling Complex Component Logic (Refactoring Protocol 150)
 **Problem:** `handleSaveEdit` in `page.tsx` had a cognitive complexity of 42 due to nested loops, redundant state checks, and interleaved server/UI logic.
 **Attempts:** Initially extracted logic to sub-functions within the component, which reduced complexity but didn't improve testability or structural clarity.

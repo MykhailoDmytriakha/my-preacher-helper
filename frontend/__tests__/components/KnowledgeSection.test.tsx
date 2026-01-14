@@ -5,7 +5,6 @@ import '@testing-library/jest-dom';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import { Sermon, Insights, Plan, SectionHints } from '@/models/models';
 import * as insightsService from '@/services/insights.service';
-import * as planService from '@/services/plan.service';
 
 // Extend global Window interface to include our test flag
 declare global {
@@ -21,10 +20,6 @@ jest.mock('@/services/insights.service', () => ({
   generateThoughtsBasedPlan: jest.fn(),
 }));
 
-// Mock the plan service
-jest.mock('@/services/plan.service', () => ({
-  generateSermonPlan: jest.fn(),
-}));
 
 // Mock the translations
 jest.mock('react-i18next', () => ({
@@ -332,9 +327,12 @@ describe('KnowledgeSection Component', () => {
     expect(screen.getByText('Call to action: How will you respond to God\'s love today?')).toBeInTheDocument();
   });
 
-  it('generates plan when the generate button is clicked', async () => {
-    // Mock the generateSermonPlan function
-    (planService.generateSermonPlan as jest.Mock).mockResolvedValue(mockPlan);
+  it('generates section hints when the refresh button is clicked', async () => {
+    // Mock the generateThoughtsBasedPlan function
+    (insightsService.generateThoughtsBasedPlan as jest.Mock).mockResolvedValue({
+      ...mockInsights,
+      sectionHints: mockSectionHints
+    });
 
     render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
     
@@ -355,8 +353,8 @@ describe('KnowledgeSection Component', () => {
       fireEvent.click(refreshButtons[3]);
     });
     
-    // Should have called generateSermonPlan
-    expect(planService.generateSermonPlan).toHaveBeenCalledWith('sermon1');
+    // Should have called generateThoughtsBasedPlan
+    expect(insightsService.generateThoughtsBasedPlan).toHaveBeenCalledWith('sermon1');
     
     // Should have called updateSermon
     expect(mockUpdateSermon).toHaveBeenCalled();

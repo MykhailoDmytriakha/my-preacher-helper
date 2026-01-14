@@ -12,7 +12,6 @@ import {
   generatePossibleDirections,
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
-import { generateSermonPlan } from "@/services/plan.service";
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
 
@@ -102,26 +101,6 @@ const applyInsightsUpdate = ({
   // Then update parent if needed
   if (updateSermon) {
     updateSermon({ ...sermon, insights });
-  }
-};
-
-const applyContentUpdate = ({
-  sermon,
-  updateSermon,
-  setLocalContent,
-  content
-}: {
-  sermon: Sermon;
-  updateSermon?: (updatedSermon: Sermon) => void;
-  setLocalContent: React.Dispatch<React.SetStateAction<SermonContent | undefined>>;
-  content: SermonContent;
-}) => {
-  // Update local state immediately for fast UI refresh
-  setLocalContent(content);
-
-  // Then update parent if needed
-  if (updateSermon) {
-    updateSermon({ ...sermon, draft: content, plan: content });
   }
 };
 
@@ -266,21 +245,21 @@ const generateAllInsightsForSermon = async ({
   }
 };
 
-const generatePlanForSermon = async ({
+const generateSectionHintsForSermon = async ({
   sermonId,
   setIsGeneratingPlan,
   setSuccessNotification,
-  onContentUpdated,
-  generateSermonPlan
+  onInsightsUpdated,
+  generateThoughtsBasedPlan
 }: {
   sermonId: string | undefined;
   setIsGeneratingPlan: React.Dispatch<React.SetStateAction<boolean>>;
   setSuccessNotification: React.Dispatch<React.SetStateAction<boolean>>;
-  onContentUpdated: (content: SermonContent) => void;
-  generateSermonPlan: (sermonId: string) => Promise<SermonContent | undefined>;
+  onInsightsUpdated: (insights: Insights) => void;
+  generateThoughtsBasedPlan: (sermonId: string) => Promise<Insights | null>;
 }) => {
   if (!sermonId) {
-    console.error("Cannot generate plan: sermon or sermon.id is missing");
+    console.error("Cannot generate plan hints: sermon or sermon.id is missing");
     return;
   }
 
@@ -288,13 +267,15 @@ const generatePlanForSermon = async ({
   setSuccessNotification(false);
 
   try {
-    const content = await generateSermonPlan(sermonId);
-    if (content) {
-      onContentUpdated(content);
+    const insights = await generateThoughtsBasedPlan(sermonId);
+    if (insights?.sectionHints) {
+      onInsightsUpdated(insights);
       showSuccessNotification(setSuccessNotification);
+    } else {
+      console.error("Failed to generate plan hints");
     }
   } catch (error) {
-    console.error("Failed to generate plan:", error);
+    console.error("Failed to generate plan hints:", error);
   } finally {
     setIsGeneratingPlan(false);
   }
@@ -591,9 +572,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const updateInsights = (insights: Insights) =>
     applyInsightsUpdate({ sermon, updateSermon, setLocalInsights, insights });
 
-  const updateContent = (content: SermonContent) =>
-    applyContentUpdate({ sermon, updateSermon, setLocalContent: setLocalContent, content });
-
   // Generate all insights at once
   const handleGenerateAllInsights = () =>
     generateAllInsightsForSermon({
@@ -615,12 +593,12 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
 
   // Generate plan for sermon
   const handleGeneratePlan = () =>
-    generatePlanForSermon({
+    generateSectionHintsForSermon({
       sermonId: sermon?.id,
       setIsGeneratingPlan,
       setSuccessNotification,
-      onContentUpdated: updateContent,
-      generateSermonPlan
+      onInsightsUpdated: updateInsights,
+      generateThoughtsBasedPlan
     });
 
   // Regenerate individual sections using the generic function
