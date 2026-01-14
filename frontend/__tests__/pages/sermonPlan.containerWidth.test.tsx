@@ -33,9 +33,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Service and child mocks to avoid heavy render
-jest.mock('@/services/plan.service', () => ({
-  generateSermonPlan: jest.fn(),
-}));
 jest.mock('@/services/sermon.service', () => ({
   getSermonById: jest.fn(async () => ({
     id: 'test-sermon-id',
