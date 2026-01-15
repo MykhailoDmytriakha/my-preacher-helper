@@ -555,6 +555,1499 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
 });
 SermonPointCard.displayName = 'SermonPointCard';
 
+type SermonSectionKey = 'introduction' | 'main' | 'conclusion';
+type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
+type SectionColors = (typeof SERMON_SECTION_COLORS)[keyof typeof SERMON_SECTION_COLORS];
+type PlanSectionContent = Plan['introduction'];
+
+interface PlanOutlinePointEditorProps {
+  outlinePoint: SermonPoint;
+  sectionKey: SermonSectionKey;
+  sectionColors: SectionColors;
+  generatedContent: Record<string, string>;
+  modifiedContent: Record<string, boolean>;
+  savedSermonPoints: Record<string, boolean>;
+  editModePoints: Record<string, boolean>;
+  noContentText: string;
+  sermonPlanSection?: PlanSectionContent;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  onToggleEditMode: (outlinePointId: string) => void;
+  onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
+  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+}
+
+const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePointEditorProps>(({
+  outlinePoint,
+  sectionKey,
+  sectionColors,
+  generatedContent,
+  modifiedContent,
+  savedSermonPoints,
+  editModePoints,
+  noContentText,
+  sermonPlanSection,
+  t,
+  onSaveSermonPoint,
+  onToggleEditMode,
+  onSyncPairHeights,
+  onUpdateCombinedPlan,
+  setGeneratedContent,
+  setModifiedContent,
+}, ref) => {
+  const currentSavedContent = sermonPlanSection?.outlinePoints?.[outlinePoint.id] || "";
+
+  return (
+    <div
+      ref={ref}
+      key={outlinePoint.id}
+      className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
+    >
+      <h3 className={`font-semibold text-lg mb-2 ${sectionColors.text} dark:${sectionColors.darkText} flex justify-between items-center`}>
+        {outlinePoint.text}
+        <div className="flex space-x-2">
+          <Button
+            className="text-sm px-2 py-1 h-8"
+            onClick={() => onSaveSermonPoint(
+              outlinePoint.id,
+              generatedContent[outlinePoint.id] || "",
+              sectionKey
+            )}
+            variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
+            sectionColor={modifiedContent[outlinePoint.id] ? sectionColors : undefined}
+            disabled={
+              !generatedContent[outlinePoint.id] ||
+              generatedContent[outlinePoint.id].trim() === "" ||
+              (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
+            }
+            title={t("plan.save")}
+          >
+            <Save className="h-4 w-4" />
+          </Button>
+        </div>
+      </h3>
+
+      <div className="relative">
+        <Button
+          className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
+          onClick={() => onToggleEditMode(outlinePoint.id)}
+          variant="default"
+          title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
+        >
+          {editModePoints[outlinePoint.id] ? (
+            <FileText className="h-4 w-4" />
+          ) : (
+            <Pencil className="h-4 w-4" />
+          )}
+        </Button>
+        {editModePoints[outlinePoint.id] ? (
+          <TextareaAutosize
+            className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
+            minRows={4}
+            placeholder={noContentText}
+            value={generatedContent[outlinePoint.id] || ""}
+            onChange={(e) => {
+              const newContent = e.target.value;
+              const isModified = newContent !== currentSavedContent;
+
+              setGeneratedContent((prev) => ({
+                ...prev,
+                [outlinePoint.id]: newContent,
+              }));
+
+              setModifiedContent(prev => ({
+                ...prev,
+                [outlinePoint.id]: isModified
+              }));
+
+              onUpdateCombinedPlan(outlinePoint.text, newContent, sectionKey);
+            }}
+            onHeightChange={() => {
+              onSyncPairHeights(sectionKey, outlinePoint.id);
+            }}
+          />
+        ) : (
+          <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
+            <div className="absolute top-2 right-2 z-10">
+              <Button
+                className="text-sm px-2 py-1 h-8"
+                onClick={() => onToggleEditMode(outlinePoint.id)}
+                variant="default"
+                title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-3 pr-12">
+              <MarkdownRenderer
+                markdown={generatedContent[outlinePoint.id] || noContentText}
+                section={sectionKey}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+PlanOutlinePointEditor.displayName = 'PlanOutlinePointEditor';
+
+interface PlanSectionColumnsProps {
+  sectionKey: SermonSectionKey;
+  outlinePoints?: SermonPoint[];
+  sectionColors: SectionColors;
+  leftTestId: string;
+  rightTestId: string;
+  pointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  generatedContent: Record<string, string>;
+  generatingId: string | null;
+  sermonId: string;
+  noContentText: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  modifiedContent: Record<string, boolean>;
+  savedSermonPoints: Record<string, boolean>;
+  editModePoints: Record<string, boolean>;
+  sermonPlanSection?: PlanSectionContent;
+  getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
+  onGenerate: (outlinePointId: string) => Promise<void>;
+  onOpenFragmentsModal: (outlinePointId: string) => void;
+  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  onToggleEditMode: (outlinePointId: string) => void;
+  onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
+  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+}
+
+const PlanSectionColumns = ({
+  sectionKey,
+  outlinePoints,
+  sectionColors,
+  leftTestId,
+  rightTestId,
+  pointRefs,
+  generatedContent,
+  generatingId,
+  sermonId,
+  noContentText,
+  t,
+  modifiedContent,
+  savedSermonPoints,
+  editModePoints,
+  sermonPlanSection,
+  getThoughtsForSermonPoint,
+  onGenerate,
+  onOpenFragmentsModal,
+  onSaveSermonPoint,
+  onToggleEditMode,
+  onSyncPairHeights,
+  onUpdateCombinedPlan,
+  setGeneratedContent,
+  setModifiedContent,
+}: PlanSectionColumnsProps) => {
+  const points = outlinePoints ?? [];
+  return (
+    <>
+      <div
+        data-testid={leftTestId}
+        className={`rounded-lg overflow-hidden border ${sectionColors.border.split(' ')[0]} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg}`}
+      >
+        <div className="p-3">
+          {points.map((outlinePoint) => (
+            <SermonPointCard
+              key={outlinePoint.id}
+              ref={(el) => {
+                if (!pointRefs.current[outlinePoint.id]) {
+                  pointRefs.current[outlinePoint.id] = { left: null, right: null };
+                }
+                pointRefs.current[outlinePoint.id].left = el;
+              }}
+              outlinePoint={outlinePoint}
+              thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
+              sectionName={sectionKey}
+              onGenerate={onGenerate}
+              generatedContent={generatedContent[outlinePoint.id] || null}
+              isGenerating={generatingId === outlinePoint.id}
+              sermonId={sermonId}
+              onOpenFragmentsModal={onOpenFragmentsModal}
+            />
+          ))}
+          {outlinePoints?.length === 0 && (
+            <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
+          )}
+        </div>
+      </div>
+
+      <div
+        data-testid={rightTestId}
+        className={`rounded-lg overflow-hidden border ${sectionColors.border.split(' ')[0]} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg}`}
+      >
+        <div className="p-3">
+          {points.map((outlinePoint) => (
+            <PlanOutlinePointEditor
+              key={outlinePoint.id}
+              ref={(el) => {
+                if (!pointRefs.current[outlinePoint.id]) {
+                  pointRefs.current[outlinePoint.id] = { left: null, right: null };
+                }
+                pointRefs.current[outlinePoint.id].right = el;
+              }}
+              outlinePoint={outlinePoint}
+              sectionKey={sectionKey}
+              sectionColors={sectionColors}
+              generatedContent={generatedContent}
+              modifiedContent={modifiedContent}
+              savedSermonPoints={savedSermonPoints}
+              editModePoints={editModePoints}
+              noContentText={noContentText}
+              sermonPlanSection={sermonPlanSection}
+              t={t}
+              onSaveSermonPoint={onSaveSermonPoint}
+              onToggleEditMode={onToggleEditMode}
+              onSyncPairHeights={onSyncPairHeights}
+              onUpdateCombinedPlan={onUpdateCombinedPlan}
+              setGeneratedContent={setGeneratedContent}
+              setModifiedContent={setModifiedContent}
+            />
+          ))}
+          {outlinePoints?.length === 0 && (
+            <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+};
+
+interface PlanSectionBlockProps {
+  sectionKey: SermonSectionKey;
+  outlinePoints?: SermonPoint[];
+  sectionColors: SectionColors;
+  sectionRef: React.RefObject<HTMLDivElement | null>;
+  leftTestId: string;
+  rightTestId: string;
+  showPlanStyleSelector?: boolean;
+  planStyle: PlanStyle;
+  setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
+  isLoading: boolean;
+  generatingId: string | null;
+  pointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  generatedContent: Record<string, string>;
+  sermonId: string;
+  noContentText: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  modifiedContent: Record<string, boolean>;
+  savedSermonPoints: Record<string, boolean>;
+  editModePoints: Record<string, boolean>;
+  sermonPlanSection?: PlanSectionContent;
+  getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
+  onGenerate: (outlinePointId: string) => Promise<void>;
+  onOpenFragmentsModal: (outlinePointId: string) => void;
+  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  onToggleEditMode: (outlinePointId: string) => void;
+  onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
+  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  onSwitchToStructure: () => void;
+}
+
+const PlanSectionBlock = ({
+  sectionKey,
+  outlinePoints,
+  sectionColors,
+  sectionRef,
+  leftTestId,
+  rightTestId,
+  showPlanStyleSelector = false,
+  planStyle,
+  setPlanStyle,
+  isLoading,
+  generatingId,
+  pointRefs,
+  generatedContent,
+  sermonId,
+  noContentText,
+  t,
+  modifiedContent,
+  savedSermonPoints,
+  editModePoints,
+  sermonPlanSection,
+  getThoughtsForSermonPoint,
+  onGenerate,
+  onOpenFragmentsModal,
+  onSaveSermonPoint,
+  onToggleEditMode,
+  onSyncPairHeights,
+  onUpdateCombinedPlan,
+  setGeneratedContent,
+  setModifiedContent,
+  onSwitchToStructure,
+}: PlanSectionBlockProps) => {
+  return (
+    <>
+      <div ref={sectionRef} data-section={sectionKey} className="lg:col-span-2">
+        {showPlanStyleSelector && (
+          <PlanStyleSelector
+            value={planStyle}
+            onChange={setPlanStyle}
+            disabled={isLoading || !!generatingId}
+          />
+        )}
+
+        <SectionHeader
+          section={sectionKey}
+          onSwitchPage={onSwitchToStructure}
+        />
+      </div>
+      <PlanSectionColumns
+        sectionKey={sectionKey}
+        outlinePoints={outlinePoints}
+        sectionColors={sectionColors}
+        leftTestId={leftTestId}
+        rightTestId={rightTestId}
+        pointRefs={pointRefs}
+        generatedContent={generatedContent}
+        generatingId={generatingId}
+        sermonId={sermonId}
+        noContentText={noContentText}
+        t={t}
+        modifiedContent={modifiedContent}
+        savedSermonPoints={savedSermonPoints}
+        editModePoints={editModePoints}
+        sermonPlanSection={sermonPlanSection}
+        getThoughtsForSermonPoint={getThoughtsForSermonPoint}
+        onGenerate={onGenerate}
+        onOpenFragmentsModal={onOpenFragmentsModal}
+        onSaveSermonPoint={onSaveSermonPoint}
+        onToggleEditMode={onToggleEditMode}
+        onSyncPairHeights={onSyncPairHeights}
+        onUpdateCombinedPlan={onUpdateCombinedPlan}
+        setGeneratedContent={setGeneratedContent}
+        setModifiedContent={setModifiedContent}
+      />
+    </>
+  );
+};
+
+interface PlanMainLayoutProps {
+  sermon: Sermon;
+  params: { id: string };
+  sermonId: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  combinedPlan: {
+    introduction: string;
+    main: string;
+    conclusion: string;
+  };
+  noContentText: string;
+  planStyle: PlanStyle;
+  setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
+  isLoading: boolean;
+  generatingId: string | null;
+  sectionMenuRef: React.RefObject<HTMLDivElement | null>;
+  showSectionMenu: boolean;
+  setShowSectionMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  introPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  mainPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  conclusionPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  introductionSectionRef: React.RefObject<HTMLDivElement | null>;
+  mainSectionRef: React.RefObject<HTMLDivElement | null>;
+  conclusionSectionRef: React.RefObject<HTMLDivElement | null>;
+  generatedContent: Record<string, string>;
+  modifiedContent: Record<string, boolean>;
+  savedSermonPoints: Record<string, boolean>;
+  editModePoints: Record<string, boolean>;
+  modalSermonPointId: string | null;
+  setModalSermonPointId: React.Dispatch<React.SetStateAction<string | null>>;
+  findSermonPointById: (outlinePointId: string) => SermonPoint | undefined;
+  onThoughtUpdate: (updatedThought: Thought) => void;
+  getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
+  onGenerate: (outlinePointId: string) => Promise<void>;
+  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  onToggleEditMode: (outlinePointId: string) => void;
+  onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
+  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  onSwitchToStructure: () => void;
+  onRequestPlanOverlay: () => void;
+  onRequestPreachingMode: () => void;
+  onStartPreachingMode: () => void;
+  getExportContent: (format: 'plain' | 'markdown') => Promise<string>;
+  getPdfContent: () => Promise<React.ReactNode>;
+}
+
+const PlanMainLayout = ({
+  sermon,
+  params,
+  sermonId,
+  t,
+  combinedPlan,
+  noContentText,
+  planStyle,
+  setPlanStyle,
+  isLoading,
+  generatingId,
+  sectionMenuRef,
+  showSectionMenu,
+  setShowSectionMenu,
+  introPointRefs,
+  mainPointRefs,
+  conclusionPointRefs,
+  introductionSectionRef,
+  mainSectionRef,
+  conclusionSectionRef,
+  generatedContent,
+  modifiedContent,
+  savedSermonPoints,
+  editModePoints,
+  modalSermonPointId,
+  setModalSermonPointId,
+  findSermonPointById,
+  onThoughtUpdate,
+  getThoughtsForSermonPoint,
+  onGenerate,
+  onSaveSermonPoint,
+  onToggleEditMode,
+  onSyncPairHeights,
+  onUpdateCombinedPlan,
+  setGeneratedContent,
+  setModifiedContent,
+  onSwitchToStructure,
+  onRequestPlanOverlay,
+  onRequestPreachingMode,
+  onStartPreachingMode,
+  getExportContent,
+  getPdfContent,
+}: PlanMainLayoutProps) => {
+  const introOutline = sermon.outline?.introduction;
+  const mainOutline = sermon.outline?.main;
+  const conclusionOutline = sermon.outline?.conclusion;
+
+  return (
+    <div
+      className="p-4"
+      data-testid="sermon-plan-page-container"
+    >
+      <style jsx global>{sectionButtonStyles}</style>
+      <style jsx global>{`
+        /* Prevent scroll anchoring in dynamic plan columns */
+        [data-testid="plan-introduction-left-section"],
+        [data-testid="plan-introduction-right-section"],
+        [data-testid="plan-main-left-section"],
+        [data-testid="plan-main-right-section"],
+        [data-testid="plan-conclusion-left-section"],
+        [data-testid="plan-conclusion-right-section"] {
+          overflow-anchor: none;
+        }
+
+        /* Markdown content styling */
+        .markdown-content {
+          line-height: 1.5;
+        }
+        .markdown-content p {
+          margin-top: 0.5em;
+          margin-bottom: 0.5em;
+        }
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+          margin-top: 1em;
+          margin-bottom: 0.5em;
+        }
+        /* Indentation for hierarchical structure */
+        .markdown-content h2 {
+          margin-left: 0;
+        }
+        .markdown-content h3 {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+          margin-left: 3rem;
+        }
+        /* Indent paragraphs and lists to align with their headings */
+        .markdown-content h2 + p, .markdown-content h2 + ul, .markdown-content h2 + ol {
+          margin-left: 1.5rem;
+        }
+        .markdown-content h3 + p, .markdown-content h3 + ul, .markdown-content h3 + ol {
+          margin-left: 3rem;
+        }
+        .markdown-content h4 + p, .markdown-content h4 + ul, .markdown-content h4 + ol,
+        .markdown-content h5 + p, .markdown-content h5 + ul, .markdown-content h5 + ol,
+        .markdown-content h6 + p, .markdown-content h6 + ul, .markdown-content h6 + ol {
+          margin-left: 4.5rem;
+        }
+        /* Continuing indentation for paragraphs without headings */
+        .markdown-content p + p, .markdown-content ul + p, .markdown-content ol + p {
+          margin-left: inherit;
+        }
+        .markdown-content ul,
+        .markdown-content ol {
+          margin-top: 0.5em;
+          margin-bottom: 0.5em;
+          padding-left: 1.5em;
+        }
+        .markdown-content li {
+          margin-top: 0.25em;
+          margin-bottom: 0.25em;
+        }
+        .markdown-content li > p {
+          margin-top: 0;
+          margin-bottom: 0;
+        }
+        /* Remove borders from all elements */
+        .markdown-content * {
+          border: none !important;
+        }
+        /* Fix for first paragraph layout issue */
+        .markdown-content > p:first-child {
+          margin-top: 0;
+          display: inline-block;
+        }
+        /* Ensure first element doesn't create unwanted space */
+        .markdown-content > *:first-child {
+          margin-top: 0;
+        }
+
+        /* Visual markers for different heading levels */
+        .markdown-content h2::before {
+          content: "";
+          display: inline-block;
+          width: 6px;
+          height: 20px;
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+          margin-right: 10px;
+          border-radius: 2px;
+          vertical-align: text-top;
+        }
+
+        /* Use section context to style bullets */
+        /* Introduction bullets (h3) */
+        .markdown-content.prose-introduction h3::before,
+        .markdown-content.introduction-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.introduction.light};
+          font-weight: bold;
+        }
+
+        /* Main section bullets (h3) */
+        .markdown-content.prose-main h3::before,
+        .markdown-content.main-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.light};
+          font-weight: bold;
+        }
+
+        /* Conclusion bullets (h3) */
+        .markdown-content.prose-conclusion h3::before,
+        .markdown-content.conclusion-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.light};
+          font-weight: bold;
+        }
+
+        /* Default h3 bullets - only apply when no section class is present */
+        .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.base};
+          font-weight: bold;
+        }
+
+        /* Default h4 circles */
+        .markdown-content h4::before {
+          content: "○";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.base};
+          font-weight: bold;
+        }
+
+        /* Section-specific styles for introduction section */
+        .markdown-content.prose-introduction h2::before {
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+        }
+        .markdown-content.prose-introduction h4::before {
+          color: ${SERMON_SECTION_COLORS.introduction.dark};
+        }
+
+        /* Section-specific styles for main section */
+        .markdown-content.prose-main h2::before {
+          background-color: ${SERMON_SECTION_COLORS.mainPart.base};
+        }
+        .markdown-content.prose-main h4::before {
+          color: ${SERMON_SECTION_COLORS.mainPart.dark};
+        }
+
+        /* Section-specific styles for conclusion section */
+        .markdown-content.prose-conclusion h2::before {
+          background-color: ${SERMON_SECTION_COLORS.conclusion.base};
+        }
+        .markdown-content.prose-conclusion h4::before {
+          color: ${SERMON_SECTION_COLORS.conclusion.dark};
+        }
+
+        /* Dark mode colors */
+        @media (prefers-color-scheme: dark) {
+          .markdown-content h2::before {
+            background-color: ${SERMON_SECTION_COLORS.introduction.light};
+          }
+          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+            color: ${SERMON_SECTION_COLORS.mainPart.light};
+          }
+          .markdown-content h4::before {
+            color: ${SERMON_SECTION_COLORS.conclusion.light};
+          }
+        }
+      `}</style>
+      <div className="w-full">
+        {/* Page Header */}
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center">
+              <Link
+                href={`/sermons/${params.id}`}
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center mr-3"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                {t("actions.backToSermon")}
+              </Link>
+            </div>
+          </div>
+
+          {/* Sermon Title & Verse */}
+          {sermon && (
+            <div className="mt-6 mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                {sermon.title}
+              </h1>
+              {sermon.verse && (
+                <div className="pl-4 border-l-4 border-blue-500 dark:border-blue-400">
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line text-lg italic">
+                    {sermon.verse}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
+                  </p>
+                </div>
+              )}
+
+              {/* View Plan Buttons */}
+              <div className="flex flex-wrap gap-3 mt-6">
+                <ViewPlanMenu
+                  sermonId={sermonId}
+                  combinedPlan={combinedPlan}
+                  sectionMenuRef={sectionMenuRef}
+                  showSectionMenu={showSectionMenu}
+                  setShowSectionMenu={setShowSectionMenu}
+                  onRequestPlanOverlay={onRequestPlanOverlay}
+                  onRequestPreachingMode={onRequestPreachingMode}
+                  onStartPreachingMode={onStartPreachingMode}
+                />
+
+                {/* Add Export Buttons */}
+                <ExportButtons
+                  sermonId={sermonId}
+                  getExportContent={getExportContent}
+                  getPdfContent={getPdfContent}
+                  title={sermon.title || "Sermon Plan"}
+                  className="ml-auto"
+                  disabledFormats={['pdf']} // Add this prop to disable PDF
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <PlanSectionBlock
+            sectionKey={SECTION_NAMES.INTRODUCTION}
+            outlinePoints={introOutline}
+            sectionColors={SERMON_SECTION_COLORS.introduction}
+            sectionRef={introductionSectionRef}
+            leftTestId="plan-introduction-left-section"
+            rightTestId="plan-introduction-right-section"
+            showPlanStyleSelector
+            planStyle={planStyle}
+            setPlanStyle={setPlanStyle}
+            isLoading={isLoading}
+            generatingId={generatingId}
+            pointRefs={introPointRefs}
+            generatedContent={generatedContent}
+            sermonId={sermonId}
+            noContentText={noContentText}
+            t={t}
+            modifiedContent={modifiedContent}
+            savedSermonPoints={savedSermonPoints}
+            editModePoints={editModePoints}
+            sermonPlanSection={sermon.plan?.introduction}
+            getThoughtsForSermonPoint={getThoughtsForSermonPoint}
+            onGenerate={onGenerate}
+            onOpenFragmentsModal={setModalSermonPointId}
+            onSaveSermonPoint={onSaveSermonPoint}
+            onToggleEditMode={onToggleEditMode}
+            onSyncPairHeights={onSyncPairHeights}
+            onUpdateCombinedPlan={onUpdateCombinedPlan}
+            setGeneratedContent={setGeneratedContent}
+            setModifiedContent={setModifiedContent}
+            onSwitchToStructure={onSwitchToStructure}
+          />
+
+          <PlanSectionBlock
+            sectionKey={SECTION_NAMES.MAIN}
+            outlinePoints={mainOutline}
+            sectionColors={SERMON_SECTION_COLORS.mainPart}
+            sectionRef={mainSectionRef}
+            leftTestId="plan-main-left-section"
+            rightTestId="plan-main-right-section"
+            planStyle={planStyle}
+            setPlanStyle={setPlanStyle}
+            isLoading={isLoading}
+            generatingId={generatingId}
+            pointRefs={mainPointRefs}
+            generatedContent={generatedContent}
+            sermonId={sermonId}
+            noContentText={noContentText}
+            t={t}
+            modifiedContent={modifiedContent}
+            savedSermonPoints={savedSermonPoints}
+            editModePoints={editModePoints}
+            sermonPlanSection={sermon.plan?.main}
+            getThoughtsForSermonPoint={getThoughtsForSermonPoint}
+            onGenerate={onGenerate}
+            onOpenFragmentsModal={setModalSermonPointId}
+            onSaveSermonPoint={onSaveSermonPoint}
+            onToggleEditMode={onToggleEditMode}
+            onSyncPairHeights={onSyncPairHeights}
+            onUpdateCombinedPlan={onUpdateCombinedPlan}
+            setGeneratedContent={setGeneratedContent}
+            setModifiedContent={setModifiedContent}
+            onSwitchToStructure={onSwitchToStructure}
+          />
+
+          <PlanSectionBlock
+            sectionKey={SECTION_NAMES.CONCLUSION}
+            outlinePoints={conclusionOutline}
+            sectionColors={SERMON_SECTION_COLORS.conclusion}
+            sectionRef={conclusionSectionRef}
+            leftTestId="plan-conclusion-left-section"
+            rightTestId="plan-conclusion-right-section"
+            planStyle={planStyle}
+            setPlanStyle={setPlanStyle}
+            isLoading={isLoading}
+            generatingId={generatingId}
+            pointRefs={conclusionPointRefs}
+            generatedContent={generatedContent}
+            sermonId={sermonId}
+            noContentText={noContentText}
+            t={t}
+            modifiedContent={modifiedContent}
+            savedSermonPoints={savedSermonPoints}
+            editModePoints={editModePoints}
+            sermonPlanSection={sermon.plan?.conclusion}
+            getThoughtsForSermonPoint={getThoughtsForSermonPoint}
+            onGenerate={onGenerate}
+            onOpenFragmentsModal={setModalSermonPointId}
+            onSaveSermonPoint={onSaveSermonPoint}
+            onToggleEditMode={onToggleEditMode}
+            onSyncPairHeights={onSyncPairHeights}
+            onUpdateCombinedPlan={onUpdateCombinedPlan}
+            setGeneratedContent={setGeneratedContent}
+            setModifiedContent={setModifiedContent}
+            onSwitchToStructure={onSwitchToStructure}
+          />
+        </div>
+
+        {/* Key Fragments Modal */}
+        {modalSermonPointId && (() => {
+          const outlinePoint = findSermonPointById(modalSermonPointId);
+          if (!outlinePoint) return null;
+          return (
+            <KeyFragmentsModal
+              data-testid="key-fragments-modal-instance"
+              isOpen={!!modalSermonPointId}
+              onClose={() => setModalSermonPointId(null)}
+              outlinePoint={outlinePoint}
+              thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
+              sermonId={sermonId}
+              onThoughtUpdate={onThoughtUpdate}
+            />
+          );
+        })()}
+      </div>
+    </div>
+  );
+};
+
+interface PlanImmersiveViewProps {
+  sermon: Sermon;
+  combinedPlan: {
+    introduction: string;
+    main: string;
+    conclusion: string;
+  };
+  t: (key: string, options?: Record<string, unknown>) => string;
+  timerState: FullPlanContentProps['timerState'];
+  isPreachingMode: boolean;
+  noContentText: string;
+  immersiveCopyStatus: CopyStatus;
+  setImmersiveCopyStatus: React.Dispatch<React.SetStateAction<CopyStatus>>;
+  copyButtonClasses: string;
+  copyButtonStatusClasses: Record<CopyStatus, string>;
+  immersiveContentRef: React.RefObject<HTMLDivElement | null>;
+  immersiveCopyTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  copyFormattedFromElement: (element: HTMLDivElement | null) => Promise<boolean>;
+  onOpenPlanOverlay: () => void;
+  onClosePlanView: () => void;
+}
+
+const PlanImmersiveView = ({
+  sermon,
+  combinedPlan,
+  t,
+  timerState,
+  isPreachingMode,
+  noContentText,
+  immersiveCopyStatus,
+  setImmersiveCopyStatus,
+  copyButtonClasses,
+  copyButtonStatusClasses,
+  immersiveContentRef,
+  immersiveCopyTimeoutRef,
+  copyFormattedFromElement,
+  onOpenPlanOverlay,
+  onClosePlanView,
+}: PlanImmersiveViewProps) => {
+  return (
+    <>
+      <style jsx global>{sectionButtonStyles}</style>
+      <style jsx global>{`
+        /* Markdown content styling */
+        .markdown-content {
+          line-height: 1.5;
+        }
+        .markdown-content p {
+          margin-top: 0.5em;
+          margin-bottom: 0.5em;
+        }
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+          margin-top: 1em;
+          margin-bottom: 0.5em;
+        }
+
+        /* Visual markers for different heading levels */
+        .markdown-content h2::before {
+          content: "";
+          display: inline-block;
+          width: 6px;
+          height: 20px;
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+          margin-right: 10px;
+          border-radius: 2px;
+          vertical-align: text-top;
+        }
+
+        /* Use section context to style bullets */
+        /* Introduction bullets (h3) */
+        .markdown-content.prose-introduction h3::before,
+        .markdown-content.introduction-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.introduction.light};
+          font-weight: bold;
+        }
+
+        /* Main section bullets (h3) */
+        .markdown-content.prose-main h3::before,
+        .markdown-content.main-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.light};
+          font-weight: bold;
+        }
+
+        /* Conclusion bullets (h3) */
+        .markdown-content.prose-conclusion h3::before,
+        .markdown-content.conclusion-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.light};
+          font-weight: bold;
+        }
+
+        /* Default h3 bullets - only apply when no section class is present */
+        .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.base};
+          font-weight: bold;
+        }
+
+        /* Default h4 circles */
+        .markdown-content h4::before {
+          content: "○";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.base};
+          font-weight: bold;
+        }
+
+        /* Section-specific styles for introduction section */
+        .markdown-content.prose-introduction h2::before {
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+        }
+        .markdown-content.prose-introduction h4::before {
+          color: ${SERMON_SECTION_COLORS.introduction.dark};
+        }
+
+        /* Section-specific styles for main section */
+        .markdown-content.prose-main h2::before {
+          background-color: ${SERMON_SECTION_COLORS.mainPart.base};
+        }
+        .markdown-content.prose-main h4::before {
+          color: ${SERMON_SECTION_COLORS.mainPart.dark};
+        }
+
+        /* Section-specific styles for conclusion section */
+        .markdown-content.prose-conclusion h2::before {
+          background-color: ${SERMON_SECTION_COLORS.conclusion.base};
+        }
+        .markdown-content.prose-conclusion h4::before {
+          color: ${SERMON_SECTION_COLORS.conclusion.dark};
+        }
+
+        /* Dark mode colors */
+        @media (prefers-color-scheme: dark) {
+          .markdown-content h2::before {
+            background-color: ${SERMON_SECTION_COLORS.introduction.light};
+          }
+          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+            color: ${SERMON_SECTION_COLORS.mainPart.light};
+          }
+          .markdown-content h4::before {
+            color: ${SERMON_SECTION_COLORS.conclusion.light};
+          }
+        }
+
+        /* Preaching mode specific styles */
+        .preaching-mode {
+          padding-top: 80px; /* Desktop: Account for sticky timer header */
+        }
+
+        @media (max-width: 768px) {
+          .preaching-mode {
+            padding-top: 65px; /* Tablet: Slightly less padding */
+          }
+        }
+
+        @media (max-width: 640px) {
+          .preaching-mode {
+            padding-top: 50px; /* Mobile: Less padding for compact timer */
+          }
+        }
+
+        .preaching-content {
+          max-width: 4xl;
+          margin: 0 auto;
+        }
+      `}</style>
+      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900" data-testid="sermon-plan-immersive-view">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+          <div>
+            <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
+          </div>
+          <div className="flex items-center gap-2 h-10">
+            <Button
+              onClick={async () => {
+                if (immersiveCopyStatus === 'copying') {
+                  return;
+                }
+                setImmersiveCopyStatus(COPY_STATUS.COPYING);
+                const copied = await copyFormattedFromElement(immersiveContentRef.current);
+                if (copied) {
+                  toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
+                  setImmersiveCopyStatus(COPY_STATUS.SUCCESS);
+                  if (immersiveCopyTimeoutRef.current) {
+                    clearTimeout(immersiveCopyTimeoutRef.current);
+                  }
+                  immersiveCopyTimeoutRef.current = setTimeout(() => {
+                    setImmersiveCopyStatus(COPY_STATUS.IDLE);
+                    immersiveCopyTimeoutRef.current = null;
+                  }, 2000);
+                } else {
+                  toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
+                  setImmersiveCopyStatus(COPY_STATUS.ERROR);
+                  if (immersiveCopyTimeoutRef.current) {
+                    clearTimeout(immersiveCopyTimeoutRef.current);
+                  }
+                  immersiveCopyTimeoutRef.current = setTimeout(() => {
+                    setImmersiveCopyStatus(COPY_STATUS.IDLE);
+                    immersiveCopyTimeoutRef.current = null;
+                  }, 2500);
+                }
+              }}
+              variant="secondary"
+              className={`${copyButtonClasses} ${copyButtonStatusClasses[immersiveCopyStatus]}`}
+              title={
+                immersiveCopyStatus === 'success'
+                  ? t("common.copied")
+                  : immersiveCopyStatus === 'error'
+                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
+                    : immersiveCopyStatus === 'copying'
+                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                      : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
+              }
+              disabled={immersiveCopyStatus === 'copying'}
+            >
+              {immersiveCopyStatus === 'copying' ? (
+                <LoadingSpinner size="small" />
+              ) : immersiveCopyStatus === 'success' ? (
+                <Check className="h-6 w-6 text-green-200" />
+              ) : immersiveCopyStatus === 'error' ? (
+                <X className="h-6 w-6 text-rose-200" />
+              ) : (
+                <Copy className="h-6 w-6" />
+              )}
+            </Button>
+            <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              {immersiveCopyStatus === 'success'
+                ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
+                : immersiveCopyStatus === 'error'
+                  ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
+                  : immersiveCopyStatus === 'copying'
+                    ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                    : ''}
+            </span>
+            <button
+              onClick={onOpenPlanOverlay}
+              className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+              title={t("plan.exitFullscreen")}
+            >
+              <Minimize2 className="h-7 w-7" />
+            </button>
+            <button
+              onClick={onClosePlanView}
+              className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+              title={t("actions.close")}
+            >
+              <X className="h-7 w-7" />
+            </button>
+          </div>
+        </div>
+        <main className="flex-1 overflow-y-auto">
+          <div ref={immersiveContentRef} className="max-w-5xl mx-auto px-6 py-8">
+            <FullPlanContent
+              sermonTitle={sermon.title}
+              sermonVerse={sermon.verse}
+              combinedPlan={combinedPlan}
+              t={t}
+              timerState={timerState}
+              isPreachingMode={isPreachingMode}
+              noContentText={noContentText}
+            />
+          </div>
+        </main>
+      </div>
+    </>
+  );
+};
+
+interface PlanPreachingViewProps {
+  sermon: Sermon;
+  sermonId: string;
+  combinedPlan: {
+    introduction: string;
+    main: string;
+    conclusion: string;
+  };
+  t: (key: string, options?: Record<string, unknown>) => string;
+  timerState: FullPlanContentProps['timerState'];
+  isPlanPreaching: boolean;
+  planViewMode: PlanViewMode | null;
+  noContentText: string;
+  preachingDuration: number | null;
+  onExitPreaching: () => void;
+  onTimerStateChange: (timerState: {
+    currentPhase: TimerPhase;
+    phaseProgress: number;
+    totalProgress: number;
+    timeRemaining: number;
+    isFinished: boolean;
+  }) => void;
+  onTimerFinished: () => void;
+  onSetDuration: (durationSeconds: number) => void;
+}
+
+const PlanPreachingView = ({
+  sermon,
+  sermonId,
+  combinedPlan,
+  t,
+  timerState,
+  isPlanPreaching,
+  planViewMode,
+  noContentText,
+  preachingDuration,
+  onExitPreaching,
+  onTimerStateChange,
+  onTimerFinished,
+  onSetDuration,
+}: PlanPreachingViewProps) => {
+  return (
+    <>
+      <style jsx global>{sectionButtonStyles}</style>
+      <style jsx global>{`
+        /* Markdown content styling */
+        .markdown-content {
+          line-height: 1.5;
+        }
+        .markdown-content p {
+          margin-top: 0.5em;
+          margin-bottom: 0.5em;
+        }
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+          margin-top: 1em;
+          margin-bottom: 0.5em;
+        }
+
+        /* Visual markers for different heading levels */
+        .markdown-content h2::before {
+          content: "";
+          display: inline-block;
+          width: 6px;
+          height: 20px;
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+          margin-right: 10px;
+          border-radius: 2px;
+          vertical-align: text-top;
+        }
+
+        /* Use section context to style bullets */
+        /* Introduction bullets (h3) */
+        .markdown-content.prose-introduction h3::before,
+        .markdown-content.introduction-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.introduction.light};
+          font-weight: bold;
+        }
+
+        /* Main section bullets (h3) */
+        .markdown-content.prose-main h3::before,
+        .markdown-content.main-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.light};
+          font-weight: bold;
+        }
+
+        /* Conclusion bullets (h3) */
+        .markdown-content.prose-conclusion h3::before,
+        .markdown-content.conclusion-section h3::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.light};
+          font-weight: bold;
+        }
+
+        /* Default h3 bullets - only apply when no section class is present */
+        .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+          content: "•";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.mainPart.base};
+          font-weight: bold;
+        }
+
+        /* Default h4 circles */
+        .markdown-content h4::before {
+          content: "○";
+          display: inline-block;
+          margin-right: 8px;
+          color: ${SERMON_SECTION_COLORS.conclusion.base};
+          font-weight: bold;
+        }
+
+        /* Section-specific styles for introduction section */
+        .markdown-content.prose-introduction h2::before {
+          background-color: ${SERMON_SECTION_COLORS.introduction.base};
+        }
+        .markdown-content.prose-introduction h4::before {
+          color: ${SERMON_SECTION_COLORS.introduction.dark};
+        }
+
+        /* Section-specific styles for main section */
+        .markdown-content.prose-main h2::before {
+          background-color: ${SERMON_SECTION_COLORS.mainPart.base};
+        }
+        .markdown-content.prose-main h4::before {
+          color: ${SERMON_SECTION_COLORS.mainPart.dark};
+        }
+
+        /* Section-specific styles for conclusion section */
+        .markdown-content.prose-conclusion h2::before {
+          background-color: ${SERMON_SECTION_COLORS.conclusion.base};
+        }
+        .markdown-content.prose-conclusion h4::before {
+          color: ${SERMON_SECTION_COLORS.conclusion.dark};
+        }
+
+        /* Dark mode colors */
+        @media (prefers-color-scheme: dark) {
+          .markdown-content h2::before {
+            background-color: ${SERMON_SECTION_COLORS.introduction.light};
+          }
+          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
+            color: ${SERMON_SECTION_COLORS.mainPart.light};
+          }
+          .markdown-content h4::before {
+            color: ${SERMON_SECTION_COLORS.conclusion.light};
+          }
+        }
+
+        /* Preaching mode specific styles */
+        .preaching-mode {
+          padding-top: 80px; /* Desktop: Account for sticky timer header */
+        }
+
+        @media (max-width: 768px) {
+          .preaching-mode {
+            padding-top: 65px; /* Tablet: Slightly less padding */
+          }
+        }
+
+        @media (max-width: 640px) {
+          .preaching-mode {
+            padding-top: 50px; /* Mobile: Less padding for compact timer */
+          }
+        }
+
+        .preaching-content {
+          max-width: 4xl;
+          margin: 0 auto;
+        }
+      `}</style>
+      <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${preachingDuration && preachingDuration > 0 ? 'preaching-mode' : ''}`}>
+        {/* Sticky Timer Header - Always show in preaching mode */}
+        <div className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+          <PreachingTimer
+            initialDuration={preachingDuration !== null ? preachingDuration : 0}
+            className="border-0 shadow-none"
+            sermonId={sermonId}
+            onExitPreaching={onExitPreaching}
+            onTimerStateChange={onTimerStateChange}
+            onTimerFinished={onTimerFinished}
+            onSetDuration={onSetDuration}
+          />
+        </div>
+
+        {/* Floating Text Scale Controls */}
+        <FloatingTextScaleControls />
+
+        {/* Show plan content in preaching mode */}
+        {planViewMode === "preaching" && (
+          <main className="flex-1 overflow-y-auto">
+            <div className="preaching-content px-6 py-8">
+              <FullPlanContent
+                sermonTitle={sermon.title}
+                sermonVerse={sermon.verse}
+                combinedPlan={combinedPlan}
+                t={t}
+                timerState={timerState}
+                isPreachingMode={isPlanPreaching}
+                noContentText={noContentText}
+              />
+            </div>
+          </main>
+        )}
+      </div>
+    </>
+  );
+};
+
+interface PlanOverlayPortalProps {
+  isPlanOverlay: boolean;
+  sermon: Sermon;
+  combinedPlan: {
+    introduction: string;
+    main: string;
+    conclusion: string;
+  };
+  t: (key: string, options?: Record<string, unknown>) => string;
+  timerState: FullPlanContentProps['timerState'];
+  isPreachingMode: boolean;
+  noContentText: string;
+  overlayCopyStatus: CopyStatus;
+  setOverlayCopyStatus: React.Dispatch<React.SetStateAction<CopyStatus>>;
+  copyButtonClasses: string;
+  copyButtonStatusClasses: Record<CopyStatus, string>;
+  planOverlayContentRef: React.RefObject<HTMLDivElement | null>;
+  overlayCopyTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  copyFormattedFromElement: (element: HTMLDivElement | null) => Promise<boolean>;
+  onOpenPlanImmersive: () => void;
+  onClosePlanView: () => void;
+}
+
+const PlanOverlayPortal = ({
+  isPlanOverlay,
+  sermon,
+  combinedPlan,
+  t,
+  timerState,
+  isPreachingMode,
+  noContentText,
+  overlayCopyStatus,
+  setOverlayCopyStatus,
+  copyButtonClasses,
+  copyButtonStatusClasses,
+  planOverlayContentRef,
+  overlayCopyTimeoutRef,
+  copyFormattedFromElement,
+  onOpenPlanImmersive,
+  onClosePlanView,
+}: PlanOverlayPortalProps) => {
+  if (!isPlanOverlay || typeof document === 'undefined' || !sermon) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
+      <div className="flex flex-1 justify-center p-4 overflow-y-auto">
+        <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
+            <div>
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
+            </div>
+            <div className="flex items-center gap-2 h-10">
+              <Button
+                onClick={async () => {
+                  if (overlayCopyStatus === 'copying') {
+                    return;
+                  }
+                  setOverlayCopyStatus('copying');
+                  const copied = await copyFormattedFromElement(planOverlayContentRef.current);
+                  if (copied) {
+                    toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
+                    setOverlayCopyStatus('success');
+                    if (overlayCopyTimeoutRef.current) {
+                      clearTimeout(overlayCopyTimeoutRef.current);
+                    }
+                    overlayCopyTimeoutRef.current = setTimeout(() => {
+                      setOverlayCopyStatus('idle');
+                      overlayCopyTimeoutRef.current = null;
+                    }, 2000);
+                  } else {
+                    toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
+                    setOverlayCopyStatus('error');
+                    if (overlayCopyTimeoutRef.current) {
+                      clearTimeout(overlayCopyTimeoutRef.current);
+                    }
+                    overlayCopyTimeoutRef.current = setTimeout(() => {
+                      setOverlayCopyStatus('idle');
+                      overlayCopyTimeoutRef.current = null;
+                    }, 2500);
+                  }
+                }}
+                variant="secondary"
+                className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
+                title={
+                  overlayCopyStatus === 'success'
+                    ? t("common.copied")
+                    : overlayCopyStatus === 'error'
+                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
+                      : overlayCopyStatus === 'copying'
+                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                        : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
+                }
+                disabled={overlayCopyStatus === 'copying'}
+              >
+                {overlayCopyStatus === 'copying' ? (
+                  <LoadingSpinner size="small" />
+                ) : overlayCopyStatus === 'success' ? (
+                  <Check className="h-6 w-6 text-green-200" />
+                ) : overlayCopyStatus === 'error' ? (
+                  <X className="h-6 w-6 text-rose-200" />
+                ) : (
+                  <Copy className="h-6 w-6" />
+                )}
+              </Button>
+              <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {overlayCopyStatus === 'success'
+                  ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
+                  : overlayCopyStatus === 'error'
+                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
+                    : overlayCopyStatus === 'copying'
+                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
+                    : ''}
+              </span>
+              <button
+                onClick={onOpenPlanImmersive}
+                className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                title={t("plan.fullscreen")}
+              >
+                <Maximize2 className="h-7 w-7" />
+              </button>
+              <button
+                onClick={onClosePlanView}
+                className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
+                title={t("actions.close")}
+              >
+                <X className="h-7 w-7" />
+              </button>
+            </div>
+          </div>
+          <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+            <FullPlanContent
+              sermonTitle={sermon.title}
+              sermonVerse={sermon.verse}
+              combinedPlan={combinedPlan}
+              t={t}
+              timerState={timerState}
+              isPreachingMode={isPreachingMode}
+              noContentText={noContentText}
+            />
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // Add a debounce utility to prevent too frequent calls
 function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
@@ -681,7 +2174,6 @@ export default function PlanPage() {
   const immersiveContentRef = useRef<HTMLDivElement | null>(null);
   const overlayCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const immersiveCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
   const [overlayCopyStatus, setOverlayCopyStatus] = useState<CopyStatus>('idle');
   const [immersiveCopyStatus, setImmersiveCopyStatus] = useState<CopyStatus>('idle');
 
@@ -1711,1279 +3203,111 @@ export default function PlanPage() {
 
   if (isPlanImmersive) {
     return (
-      <>
-        <style jsx global>{sectionButtonStyles}</style>
-        <style jsx global>{`
-          /* Markdown content styling */
-          .markdown-content {
-            line-height: 1.5;
-          }
-          .markdown-content p {
-            margin-top: 0.5em;
-            margin-bottom: 0.5em;
-          }
-          .markdown-content h1,
-          .markdown-content h2,
-          .markdown-content h3,
-          .markdown-content h4,
-          .markdown-content h5,
-          .markdown-content h6 {
-            margin-top: 1em;
-            margin-bottom: 0.5em;
-          }
-
-          /* Visual markers for different heading levels */
-          .markdown-content h2::before {
-            content: "";
-            display: inline-block;
-            width: 6px;
-            height: 20px;
-            background-color: ${SERMON_SECTION_COLORS.introduction.base};
-            margin-right: 10px;
-            border-radius: 2px;
-            vertical-align: text-top;
-          }
-
-          /* Use section context to style bullets */
-          /* Introduction bullets (h3) */
-          .markdown-content.prose-introduction h3::before,
-          .markdown-content.introduction-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.introduction.light};
-            font-weight: bold;
-          }
-
-          /* Main section bullets (h3) */
-          .markdown-content.prose-main h3::before,
-          .markdown-content.main-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.mainPart.light};
-            font-weight: bold;
-          }
-
-          /* Conclusion bullets (h3) */
-          .markdown-content.prose-conclusion h3::before,
-          .markdown-content.conclusion-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.conclusion.light};
-            font-weight: bold;
-          }
-
-          /* Default h3 bullets - only apply when no section class is present */
-          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.mainPart.base};
-            font-weight: bold;
-          }
-
-          /* Default h4 circles */
-          .markdown-content h4::before {
-            content: "○";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.conclusion.base};
-            font-weight: bold;
-          }
-
-          /* Section-specific styles for introduction section */
-          .markdown-content.prose-introduction h2::before {
-            background-color: ${SERMON_SECTION_COLORS.introduction.base};
-          }
-          .markdown-content.prose-introduction h4::before {
-            color: ${SERMON_SECTION_COLORS.introduction.dark};
-          }
-
-          /* Section-specific styles for main section */
-          .markdown-content.prose-main h2::before {
-            background-color: ${SERMON_SECTION_COLORS.mainPart.base};
-          }
-          .markdown-content.prose-main h4::before {
-            color: ${SERMON_SECTION_COLORS.mainPart.dark};
-          }
-
-          /* Section-specific styles for conclusion section */
-          .markdown-content.prose-conclusion h2::before {
-            background-color: ${SERMON_SECTION_COLORS.conclusion.base};
-          }
-          .markdown-content.prose-conclusion h4::before {
-            color: ${SERMON_SECTION_COLORS.conclusion.dark};
-          }
-
-          /* Dark mode colors */
-          @media (prefers-color-scheme: dark) {
-            .markdown-content h2::before {
-              background-color: ${SERMON_SECTION_COLORS.introduction.light};
-            }
-            .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-              color: ${SERMON_SECTION_COLORS.mainPart.light};
-            }
-            .markdown-content h4::before {
-              color: ${SERMON_SECTION_COLORS.conclusion.light};
-            }
-          }
-
-          /* Preaching mode specific styles */
-          .preaching-mode {
-            padding-top: 80px; /* Desktop: Account for sticky timer header */
-          }
-
-          @media (max-width: 768px) {
-            .preaching-mode {
-              padding-top: 65px; /* Tablet: Slightly less padding */
-            }
-          }
-
-          @media (max-width: 640px) {
-            .preaching-mode {
-              padding-top: 50px; /* Mobile: Less padding for compact timer */
-            }
-          }
-
-          .preaching-content {
-            max-width: 4xl;
-            margin: 0 auto;
-          }
-        `}</style>
-        <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900" data-testid="sermon-plan-immersive-view">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
-            <div>
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
-            </div>
-            <div className="flex items-center gap-2 h-10">
-              <Button
-                onClick={async () => {
-                  if (immersiveCopyStatus === 'copying') {
-                    return;
-                  }
-                  setImmersiveCopyStatus(COPY_STATUS.COPYING);
-                  const copied = await copyFormattedFromElement(immersiveContentRef.current);
-                  if (copied) {
-                    toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
-                    setImmersiveCopyStatus(COPY_STATUS.SUCCESS);
-                    if (immersiveCopyTimeoutRef.current) {
-                      clearTimeout(immersiveCopyTimeoutRef.current);
-                    }
-                    immersiveCopyTimeoutRef.current = setTimeout(() => {
-                      setImmersiveCopyStatus(COPY_STATUS.IDLE);
-                      immersiveCopyTimeoutRef.current = null;
-                    }, 2000);
-                  } else {
-                    toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
-                    setImmersiveCopyStatus(COPY_STATUS.ERROR);
-                    if (immersiveCopyTimeoutRef.current) {
-                      clearTimeout(immersiveCopyTimeoutRef.current);
-                    }
-                    immersiveCopyTimeoutRef.current = setTimeout(() => {
-                      setImmersiveCopyStatus(COPY_STATUS.IDLE);
-                      immersiveCopyTimeoutRef.current = null;
-                    }, 2500);
-                  }
-                }}
-                variant="secondary"
-                className={`${copyButtonClasses} ${copyButtonStatusClasses[immersiveCopyStatus]}`}
-                title={
-                  immersiveCopyStatus === 'success'
-                    ? t("common.copied")
-                    : immersiveCopyStatus === 'error'
-                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                      : immersiveCopyStatus === 'copying'
-                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                        : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
-                }
-                disabled={immersiveCopyStatus === 'copying'}
-              >
-                {immersiveCopyStatus === 'copying' ? (
-                  <LoadingSpinner size="small" />
-                ) : immersiveCopyStatus === 'success' ? (
-                  <Check className="h-6 w-6 text-green-200" />
-                ) : immersiveCopyStatus === 'error' ? (
-                  <X className="h-6 w-6 text-rose-200" />
-                ) : (
-                  <Copy className="h-6 w-6" />
-                )}
-              </Button>
-              <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-                {immersiveCopyStatus === 'success'
-                  ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
-                  : immersiveCopyStatus === 'error'
-                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                    : immersiveCopyStatus === 'copying'
-                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                      : ''}
-              </span>
-              <button
-                onClick={handleOpenPlanOverlay}
-                className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                title={t("plan.exitFullscreen")}
-              >
-                <Minimize2 className="h-7 w-7" />
-              </button>
-              <button
-                onClick={handleClosePlanView}
-                className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                title={t("actions.close")}
-              >
-                <X className="h-7 w-7" />
-              </button>
-            </div>
-          </div>
-          <main className="flex-1 overflow-y-auto">
-            <div ref={immersiveContentRef} className="max-w-5xl mx-auto px-6 py-8">
-              <FullPlanContent
-                sermonTitle={sermon.title}
-                sermonVerse={sermon.verse}
-                combinedPlan={combinedPlan}
-                t={t}
-                timerState={preachingTimerState}
-                isPreachingMode={isPlanPreaching}
-                noContentText={noContentText}
-              />
-            </div>
-          </main>
-        </div>
-      </>
+      <PlanImmersiveView
+        sermon={sermon}
+        combinedPlan={combinedPlan}
+        t={t}
+        timerState={preachingTimerState}
+        isPreachingMode={isPlanPreaching}
+        noContentText={noContentText}
+        immersiveCopyStatus={immersiveCopyStatus}
+        setImmersiveCopyStatus={setImmersiveCopyStatus}
+        copyButtonClasses={copyButtonClasses}
+        copyButtonStatusClasses={copyButtonStatusClasses}
+        immersiveContentRef={immersiveContentRef}
+        immersiveCopyTimeoutRef={immersiveCopyTimeoutRef}
+        copyFormattedFromElement={copyFormattedFromElement}
+        onOpenPlanOverlay={handleOpenPlanOverlay}
+        onClosePlanView={handleClosePlanView}
+      />
     );
   }
 
-
-  // Preaching view with timer
   if (isPlanPreaching && sermon) {
     return (
-      <>
-        <style jsx global>{sectionButtonStyles}</style>
-        <style jsx global>{`
-          /* Markdown content styling */
-          .markdown-content {
-            line-height: 1.5;
-          }
-          .markdown-content p {
-            margin-top: 0.5em;
-            margin-bottom: 0.5em;
-          }
-          .markdown-content h1,
-          .markdown-content h2,
-          .markdown-content h3,
-          .markdown-content h4,
-          .markdown-content h5,
-          .markdown-content h6 {
-            margin-top: 1em;
-            margin-bottom: 0.5em;
-          }
-
-          /* Visual markers for different heading levels */
-          .markdown-content h2::before {
-            content: "";
-            display: inline-block;
-            width: 6px;
-            height: 20px;
-            background-color: ${SERMON_SECTION_COLORS.introduction.base};
-            margin-right: 10px;
-            border-radius: 2px;
-            vertical-align: text-top;
-          }
-
-          /* Use section context to style bullets */
-          /* Introduction bullets (h3) */
-          .markdown-content.prose-introduction h3::before,
-          .markdown-content.introduction-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.introduction.light};
-            font-weight: bold;
-          }
-
-          /* Main section bullets (h3) */
-          .markdown-content.prose-main h3::before,
-          .markdown-content.main-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.mainPart.light};
-            font-weight: bold;
-          }
-
-          /* Conclusion bullets (h3) */
-          .markdown-content.prose-conclusion h3::before,
-          .markdown-content.conclusion-section h3::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.conclusion.light};
-            font-weight: bold;
-          }
-
-          /* Default h3 bullets - only apply when no section class is present */
-          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-            content: "•";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.mainPart.base};
-            font-weight: bold;
-          }
-
-          /* Default h4 circles */
-          .markdown-content h4::before {
-            content: "○";
-            display: inline-block;
-            margin-right: 8px;
-            color: ${SERMON_SECTION_COLORS.conclusion.base};
-            font-weight: bold;
-          }
-
-          /* Section-specific styles for introduction section */
-          .markdown-content.prose-introduction h2::before {
-            background-color: ${SERMON_SECTION_COLORS.introduction.base};
-          }
-          .markdown-content.prose-introduction h4::before {
-            color: ${SERMON_SECTION_COLORS.introduction.dark};
-          }
-
-          /* Section-specific styles for main section */
-          .markdown-content.prose-main h2::before {
-            background-color: ${SERMON_SECTION_COLORS.mainPart.base};
-          }
-          .markdown-content.prose-main h4::before {
-            color: ${SERMON_SECTION_COLORS.mainPart.dark};
-          }
-
-          /* Section-specific styles for conclusion section */
-          .markdown-content.prose-conclusion h2::before {
-            background-color: ${SERMON_SECTION_COLORS.conclusion.base};
-          }
-          .markdown-content.prose-conclusion h4::before {
-            color: ${SERMON_SECTION_COLORS.conclusion.dark};
-          }
-
-          /* Dark mode colors */
-          @media (prefers-color-scheme: dark) {
-            .markdown-content h2::before {
-              background-color: ${SERMON_SECTION_COLORS.introduction.light};
-            }
-            .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-              color: ${SERMON_SECTION_COLORS.mainPart.light};
-            }
-            .markdown-content h4::before {
-              color: ${SERMON_SECTION_COLORS.conclusion.light};
-            }
-          }
-
-          /* Preaching mode specific styles */
-          .preaching-mode {
-            padding-top: 80px; /* Desktop: Account for sticky timer header */
-          }
-
-          @media (max-width: 768px) {
-            .preaching-mode {
-              padding-top: 65px; /* Tablet: Slightly less padding */
-            }
-          }
-
-          @media (max-width: 640px) {
-            .preaching-mode {
-              padding-top: 50px; /* Mobile: Less padding for compact timer */
-            }
-          }
-
-          .preaching-content {
-            max-width: 4xl;
-            margin: 0 auto;
-          }
-        `}</style>
-        <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${preachingDuration && preachingDuration > 0 ? 'preaching-mode' : ''}`}>
-          {/* Sticky Timer Header - Always show in preaching mode */}
-          <div className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-            <PreachingTimer
-              initialDuration={preachingDuration !== null ? preachingDuration : 0}
-              className="border-0 shadow-none"
-              sermonId={sermonId}
-              onExitPreaching={() => updatePlanViewMode(null)}
-              onTimerStateChange={handleTimerStateChange}
-              onTimerFinished={() => {
-                console.log('Timer finished naturally, showing negative countdown');
-                // Don't reset preachingDuration - let timer show negative values
-                // User can manually exit via "Exit Preaching Mode" button
-              }}
-              onSetDuration={handleSetTimerDuration}
-            />
-          </div>
-
-          {/* Floating Text Scale Controls */}
-          <FloatingTextScaleControls />
-
-          {/* Show plan content in preaching mode */}
-          {planViewMode === "preaching" && (
-            <main className="flex-1 overflow-y-auto">
-              <div className="preaching-content px-6 py-8">
-                <FullPlanContent
-                  sermonTitle={sermon.title}
-                  sermonVerse={sermon.verse}
-                  combinedPlan={combinedPlan}
-                  t={t}
-                  timerState={preachingTimerState}
-                  isPreachingMode={isPlanPreaching}
-                  noContentText={noContentText}
-                />
-
-              </div>
-            </main>
-          )}
-        </div>
-      </>
+      <PlanPreachingView
+        sermon={sermon}
+        sermonId={sermonId}
+        combinedPlan={combinedPlan}
+        t={t}
+        timerState={preachingTimerState}
+        isPlanPreaching={isPlanPreaching}
+        planViewMode={planViewMode}
+        noContentText={noContentText}
+        preachingDuration={preachingDuration}
+        onExitPreaching={() => updatePlanViewMode(null)}
+        onTimerStateChange={handleTimerStateChange}
+        onTimerFinished={() => {
+          console.log('Timer finished naturally, showing negative countdown');
+        }}
+        onSetDuration={handleSetTimerDuration}
+      />
     );
   }
-
-  const planOverlayPortal = isPlanOverlay && typeof document !== 'undefined' && sermon
-    ? createPortal(
-      <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
-        <div className="flex flex-1 justify-center p-4 overflow-y-auto">
-          <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
-              <div>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
-              </div>
-              <div className="flex items-center gap-2 h-10">
-                <Button
-                  onClick={async () => {
-                    if (overlayCopyStatus === 'copying') {
-                      return;
-                    }
-                    setOverlayCopyStatus('copying');
-                    const copied = await copyFormattedFromElement(planOverlayContentRef.current);
-                    if (copied) {
-                      toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
-                      setOverlayCopyStatus('success');
-                      if (overlayCopyTimeoutRef.current) {
-                        clearTimeout(overlayCopyTimeoutRef.current);
-                      }
-                      overlayCopyTimeoutRef.current = setTimeout(() => {
-                        setOverlayCopyStatus('idle');
-                        overlayCopyTimeoutRef.current = null;
-                      }, 2000);
-                    } else {
-                      toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
-                      setOverlayCopyStatus('error');
-                      if (overlayCopyTimeoutRef.current) {
-                        clearTimeout(overlayCopyTimeoutRef.current);
-                      }
-                      overlayCopyTimeoutRef.current = setTimeout(() => {
-                        setOverlayCopyStatus('idle');
-                        overlayCopyTimeoutRef.current = null;
-                      }, 2500);
-                    }
-                  }}
-                  variant="secondary"
-                  className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
-                  title={
-                    overlayCopyStatus === 'success'
-                      ? t("common.copied")
-                      : overlayCopyStatus === 'error'
-                        ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                        : overlayCopyStatus === 'copying'
-                          ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                          : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
-                  }
-                  disabled={overlayCopyStatus === 'copying'}
-                >
-                  {overlayCopyStatus === 'copying' ? (
-                    <LoadingSpinner size="small" />
-                  ) : overlayCopyStatus === 'success' ? (
-                    <Check className="h-6 w-6 text-green-200" />
-                  ) : overlayCopyStatus === 'error' ? (
-                    <X className="h-6 w-6 text-rose-200" />
-                  ) : (
-                    <Copy className="h-6 w-6" />
-                  )}
-                </Button>
-                <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-                  {overlayCopyStatus === 'success'
-                    ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
-                    : overlayCopyStatus === 'error'
-                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                      : overlayCopyStatus === 'copying'
-                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                        : ''}
-                </span>
-                <button
-                  onClick={handleOpenPlanImmersive}
-                  className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                  title={t("plan.fullscreen")}
-                >
-                  <Maximize2 className="h-7 w-7" />
-                </button>
-                <button
-                  onClick={handleClosePlanView}
-                  className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
-                  title={t("actions.close")}
-                >
-                  <X className="h-7 w-7" />
-                </button>
-              </div>
-            </div>
-            <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
-              <FullPlanContent
-                sermonTitle={sermon.title}
-                sermonVerse={sermon.verse}
-                combinedPlan={combinedPlan}
-                t={t}
-                timerState={preachingTimerState}
-                isPreachingMode={isPlanPreaching}
-                noContentText={noContentText}
-              />
-            </div>
-          </div>
-        </div>
-      </div>,
-      document.body
-    )
-    : null;
 
   return (
     <>
-      {planOverlayPortal}
-      <div
-        className="p-4"
-        data-testid="sermon-plan-page-container"
-      >
-        <style jsx global>{sectionButtonStyles}</style>
-        <style jsx global>{`
-        /* Prevent scroll anchoring in dynamic plan columns */
-        [data-testid="plan-introduction-left-section"],
-        [data-testid="plan-introduction-right-section"],
-        [data-testid="plan-main-left-section"],
-        [data-testid="plan-main-right-section"],
-        [data-testid="plan-conclusion-left-section"],
-        [data-testid="plan-conclusion-right-section"] {
-          overflow-anchor: none;
-        }
-
-        /* Markdown content styling */
-        .markdown-content {
-          line-height: 1.5;
-        }
-        .markdown-content p {
-          margin-top: 0.5em;
-          margin-bottom: 0.5em;
-        }
-        .markdown-content h1,
-        .markdown-content h2,
-        .markdown-content h3,
-        .markdown-content h4,
-        .markdown-content h5,
-        .markdown-content h6 {
-          margin-top: 1em;
-          margin-bottom: 0.5em;
-        }
-        /* Indentation for hierarchical structure */
-        .markdown-content h2 {
-          margin-left: 0;
-        }
-        .markdown-content h3 {
-          margin-left: 1.5rem;
-        }
-        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
-          margin-left: 3rem;
-        }
-        /* Indent paragraphs and lists to align with their headings */
-        .markdown-content h2 + p, .markdown-content h2 + ul, .markdown-content h2 + ol {
-          margin-left: 1.5rem;
-        }
-        .markdown-content h3 + p, .markdown-content h3 + ul, .markdown-content h3 + ol {
-          margin-left: 3rem;
-        }
-        .markdown-content h4 + p, .markdown-content h4 + ul, .markdown-content h4 + ol,
-        .markdown-content h5 + p, .markdown-content h5 + ul, .markdown-content h5 + ol,
-        .markdown-content h6 + p, .markdown-content h6 + ul, .markdown-content h6 + ol {
-          margin-left: 4.5rem;
-        }
-        /* Continuing indentation for paragraphs without headings */
-        .markdown-content p + p, .markdown-content ul + p, .markdown-content ol + p {
-          margin-left: inherit;
-        }
-        .markdown-content ul,
-        .markdown-content ol {
-          margin-top: 0.5em;
-          margin-bottom: 0.5em;
-          padding-left: 1.5em;
-        }
-        .markdown-content li {
-          margin-top: 0.25em;
-          margin-bottom: 0.25em;
-        }
-        .markdown-content li > p {
-          margin-top: 0;
-          margin-bottom: 0;
-        }
-        /* Remove borders from all elements */
-        .markdown-content * {
-          border: none !important;
-        }
-        /* Fix for first paragraph layout issue */
-        .markdown-content > p:first-child {
-          margin-top: 0;
-          display: inline-block;
-        }
-        /* Ensure first element doesn't create unwanted space */
-        .markdown-content > *:first-child {
-          margin-top: 0;
-        }
-
-        /* Visual markers for different heading levels */
-        .markdown-content h2::before {
-          content: "";
-          display: inline-block;
-          width: 6px;
-          height: 20px;
-          background-color: ${SERMON_SECTION_COLORS.introduction.base};
-          margin-right: 10px;
-          border-radius: 2px;
-          vertical-align: text-top;
-        }
-
-        /* Use section context to style bullets */
-        /* Introduction bullets (h3) */
-        .markdown-content.prose-introduction h3::before,
-        .markdown-content.introduction-section h3::before {
-          content: "•";
-          display: inline-block;
-          margin-right: 8px;
-          color: ${SERMON_SECTION_COLORS.introduction.light};
-          font-weight: bold;
-        }
-
-        /* Main section bullets (h3) */
-        .markdown-content.prose-main h3::before,
-        .markdown-content.main-section h3::before {
-          content: "•";
-          display: inline-block;
-          margin-right: 8px;
-          color: ${SERMON_SECTION_COLORS.mainPart.light};
-          font-weight: bold;
-        }
-
-        /* Conclusion bullets (h3) */
-        .markdown-content.prose-conclusion h3::before,
-        .markdown-content.conclusion-section h3::before {
-          content: "•";
-          display: inline-block;
-          margin-right: 8px;
-          color: ${SERMON_SECTION_COLORS.conclusion.light};
-          font-weight: bold;
-        }
-
-        /* Default h3 bullets - only apply when no section class is present */
-        .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-          content: "•";
-          display: inline-block;
-          margin-right: 8px;
-          color: ${SERMON_SECTION_COLORS.mainPart.base};
-          font-weight: bold;
-        }
-
-        /* Default h4 circles */
-        .markdown-content h4::before {
-          content: "○";
-          display: inline-block;
-          margin-right: 8px;
-          color: ${SERMON_SECTION_COLORS.conclusion.base};
-          font-weight: bold;
-        }
-
-        /* Section-specific styles for introduction section */
-        .markdown-content.prose-introduction h2::before {
-          background-color: ${SERMON_SECTION_COLORS.introduction.base};
-        }
-        .markdown-content.prose-introduction h4::before {
-          color: ${SERMON_SECTION_COLORS.introduction.dark};
-        }
-
-        /* Section-specific styles for main section */
-        .markdown-content.prose-main h2::before {
-          background-color: ${SERMON_SECTION_COLORS.mainPart.base};
-        }
-        .markdown-content.prose-main h4::before {
-          color: ${SERMON_SECTION_COLORS.mainPart.dark};
-        }
-
-        /* Section-specific styles for conclusion section */
-        .markdown-content.prose-conclusion h2::before {
-          background-color: ${SERMON_SECTION_COLORS.conclusion.base};
-        }
-        .markdown-content.prose-conclusion h4::before {
-          color: ${SERMON_SECTION_COLORS.conclusion.dark};
-        }
-
-        /* Dark mode colors */
-        @media (prefers-color-scheme: dark) {
-          .markdown-content h2::before {
-            background-color: ${SERMON_SECTION_COLORS.introduction.light};
-          }
-          .markdown-content h3:not(.markdown-content.prose-introduction h3):not(.markdown-content.prose-main h3):not(.markdown-content.prose-conclusion h3):not(.markdown-content.introduction-section h3):not(.markdown-content.main-section h3):not(.markdown-content.conclusion-section h3)::before {
-            color: ${SERMON_SECTION_COLORS.mainPart.light};
-          }
-          .markdown-content h4::before {
-            color: ${SERMON_SECTION_COLORS.conclusion.light};
-          }
-        }
-      `}</style>
-        <div className="w-full">
-          {/* Page Header */}
-          <div className="mb-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center">
-                <Link
-                  href={`/sermons/${params.id}`}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center mr-3"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  {t("actions.backToSermon")}
-                </Link>
-                {/* <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {t("plan.pageTitle")}
-              </h1> */}
-              </div>
-            </div>
-
-            {/* Sermon Title & Verse */}
-            {sermon && (
-              <div className="mt-6 mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4">
-                  {sermon.title}
-                </h1>
-                {sermon.verse && (
-                  <div className="pl-4 border-l-4 border-blue-500 dark:border-blue-400">
-                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line text-lg italic">
-                      {sermon.verse}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                      {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
-                    </p>
-                  </div>
-                )}
-
-                {/* View Plan Buttons */}
-                <div className="flex flex-wrap gap-3 mt-6">
-                  <ViewPlanMenu
-                    sermonId={sermonId}
-                    combinedPlan={combinedPlan}
-                    sectionMenuRef={sectionMenuRef}
-                    showSectionMenu={showSectionMenu}
-                    setShowSectionMenu={setShowSectionMenu}
-                    onRequestPlanOverlay={handleOpenPlanOverlay}
-                    onRequestPreachingMode={handleOpenTimePicker}
-                    onStartPreachingMode={handleStartPreachingMode}
-                  />
-
-                  {/* Add Export Buttons */}
-                  <ExportButtons
-                    sermonId={sermonId}
-                    getExportContent={getExportContent}
-                    getPdfContent={getPdfContent}
-                    title={sermon.title || "Sermon Plan"}
-                    className="ml-auto"
-                    disabledFormats={['pdf']} // Add this prop to disable PDF
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Introduction header */}
-            <div ref={introductionSectionRef} data-section="introduction" className="lg:col-span-2">
-              <PlanStyleSelector
-                value={planStyle}
-                onChange={setPlanStyle}
-                disabled={isLoading || !!generatingId}
-              />
-
-              <SectionHeader
-                section={SECTION_NAMES.INTRODUCTION}
-                onSwitchPage={handleSwitchToStructure}
-              /></div>
-            {/* Intro Left & Right */}
-            <div
-              data-testid="plan-introduction-left-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.introduction.map((outlinePoint) => (
-                  <SermonPointCard
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!introPointRefs.current[outlinePoint.id]) {
-                        introPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      introPointRefs.current[outlinePoint.id].left = el;
-                    }}
-                    outlinePoint={outlinePoint}
-                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                    sectionName="introduction"
-                    onGenerate={generateSermonPointContent}
-                    generatedContent={generatedContent[outlinePoint.id] || null}
-                    isGenerating={generatingId === outlinePoint.id}
-                    sermonId={sermonId}
-                    onOpenFragmentsModal={setModalSermonPointId}
-                  />
-                ))}
-                {sermon.outline?.introduction.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-
-            <div
-              data-testid="plan-introduction-right-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} ${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.introduction.map((outlinePoint) => (
-                  <div
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!introPointRefs.current[outlinePoint.id]) {
-                        introPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      introPointRefs.current[outlinePoint.id].right = el;
-                    }}
-                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                  >
-                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} flex justify-between items-center`}>
-                      {outlinePoint.text}
-                      <div className="flex space-x-2">
-                        <Button
-                          className="text-sm px-2 py-1 h-8"
-                          onClick={() => saveSermonPoint(
-                            outlinePoint.id,
-                            generatedContent[outlinePoint.id] || "",
-                            "introduction"
-                          )}
-                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.introduction : undefined}
-                          disabled={
-                            !generatedContent[outlinePoint.id] ||
-                            generatedContent[outlinePoint.id].trim() === "" ||
-                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                          }
-                          title={t("plan.save")}
-                        >
-                          <Save className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </h3>
-
-                    <div className="relative">
-                      <Button
-                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                        onClick={() => toggleEditMode(outlinePoint.id)}
-                        variant="default"
-                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                      >
-                        {editModePoints[outlinePoint.id] ? (
-                          <FileText className="h-4 w-4" />
-                        ) : (
-                          <Pencil className="h-4 w-4" />
-                        )}
-                      </Button>
-                      {editModePoints[outlinePoint.id] ? (
-                        <TextareaAutosize
-                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                          minRows={4}
-                          placeholder={noContentText}
-                          value={generatedContent[outlinePoint.id] || ""}
-                          onChange={(e) => {
-                            const newContent = e.target.value;
-                            // Mark content as modified if it's different from the current saved content
-                            const currentSavedContent = sermon.plan?.introduction?.outlinePoints?.[outlinePoint.id] || "";
-                            const isModified = newContent !== currentSavedContent;
-
-                            setGeneratedContent((prev) => ({
-                              ...prev,
-                              [outlinePoint.id]: newContent,
-                            }));
-
-                            // Mark as modified if content changed
-                            setModifiedContent(prev => ({
-                              ...prev,
-                              [outlinePoint.id]: isModified
-                            }));
-
-                            updateCombinedPlan(
-                              outlinePoint.text,
-                              newContent,
-                              "introduction"
-                            );
-                            // Height will be synced by the MutationObserver
-                          }}
-                          onHeightChange={() => {
-                            // Equalize only the affected pair to reduce scroll jumps
-                            syncPairHeights('introduction', outlinePoint.id);
-                          }}
-                        />
-                      ) : (
-                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                          <div className="absolute top-2 right-2 z-10">
-                            <Button
-                              className="text-sm px-2 py-1 h-8"
-                              onClick={() => toggleEditMode(outlinePoint.id)}
-                              variant="default"
-                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="p-3 pr-12">
-                            <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || noContentText}
-                              section={SECTION_NAMES.INTRODUCTION}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {sermon.outline?.introduction.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Main header */}
-            <div ref={mainSectionRef} data-section="main" className="lg:col-span-2">
-              <SectionHeader section="main" onSwitchPage={handleSwitchToStructure} />
-            </div>
-            {/* Main Left & Right */}
-            <div
-              data-testid="plan-main-left-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.main.map((outlinePoint) => (
-                  <SermonPointCard
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!mainPointRefs.current[outlinePoint.id]) {
-                        mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      mainPointRefs.current[outlinePoint.id].left = el;
-                    }}
-                    outlinePoint={outlinePoint}
-                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                    sectionName="main"
-                    onGenerate={generateSermonPointContent}
-                    generatedContent={generatedContent[outlinePoint.id] || null}
-                    isGenerating={generatingId === outlinePoint.id}
-                    sermonId={sermonId}
-                    onOpenFragmentsModal={setModalSermonPointId}
-                  />
-                ))}
-                {sermon.outline?.main.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-
-            <div
-              data-testid="plan-main-right-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} ${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.main.map((outlinePoint) => (
-                  <div
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!mainPointRefs.current[outlinePoint.id]) {
-                        mainPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      mainPointRefs.current[outlinePoint.id].right = el;
-                    }}
-                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                  >
-                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} flex justify-between items-center`}>
-                      {outlinePoint.text}
-                      <div className="flex space-x-2">
-                        <Button
-                          className="text-sm px-2 py-1 h-8"
-                          onClick={() => saveSermonPoint(
-                            outlinePoint.id,
-                            generatedContent[outlinePoint.id] || "",
-                            "main"
-                          )}
-                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.mainPart : undefined}
-                          disabled={
-                            !generatedContent[outlinePoint.id] ||
-                            generatedContent[outlinePoint.id].trim() === "" ||
-                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                          }
-                          title={t("plan.save")}
-                        >
-                          <Save className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </h3>
-
-                    <div className="relative">
-                      <Button
-                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                        onClick={() => toggleEditMode(outlinePoint.id)}
-                        variant="default"
-                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                      >
-                        {editModePoints[outlinePoint.id] ? (
-                          <FileText className="h-4 w-4" />
-                        ) : (
-                          <Pencil className="h-4 w-4" />
-                        )}
-                      </Button>
-                      {editModePoints[outlinePoint.id] ? (
-                        <TextareaAutosize
-                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                          minRows={4}
-                          placeholder={noContentText}
-                          value={generatedContent[outlinePoint.id] || ""}
-                          onChange={(e) => {
-                            const newContent = e.target.value;
-                            // Mark content as modified if it's different from the current saved content
-                            const currentSavedContent = sermon.plan?.main?.outlinePoints?.[outlinePoint.id] || "";
-                            const isModified = newContent !== currentSavedContent;
-
-                            setGeneratedContent((prev) => ({
-                              ...prev,
-                              [outlinePoint.id]: newContent,
-                            }));
-
-                            // Mark as modified if content changed
-                            setModifiedContent(prev => ({
-                              ...prev,
-                              [outlinePoint.id]: isModified
-                            }));
-
-                            updateCombinedPlan(
-                              outlinePoint.text,
-                              newContent,
-                              "main"
-                            );
-                            // Height will be synced by the MutationObserver
-                          }}
-                          onHeightChange={() => {
-                            // Equalize only the affected pair to reduce scroll jumps
-                            syncPairHeights('main', outlinePoint.id);
-                          }}
-                        />
-                      ) : (
-                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                          <div className="absolute top-2 right-2 z-10">
-                            <Button
-                              className="text-sm px-2 py-1 h-8"
-                              onClick={() => toggleEditMode(outlinePoint.id)}
-                              variant="default"
-                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="p-3 pr-12">
-                            <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || noContentText}
-                              section={SECTION_NAMES.MAIN}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {sermon.outline?.main.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Conclusion header */}
-            <div ref={conclusionSectionRef} data-section="conclusion" className="lg:col-span-2">
-              <SectionHeader section="conclusion" onSwitchPage={handleSwitchToStructure} />
-            </div>
-            {/* Conclusion Left & Right */}
-            <div
-              data-testid="plan-conclusion-left-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.conclusion.map((outlinePoint) => (
-                  <SermonPointCard
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!conclusionPointRefs.current[outlinePoint.id]) {
-                        conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      conclusionPointRefs.current[outlinePoint.id].left = el;
-                    }}
-                    outlinePoint={outlinePoint}
-                    thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-                    sectionName="conclusion"
-                    onGenerate={generateSermonPointContent}
-                    generatedContent={generatedContent[outlinePoint.id] || null}
-                    isGenerating={generatingId === outlinePoint.id}
-                    sermonId={sermonId}
-                    onOpenFragmentsModal={setModalSermonPointId}
-                  />
-                ))}
-                {sermon.outline?.conclusion.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-
-            <div
-              data-testid="plan-conclusion-right-section"
-              className={`rounded-lg overflow-hidden border ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} ${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`}
-            >
-              <div className="p-3">
-                {sermon.outline?.conclusion.map((outlinePoint) => (
-                  <div
-                    key={outlinePoint.id}
-                    ref={(el) => {
-                      if (!conclusionPointRefs.current[outlinePoint.id]) {
-                        conclusionPointRefs.current[outlinePoint.id] = { left: null, right: null };
-                      }
-                      conclusionPointRefs.current[outlinePoint.id].right = el;
-                    }}
-                    className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
-                  >
-                    <h3 className={`font-semibold text-lg mb-2 ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} flex justify-between items-center`}>
-                      {outlinePoint.text}
-                      <div className="flex space-x-2">
-                        <Button
-                          className="text-sm px-2 py-1 h-8"
-                          onClick={() => saveSermonPoint(
-                            outlinePoint.id,
-                            generatedContent[outlinePoint.id] || "",
-                            "conclusion"
-                          )}
-                          variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-                          sectionColor={modifiedContent[outlinePoint.id] ? SERMON_SECTION_COLORS.conclusion : undefined}
-                          disabled={
-                            !generatedContent[outlinePoint.id] ||
-                            generatedContent[outlinePoint.id].trim() === "" ||
-                            (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-                          }
-                          title={t("plan.save")}
-                        >
-                          <Save className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </h3>
-
-                    <div className="relative">
-                      <Button
-                        className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-                        onClick={() => toggleEditMode(outlinePoint.id)}
-                        variant="default"
-                        title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                      >
-                        {editModePoints[outlinePoint.id] ? (
-                          <FileText className="h-4 w-4" />
-                        ) : (
-                          <Pencil className="h-4 w-4" />
-                        )}
-                      </Button>
-                      {editModePoints[outlinePoint.id] ? (
-                        <TextareaAutosize
-                          className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-                          minRows={4}
-                          placeholder={noContentText}
-                          value={generatedContent[outlinePoint.id] || ""}
-                          onChange={(e) => {
-                            const newContent = e.target.value;
-                            // Mark content as modified if it's different from the current saved content
-                            const currentSavedContent = sermon.plan?.conclusion?.outlinePoints?.[outlinePoint.id] || "";
-                            const isModified = newContent !== currentSavedContent;
-
-                            setGeneratedContent((prev) => ({
-                              ...prev,
-                              [outlinePoint.id]: newContent,
-                            }));
-
-                            // Mark as modified if content changed
-                            setModifiedContent(prev => ({
-                              ...prev,
-                              [outlinePoint.id]: isModified
-                            }));
-
-                            updateCombinedPlan(
-                              outlinePoint.text,
-                              newContent,
-                              "conclusion"
-                            );
-                            // Height will be synced by the MutationObserver
-                          }}
-                          onHeightChange={() => {
-                            // Equalize only the affected pair to reduce scroll jumps
-                            syncPairHeights('conclusion', outlinePoint.id);
-                          }}
-                        />
-                      ) : (
-                        <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-                          <div className="absolute top-2 right-2 z-10">
-                            <Button
-                              className="text-sm px-2 py-1 h-8"
-                              onClick={() => toggleEditMode(outlinePoint.id)}
-                              variant="default"
-                              title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="p-3 pr-12">
-                            <MarkdownRenderer
-                              markdown={generatedContent[outlinePoint.id] || noContentText}
-                              section={SECTION_NAMES.CONCLUSION}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {sermon.outline?.conclusion.length === 0 && (
-                  <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Key Fragments Modal */}
-          {modalSermonPointId && (() => {
-            const outlinePoint = findSermonPointById(modalSermonPointId);
-            if (!outlinePoint) return null;
-            return (
-              <KeyFragmentsModal
-                data-testid="key-fragments-modal-instance"
-                isOpen={!!modalSermonPointId}
-                onClose={() => setModalSermonPointId(null)}
-                outlinePoint={outlinePoint}
-                thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
-                sermonId={sermonId}
-                onThoughtUpdate={handleThoughtUpdate}
-              />
-            );
-          })()}
-        </div>
-      </div>
+      <PlanOverlayPortal
+        isPlanOverlay={isPlanOverlay}
+        sermon={sermon}
+        combinedPlan={combinedPlan}
+        t={t}
+        timerState={preachingTimerState}
+        isPreachingMode={isPlanPreaching}
+        noContentText={noContentText}
+        overlayCopyStatus={overlayCopyStatus}
+        setOverlayCopyStatus={setOverlayCopyStatus}
+        copyButtonClasses={copyButtonClasses}
+        copyButtonStatusClasses={copyButtonStatusClasses}
+        planOverlayContentRef={planOverlayContentRef}
+        overlayCopyTimeoutRef={overlayCopyTimeoutRef}
+        copyFormattedFromElement={copyFormattedFromElement}
+        onOpenPlanImmersive={handleOpenPlanImmersive}
+        onClosePlanView={handleClosePlanView}
+      />
+      <PlanMainLayout
+        sermon={sermon}
+        params={{ id: params.id as string }}
+        sermonId={sermonId}
+        t={t}
+        combinedPlan={combinedPlan}
+        noContentText={noContentText}
+        planStyle={planStyle}
+        setPlanStyle={setPlanStyle}
+        isLoading={isLoading}
+        generatingId={generatingId}
+        sectionMenuRef={sectionMenuRef}
+        showSectionMenu={showSectionMenu}
+        setShowSectionMenu={setShowSectionMenu}
+        introPointRefs={introPointRefs}
+        mainPointRefs={mainPointRefs}
+        conclusionPointRefs={conclusionPointRefs}
+        introductionSectionRef={introductionSectionRef}
+        mainSectionRef={mainSectionRef}
+        conclusionSectionRef={conclusionSectionRef}
+        generatedContent={generatedContent}
+        modifiedContent={modifiedContent}
+        savedSermonPoints={savedSermonPoints}
+        editModePoints={editModePoints}
+        modalSermonPointId={modalSermonPointId}
+        setModalSermonPointId={setModalSermonPointId}
+        findSermonPointById={findSermonPointById}
+        onThoughtUpdate={handleThoughtUpdate}
+        getThoughtsForSermonPoint={getThoughtsForSermonPoint}
+        onGenerate={generateSermonPointContent}
+        onSaveSermonPoint={saveSermonPoint}
+        onToggleEditMode={toggleEditMode}
+        onSyncPairHeights={syncPairHeights}
+        onUpdateCombinedPlan={updateCombinedPlan}
+        setGeneratedContent={setGeneratedContent}
+        setModifiedContent={setModifiedContent}
+        onSwitchToStructure={handleSwitchToStructure}
+        onRequestPlanOverlay={handleOpenPlanOverlay}
+        onRequestPreachingMode={handleOpenTimePicker}
+        onStartPreachingMode={handleStartPreachingMode}
+        getExportContent={getExportContent}
+        getPdfContent={getPdfContent}
+      />
     </>
   );
-} 
+}

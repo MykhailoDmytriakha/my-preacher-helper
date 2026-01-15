@@ -85,6 +85,18 @@
 **Solution:** Use the functional update pattern `setSize((prev) => ...)` to read the current state without including it in the dependency array.
 **Principle:** To avoid `exhaustive-deps` warnings and unnecessary effect re-runs when state logic depends on previous state, use the functional update pattern.
 
+### 2026-01-15 Use lcov.info for accurate per-file coverage
+**Problem:** `coverage-summary.json` was stale after `npm run test`, making per-file coverage checks unreliable.
+**Solution:** Read `frontend/coverage/lcov.info` directly to compute per-file line coverage (e.g., for `plan/page.tsx`).
+**Principle:** In this repo, trust `lcov.info` as the source of truth for per-file coverage when validating thresholds.
+
+### 2026-01-15 Max coverage for complex DnD handler
+**Problem:** `useStructureDnd` needed the highest possible test coverage, but several branches were hard to reach.
+**Attempts:** Added targeted DragOver/DragEnd tests across container/item/placeholder cases and inspected remaining uncovered lines.
+**Solution:** Covered 95.77% lines and 85.4% branches with focused event-shape tests; documented remaining branches as unreachable without invalid inputs.
+**Why it worked:** Simulating realistic DnD event payloads exercised nearly all paths; the remaining branches require impossible states under normal inputs.
+**Principle:** For complex event handlers, use targeted event-shape tests and accept unreachable branches rather than forcing invalid inputs just to hit 100%.
+
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
@@ -99,13 +111,14 @@
 
 **Emerging Principle:** UI refactoring requires preserving DOM structure and testing logical sections across all modes.
 
-### Testing Quality & Coverage (4 lessons)
+### Testing Quality & Coverage (5 lessons)
 **Common Pattern:** Test failures and coverage gaps after changes
 - Coverage requires changed-line verification (2026-01-04)
 - Duplicate label tests need specific queries (2026-01-05)
 - Mock override must beat default beforeEach (2026-01-05)
 - Compile failures from typed test fixtures (2026-01-05)
 - Dynamic UI class test failures (2026-01-11)
+- Coverage ceiling for DnD handlers with normalized inputs (2026-01-15)
 
 **Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
 

@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
@@ -13,10 +13,12 @@ global.MutationObserver = jest.fn(() => ({
 }));
 
 // Mock Next.js router and params
+let mockSearchParams = new URLSearchParams();
+
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
-  useRouter: () => ({ push: jest.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useSearchParams: () => mockSearchParams,
   usePathname: () => '/sermons/test-sermon-id/plan',
 }));
 
@@ -75,42 +77,49 @@ jest.mock('@/services/sermon.service', () => ({
 
 // Mock child components (if any are direct children of the page)
 jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div data-testid="key-fragments-modal">Mocked Key Fragments Modal</div>);
+jest.mock('@/components/plan/PlanStyleSelector', () => () => <div data-testid="plan-style-selector">Mocked Plan Style Selector</div>);
+jest.mock('@/components/plan/ViewPlanMenu', () => () => <div data-testid="view-plan-menu">Mocked View Plan Menu</div>);
+jest.mock('@/components/ExportButtons', () => () => <div data-testid="export-buttons">Mocked Export Buttons</div>);
+jest.mock('@/components/PreachingTimer', () => () => <div data-testid="preaching-timer">Mocked Preaching Timer</div>);
+jest.mock('@/components/FloatingTextScaleControls', () => () => <div data-testid="floating-text-controls">Mocked Floating Text Controls</div>);
 
 // Mock i18n with the specific translations needed for this test
+const translate = (key: string, options?: { defaultValue?: string }) => {
+  const translations: Record<string, string> = {
+    'plan.thoughtsNotAssigned': 'Thoughts not assigned',
+    'plan.assignThoughtsFirst': 'Please assign all thoughts to outline points first',
+    'plan.workOnSermon': 'Work on Sermon',
+    'plan.workOnStructure': 'Work on ThoughtsBySection',
+    'plan.markKeyFragments': 'Mark Key Fragments',
+    'plan.generating': 'Generating...',
+    'plan.regenerate': 'Regenerate',
+    'plan.generate': 'Generate',
+    'plan.noThoughts': 'No thoughts',
+    'plan.noContent': 'No content',
+    'plan.noSermonPoints': 'No outline points',
+    'plan.contentGenerated': 'Content generated',
+    'plan.pointSaved': 'Point saved',
+    'plan.sectionSaved': 'Section saved',
+    'plan.save': 'Save',
+    'plan.viewMode': 'View Mode',
+    'plan.editMode': 'Edit Mode',
+    'sections.introduction': 'Introduction',
+    'sections.main': 'Main',
+    'sections.conclusion': 'Conclusion',
+    'common.scripture': 'Scripture',
+    'actions.backToSermon': 'Back to Sermon',
+    'errors.sermonNotFound': 'Sermon not found',
+    'errors.failedToLoadSermon': 'Failed to load sermon',
+    'errors.outlinePointNotFound': 'SermonOutline point not found',
+    'errors.failedToGenerateContent': 'Failed to generate content',
+    'errors.failedToSavePoint': 'Failed to save point',
+  };
+  return translations[key] || options?.defaultValue || key;
+};
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => {
-      const translations: Record<string, string> = {
-        'plan.thoughtsNotAssigned': 'Thoughts not assigned',
-        'plan.assignThoughtsFirst': 'Please assign all thoughts to outline points first',
-        'plan.workOnSermon': 'Work on Sermon',
-        'plan.workOnStructure': 'Work on ThoughtsBySection',
-        'plan.markKeyFragments': 'Mark Key Fragments',
-        'plan.generating': 'Generating...',
-        'plan.regenerate': 'Regenerate',
-        'plan.generate': 'Generate',
-        'plan.noThoughts': 'No thoughts',
-        'plan.noContent': 'No content',
-        'plan.noSermonPoints': 'No outline points',
-        'plan.contentGenerated': 'Content generated',
-        'plan.pointSaved': 'Point saved',
-        'plan.sectionSaved': 'Section saved',
-        'plan.save': 'Save',
-        'plan.viewMode': 'View Mode',
-        'plan.editMode': 'Edit Mode',
-        'sections.introduction': 'Introduction',
-        'sections.main': 'Main',
-        'sections.conclusion': 'Conclusion',
-        'common.scripture': 'Scripture',
-        'actions.backToSermon': 'Back to Sermon',
-        'errors.sermonNotFound': 'Sermon not found',
-        'errors.failedToLoadSermon': 'Failed to load sermon',
-        'errors.outlinePointNotFound': 'SermonOutline point not found',
-        'errors.failedToGenerateContent': 'Failed to generate content',
-        'errors.failedToSavePoint': 'Failed to save point',
-      };
-      return translations[key] || options?.defaultValue || key;
-    },
+    t: translate,
   }),
 }));
 
@@ -122,11 +131,12 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   const mockGetSermonById = jest.mocked(getSermonById);
 
   beforeEach(async () => {
+    mockSearchParams = new URLSearchParams();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
     
     // Reset fetch mock before each test
-    global.fetch = jest.fn().mockImplementation((url) => {
+    global.fetch = jest.fn().mockImplementation((url, options) => {
       if (url.includes('/api/sermons/test-sermon-id/plan')) {
         // Mock successful response for plan generation GET request
         if (url.includes('outlinePointId=')) { 
@@ -135,9 +145,45 @@ describe('Sermon Plan Page UI Smoke Test', () => {
             status: 200,
             json: () => Promise.resolve({ content: 'Mock Generated Content' }),
           });
-        } 
-        // Mock successful response for plan saving PUT request (if needed later)
-        // else if (method === 'PUT') { ... }
+        }
+        if (options?.method === 'PUT') {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+        }
+      }
+      if (url.endsWith('/api/sermons/test-sermon-id')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            id: 'test-sermon-id',
+            title: 'Test Sermon',
+            verse: 'Test Verse',
+            date: new Date().toISOString(),
+            thoughts: [
+              { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'] },
+              { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'] },
+              { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
+            ],
+            plan: {
+              introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
+              main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
+              conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
+            },
+            outline: {
+              introduction: [{id: 'intro-p1', text: 'Intro Point 1'}],
+              main: [{id: 'main-p1', text: 'Main Point 1'}],
+              conclusion: [{id: 'con-p1', text: 'Conclusion Point 1'}],
+            },
+            structure: {
+              introduction: ['t1'],
+              main: ['t2'],
+              conclusion: ['t3'],
+            },
+            goal: 'Mock Goal',
+            audience: 'Mock Audience',
+            keyFragments: ['frag1'],
+          }),
+        });
       }
       // Fallback for unhandled URLs (optional, could throw error)
       return Promise.resolve({ ok: false, status: 404 });
@@ -217,6 +263,58 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   it('can render without crashing', () => {
     // This test just checks if the component can be rendered without throwing an error
     expect(() => render(<SermonPlanPage />)).not.toThrow();
+  });
+
+  it('renders main plan layout with sections when sermon loads', async () => {
+    render(<SermonPlanPage />);
+
+    expect(await screen.findByTestId('plan-introduction-left-section')).toBeInTheDocument();
+    expect(screen.getByTestId('plan-main-right-section')).toBeInTheDocument();
+    expect(screen.getByTestId('plan-conclusion-right-section')).toBeInTheDocument();
+  });
+
+  it('renders immersive view when planView=immersive', async () => {
+    mockSearchParams = new URLSearchParams('planView=immersive');
+    render(<SermonPlanPage />);
+
+    expect(await screen.findByTestId('sermon-plan-immersive-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('sermon-plan-page-container')).not.toBeInTheDocument();
+  });
+
+  it('renders preaching view when planView=preaching', async () => {
+    mockSearchParams = new URLSearchParams('planView=preaching');
+    render(<SermonPlanPage />);
+
+    expect(await screen.findByTestId('preaching-timer')).toBeInTheDocument();
+    expect(screen.queryByTestId('sermon-plan-page-container')).not.toBeInTheDocument();
+  });
+
+  it('renders overlay portal when planView=overlay', async () => {
+    mockSearchParams = new URLSearchParams('planView=overlay');
+    render(<SermonPlanPage />);
+
+    await screen.findByTestId('sermon-plan-page-container');
+    expect(await screen.findByTestId('sermon-plan-overlay')).toBeInTheDocument();
+  });
+
+  it('toggles edit mode and saves outline point content', async () => {
+    render(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-right-section');
+
+    const editButtons = screen.getAllByTitle('Edit Mode');
+    fireEvent.click(editButtons[0]);
+
+    const textareas = await screen.findAllByPlaceholderText('No content');
+    fireEvent.change(textareas[0], { target: { value: 'Updated Intro Content' } });
+
+    const saveButtons = await screen.findAllByTitle('Save');
+    expect(saveButtons[0]).toBeEnabled();
+    fireEvent.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled();
+    });
   });
 
 }); 
