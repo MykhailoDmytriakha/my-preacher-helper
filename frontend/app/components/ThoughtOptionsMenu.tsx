@@ -12,13 +12,15 @@ interface ThoughtOptionsMenuProps {
   onEdit: () => void;
   onDelete: () => void;
   className?: string;
+  isReadOnly?: boolean;
 }
 
 export const ThoughtOptionsMenu: React.FC<ThoughtOptionsMenuProps> = ({
   thoughtText,
   onEdit,
   onDelete,
-  className = ''
+  className = '',
+  isReadOnly = false,
 }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
@@ -59,6 +61,7 @@ export const ThoughtOptionsMenu: React.FC<ThoughtOptionsMenuProps> = ({
         onEdit();
         setIsOpen(false);
       },
+      disabled: isReadOnly,
       className: "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
     },
     {
@@ -81,6 +84,7 @@ export const ThoughtOptionsMenu: React.FC<ThoughtOptionsMenuProps> = ({
         onDelete();
         setIsOpen(false);
       },
+      disabled: isReadOnly,
       className: "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-700"
     }
   ];
@@ -111,7 +115,9 @@ export const ThoughtOptionsMenu: React.FC<ThoughtOptionsMenuProps> = ({
                 key={item.id}
                 onClick={item.onClick}
                 disabled={item.disabled}
-                className={`w-full flex items-center ${SPACING.MENU_ITEM_PADDING} text-sm ${item.className} transition-colors duration-150`}
+                className={`w-full flex items-center ${SPACING.MENU_ITEM_PADDING} text-sm ${item.className} transition-colors duration-150 ${
+                  item.disabled ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
                 role="menuitem"
               >
                 <span className={`inline-flex items-center justify-center ${SPACING.ICON_CONTAINER_SIZE} mr-2 flex-shrink-0`}>

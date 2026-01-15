@@ -5,6 +5,7 @@ import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getFocusModeUrl } from '@/utils/urlUtils';
@@ -16,13 +17,22 @@ interface SermonOutlineProps {
   sermon: Sermon;
   thoughtsPerSermonPoint?: Record<string, number>;
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
+  isReadOnly?: boolean;
 }
 
 // Define valid section types
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
-const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermonPoint = {}, onOutlineUpdate }) => {
+const DISABLED_ACTION_CLASSES = 'opacity-50 cursor-not-allowed';
+
+const SermonOutline: React.FC<SermonOutlineProps> = ({
+  sermon,
+  thoughtsPerSermonPoint = {},
+  onOutlineUpdate,
+  isReadOnly = false,
+}) => {
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
   
   // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
@@ -75,6 +85,23 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
       setError(null);
       
       try {
+        if (!isOnline) {
+          const outline = sermon.outline;
+          if (outline) {
+            const mappedOutline = {
+              introduction: outline.introduction || [],
+              mainPart: outline.main || [],
+              conclusion: outline.conclusion || [],
+            };
+            setSectionPoints(mappedOutline);
+            setExpandedSections({
+              introduction: mappedOutline.introduction.length > 0,
+              mainPart: mappedOutline.mainPart.length > 0,
+              conclusion: mappedOutline.conclusion.length > 0,
+            });
+          }
+          return;
+        }
         const outlineData = await getSermonOutline(sermon.id);
         
         if (outlineData) {
@@ -118,10 +145,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
     
     fetchOutline();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sermon?.id]);
+  }, [sermon?.id, isOnline]);
   
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
+    if (isReadOnly) return;
     if (!newPointTexts[section].trim()) {
       setAddingNewToSection(null); // Close if empty
       return;
@@ -165,6 +193,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
   
   // Direct save function that takes the updated points to save
   const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
+    if (isReadOnly) return;
     // Clear any existing timeout to debounce saves
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -234,6 +263,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
   }, [addingNewToSection]);
   
   const handleStartEdit = (point: SermonPoint) => {
+    if (isReadOnly) return;
     setEditingPointId(point.id);
     setEditingText(point.text); // Set initial text for editing
     setAddingNewToSection(null); // Ensure add mode is off
@@ -245,6 +275,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
   };
 
   const handleSaveEdit = () => {
+    if (isReadOnly) return;
     if (!editingPointId || !editingText.trim()) {
       handleCancelEdit(); // Cancel if empty
       return;
@@ -263,6 +294,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
   };
 
   const handleDeletePoint = (pointToDelete: SermonPoint) => {
+    if (isReadOnly) return;
     if (window.confirm(t('structure.deletePointConfirm', { text: pointToDelete.text }))) {
       const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
         acc[section as SectionType] = points.filter(p => p.id !== pointToDelete.id);
@@ -283,6 +315,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
   };
 
   const onDragEnd = (result: DropResult) => {
+    if (isReadOnly) return;
     const { source, destination } = result;
 
     // Dropped outside the list
@@ -435,7 +468,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
               {(provided: DroppableProvided) => (
                 <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
                   {points.map((point, index) => (
-                    <Draggable key={point.id} draggableId={point.id} index={index}>
+                    <Draggable key={point.id} draggableId={point.id} index={index} isDragDisabled={isReadOnly}>
                       {(providedDraggable: DraggableProvided, snapshot: DraggableStateSnapshot) => (
                         <li
                           ref={providedDraggable.innerRef}
@@ -445,7 +478,13 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                           style={providedDraggable.draggableProps.style}
                         >
                           {/* Drag Handle */}
-                          <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                          <div
+                            className={`mr-2 text-gray-400 dark:text-gray-500 ${
+                              isReadOnly
+                                ? 'cursor-not-allowed opacity-50'
+                                : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                          >
                             <Bars3Icon className="h-5 w-5" />
                           </div>
                           {/* Point Text or Edit Input */}
@@ -459,11 +498,22 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                                 className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 placeholder={t('structure.editPointPlaceholder')}
                                 autoFocus
+                                disabled={isReadOnly}
                               />
-                              <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">
+                              <button
+                                aria-label={t('common.save')}
+                                onClick={handleSaveEdit}
+                                disabled={isReadOnly}
+                                className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                              >
                                 <CheckIcon className="h-5 w-5" />
                               </button>
-                              <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                              <button
+                                aria-label={t('common.cancel')}
+                                onClick={handleCancelEdit}
+                                disabled={isReadOnly}
+                                className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                              >
                                 <XMarkIcon className="h-5 w-5" />
                               </button>
                             </div>
@@ -472,10 +522,20 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                               <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
                               {/* Action Buttons (Edit/Delete) - appear on hover */}
                               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400">
+                                <button
+                                  aria-label={t('common.edit')}
+                                  onClick={() => handleStartEdit(point)}
+                                  disabled={isReadOnly}
+                                  className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                                >
                                   <PencilIcon className="h-4 w-4" />
                                 </button>
-                                <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} className="p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400">
+                                <button
+                                  aria-label={t('common.delete')}
+                                  onClick={() => handleDeletePoint(point)}
+                                  disabled={isReadOnly}
+                                  className={`p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                                >
                                   <TrashIcon className="h-4 w-4" />
                                 </button>
                               </div>
@@ -508,11 +568,22 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                     placeholder={t('structure.addPointPlaceholder')}
                     className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500 dark:placeholder-gray-400"
                     autoFocus
+                    disabled={isReadOnly}
                   />
-                  <button aria-label={t('common.save')} onClick={() => addPoint(sectionType)} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">
+                  <button
+                    aria-label={t('common.save')}
+                    onClick={() => addPoint(sectionType)}
+                    disabled={isReadOnly}
+                    className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                  >
                     <CheckIcon className="h-5 w-5" />
                   </button>
-                  <button aria-label={t('common.cancel')} onClick={() => handleCancelAdd(sectionType)} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                  <button
+                    aria-label={t('common.cancel')}
+                    onClick={() => handleCancelAdd(sectionType)}
+                    disabled={isReadOnly}
+                    className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
+                  >
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -520,7 +591,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({ sermon, thoughtsPerSermon
                   <button 
                     onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
                     aria-label={t('structure.addPointButton')}
-                    className="flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded border border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+                    className={`flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 rounded border border-dashed border-gray-300 dark:border-gray-600 transition-colors ${
+                      isReadOnly
+                        ? DISABLED_ACTION_CLASSES
+                        : 'hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:border-indigo-400 dark:hover:border-indigo-500'
+                    }`}
+                    disabled={isReadOnly}
                   >
                     <PlusIcon className="h-4 w-4 mr-1" />
                     {t('structure.addPointButton')}

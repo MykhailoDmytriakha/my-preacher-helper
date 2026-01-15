@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
 
 import StudiesPage from '../page';
@@ -20,6 +21,10 @@ jest.mock('@/hooks/useMediaQuery', () => ({
   useMediaQuery: jest.fn(),
 }));
 
+jest.mock('@/hooks/useTags', () => ({
+  useTags: jest.fn(),
+}));
+
 jest.mock('../bibleData', () => ({
   getBooksForDropdown: jest.fn().mockReturnValue([]),
   getLocalizedBookName: jest.fn().mockImplementation((book) => book),
@@ -28,6 +33,7 @@ jest.mock('../bibleData', () => ({
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;
 const mockUseStudyNoteShareLinks = useStudyNoteShareLinks as jest.MockedFunction<typeof useStudyNoteShareLinks>;
 const mockUseMediaQuery = useMediaQuery as jest.MockedFunction<typeof useMediaQuery>;
+const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
 
 const createMockNote = (overrides: Partial<StudyNote> = {}): StudyNote => ({
   id: `note-${Math.random().toString(36).substr(2, 9)}`,
@@ -70,6 +76,18 @@ describe('StudiesPage', () => {
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseMediaQuery.mockReturnValue(false); // Default to desktop view
+    mockUseTags.mockReturnValue({
+      tags: { requiredTags: [], customTags: [] },
+      requiredTags: [],
+      customTags: [],
+      allTags: [],
+      loading: false,
+      error: null,
+      refreshTags: jest.fn(),
+      addCustomTag: jest.fn(),
+      removeCustomTag: jest.fn(),
+      updateTag: jest.fn(),
+    });
   });
 
   it('shows the stats badge and new note button text', () => {

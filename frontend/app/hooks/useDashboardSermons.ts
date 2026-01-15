@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Sermon } from '@/models/models';
 import { auth } from '@services/firebaseAuth.service';
 import { getSermons } from '@services/sermon.service';
@@ -36,6 +37,7 @@ function resolveUid(): string | undefined {
 }
 
 export function useDashboardSermons(): UseDashboardSermonsResult {
+  const isOnline = useOnlineStatus();
   // We need to wait for auth to be initialized or local storage to be checked
   // Ideally this should come from an auth hook, but for now we resolve it here
   // If uid is undefined, we might be loading or not logged in
@@ -47,11 +49,12 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
       if (!uid) return Promise.resolve([]);
       return getSermons(uid);
     },
-    enabled: !!uid, // Only fetch if we have a user ID
+    enabled: !!uid && isOnline, // Only fetch if we have a user ID and online
     staleTime: 60 * 1000, // 1 minute
   });
 
   const refresh = async () => {
+    if (!isOnline) return;
     await refetch();
   };
 

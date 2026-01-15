@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
@@ -122,6 +123,18 @@ jest.mock('react-i18next', () => ({
     t: translate,
   }),
 }));
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
 
 describe('Sermon Plan Page UI Smoke Test', () => {
   // Store original fetch
@@ -248,7 +261,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockGetSermonById.mockResolvedValue(mockSermonWithUnassignedThoughts);
 
     // Render with new mock data
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
     
     // Just check that the component renders without crashing
     // The component should either show loading, error, or the expected UI
@@ -262,11 +275,11 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   // Add a simple test that just checks if the component can render at all
   it('can render without crashing', () => {
     // This test just checks if the component can be rendered without throwing an error
-    expect(() => render(<SermonPlanPage />)).not.toThrow();
+    expect(() => renderWithQueryClient(<SermonPlanPage />)).not.toThrow();
   });
 
   it('renders main plan layout with sections when sermon loads', async () => {
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
 
     expect(await screen.findByTestId('plan-introduction-left-section')).toBeInTheDocument();
     expect(screen.getByTestId('plan-main-right-section')).toBeInTheDocument();
@@ -275,7 +288,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
   it('renders immersive view when planView=immersive', async () => {
     mockSearchParams = new URLSearchParams('planView=immersive');
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
 
     expect(await screen.findByTestId('sermon-plan-immersive-view')).toBeInTheDocument();
     expect(screen.queryByTestId('sermon-plan-page-container')).not.toBeInTheDocument();
@@ -283,7 +296,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
   it('renders preaching view when planView=preaching', async () => {
     mockSearchParams = new URLSearchParams('planView=preaching');
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
 
     expect(await screen.findByTestId('preaching-timer')).toBeInTheDocument();
     expect(screen.queryByTestId('sermon-plan-page-container')).not.toBeInTheDocument();
@@ -291,14 +304,14 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
   it('renders overlay portal when planView=overlay', async () => {
     mockSearchParams = new URLSearchParams('planView=overlay');
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
 
     await screen.findByTestId('sermon-plan-page-container');
     expect(await screen.findByTestId('sermon-plan-overlay')).toBeInTheDocument();
   });
 
   it('toggles edit mode and saves outline point content', async () => {
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
 
     await screen.findByTestId('plan-introduction-right-section');
 

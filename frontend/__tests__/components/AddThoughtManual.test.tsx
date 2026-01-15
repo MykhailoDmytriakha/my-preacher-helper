@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddThoughtManual from '@/components/AddThoughtManual';
+import { TestProviders } from '@test-utils/test-providers';
 import { createManualThought } from '@services/thought.service';
 
 // Mock the services
@@ -77,12 +78,15 @@ describe('AddThoughtManual', () => {
     });
   });
 
+  const renderWithProviders = (ui: React.ReactElement, container?: HTMLElement) =>
+    render(<TestProviders>{ui}</TestProviders>, container ? { container } : undefined);
+
   it('renders the initial add button', () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
-        onNewThought={mockOnNewThought} 
-        allowedTags={preloadedTags} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
     );
@@ -90,9 +94,9 @@ describe('AddThoughtManual', () => {
   });
 
   it('opens the modal when the add button is clicked', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
@@ -113,14 +117,14 @@ describe('AddThoughtManual', () => {
     wrapper.setAttribute('id', 'transform-wrapper');
     document.body.appendChild(wrapper);
 
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />,
-      { container: wrapper }
+      wrapper
     );
 
     // Open modal
@@ -142,9 +146,9 @@ describe('AddThoughtManual', () => {
   });
 
   it('opens modal ready without fetching/spinner when data provided', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
@@ -161,9 +165,9 @@ describe('AddThoughtManual', () => {
   // Error handling while loading is covered elsewhere; skipped here since data is provided
 
   it('closes the modal when the overlay is clicked', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
@@ -180,9 +184,9 @@ describe('AddThoughtManual', () => {
   });
 
   it('does not submit if text area is empty', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
@@ -194,9 +198,9 @@ describe('AddThoughtManual', () => {
   });
 
   it('renders without calling fetch services when data provided', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
@@ -209,9 +213,9 @@ describe('AddThoughtManual', () => {
   });
 
   it('shows flex-wrap tag containers (no horizontal scrollbar)', async () => {
-    render(
-      <AddThoughtManual 
-        sermonId={sermonId} 
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
         onNewThought={mockOnNewThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}

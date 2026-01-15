@@ -15,6 +15,7 @@ interface ThoughtListProps {
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
   resetFilters: () => void;
+  isReadOnly?: boolean;
 }
 
 const ThoughtList: React.FC<ThoughtListProps> = ({
@@ -27,6 +28,7 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
   onEditStart,
   onThoughtUpdate,
   resetFilters,
+  isReadOnly = false,
 }) => {
   const { t } = useTranslation();
 
@@ -75,6 +77,7 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
           onDelete={() => onDelete(thought.id)} // Pass only thought ID
           onEditStart={() => onEditStart(thought, index)} // Pass thought and index
           onThoughtUpdate={onThoughtUpdate}
+          isReadOnly={isReadOnly}
         />
       ))}
     </div>

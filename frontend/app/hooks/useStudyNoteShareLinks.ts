@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { StudyNoteShareLink } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import {
@@ -41,11 +42,12 @@ const shareLinksKey = (uid: string | undefined) => ['study-note-share-links', ui
 export function useStudyNoteShareLinks() {
   const { uid, isAuthLoading } = useResolveUid();
   const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
 
   const shareLinksQuery = useQuery({
     queryKey: shareLinksKey(uid),
     queryFn: () => (uid ? getStudyNoteShareLinks(uid) : Promise.resolve([])),
-    enabled: !isAuthLoading && !!uid,
+    enabled: !isAuthLoading && !!uid && isOnline,
     staleTime: 60_000,
   });
 

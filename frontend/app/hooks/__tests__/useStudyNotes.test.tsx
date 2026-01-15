@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { getStudyNotes } from '@services/studies.service';
 
@@ -12,6 +13,10 @@ import type { StudyNote } from '@/models/models';
 
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: jest.fn(),
+}));
+
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: jest.fn(),
 }));
 
 jest.mock('@services/studies.service', () => ({
@@ -26,6 +31,7 @@ jest.mock('@services/studies.service', () => ({
 }));
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
 const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
 
 const createWrapper = () => {
@@ -60,6 +66,7 @@ describe('useStudyNotes', () => {
   });
 
   it('keeps loading true while auth is in progress and avoids fetching', () => {
+    mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({
       user: null,
       loading: true,
@@ -75,6 +82,7 @@ describe('useStudyNotes', () => {
 
   it('fetches notes once authenticated user is available', async () => {
     const notes = [makeNote()];
+    mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({
       user: { uid: 'auth-uid' } as any,
       loading: false,
@@ -93,6 +101,7 @@ describe('useStudyNotes', () => {
   it('falls back to guest uid from localStorage when no auth user', async () => {
     const guestUid = 'guest-42';
     window.localStorage.setItem('guestUser', JSON.stringify({ uid: guestUid }));
+    mockUseOnlineStatus.mockReturnValue(true);
 
     const notes = [makeNote({ userId: guestUid })];
     mockUseAuth.mockReturnValue({

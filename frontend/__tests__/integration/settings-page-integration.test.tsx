@@ -4,6 +4,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import SettingsPage from '@/(pages)/(private)/settings/page';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { TestProviders } from '@test-utils/test-providers';
 import { auth as mockAuth } from '@services/firebaseAuth.service';
 
 // Mock all dependencies
@@ -101,7 +102,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'displays settings layout with title',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
@@ -113,7 +118,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'shows user settings section by default',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('user-settings-section')[0]).toBeInTheDocument();
@@ -125,7 +134,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'includes PrepModeToggle in user settings section',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 // The PrepModeToggle should be rendered within the user settings section
@@ -137,7 +150,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'shows navigation on desktop layout',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('settings-nav').length).toBeGreaterThanOrEqual(2);
@@ -158,7 +175,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'switches to tags section when navigation clicked',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('settings-nav')[0]).toBeInTheDocument();
@@ -179,7 +200,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'switches back to user section',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('settings-nav')[0]).toBeInTheDocument();
@@ -215,7 +240,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'renders content for authenticated user',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
@@ -240,7 +269,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'includes navigation structure for both layouts',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('settings-nav').length).toBeGreaterThanOrEqual(2);
@@ -266,7 +299,11 @@ describe('Settings Page Integration', () => {
           {
             name: 'renders language initializer for i18n setup',
             run: async () => {
-              render(<SettingsPage />);
+              render(
+                <TestProviders>
+                  <SettingsPage />
+                </TestProviders>
+              );
 
               await waitFor(() => {
                 expect(screen.getAllByTestId('language-initializer').length).toBeGreaterThan(0);

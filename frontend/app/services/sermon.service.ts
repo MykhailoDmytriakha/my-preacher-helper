@@ -1,8 +1,12 @@
 import { Sermon, Preparation } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
   try {
+    if (isBrowserOffline()) {
+      return [];
+    }
     const response = await fetch(`${API_BASE}/api/sermons?userId=${userId}`, {
       cache: "no-store"
     });
@@ -20,6 +24,9 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
 
 export const getSermonById = async (id: string): Promise<Sermon | undefined> => {
   try {
+    if (isBrowserOffline()) {
+      return undefined;
+    }
     const response = await fetch(`${API_BASE}/api/sermons/${id}`);
     if (!response.ok) {
       console.error(`getSermonById: Response not ok for id ${id}, status: ${response.status}`);
@@ -35,6 +42,9 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
 
 export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error('Offline: operation not available.');
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/sermons`, {
       method: 'POST',
@@ -54,6 +64,9 @@ export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> 
 };
 
 export async function deleteSermon(sermonId: string): Promise<void> {
+  if (isBrowserOffline()) {
+    throw new Error('Offline: operation not available.');
+  }
   const response = await fetch(`${API_BASE}/api/sermons/${sermonId}`, {
     method: 'DELETE'
   });
@@ -64,6 +77,9 @@ export async function deleteSermon(sermonId: string): Promise<void> {
 
 export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null> => {
   try {
+    if (isBrowserOffline()) {
+      return null;
+    }
     const response = await fetch(`${API_BASE}/api/sermons/${updatedSermon.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -83,6 +99,9 @@ export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null
 
 export const updateSermonPreparation = async (sermonId: string, updates: Preparation): Promise<Preparation | null> => {
   try {
+    if (isBrowserOffline()) {
+      return null;
+    }
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

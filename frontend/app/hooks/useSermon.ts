@@ -1,31 +1,44 @@
-import { useState, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSermonById } from "@services/sermon.service";
 
 import type { Sermon, Thought } from "@/models/models";
 
+type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
+
 function useSermon(sermonId: string) {
-  const [sermon, setSermon] = useState<Sermon | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
+
+  const {
+    data,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["sermon", sermonId],
+    queryFn: () => getSermonById(sermonId),
+    enabled: Boolean(sermonId) && isOnline,
+    staleTime: 60 * 1000,
+  });
+
+  const sermon = data ?? null;
+
+  const setSermon = useCallback(
+    (updater: SermonUpdater) => {
+      queryClient.setQueryData(["sermon", sermonId], (previous?: Sermon) => {
+        const resolved = updater instanceof Function ? updater(previous ?? null) : updater;
+        return resolved ?? undefined;
+      });
+    },
+    [queryClient, sermonId]
+  );
 
   const refreshSermon = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getSermonById(sermonId);
-      setSermon(data || null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, [sermonId]);
-
-  useEffect(() => {
-    if (sermonId) {
-      refreshSermon();
-    }
-  }, [sermonId, refreshSermon]);
+    await refetch();
+  }, [refetch]);
 
   const getSortedThoughts = (): Thought[] => {
     if (!sermon) return [];
@@ -34,7 +47,7 @@ function useSermon(sermonId: string) {
     );
   };
 
-  return { sermon, setSermon, loading, error, refreshSermon, getSortedThoughts };
+  return { sermon, setSermon, loading, error: error as Error | null, refreshSermon, getSortedThoughts };
 }
 
 export default useSermon;

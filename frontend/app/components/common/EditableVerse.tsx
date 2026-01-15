@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 interface EditableVerseProps {
   initialVerse: string;
   onSave: (newVerse: string) => Promise<void>;
+  disabled?: boolean;
   textSizeClass?: string;
   inputSizeClass?: string;
   buttonSizeClass?: string;
@@ -17,6 +18,7 @@ interface EditableVerseProps {
 const EditableVerse: React.FC<EditableVerseProps> = ({
   initialVerse,
   onSave,
+  disabled = false,
   textSizeClass = 'text-sm',
   inputSizeClass = 'text-sm',
   buttonSizeClass = 'w-4 h-4',
@@ -64,6 +66,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   };
 
   const handleEditClick = () => {
+    if (disabled) return;
     setEditedVerse(initialVerse);
     setIsEditing(true);
     setError(null);
@@ -104,6 +107,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) return;
     if (e.key === 'Enter' && e.ctrlKey) {
       handleSave();
     } else if (e.key === 'Escape') {
@@ -126,7 +130,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
             className={`flex-grow px-2 py-1 border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 resize-none overflow-hidden ${inputSizeClass} ${error ? 'border-red-500 focus:ring-red-500' : 'border-blue-500 focus:ring-blue-500'}`}
-            disabled={isSaving}
+            disabled={isSaving || disabled}
             rows={1}
             aria-label={t('editSermon.verseLabel')}
             aria-invalid={!!error}
@@ -138,7 +142,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
             <button
               onClick={handleSave}
               className={`${buttonPaddingClass} text-green-600 hover:bg-green-100 dark:hover:bg-gray-600 rounded-full disabled:opacity-50`}
-              disabled={isSaving}
+              disabled={isSaving || disabled}
               title={t('common.save')}
             >
               {isSaving ? (
@@ -153,7 +157,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
             <button
               onClick={handleCancelEdit}
               className={`${buttonPaddingClass} text-red-600 hover:bg-red-100 dark:hover:bg-gray-600 rounded-full disabled:opacity-50`}
-              disabled={isSaving}
+              disabled={isSaving || disabled}
               title={t('common.cancel')}
             >
               <XMarkIcon className={buttonSizeClass} />
@@ -168,7 +172,8 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
           </p>
           <button
             onClick={handleEditClick}
-            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full`}
+            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
+            disabled={disabled}
             title={t('common.edit')}
           >
             <PencilIcon className={buttonSizeClass} />

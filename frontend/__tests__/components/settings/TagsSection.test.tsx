@@ -6,8 +6,8 @@ import '@testing-library/jest-dom';
 import { User } from 'firebase/auth';
 import { toast } from 'sonner';
 
+import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
-import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
 import TagsSection from '@components/settings/TagsSection';
 
 // --- Mocks --- //
@@ -21,12 +21,9 @@ jest.mock('sonner', () => ({
   toast: { error: jest.fn(), success: jest.fn() }
 }));
 
-// Mock Tag Services
-jest.mock('@/services/tag.service', () => ({
-  getTags: jest.fn(),
-  addCustomTag: jest.fn(),
-  removeCustomTag: jest.fn(),
-  updateTag: jest.fn(),
+// Mock Tags Hook
+jest.mock('@/hooks/useTags', () => ({
+  useTags: jest.fn(),
 }));
 
 // Mock Child Components (pass down props to simulate interaction)
@@ -89,13 +86,18 @@ const mockInitialTags = { requiredTags: mockRequiredTags, customTags: mockCustom
 
 describe('TagsSection', () => {
 
+  const mockAddCustomTag = jest.fn();
+  const mockRemoveCustomTag = jest.fn();
+  const mockUpdateTag = jest.fn();
+
   beforeEach(() => {
     jest.clearAllMocks();
-    // Setup default mock implementations for services
-    (getTags as jest.Mock).mockResolvedValue(mockInitialTags);
-    (addCustomTag as jest.Mock).mockResolvedValue(undefined);
-    (removeCustomTag as jest.Mock).mockResolvedValue(undefined);
-    (updateTag as jest.Mock).mockResolvedValue(undefined);
+    (useTags as jest.Mock).mockReturnValue({
+      tags: mockInitialTags,
+      addCustomTag: mockAddCustomTag,
+      removeCustomTag: mockRemoveCustomTag,
+      updateTag: mockUpdateTag,
+    });
 
     // Reset mock component interaction functions
     mockAddTag.mockClear();
@@ -112,10 +114,6 @@ describe('TagsSection', () => {
   it('fetches tags on mount and renders required and custom lists', async () => {
     renderSection();
 
-    await waitFor(() => {
-      expect(getTags).toHaveBeenCalledWith(mockUser.uid);
-    });
-
     // Wait for the component to update with the fetched data
     await waitFor(() => {
       expect(screen.getByTestId('tag-list-required')).toBeInTheDocument();
@@ -130,9 +128,6 @@ describe('TagsSection', () => {
 
   it('calls addCustomTag and refetches tags when AddTagForm calls onAddTag', async () => {
     renderSection();
-    await waitFor(() => { // Wait for initial fetch
-      expect(getTags).toHaveBeenCalledTimes(1);
-    });
 
     const addMockTagButton = screen.getByRole('button', { name: /Add Mock Tag/i });
     await userEvent.click(addMockTagButton);
@@ -142,40 +137,29 @@ describe('TagsSection', () => {
 
     // Check that the service was called within the component's handler
     await waitFor(() => {
-      expect(addCustomTag).toHaveBeenCalledTimes(1);
-      expect(addCustomTag).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockAddCustomTag).toHaveBeenCalledTimes(1);
+      expect(mockAddCustomTag).toHaveBeenCalledWith(expect.objectContaining({
         name: 'New Tag from Mock',
         color: '#123456',
         userId: mockUser.uid,
         required: false,
       }));
     });
-
-    // Check that tags were refetched
-    await waitFor(() => {
-      expect(getTags).toHaveBeenCalledTimes(2); // Initial fetch + refetch after add
-    });
   });
 
   it('shows error when trying to add reserved structure tag name', async () => {
-    (addCustomTag as jest.Mock).mockRejectedValueOnce(new Error('Reserved tag name'));
+    mockAddCustomTag.mockRejectedValueOnce(new Error('Reserved tag name'));
     renderSection();
-    await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
     const addMockTagButton = screen.getByRole('button', { name: /Add Mock Tag/i });
     await userEvent.click(addMockTagButton);
     await waitFor(() => {
-      expect(addCustomTag).toHaveBeenCalledTimes(1);
+      expect(mockAddCustomTag).toHaveBeenCalledTimes(1);
     });
-    // No refetch on error
-    expect(getTags).toHaveBeenCalledTimes(1);
   });
 
   it('calls removeCustomTag and refetches tags when editable TagList calls onRemoveTag', async () => {
-    (removeCustomTag as jest.Mock).mockResolvedValue({ message: 'Tag removed', affectedThoughts: 2 });
+    mockRemoveCustomTag.mockResolvedValue({ message: 'Tag removed', affectedThoughts: 2 });
     renderSection();
-    await waitFor(() => { // Wait for initial fetch
-      expect(getTags).toHaveBeenCalledTimes(1);
-    });
 
     // Find the remove button within the mock editable list
     const removePrayerButton = await screen.findByRole('button', { name: /Remove Prayer/i });
@@ -183,20 +167,16 @@ describe('TagsSection', () => {
 
     // Check that the service was called within the component's handler
     await waitFor(() => {
-      expect(removeCustomTag).toHaveBeenCalledTimes(1);
-      expect(removeCustomTag).toHaveBeenCalledWith(mockUser.uid, 'Prayer');
+      expect(mockRemoveCustomTag).toHaveBeenCalledTimes(1);
+      expect(mockRemoveCustomTag).toHaveBeenCalledWith('Prayer');
     });
 
-    // Check that tags were refetched and toast shown
-    await waitFor(() => {
-      expect(getTags).toHaveBeenCalledTimes(2); // Initial fetch + refetch after remove
-    });
+    // Check that toast shown
     expect(toast.success).toHaveBeenCalled();
   });
 
   it('opens ColorPickerModal when editable TagList calls onEditColor', async () => {
     renderSection();
-    await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
 
     expect(screen.queryByTestId('color-picker-modal')).not.toBeInTheDocument();
 
@@ -211,7 +191,6 @@ describe('TagsSection', () => {
 
   it('calls updateTag, refetches tags, and closes modal when color is updated', async () => {
     renderSection();
-    await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
 
     // 1. Open the modal
     const editStoryButton = await screen.findByRole('button', { name: /Edit Story/i });
@@ -224,26 +203,20 @@ describe('TagsSection', () => {
 
     // 3. Verify updateTag service call
     await waitFor(() => {
-      expect(updateTag).toHaveBeenCalledTimes(1);
-      expect(updateTag).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockUpdateTag).toHaveBeenCalledTimes(1);
+      expect(mockUpdateTag).toHaveBeenCalledWith(expect.objectContaining({
         id: 'cust-2', // Story tag id
         name: 'Story',
         color: '#FEDCBA', // New color from mock modal
       }));
     });
 
-    // 4. Verify tags were refetched
-    await waitFor(() => {
-      expect(getTags).toHaveBeenCalledTimes(2); // Initial fetch + refetch after update
-    });
-
-    // 5. Verify modal closed (check if it's gone)
+    // 4. Verify modal closed (check if it's gone)
     expect(screen.queryByTestId('color-picker-modal')).not.toBeInTheDocument();
   });
 
   it('closes modal when cancel is clicked in ColorPickerModal', async () => {
     renderSection();
-    await waitFor(() => { expect(getTags).toHaveBeenCalledTimes(1); });
 
     // 1. Open the modal
     const editStoryButton = await screen.findByRole('button', { name: /Edit Story/i });
@@ -258,14 +231,12 @@ describe('TagsSection', () => {
     expect(screen.queryByTestId('color-picker-modal')).not.toBeInTheDocument();
 
     // 4. Verify updateTag was NOT called
-    expect(updateTag).not.toHaveBeenCalled();
-     // Verify tags were NOT refetched unnecessarily
-     expect(getTags).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTag).not.toHaveBeenCalled();
   });
 
    it('does not fetch tags if user is null', () => {
      renderSection(null);
-     expect(getTags).not.toHaveBeenCalled();
+     expect(useTags).toHaveBeenCalledWith(undefined);
    });
 
 }); 

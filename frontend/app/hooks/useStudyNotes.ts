@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { StudyNote } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import {
@@ -51,12 +52,13 @@ const notesKey = (uid: string | undefined) => ['study-notes', uid];
 export function useStudyNotes() {
   const { uid, isAuthLoading } = useResolveUid();
   const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
 
   const notesQuery = useQuery({
     queryKey: notesKey(uid),
     queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
     // Only enable query when auth is settled AND we have a uid
-    enabled: !isAuthLoading && !!uid,
+    enabled: !isAuthLoading && !!uid && isOnline,
     staleTime: 60_000,
   });
 

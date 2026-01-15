@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 import { toast } from 'sonner';
 
+import useSermon from '@/hooks/useSermon';
+import { useTags } from '@/hooks/useTags';
 import { Thought, SermonOutline } from '@/models/models';
 import { PlusIcon } from '@components/Icons';
-import { getSermonById } from '@services/sermon.service';
-import { getTags } from '@services/tag.service';
 import { createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
@@ -20,84 +20,73 @@ interface AddThoughtManualProps {
   // Optional preloaded data to avoid fetching on open
   allowedTags?: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
+  disabled?: boolean;
 }
 
-export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: allowedTagsProp, sermonOutline: sermonOutlineProp }: AddThoughtManualProps) {
+export default function AddThoughtManual({
+  sermonId,
+  onNewThought,
+  allowedTags: allowedTagsProp,
+  sermonOutline: sermonOutlineProp,
+  disabled = false,
+}: AddThoughtManualProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>();
-  const [sermonOutlineState, setSermonOutlineState] = useState<SermonOutline | undefined>(sermonOutlineProp);
-  const [allowedTagsState, setAllowedTagsState] = useState<{ name: string; color: string; translationKey?: string }[]>(allowedTagsProp || []);
-  const [loading, setLoading] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { sermon, loading: sermonLoading } = useSermon(sermonId);
+  const shouldLoadTags = !allowedTagsProp || allowedTagsProp.length === 0;
+  const { allTags, loading: tagsLoading } = useTags(shouldLoadTags ? sermon?.userId : null);
 
-  // Load sermon data and tags early (on mount or when needed) if not provided via props
-  const loadSermonData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Skip fetching if props already have data
-      if (sermonOutlineProp && (allowedTagsProp && allowedTagsProp.length > 0)) {
-        return;
-      }
-
-      const sermon = await getSermonById(sermonId);
-      if (!sermon) return;
-
-      // SermonOutline
-      if (!sermonOutlineProp) setSermonOutlineState(sermon.outline);
-
-      // Tags using sermon's userId
-      if (!allowedTagsProp || allowedTagsProp.length === 0) {
-        const tagsData = await getTags(sermon.userId);
-        const allTags = [
-          ...(tagsData.requiredTags || []),
-          ...(tagsData.customTags || [])
-        ];
-        setAllowedTagsState(allTags);
-      }
-    } catch (error) {
-      console.error("Error loading sermon data:", error);
-      toast.error(t('errors.loadDataError') || 'Failed to load data');
-    } finally {
-      setLoading(false);
+  const effectiveOutline: SermonOutline | undefined = useMemo(
+    () => sermonOutlineProp ?? sermon?.outline,
+    [sermonOutlineProp, sermon?.outline]
+  );
+  const effectiveAllowedTags = useMemo(() => {
+    if (allowedTagsProp && allowedTagsProp.length > 0) {
+      return allowedTagsProp;
     }
-  }, [sermonId, t, allowedTagsProp, sermonOutlineProp]);
-
-  // Preload on mount when data isn't provided
-  useEffect(() => {
-    if (!sermonOutlineProp || !allowedTagsProp || allowedTagsProp.length === 0) {
-      loadSermonData();
-    }
-  }, [loadSermonData, sermonOutlineProp, allowedTagsProp]);
+    return allTags.map((tag) => ({
+      name: tag.name,
+      color: tag.color,
+      translationKey: tag.translationKey,
+    }));
+  }, [allowedTagsProp, allTags]);
+  const dataLoading = (!sermonOutlineProp && sermonLoading) || (shouldLoadTags && tagsLoading);
+  const dataReady = Boolean(effectiveOutline) && effectiveAllowedTags.length > 0;
 
   // If user clicked the button before data finished loading, open once ready
   useEffect(() => {
-    if (!loading && pendingOpen) {
+    if (!dataLoading && pendingOpen && dataReady) {
       setOpen(true);
       setPendingOpen(false);
     }
-  }, [loading, pendingOpen]);
+  }, [dataLoading, pendingOpen, dataReady]);
 
   const handleAddTag = (tag: string) => {
+    if (disabled) return;
     if (!tags.includes(tag)) {
       setTags([...tags, tag]);
     }
   };
 
   const handleRemoveTag = (index: number) => {
+    if (disabled) return;
     setTags(tags.filter((_, i) => i !== index));
   };
 
   const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (disabled) return;
     const value = e.target.value;
     setSelectedSermonPointId(value === "" ? undefined : value);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (disabled) return;
     const trimmedText = text.trim();
     if (!trimmedText) return;
 
@@ -127,9 +116,6 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
   };
 
   // Create a flat array of all outline points with section information
-  const effectiveOutline: SermonOutline | undefined = useMemo(() => sermonOutlineProp || sermonOutlineState, [sermonOutlineProp, sermonOutlineState]);
-  const effectiveAllowedTags = useMemo(() => allowedTagsProp && allowedTagsProp.length > 0 ? allowedTagsProp : allowedTagsState, [allowedTagsProp, allowedTagsState]);
-
   const allSermonPoints: { id: string; text: string; section: string }[] = [];
   
   if (effectiveOutline) {
@@ -182,6 +168,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                   minRows={3}
                   maxRows={16}
                   required
+                  disabled={isSubmitting || disabled}
                 />
               </div>
 
@@ -192,7 +179,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                     value={selectedSermonPointId || ""}
                     onChange={handleSermonPointChange}
                     className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
-                    disabled={loading}
+                    disabled={dataLoading || disabled}
                   >
                     <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
                     
@@ -238,7 +225,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                     }
                     
                     const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
-                    const className = `cursor-pointer ${baseClassName}`;
+                    const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
                     const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
                     
                     return (
@@ -275,7 +262,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
                     }
                     
                     const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);
-                    const className = `cursor-pointer ${baseClassName}`;
+                    const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
                     const iconInfo = structureTagStatus ? getStructureIcon(tag.name) : null;
                     
                     return (
@@ -309,7 +296,7 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
               <button
                 type="submit"
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                disabled={isSubmitting || !text.trim() || loading}
+                disabled={isSubmitting || !text.trim() || dataLoading || disabled}
               >
                 {isSubmitting ? t('buttons.saving') : t('buttons.save')}
               </button>
@@ -323,19 +310,19 @@ export default function AddThoughtManual({ sermonId, onNewThought, allowedTags: 
     <>
       <button
         onClick={() => {
-          const hasDataReady = (effectiveAllowedTags && effectiveAllowedTags.length > 0) && Boolean(effectiveOutline);
+          if (disabled) return;
+          const hasDataReady = dataReady;
           if (hasDataReady) {
             setOpen(true);
           } else {
             setPendingOpen(true);
-            if (!loading) loadSermonData();
           }
         }}
         className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center gap-2 disabled:opacity-70"
-        disabled={loading}
+        disabled={dataLoading || disabled}
       >
         <PlusIcon className="w-5 h-5" />
-        {loading ? t('settings.loading') : t('manualThought.addManual')}
+        {dataLoading ? t('settings.loading') : t('manualThought.addManual')}
       </button>
       {open && createPortal(modalContent, document.body)}
     </>

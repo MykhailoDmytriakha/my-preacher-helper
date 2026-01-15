@@ -25,6 +25,7 @@ const eslintConfig = [
       "**/build/**",
       "**/.turbo/**",
       "**/next-env.d.ts",
+      "**/public/workbox-*.js",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
@@ -98,6 +99,7 @@ const eslintConfig = [
     files: ["tailwind.config.ts", "jest.config.ts", "jest.setup.js", "next.config.js"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-var-requires": "off",
     },
   },
   {

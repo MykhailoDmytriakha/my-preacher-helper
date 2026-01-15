@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import SeriesSelector from '@/components/series/SeriesSelector';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
@@ -38,6 +39,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
+  const isOnline = useOnlineStatus();
+  const isReadOnly = !isOnline;
 
   // Use direct translation calls to avoid duplicate string warnings
   const removeFromSeriesTranslationKey = 'workspaces.series.actions.removeFromSeries';
@@ -48,16 +51,19 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   };
   
   const handleAddToSeries = () => {
+    if (isReadOnly) return;
     setSeriesSelectorMode('add');
     setShowSeriesSelector(true);
   };
 
   const handleChangeSeries = () => {
+    if (isReadOnly) return;
     setSeriesSelectorMode('change');
     setShowSeriesSelector(true);
   };
 
   const handleRemoveFromSeries = async () => {
+    if (isReadOnly) return;
     if (window.confirm(t(removeFromSeriesTranslationKey) + '?')) {
       setIsProcessing(true);
       try {
@@ -80,6 +86,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   };
 
   const handleSeriesSelected = async (seriesId: string) => {
+    if (isReadOnly) return;
     setIsProcessing(true);
     try {
       if (seriesSelectorMode === 'change' && sermon.seriesId) {
@@ -134,6 +141,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
   // Handler passed to EditableTitle
   const handleSaveSermonTitle = async (newTitle: string) => {
+    if (isReadOnly) return;
     const updatedSermonData = { ...sermon, title: newTitle };
     try {
       const updatedResult = await updateSermon(updatedSermonData);
@@ -148,6 +156,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
   // Handler passed to EditableVerse
   const handleSaveSermonVerse = async (newVerse: string) => {
+    if (isReadOnly) return;
     const updatedSermonData = { ...sermon, verse: newVerse };
     try {
       const updatedResult = await updateSermon(updatedSermonData);
@@ -184,6 +193,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         <EditableTitle 
           initialTitle={sermon.title}
           onSave={handleSaveSermonTitle}
+          disabled={isReadOnly}
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
@@ -221,7 +231,12 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
               {/* Series Management Dropdown - moved next to badge */}
               <Menu as="div" className="relative">
-                <Menu.Button className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ml-1">
+              <Menu.Button
+                className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${
+                  isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                disabled={isReadOnly}
+              >
                   <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 </Menu.Button>
                 <Transition
@@ -239,11 +254,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                           {({ active }) => (
                             <button
                               onClick={handleChangeSeries}
-                              disabled={isProcessing}
+                              disabled={isProcessing || isReadOnly}
                               title={t('workspaces.series.actions.moveToDifferentSeries')}
                               className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
                                 active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                              } ${isProcessing ? processingButtonClasses : ''}`}
+                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                             >
                               <ArrowPathIcon className="h-4 w-4" />
                               {t('workspaces.series.actions.moveToDifferentSeries')}
@@ -254,11 +269,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                           {({ active }) => (
                             <button
                               onClick={handleRemoveFromSeries}
-                              disabled={isProcessing}
+                              disabled={isProcessing || isReadOnly}
                               title={t(removeFromSeriesTranslationKey)}
                               className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${
                                 active ? 'bg-red-50 dark:bg-red-950' : ''
-                              } ${isProcessing ? processingButtonClasses : ''}`}
+                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                             >
                               <XMarkIcon className="h-4 w-4" />
                               {t(removeFromSeriesTranslationKey)}
@@ -271,11 +286,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                         {({ active }) => (
                           <button
                             onClick={handleAddToSeries}
-                            disabled={isProcessing}
+                            disabled={isProcessing || isReadOnly}
                             title={t('workspaces.series.actions.addToSeries')}
                             className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
                               active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                           >
                             <PlusIcon className="h-4 w-4" />
                             {t('workspaces.series.actions.addToSeries')}
@@ -293,6 +308,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           <EditableVerse 
             initialVerse={sermon.verse || ''}
             onSave={handleSaveSermonVerse}
+            disabled={isReadOnly}
           />
         </div>
       </div>

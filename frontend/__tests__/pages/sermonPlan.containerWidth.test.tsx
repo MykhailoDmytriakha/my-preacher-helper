@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
@@ -47,13 +48,24 @@ jest.mock('@/components/ExportButtons', () => () => <div/>);
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
+
 describe('Sermon plan container width', () => {
   it('does not use min-h-screen and keeps page container lightweight', async () => {
-    render(<SermonPlanPage />);
+    renderWithQueryClient(<SermonPlanPage />);
     // Root should have data-testid and no min-h-screen
     const root = await screen.findByTestId('sermon-plan-page-container');
     expect(root).toBeInTheDocument();
     expect((root as HTMLElement).className).not.toMatch(/min-h-screen/);
   });
 });
-

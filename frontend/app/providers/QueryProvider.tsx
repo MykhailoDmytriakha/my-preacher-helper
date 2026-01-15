@@ -1,7 +1,13 @@
 'use client';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useState } from 'react';
+
+import { createIDBPersister } from '@/utils/queryPersister';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_WEEK_MS = 7 * ONE_DAY_MS;
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
   const [queryClient] = useState(
@@ -9,19 +15,31 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Data is considered fresh for 1 minute
             staleTime: 60 * 1000,
-            // Retry failed requests 1 time
             retry: 1,
-            // Refetch on window focus
             refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+            gcTime: ONE_WEEK_MS,
           },
         },
       })
   );
 
+  const [persister] = useState(() => createIDBPersister());
+
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: ONE_WEEK_MS,
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => query.state.status === 'success',
+        },
+      }}
+    >
+      {children}
+    </PersistQueryClientProvider>
   );
 };
 

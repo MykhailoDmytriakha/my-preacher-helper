@@ -5,7 +5,7 @@ import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import React, { useCallback, useEffect, useRef, useState } from "react"; // Import useCallback
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"; // Import useCallback
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
@@ -27,16 +27,18 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
+import { useTags } from "@/hooks/useTags";
 import { getSectionLabel } from '@/lib/sections';
 import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
-import { getTags } from "@/services/tag.service";
 import AddThoughtManual from "@components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import "@locales/i18n";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from '@utils/tagUtils';
@@ -98,6 +100,8 @@ export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
+  const isOnline = useOnlineStatus();
+  const isReadOnly = !isOnline;
 
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
@@ -141,7 +145,11 @@ export default function SermonPage() {
     if (updated) setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
     setSavingPrep(false);
   }, [sermon, setSermon]);
-  const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
+  const { allTags } = useTags(sermon?.userId);
+  const allowedTags = useMemo(
+    () => allTags.map((tag) => ({ name: tag.name, color: tag.color })),
+    [allTags]
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
@@ -246,6 +254,7 @@ export default function SermonPage() {
               onNewThought={handleNewManualThought}
               allowedTags={allowedTags}
               sermonOutline={sermon!.outline}
+              disabled={isReadOnly}
             />
           </div>
         </div>
@@ -345,6 +354,7 @@ export default function SermonPage() {
             onEditStart={handleEditThoughtStart}
             onThoughtUpdate={handleThoughtUpdate}
             resetFilters={resetFilters}
+            isReadOnly={isReadOnly}
           />
         </motion.div>
       </section>
@@ -688,24 +698,6 @@ export default function SermonPage() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  useEffect(() => {
-    const fetchAllowedTags = async () => {
-      if (sermon) {
-        try {
-          const tagData = await getTags(sermon.userId);
-          const combinedTags = [
-            ...tagData.requiredTags.map((t: { name: string; color: string }) => ({ name: t.name, color: t.color })),
-            ...tagData.customTags.map((t: { name: string; color: string }) => ({ name: t.name, color: t.color })),
-          ];
-          setAllowedTags(combinedTags);
-        } catch (error) {
-          console.error("Error fetching allowed tags:", error);
-        }
-      }
-    };
-    fetchAllowedTags();
-  }, [sermon]);
 
   // Calculate the number of thoughts for each outline point
   const calculateThoughtsPerSermonPoint = () => {
@@ -1129,6 +1121,7 @@ export default function SermonPage() {
                           onNewThought={handleNewManualThought}
                           allowedTags={allowedTags}
                           sermonOutline={sermon!.outline}
+                          disabled={isReadOnly}
                         />
                       </div>
                       <div className="space-y-5">
@@ -1185,6 +1178,7 @@ export default function SermonPage() {
                           onEditStart={handleEditThoughtStart}
                           onThoughtUpdate={handleThoughtUpdate}
                           resetFilters={resetFilters}
+                          isReadOnly={isReadOnly}
                         />
                       </div>
                     </section>
@@ -1533,6 +1527,7 @@ export default function SermonPage() {
                     sermon={sermon!}
                     thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                     onOutlineUpdate={handleOutlineUpdate}
+                    isReadOnly={isReadOnly}
                   />
                   {sermon!.structure && <StructurePreview sermon={sermon!} />}
                 </motion.div>
@@ -1594,6 +1589,7 @@ export default function SermonPage() {
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                   onOutlineUpdate={handleOutlineUpdate}
+                  isReadOnly={isReadOnly}
                 />
                 {sermon!.structure && <StructurePreview sermon={sermon!} />}
               </div>

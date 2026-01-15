@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ReactNode } from 'react';
 
 import { GuestBanner } from '@/components/GuestBanner';
@@ -9,14 +10,26 @@ import DevQuickNav from '@/components/navigation/DevQuickNav';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isPreachingPlan = Boolean(
+    pathname?.startsWith('/sermons/') &&
+      pathname?.includes('/plan') &&
+      searchParams?.get('planView') === 'preaching'
+  );
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-white dark:bg-gray-900">
-        <DashboardNav />
-        <GuestBanner />
-        <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-          <Breadcrumbs />
-        </div>
+        {!isPreachingPlan && (
+          <>
+            <DashboardNav />
+            <GuestBanner />
+            <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
+              <Breadcrumbs />
+            </div>
+          </>
+        )}
         <main
           id="main-content"
           tabIndex={-1}
@@ -31,4 +44,3 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
     </ProtectedRoute>
   );
 }
-

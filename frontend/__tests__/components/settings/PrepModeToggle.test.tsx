@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import PrepModeToggle from '@/components/settings/PrepModeToggle';
+import { useUserSettings } from '@/hooks/useUserSettings';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mocks
@@ -23,13 +24,11 @@ jest.mock('react-i18next', () => ({
   })
 }));
 
-// Mock the service functions
-const mockGetUserSettings = jest.fn();
+// Mock user settings hook
 const mockUpdatePrepModeAccess = jest.fn();
-
-jest.mock('@/services/userSettings.service', () => ({
-  getUserSettings: (...args: any[]) => mockGetUserSettings(...args),
-  updatePrepModeAccess: (...args: any[]) => mockUpdatePrepModeAccess(...args)
+const mockUseUserSettings = useUserSettings as jest.Mock;
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: jest.fn(),
 }));
 
 // Mock console methods to reduce noise
@@ -39,9 +38,13 @@ const originalConsoleError = console.error;
 describe('PrepModeToggle Component', () => {
   const resetScenario = () => {
     jest.clearAllMocks();
-    mockGetUserSettings.mockReset();
     mockUpdatePrepModeAccess.mockReset();
     mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
+    mockUseUserSettings.mockReturnValue({
+      settings: { enablePrepMode: false },
+      loading: false,
+      updatePrepModeAccess: mockUpdatePrepModeAccess,
+    });
     console.log = originalConsoleLog;
     console.error = originalConsoleError;
   };
@@ -54,13 +57,16 @@ describe('PrepModeToggle Component', () => {
 
   describe('Initial Loading State', () => {
     it('shows loading skeleton while fetching settings', async () => {
-      mockGetUserSettings.mockImplementation(() => new Promise(() => {})); // Never resolves
-
       await runScenarios(
         [
           {
             name: 'displays loading animation',
             run: () => {
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: null,
+                loading: true,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               render(<PrepModeToggle />);
               expect(screen.queryByRole('switch')).not.toBeInTheDocument();
               expect(screen.queryByText('Preparation Mode (Beta)')).not.toBeInTheDocument();
@@ -80,13 +86,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'loads enabled setting and shows toggle as on',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               await waitFor(() => {
                 const toggle = screen.getByRole('switch');
@@ -98,13 +104,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'loads disabled setting and shows toggle as off',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: false },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).not.toBeChecked();
@@ -114,13 +120,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'handles null settings gracefully',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue(null);
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: null,
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).not.toBeChecked();
@@ -140,13 +146,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'successfully toggles from off to on',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
               mockUpdatePrepModeAccess.mockResolvedValue(undefined);
-              render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: false },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
               });
+              render(<PrepModeToggle />);
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).not.toBeChecked();
@@ -154,7 +160,7 @@ describe('PrepModeToggle Component', () => {
               fireEvent.click(toggle);
 
               await waitFor(() => {
-                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', true);
+                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith(true);
                 expect(toggle).toHaveAttribute('aria-checked', 'true');
                 expect(toggle).toHaveClass('bg-blue-600');
               });
@@ -163,14 +169,14 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'successfully toggles from on to off',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
               mockUpdatePrepModeAccess.mockResolvedValue(undefined);
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).toBeChecked();
@@ -178,7 +184,7 @@ describe('PrepModeToggle Component', () => {
               fireEvent.click(toggle);
 
               await waitFor(() => {
-                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', false);
+                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith(false);
                 expect(toggle).toHaveAttribute('aria-checked', 'false');
                 expect(toggle).toHaveClass('bg-gray-200');
               });
@@ -198,20 +204,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'logs error and defaults to disabled state',
             run: async () => {
-              mockGetUserSettings.mockRejectedValue(new Error('Network error'));
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: null,
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
-
-              await waitFor(() => {
-                expect(consoleSpy).toHaveBeenCalledWith(
-                  '❌ PrepModeToggle: Error loading prep mode setting:',
-                  expect.any(Error)
-                );
-              });
 
               const toggle = screen.getByRole('switch');
               expect(toggle).not.toBeChecked();
@@ -230,21 +229,21 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'shows alert and logs error on toggle failure',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: false },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               mockUpdatePrepModeAccess.mockRejectedValue(new Error('Update failed'));
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
               const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
               render(<PrepModeToggle />);
 
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
-
               const toggle = await screen.findByRole('switch');
               fireEvent.click(toggle);
 
               await waitFor(() => {
-                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('test-user-id', true);
+                expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith(true);
               });
 
               await waitFor(() => {
@@ -278,6 +277,11 @@ describe('PrepModeToggle Component', () => {
             run: async () => {
               mockUseAuth.mockReturnValue({ user: null });
               const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: null,
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               render(<PrepModeToggle />);
 
               await waitFor(() => {
@@ -293,6 +297,11 @@ describe('PrepModeToggle Component', () => {
             name: 'prevents toggle when no user',
             run: async () => {
               mockUseAuth.mockReturnValue({ user: null });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: null,
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               render(<PrepModeToggle />);
 
               const toggle = screen.getByRole('switch');
@@ -318,12 +327,12 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'renders proper ARIA attributes and text content',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
-              render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
               });
+              render(<PrepModeToggle />);
 
               const toggle = await screen.findByRole('switch');
               expect(toggle).toBeInTheDocument();
@@ -336,13 +345,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'applies correct CSS classes for enabled state',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               const toggle = await screen.findByRole('switch');
               await waitFor(() => {
@@ -355,13 +364,13 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'applies correct CSS classes for disabled state',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: false },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
 
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               const toggle = await screen.findByRole('switch');
               await waitFor(() => {
@@ -385,8 +394,12 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'logs loading and loaded messages',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
               mockUpdatePrepModeAccess.mockResolvedValue(undefined);
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
               render(<PrepModeToggle />);
 
@@ -401,14 +414,14 @@ describe('PrepModeToggle Component', () => {
           {
             name: 'logs toggle operations',
             run: async () => {
-              mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
               mockUpdatePrepModeAccess.mockResolvedValue(undefined);
+              (useUserSettings as jest.Mock).mockReturnValue({
+                settings: { enablePrepMode: true },
+                loading: false,
+                updatePrepModeAccess: mockUpdatePrepModeAccess,
+              });
               const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
               render(<PrepModeToggle />);
-
-              await waitFor(() => {
-                expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              });
 
               // Wait for loading to complete
               await waitFor(() => {

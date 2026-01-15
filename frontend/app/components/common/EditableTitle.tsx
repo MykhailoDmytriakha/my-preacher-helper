@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 interface EditableTitleProps {
   initialTitle: string;
   onSave: (newTitle: string) => Promise<void>; // Expects a promise to handle async save
+  disabled?: boolean;
   textSizeClass?: string; // e.g., "text-2xl sm:text-3xl"
   inputSizeClass?: string; // e.g., "text-2xl sm:text-3xl"
   buttonSizeClass?: string; // e.g., "w-5 h-5"
@@ -17,6 +18,7 @@ interface EditableTitleProps {
 const EditableTitle: React.FC<EditableTitleProps> = ({
   initialTitle,
   onSave,
+  disabled = false,
   textSizeClass = 'text-2xl sm:text-3xl',
   inputSizeClass = 'text-2xl sm:text-3xl',
   buttonSizeClass = 'w-5 h-5',
@@ -46,6 +48,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   }, [isEditing]);
 
   const handleEditClick = () => {
+    if (disabled) return;
     setEditedTitle(initialTitle); // Reset edit field to current title when starting edit
     setIsEditing(true);
     setError(null); // Clear previous errors
@@ -80,6 +83,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (disabled) return;
     if (e.key === 'Enter') {
       handleSave();
     } else if (e.key === 'Escape') {
@@ -98,7 +102,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
             onChange={(e) => setEditedTitle(e.target.value)}
             onKeyDown={handleKeyDown}
             className={`flex-grow px-2 py-1 font-bold border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 ${inputSizeClass} ${error ? 'border-red-500 focus:ring-red-500' : 'border-blue-500 focus:ring-blue-500'}`}
-            disabled={isSaving}
+            disabled={isSaving || disabled}
             aria-label={t('common.editTitleInput')}
             aria-invalid={!!error}
             aria-describedby={error ? "title-error" : undefined}
@@ -106,7 +110,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           <button
             onClick={handleSave}
             className={`${buttonPaddingClass} text-green-600 hover:bg-green-100 dark:hover:bg-gray-600 rounded-full disabled:opacity-50`}
-            disabled={isSaving}
+            disabled={isSaving || disabled}
             title={t('common.save')}
           >
             {isSaving ? (
@@ -121,7 +125,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           <button
             onClick={handleCancelEdit}
             className={`${buttonPaddingClass} text-red-600 hover:bg-red-100 dark:hover:bg-gray-600 rounded-full disabled:opacity-50`}
-            disabled={isSaving}
+            disabled={isSaving || disabled}
             title={t('common.cancel')}
           >
             <XMarkIcon className={buttonSizeClass} />
@@ -135,7 +139,8 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           </h1>
           <button
             onClick={handleEditClick}
-            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full`}
+            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
+            disabled={disabled}
             title={t('common.edit')}
           >
             <PencilIcon className={`w-4 h-4 sm:${buttonSizeClass.replace('w-','').replace('h-','w-').replace('w-','h-')}`} /> {/* Adjusted pencil icon size slightly */} 

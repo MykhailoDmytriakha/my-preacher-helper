@@ -19,8 +19,8 @@ import '@locales/i18n';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
+import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
-import { getTags } from '@/services/tag.service';
 
 import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
@@ -48,6 +48,7 @@ export default function StudiesPage() {
     createShareLink,
     deleteShareLink,
   } = useStudyNoteShareLinks();
+  const { tags: tagData } = useTags(uid);
 
   // Responsive: use Modal on mobile, Drawer on desktop
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -64,7 +65,10 @@ export default function StudiesPage() {
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);
 
   // Tags
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const availableTags = useMemo(() => {
+    const allTags = [...(tagData.requiredTags ?? []), ...(tagData.customTags ?? [])];
+    return allTags.map((tag) => tag.name);
+  }, [tagData.customTags, tagData.requiredTags]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -99,20 +103,6 @@ export default function StudiesPage() {
 
   // AI analysis state (for inline card analysis)
   const [analyzingNoteId, setAnalyzingNoteId] = useState<string | null>(null);
-
-  // Load user tags
-  useEffect(() => {
-    if (!uid) return;
-    getTags(uid)
-      .then((tags) => {
-        if (Array.isArray(tags)) {
-          setAvailableTags(tags.map((t: { name: string }) => t.name));
-        } else {
-          setAvailableTags([]);
-        }
-      })
-      .catch((err) => console.error('Failed to load tags for studies', err));
-  }, [uid]);
 
   // Merge available tags with tags from notes
   const tagOptions = useMemo(() => {

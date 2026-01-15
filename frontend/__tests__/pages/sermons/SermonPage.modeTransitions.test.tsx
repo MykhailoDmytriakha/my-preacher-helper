@@ -42,7 +42,9 @@ jest.mock('@/hooks/useSermon', () => () => ({
   refreshSermon: jest.fn(),
 }));
 
-jest.mock('@/services/tag.service', () => ({ getTags: async () => ({ requiredTags: [], customTags: [] }) }));
+jest.mock('@/hooks/useTags', () => ({
+  useTags: () => ({ allTags: [] }),
+}));
 jest.mock('@/components/sermon/SermonHeader', () => ({ __esModule: true, default: ({}) => <div data-testid="sermon-header" /> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: ({}) => <div data-testid="thought-list" /> }));

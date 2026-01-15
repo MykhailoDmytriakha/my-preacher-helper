@@ -1,8 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
+import React from 'react';
 import { TFunction } from 'i18next';
 import { toast } from 'sonner';
 
 import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
@@ -16,6 +19,7 @@ import { useSermonStructureData } from './useSermonStructureData';
 jest.mock('@/services/sermon.service');
 jest.mock('@/services/tag.service');
 jest.mock('@/services/outline.service');
+jest.mock('@/hooks/useOnlineStatus');
 jest.mock('sonner');
 
 // Simple mock TFunction for translations
@@ -97,6 +101,18 @@ const mockedGetSermonById = getSermonById as jest.Mock;
 const mockedGetTags = getTags as jest.Mock;
 const mockedGetSermonOutline = getSermonOutline as jest.Mock;
 const mockedToastError = toast.error as jest.Mock;
+const mockedUseOnlineStatus = useOnlineStatus as jest.Mock;
+
+const createWrapper = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children);
+};
 
 describe('useSermonStructureData Hook', () => {
   beforeEach(() => {
@@ -105,6 +121,7 @@ describe('useSermonStructureData Hook', () => {
     mockedGetTags.mockClear();
     mockedGetSermonOutline.mockClear();
     mockedToastError.mockClear();
+    mockedUseOnlineStatus.mockReturnValue(true);
 
     // Default successful mock implementations
     mockedGetSermonById.mockResolvedValue(mockSermon);
@@ -113,7 +130,9 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should initialize with loading state true and default values', () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
     expect(result.current.loading).toBe(true);
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBeNull();
@@ -123,7 +142,9 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should fetch data and update state on successful load', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     // Wait for the loading to finish
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -178,7 +199,9 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle null sermonId by setting loading false and clearing data', async () => {
-    const { result } = renderHook(() => useSermonStructureData(null, mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData(null, mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     // Should not be loading and data should be cleared/default
     expect(result.current.loading).toBe(false);
@@ -196,7 +219,9 @@ describe('useSermonStructureData Hook', () => {
     const sermonError = new Error('Sermon fetch failed');
     mockedGetSermonById.mockRejectedValue(sermonError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -215,7 +240,9 @@ describe('useSermonStructureData Hook', () => {
     const tagsError = new Error('Tags fetch failed');
     mockedGetTags.mockRejectedValue(tagsError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -243,7 +270,9 @@ describe('useSermonStructureData Hook', () => {
     const outlineError = new Error('Failed to fetch outline');
     mockedGetSermonOutline.mockRejectedValue(outlineError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -261,7 +290,9 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should sync outlinePoints with sermon.outline when outline is updated', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -311,7 +342,9 @@ describe('useSermonStructureData Hook', () => {
     mockedGetSermonById.mockResolvedValueOnce(sermonWithReviewedOutline);
     mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -319,7 +352,9 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle partial outline updates with isReviewed field', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -357,7 +392,9 @@ describe('useSermonStructureData Hook', () => {
     mockedGetSermonById.mockResolvedValueOnce(sermonWithEmptySections);
     mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -376,7 +413,9 @@ describe('useSermonStructureData Hook', () => {
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonWithDupes);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introIds = result.current.containers.introduction.map((i) => i.id);
@@ -398,7 +437,9 @@ describe('useSermonStructureData Hook', () => {
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonNoPositions);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Items without clear section tag go to ambiguous; positions should be seeded for stable ordering
@@ -421,7 +462,9 @@ describe('useSermonStructureData Hook', () => {
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonWithPositions);
 
-    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as MockTFunction));
+    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result2.current.loading).toBe(false));
 
     const order = result2.current.containers.introduction.map(i => i.id);
@@ -438,7 +481,9 @@ describe('useSermonStructureData Hook', () => {
     };
     mockedGetSermonById.mockResolvedValueOnce(sermonConflict);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as MockTFunction));
+    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as MockTFunction), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introHas = result.current.containers.introduction.some(i => i.id === 't3');
@@ -463,7 +508,9 @@ describe('useSermonStructureData Hook', () => {
         mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
         mockedGetSermonOutline.mockResolvedValue(null); // No outline
 
-        const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction));
+        const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction), {
+          wrapper: createWrapper(),
+        });
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.loading).toBe(false);

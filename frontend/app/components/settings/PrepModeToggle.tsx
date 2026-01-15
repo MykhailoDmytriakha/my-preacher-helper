@@ -4,56 +4,48 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
-import { getUserSettings, updatePrepModeAccess } from '@/services/userSettings.service';
+import { useUserSettings } from '@/hooks/useUserSettings';
 
 export default function PrepModeToggle() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const { settings, loading, updatePrepModeAccess } = useUserSettings(user?.uid);
 
   useEffect(() => {
     let isActive = true;
 
-    const loadSettings = async () => {
-      if (!user?.uid) {
-        console.log('❌ PrepModeToggle: no user.uid, skipping load');
-        if (isActive) {
-          setLoading(false);
-        }
-        return;
-      }
-
-      console.log('🔍 PrepModeToggle: loading settings for user:', user.uid);
+    if (!user?.uid) {
+      console.log('❌ PrepModeToggle: no user.uid, skipping load');
       if (isActive) {
-        setLoading(true);
+        setEnabled(false);
+        setHasLoaded(true);
       }
+      return () => {
+        isActive = false;
+      };
+    }
 
-      try {
-        const settings = await getUserSettings(user.uid);
-        console.log('📊 PrepModeToggle: loaded settings:', settings);
-        const enabledValue = settings?.enablePrepMode || false;
-        console.log('✅ PrepModeToggle: setting enabled to:', enabledValue);
-        if (isActive) {
-          setEnabled(enabledValue);
-        }
-      } catch (error) {
-        console.error('❌ PrepModeToggle: Error loading prep mode setting:', error);
-      } finally {
-        if (isActive) {
-          setLoading(false);
-          setHasLoaded(true);
-        }
-      }
-    };
+    if (loading) {
+      return () => {
+        isActive = false;
+      };
+    }
 
-    loadSettings();
+    console.log('🔍 PrepModeToggle: loading settings for user:', user.uid);
+    console.log('📊 PrepModeToggle: loaded settings:', settings);
+    const enabledValue = settings?.enablePrepMode || false;
+    console.log('✅ PrepModeToggle: setting enabled to:', enabledValue);
+    if (isActive) {
+      setEnabled(enabledValue);
+      setHasLoaded(true);
+    }
 
     return () => {
       isActive = false;
     };
-  }, [user?.uid]);
+  }, [user?.uid, settings, loading]);
 
   const handleToggle = async () => {
     if (!user?.uid) {
@@ -64,7 +56,7 @@ export default function PrepModeToggle() {
     try {
       const newValue = !enabled;
       console.log('🔄 PrepModeToggle: toggling to:', newValue, 'for user:', user.uid);
-      await updatePrepModeAccess(user.uid, newValue);
+      await updatePrepModeAccess(newValue);
       console.log('✅ PrepModeToggle: successfully updated setting');
       setEnabled(newValue);
     } catch (error) {

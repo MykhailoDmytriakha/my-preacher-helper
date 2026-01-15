@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
@@ -20,12 +21,24 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div/>);
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
+
 describe('PlanPage resize listener', () => {
   it('attaches and detaches resize listener', () => {
     const addSpy = jest.spyOn(window, 'addEventListener');
     const removeSpy = jest.spyOn(window, 'removeEventListener');
 
-    const { unmount } = render(<SermonPlanPage />);
+    const { unmount } = renderWithQueryClient(<SermonPlanPage />);
 
     expect(addSpy).toHaveBeenCalledWith('resize', expect.any(Function));
 
@@ -37,4 +50,3 @@ describe('PlanPage resize listener', () => {
     removeSpy.mockRestore();
   });
 });
-

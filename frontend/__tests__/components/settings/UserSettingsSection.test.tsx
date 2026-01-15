@@ -4,8 +4,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { User } from 'firebase/auth';
 
+import { useUserSettings } from '@/hooks/useUserSettings';
 import { UserSettings } from '@/models/models';
-import { getUserSettings } from '@/services/userSettings.service';
 import UserSettingsSection from '@components/settings/UserSettingsSection';
 
 // --- Mocks --- //
@@ -14,9 +14,9 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-// Mock User Settings Service
-jest.mock('@/services/userSettings.service', () => ({
-  getUserSettings: jest.fn(),
+// Mock User Settings Hook
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: jest.fn(),
 }));
 
 // --- Test Data --- //
@@ -56,8 +56,11 @@ describe('UserSettingsSection', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Default mock success
-    (getUserSettings as jest.Mock).mockResolvedValue(mockSettings);
+    (useUserSettings as jest.Mock).mockReturnValue({
+      settings: mockSettings,
+      loading: false,
+      error: null,
+    });
   });
 
   const renderSection = (user: User | null = mockUser) => {
@@ -65,8 +68,11 @@ describe('UserSettingsSection', () => {
   };
 
   it('shows loading state initially', () => {
-    // Prevent immediate resolution of the mock
-    (getUserSettings as jest.Mock).mockImplementation(() => new Promise(() => {})); 
+    (useUserSettings as jest.Mock).mockReturnValue({
+      settings: null,
+      loading: true,
+      error: null,
+    });
     renderSection();
     expect(screen.getByText(/settings.loadingUserData/i)).toBeInTheDocument();
     // Re-render or wait for useEffect might be needed depending on exact timing
@@ -74,13 +80,6 @@ describe('UserSettingsSection', () => {
 
   it('fetches settings and displays user data when user is provided', async () => {
     renderSection();
-
-    // Should show loading initially, then fetch
-    expect(screen.getByText(/settings.loadingUserData/i)).toBeInTheDocument(); 
-
-    await waitFor(() => {
-      expect(getUserSettings).toHaveBeenCalledWith(mockUser.uid);
-    });
 
     // Verify data is displayed after loading
     await waitFor(() => {
@@ -98,12 +97,13 @@ describe('UserSettingsSection', () => {
 
   it('displays data from user prop if settings lack specific fields', async () => {
      const settingsWithoutEmail: UserSettings = { ...mockSettings, email: undefined };
-    (getUserSettings as jest.Mock).mockResolvedValue(settingsWithoutEmail);
+    (useUserSettings as jest.Mock).mockReturnValue({
+      settings: settingsWithoutEmail,
+      loading: false,
+      error: null,
+    });
     renderSection();
 
-    await waitFor(() => {
-        expect(getUserSettings).toHaveBeenCalled();
-    });
     await waitFor(() => { 
       expect(screen.queryByText(/settings.loadingUserData/i)).not.toBeInTheDocument();
     });
@@ -114,12 +114,13 @@ describe('UserSettingsSection', () => {
    it('displays fallback text if neither settings nor user prop have data', async () => {
      const settingsWithoutDisplayName: UserSettings = { ...mockSettings, displayName: undefined };
      const userWithoutDisplayName: User = { ...mockUser, displayName: null } as unknown as User;
-     (getUserSettings as jest.Mock).mockResolvedValue(settingsWithoutDisplayName);
+     (useUserSettings as jest.Mock).mockReturnValue({
+       settings: settingsWithoutDisplayName,
+       loading: false,
+       error: null,
+     });
      renderSection(userWithoutDisplayName);
 
-     await waitFor(() => { 
-         expect(getUserSettings).toHaveBeenCalled();
-     });
      await waitFor(() => { 
        expect(screen.queryByText(/settings.loadingUserData/i)).not.toBeInTheDocument();
      });
@@ -129,31 +130,25 @@ describe('UserSettingsSection', () => {
 
   it('handles error during settings fetch', async () => {
     const error = new Error('Failed to fetch');
-    (getUserSettings as jest.Mock).mockRejectedValue(error);
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {}); // Suppress console error
-
-    renderSection();
-
-    await waitFor(() => {
-      expect(getUserSettings).toHaveBeenCalledWith(mockUser.uid);
+    (useUserSettings as jest.Mock).mockReturnValue({
+      settings: null,
+      loading: false,
+      error,
     });
+    renderSection();
 
     // Should stop loading, but display might depend on error handling (e.g., show user prop data or an error message)
     // Current implementation seems to just stop loading and might show partial data
     await waitFor(() => {
        expect(screen.queryByText(/settings.loadingUserData/i)).not.toBeInTheDocument();
     });
-     // Check that the error was logged
-     expect(consoleErrorSpy).toHaveBeenCalledWith('Error fetching user settings:', error);
      // Check if fallback data is shown (e.g., user email if settings failed)
      expect(screen.getByText(mockUser.email!)).toBeInTheDocument();
 
-     consoleErrorSpy.mockRestore();
   });
 
   it('does not fetch settings and shows loading/logged out state if user is null', () => {
     renderSection(null);
-    expect(getUserSettings).not.toHaveBeenCalled();
     // Check for the appropriate message when logged out/no user
     // The component shows "loading" state if user is null and loading is false initially
     expect(screen.getByText(/settings.loadingUserData/i)).toBeInTheDocument(); 

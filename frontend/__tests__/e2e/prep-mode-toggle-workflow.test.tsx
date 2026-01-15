@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import PrepModeToggle from '@/components/settings/PrepModeToggle';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { TestProviders } from '@test-utils/test-providers';
 
 // Mock all external dependencies
 const mockFetch = jest.fn();
@@ -117,6 +118,8 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
   };
 
   beforeEach(resetScenario);
+  const renderWithProviders = (ui: React.ReactElement) =>
+    render(<TestProviders>{ui}</TestProviders>);
 
   describe('Complete Prep Mode Enablement Journey', () => {
     it('enables prep mode from settings to navigation', async () => {
@@ -131,7 +134,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             name: 'user opens settings and sees prep mode toggle disabled',
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
@@ -146,7 +149,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             name: 'user enables prep mode in settings',
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
@@ -167,7 +170,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               // Ensure prep mode hook reports access granted
               prepModeAccessState = { hasAccess: true, loading: false };
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
               expect(screen.getByText('Current: classic')).toBeInTheDocument();
@@ -178,7 +181,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             run: async () => {
               prepModeAccessState = { hasAccess: true, loading: false };
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               const prepButton = screen.getByTestId('switch-to-prep');
               fireEvent.click(prepButton);
@@ -214,7 +217,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               });
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
               expect(screen.getByText('Current: prep')).toBeInTheDocument();
@@ -230,7 +233,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               });
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               const classicButton = screen.getByTestId('switch-to-classic');
               fireEvent.click(classicButton);
@@ -242,7 +245,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             name: 'settings shows prep mode as still enabled',
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
@@ -256,7 +259,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             name: 'user disables prep mode in settings',
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: true });
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
@@ -276,7 +279,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             run: async () => {
               prepModeAccessState = { hasAccess: false, loading: false };
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -304,7 +307,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
               mockUpdatePrepModeAccess.mockRejectedValue(new Error('API Error'));
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
@@ -327,7 +330,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             run: async () => {
               prepModeAccessState = { hasAccess: false, loading: false };
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -358,7 +361,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               mockHasPrepModeAccess.mockResolvedValue(true);
 
-              render(<DashboardNav />);
+              renderWithProviders(<DashboardNav />);
 
               expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
             }
@@ -380,7 +383,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
                 setTimeout(() => resolve({ enablePrepMode: true }), 100)
               ));
 
-              render(<PrepModeToggle />);
+              renderWithProviders(<PrepModeToggle />);
 
               // During loading there should be no switch yet
               expect(screen.queryByRole('switch')).not.toBeInTheDocument();

@@ -1,11 +1,10 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { UserSettings } from '@/models/models';
-import { getUserSettings } from '@/services/userSettings.service';
+import { useUserSettings } from '@/hooks/useUserSettings';
 
 interface UserSettingsSectionProps {
   user: User | null;
@@ -13,27 +12,7 @@ interface UserSettingsSectionProps {
 
 const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState<UserSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchSettings = async () => {
-      if (user) {
-        try {
-          const userSettings = await getUserSettings(user.uid);
-          setSettings(userSettings);
-        } catch (error) {
-          console.error('Error fetching user settings:', error);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setLoading(false);
-      }
-    };
-
-    fetchSettings();
-  }, [user]);
+  const { settings, loading } = useUserSettings(user?.uid);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">

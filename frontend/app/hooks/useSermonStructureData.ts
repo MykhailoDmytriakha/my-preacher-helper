@@ -1,8 +1,10 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 
-import { Item, Sermon, SermonPoint, Tag, Thought } from '@/models/models';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought } from '@/models/models';
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
@@ -13,7 +15,9 @@ const DEFAULT_SECTION_NAMES = ["introduction", "main part", "conclusion"];
 const RUSSIAN_SECTION_NAMES = ["вступление", "основная часть", "заключение"];
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {
-  const [sermon, setSermon] = useState<Sermon | null>(null);
+  const isOnline = useOnlineStatus();
+  const queryClient = useQueryClient();
+  const [sermon, setSermonState] = useState<Sermon | null>(null);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
@@ -46,6 +50,37 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     ambiguous: t('structure.underConsideration'),
   } as Record<string, string>), [t]);
 
+  const setSermon = useCallback((updater: React.SetStateAction<Sermon | null>) => {
+    setSermonState((prev) => {
+      const next = updater instanceof Function ? updater(prev) : updater;
+      if (sermonId) {
+        queryClient.setQueryData(["sermon", sermonId], next ?? undefined);
+      }
+      return next;
+    });
+  }, [queryClient, sermonId]);
+
+  const sermonQuery = useQuery({
+    queryKey: ["sermon", sermonId],
+    queryFn: () => getSermonById(sermonId as string),
+    enabled: Boolean(sermonId) && isOnline,
+    staleTime: 60_000,
+  });
+
+  const outlineQuery = useQuery({
+    queryKey: ["sermon-outline", sermonId],
+    queryFn: () => getSermonOutline(sermonId as string),
+    enabled: Boolean(sermonId) && isOnline,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (outlineQuery.error) {
+      console.error("Error fetching sermon outline:", outlineQuery.error);
+      toast.error(t('errors.fetchOutlineError'));
+    }
+  }, [outlineQuery.error, t]);
+
 
   useEffect(() => {
     async function initializeSermon() {
@@ -61,16 +96,42 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       setError(null); // Clear previous errors
 
       try {
-        const fetchedSermon = await getSermonById(sermonId);
+        const cachedSermon = sermonQuery.data
+          ?? queryClient.getQueryData<Sermon>(["sermon", sermonId]);
+        if (sermonQuery.error && !cachedSermon) {
+          const errorMessage = sermonQuery.error instanceof Error
+            ? sermonQuery.error.message
+            : t('errors.fetchSermonStructureError');
+          setError(errorMessage);
+          toast.error(errorMessage);
+          setLoading(false);
+          return;
+        }
+        const fetchedSermon = cachedSermon;
         if (!fetchedSermon) {
-          throw new Error("Failed to fetch sermon");
+          setSermon(null);
+          setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
+          setSermonPoints({ introduction: [], main: [], conclusion: [] });
+          setAllowedTags([]);
+          setRequiredTagColors({});
+          setLoading(false);
+          return;
         }
         setSermon(fetchedSermon);
 
         // Fetch tags (handle potential errors during tag fetching)
-        let tagsData;
+        let tagsData: { requiredTags: Tag[]; customTags: Tag[] };
+        const tagsQueryKey = ['tags', fetchedSermon.userId];
         try {
-            tagsData = await getTags(fetchedSermon.userId);
+            if (!isOnline) {
+              tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
+            } else {
+              tagsData = await queryClient.fetchQuery({
+                queryKey: tagsQueryKey,
+                queryFn: () => getTags(fetchedSermon.userId),
+                staleTime: 60_000
+              });
+            }
         } catch (tagError) {
             console.error("Error fetching tags:", tagError);
             tagsData = { requiredTags: [], customTags: [] }; // Default to empty if fetch fails
@@ -248,21 +309,17 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
          });
 
         // Step 3: Fetch and set outline points
-        try {
-            const outlineData = await getSermonOutline(sermonId);
-            if (outlineData) {
-                setSermonPoints({
-                  introduction: outlineData.introduction || [],
-                  main: outlineData.main || [],
-                  conclusion: outlineData.conclusion || [],
-                });
-            } else {
-                 setSermonPoints({ introduction: [], main: [], conclusion: [] });
-            }
-        } catch (outlineError) {
-            console.error("Error fetching sermon outline:", outlineError);
-             setSermonPoints({ introduction: [], main: [], conclusion: [] }); // Default on error
-            toast.error(t('errors.fetchOutlineError'));
+        const outlineData = outlineQuery.data
+          ?? queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId])
+          ?? fetchedSermon.outline;
+        if (outlineData) {
+          setSermonPoints({
+            introduction: outlineData.introduction || [],
+            main: outlineData.main || [],
+            conclusion: outlineData.conclusion || [],
+          });
+        } else {
+          setSermonPoints({ introduction: [], main: [], conclusion: [] });
         }
 
         // Ensure items have positions for stable ordering
@@ -336,18 +393,19 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
     initializeSermon();
     // Ensure dependencies are correct. 't' is included as columnTitles depends on it.
-  }, [sermonId, t, columnTitles]);
+  }, [sermonId, t, columnTitles, isOnline, queryClient, sermonQuery.data, outlineQuery.data, setSermon]);
 
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {
-    if (sermon?.outline) {
+    const outlineData = outlineQuery.data ?? sermon?.outline;
+    if (outlineData) {
       setSermonPoints({
-        introduction: sermon.outline.introduction || [],
-        main: sermon.outline.main || [],
-        conclusion: sermon.outline.conclusion || [],
+        introduction: outlineData.introduction || [],
+        main: outlineData.main || [],
+        conclusion: outlineData.conclusion || [],
       });
     }
-  }, [sermon?.outline]);
+  }, [outlineQuery.data, sermon?.outline]);
 
   return {
     sermon,

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Sermon } from '@/models/models';
 import { updateSermon } from '@services/sermon.service';
 
@@ -17,6 +18,8 @@ interface EditSermonModalProps {
 
 export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermonModalProps) {
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
+  const isReadOnly = !isOnline;
   const [title, setTitle] = useState(sermon.title);
   const [verse, setVerse] = useState(sermon.verse);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,6 +34,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     setIsSubmitting(true);
 
     try {
@@ -79,6 +83,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               minRows={1}
               maxRows={6}
               required
+              disabled={isSubmitting || isReadOnly}
             />
           </div>
           <div className="mb-6 flex-grow overflow-auto">
@@ -94,6 +99,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               minRows={3}
               maxRows={16}
               required
+              disabled={isSubmitting || isReadOnly}
             />
           </div>
           <div className="flex justify-end gap-3 mt-auto">
@@ -107,7 +113,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting || !hasChanges}
+              disabled={isSubmitting || !hasChanges || isReadOnly}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
             >
               {isSubmitting ? t('buttons.saving') : t('buttons.save')}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   addSermonToSeries,
   createSeries,
@@ -27,6 +28,7 @@ const QUERY_KEYS = {
 export function useSeries(userId: string | null) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
+  const isOnline = useOnlineStatus();
 
   const {
     data: series = [],
@@ -36,7 +38,7 @@ export function useSeries(userId: string | null) {
   } = useQuery({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getAllSeries(userId) : Promise.resolve([])),
-    enabled: !!userId,
+    enabled: !!userId && isOnline,
     staleTime: 60 * 1000,
   });
 
@@ -100,6 +102,11 @@ export function useSeries(userId: string | null) {
 
   const mutationGuard = useCallback(
     async <TResult>(action: () => Promise<TResult>) => {
+      if (!isOnline) {
+        const offlineError = new Error("Offline: operation not available.");
+        setMutationError(offlineError);
+        throw offlineError;
+      }
       setMutationError(null);
       try {
         return await action();
@@ -109,7 +116,7 @@ export function useSeries(userId: string | null) {
         throw errorObj;
       }
     },
-    []
+    [isOnline]
   );
 
   const createNewSeries = useCallback(
@@ -130,7 +137,7 @@ export function useSeries(userId: string | null) {
   );
 
   const refreshSeries = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !isOnline) return;
     setMutationError(null);
     try {
       const updated = await getAllSeries(userId);
@@ -141,7 +148,7 @@ export function useSeries(userId: string | null) {
       setMutationError(errorObj);
       throw errorObj;
     }
-  }, [queryClient, userId]);
+  }, [queryClient, isOnline, userId]);
 
   const addSermon = useCallback(
     async (seriesId: string, sermonId: string, position?: number) =>

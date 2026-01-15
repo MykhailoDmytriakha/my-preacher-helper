@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 
+import { OfflineBanner } from "./components/OfflineBanner";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
 import { QueryProvider } from "./providers/QueryProvider";
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <QueryProvider>
               <LanguageInitializer />
               <div className="min-h-screen flex flex-col" id="app-shell">
+                <OfflineBanner />
                 {children}
               </div>
             </QueryProvider>

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Sermon, Insights, SermonContent, SectionHints } from '@/models/models';
 import {
   generateTopics,
@@ -546,6 +547,8 @@ const PlanSection = ({
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
+  const disableNetworkActions = !isOnline;
 
   // UI state
   const [expanded, setExpanded] = useState(false);
@@ -568,6 +571,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const [isGeneratingDirections, setIsGeneratingDirections] = useState(false);
 
   const anyGenerating = isGeneratingAll || isGeneratingTopics || isGeneratingPlan || isGeneratingVerses || isGeneratingDirections;
+  const disableRefresh = anyGenerating || disableNetworkActions;
 
   const updateInsights = (insights: Insights) =>
     applyInsightsUpdate({ sermon, updateSermon, setLocalInsights, insights });
@@ -733,7 +737,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             onToggleShowAll={toggleTopicsVisibility}
             onRefresh={handleRegenerateTopics}
             isRefreshing={isGeneratingTopics}
-            disableRefresh={anyGenerating}
+            disableRefresh={disableRefresh}
             refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
             showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
             hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
@@ -752,7 +756,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             onToggleShowAll={toggleVersesVisibility}
             onRefresh={handleRegenerateVerses}
             isRefreshing={isGeneratingVerses}
-            disableRefresh={anyGenerating}
+            disableRefresh={disableRefresh}
             refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
             showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
             hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
@@ -772,7 +776,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             onToggleShowAll={toggleDirectionsVisibility}
             onRefresh={handleRegenerateDirections}
             isRefreshing={isGeneratingDirections}
-            disableRefresh={anyGenerating}
+            disableRefresh={disableRefresh}
             refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
             showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
             hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
@@ -791,7 +795,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
             onRefresh={handleGeneratePlan}
             isRefreshing={isGeneratingPlan}
-            disableRefresh={anyGenerating}
+            disableRefresh={disableRefresh}
             noPlanMessage={t('knowledge.noPlan')}
             introductionTitle={t('knowledge.planIntroduction')}
             mainTitle={t('knowledge.planMain')}
@@ -806,7 +810,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
           thresholdMessage={insightsThresholdMessage}
           generateLabel={t('knowledge.generate')}
           isGeneratingAll={isGeneratingAll}
-          anyGenerating={anyGenerating}
+          anyGenerating={disableRefresh}
           onGenerate={handleGenerateAllInsights}
         />
       )}

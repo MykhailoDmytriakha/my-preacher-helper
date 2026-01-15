@@ -4,6 +4,8 @@ import { UserSettings } from '@/models/models';
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
 
+const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+
 /**
  * Get user language preference - optimized approach
  * Uses cookies for immediate access and DB as source of truth for authenticated users
@@ -13,6 +15,9 @@ const USER_SETTINGS_API_URL = '/api/user/settings';
  */
 export async function getUserLanguage(userId: string): Promise<string> {
   try {
+    if (isBrowserOffline()) {
+      return getCookieLanguage();
+    }
     // For guest users, only use cookies
     if (!userId) {
       return getCookieLanguage();
@@ -69,6 +74,10 @@ export async function updateUserLanguage(userId: string, language: string): Prom
     if (!userId) {
       return;
     }
+
+    if (isBrowserOffline()) {
+      return;
+    }
     
     // For authenticated users, also update DB (source of truth)
     const response = await fetch(USER_SETTINGS_API_URL, {
@@ -101,6 +110,10 @@ export async function updateUserProfile(
 ): Promise<void> {
   try {
     if (!userId) return;
+
+    if (isBrowserOffline()) {
+      return;
+    }
     
     // Only update provided fields
     const updates: Record<string, unknown> = {};
@@ -142,6 +155,13 @@ export async function initializeUserSettings(
 ): Promise<void> {
   try {
     if (!userId) return;
+
+    if (isBrowserOffline()) {
+      if (language) {
+        setLanguageCookie(language);
+      }
+      return;
+    }
     
     // Build request payload with only provided fields
     const payload: Record<string, unknown> = { userId };
@@ -205,6 +225,10 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
       return null;
     }
 
+    if (isBrowserOffline()) {
+      return null;
+    }
+
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch user settings: ${response.statusText}`);
@@ -226,6 +250,10 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
 export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error('Offline: operation not available.');
+    }
 
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
@@ -259,6 +287,9 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
     }
 
     console.log('👤 hasPrepModeAccess: authenticated user, fetching settings...');
+    if (isBrowserOffline()) {
+      return false;
+    }
     // For authenticated users: check settings.enablePrepMode, default to false
     const settings = await getUserSettings(userId);
     console.log('📊 hasPrepModeAccess: fetched settings:', settings);

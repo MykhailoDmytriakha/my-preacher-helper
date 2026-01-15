@@ -1,20 +1,16 @@
 "use client";
 
-import { Save, Sparkles, FileText, Pencil, Key, Lightbulb, List, Maximize2, Copy, Minimize2, X, Check } from "lucide-react";
+import { useIsRestoring } from "@tanstack/react-query";
+import { Check, Copy, FileText, Key, Lightbulb, List, Maximize2, Minimize2, Pencil, Save, Sparkles, X } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
-import React from "react";
-import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import TextareaAutosize from "react-textarea-autosize";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
-
-// Translation keys constants to avoid duplicate strings
-const TRANSLATION_SECTIONS_MAIN = "sections.main";
-const TRANSLATION_SECTIONS_CONCLUSION = "sections.conclusion";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import ExportButtons from "@/components/ExportButtons";
@@ -24,12 +20,17 @@ import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
-import { getSermonById } from "@/services/sermon.service";
 import { TimerPhase } from "@/types/TimerState";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
+
+// Translation keys constants to avoid duplicate strings
+const TRANSLATION_SECTIONS_MAIN = "sections.main";
+const TRANSLATION_SECTIONS_CONCLUSION = "sections.conclusion";
 
 type PlanViewMode = "overlay" | "immersive" | "preaching";
 
@@ -1860,7 +1861,7 @@ const PlanPreachingView = ({
           margin: 0 auto;
         }
       `}</style>
-      <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${preachingDuration && preachingDuration > 0 ? 'preaching-mode' : ''}`}>
+      <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${isPlanPreaching ? 'preaching-mode' : ''}`}>
         {/* Sticky Timer Header - Always show in preaching mode */}
         <div className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <PreachingTimer
@@ -2147,8 +2148,10 @@ export default function PlanPage() {
     error: 'border-2 border-red-500 bg-red-600 hover:bg-red-700'
   };
 
-  const [sermon, setSermon] = useState<Sermon | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const isOnline = useOnlineStatus();
+  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
+  const isRestoring = useIsRestoring();
+  const isLoading = isLoadingRaw || isRestoring;
   const [error, setError] = useState<string | null>(null);
 
   // Generated content by outline point ID
@@ -2517,65 +2520,54 @@ export default function PlanPage() {
     }
   }, [searchParams, sermon, introductionSectionRef, mainSectionRef, conclusionSectionRef]);
 
-  // Load the sermon
   useEffect(() => {
-    async function loadSermon() {
-      setIsLoading(true);
-      try {
-        const sermonData = await getSermonById(sermonId);
+    if (isLoading) return;
 
-        if (!sermonData) {
-          setError(t("errors.sermonNotFound"));
-          return;
-        }
+    if (sermonError && isOnline) {
+      setError(t("errors.failedToLoadSermon"));
+      return;
+    }
 
-        setSermon(sermonData);
+    if (!sermon && isOnline) {
+      setError(t("errors.sermonNotFound"));
+      return;
+    }
 
-        // Initialize the combined plan if a plan already exists
-        if (sermonData.plan) {
-          setCombinedPlan({
-            introduction: sermonData.plan.introduction?.outline || "",
-            main: sermonData.plan.main?.outline || "",
-            conclusion: sermonData.plan.conclusion?.outline || "",
-          });
+    setError(null);
+  }, [isLoading, sermon, sermonError, isOnline, t]);
 
-          // Initialize generatedContent from saved outlinePoints if they exist
-          const savedContent: Record<string, string> = {};
-          const savedPoints: Record<string, boolean> = {};
+  useEffect(() => {
+    if (!sermon) return;
 
-          // Extract all saved outline point content
-          ['introduction', 'main', 'conclusion'].forEach(sectionKey => {
-            const section = sermonData.plan?.[sectionKey as keyof Plan];
-            const outlinePoints = section?.outlinePoints || {};
+    if (sermon.plan) {
+      setCombinedPlan({
+        introduction: sermon.plan.introduction?.outline || "",
+        main: sermon.plan.main?.outline || "",
+        conclusion: sermon.plan.conclusion?.outline || "",
+      });
 
-            Object.entries(outlinePoints).forEach(([pointId, content]) => {
-              savedContent[pointId] = content;
-              savedPoints[pointId] = true;
-            });
-          });
+      const savedContent: Record<string, string> = {};
+      const savedPoints: Record<string, boolean> = {};
 
-          // Set the saved content to the generatedContent state
-          if (Object.keys(savedContent).length > 0) {
-            setGeneratedContent(prev => ({ ...prev, ...savedContent }));
-          }
+      ['introduction', 'main', 'conclusion'].forEach(sectionKey => {
+        const section = sermon.plan?.[sectionKey as keyof Plan];
+        const outlinePoints = section?.outlinePoints || {};
 
-          // Set all saved points at once
-          if (Object.keys(savedPoints).length > 0) {
-            setSavedSermonPoints(savedPoints);
-          }
-        }
-      } catch (err) {
-        setError(t("errors.failedToLoadSermon"));
-        console.error(err);
-      } finally {
-        setIsLoading(false);
+        Object.entries(outlinePoints).forEach(([pointId, content]) => {
+          savedContent[pointId] = content;
+          savedPoints[pointId] = true;
+        });
+      });
+
+      if (Object.keys(savedContent).length > 0) {
+        setGeneratedContent(prev => ({ ...prev, ...savedContent }));
+      }
+
+      if (Object.keys(savedPoints).length > 0) {
+        setSavedSermonPoints(savedPoints);
       }
     }
-
-    if (sermonId) {
-      loadSermon();
-    }
-  }, [sermonId, t]);
+  }, [sermon]);
 
   // Check if all thoughts are assigned to outline points
   const areAllThoughtsAssigned = (sermon: Sermon | null): boolean => {

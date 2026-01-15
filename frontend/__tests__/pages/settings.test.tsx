@@ -4,6 +4,7 @@ import React from 'react';
 import SettingsPage from '@/(pages)/(private)/settings/page';
 import { auth } from '@/services/firebaseAuth.service';
 import '@testing-library/jest-dom';
+import { TestProviders } from '@test-utils/test-providers';
 
 // Mock Firebase auth
 jest.mock('@/services/firebaseAuth.service', () => ({
@@ -86,10 +87,17 @@ describe('Settings Page', () => {
     jest.clearAllMocks();
     mockLocation.href = '';
   });
+  
+  const renderWithProviders = () =>
+    render(
+      <TestProviders>
+        <SettingsPage />
+      </TestProviders>
+    );
 
   describe('Basic Rendering', () => {
     beforeEach(() => {
-      render(<SettingsPage />);
+      renderWithProviders();
     });
 
     it('renders the main settings heading', async () => {
@@ -141,7 +149,7 @@ describe('Settings Page', () => {
 
   describe('Navigation Functionality', () => {
     beforeEach(() => {
-      render(<SettingsPage />);
+      renderWithProviders();
     });
 
     it('allows switching between user and tags sections', async () => {
@@ -199,7 +207,7 @@ describe('Settings Page', () => {
 
   describe('Responsive Layout', () => {
     beforeEach(() => {
-      render(<SettingsPage />);
+      renderWithProviders();
     });
 
     it('renders mobile navigation grid', async () => {
@@ -236,7 +244,7 @@ describe('Settings Page', () => {
         return jest.fn();
       });
 
-      render(<SettingsPage />);
+      renderWithProviders();
 
       expect(screen.getByText('Loading settings...')).toBeInTheDocument();
       expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
@@ -251,7 +259,7 @@ describe('Settings Page', () => {
         return jest.fn();
       });
 
-      render(<SettingsPage />);
+      renderWithProviders();
 
       await waitFor(() => {
         expect(mockLocation.href).toBe('/');
@@ -266,7 +274,7 @@ describe('Settings Page', () => {
         return jest.fn();
       });
 
-      render(<SettingsPage />);
+      renderWithProviders();
 
       await waitFor(() => {
         const userTexts = screen.getAllByText('User: test@example.com');
@@ -277,7 +285,7 @@ describe('Settings Page', () => {
 
   describe('Section Rendering', () => {
     it('renders UserSettingsSection with user data', async () => {
-      render(<SettingsPage />);
+      renderWithProviders();
 
       await waitFor(() => {
         const userSections = screen.getAllByTestId('user-settings-section');
@@ -287,7 +295,7 @@ describe('Settings Page', () => {
     });
 
     it('renders TagsSection with user data when active', async () => {
-      render(<SettingsPage />);
+      renderWithProviders();
 
       // Switch to tags section
       const tagsNavs = await screen.findAllByTestId('nav-tags');
@@ -306,7 +314,7 @@ describe('Settings Page', () => {
 
   describe('Component Integration', () => {
     it('integrates all child components correctly', async () => {
-      render(<SettingsPage />);
+      renderWithProviders();
 
       await waitFor(() => {
         // Check all major components are rendered
@@ -323,7 +331,7 @@ describe('Settings Page', () => {
     });
 
     it('passes user data to child components', async () => {
-      render(<SettingsPage />);
+      renderWithProviders();
 
       await waitFor(() => {
         // Check that user data is passed to sections (handle duplicates)
@@ -335,7 +343,7 @@ describe('Settings Page', () => {
 
   describe('State Management', () => {
     it('maintains active section state', async () => {
-      render(<SettingsPage />);
+      renderWithProviders();
 
       // Default should be user section
       await waitFor(() => {

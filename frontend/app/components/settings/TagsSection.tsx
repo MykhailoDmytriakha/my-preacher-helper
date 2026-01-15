@@ -1,12 +1,12 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
-import { getTags, addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
 import ColorPickerModal from '@components/ColorPickerModal';
 
 import AddTagForm from './AddTagForm';
@@ -19,23 +19,8 @@ interface TagsSectionProps {
 
 const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
-  const [tags, setTags] = useState<{ requiredTags: Tag[]; customTags: Tag[] }>({ requiredTags: [], customTags: [] });
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
-
-  useEffect(() => {
-    async function fetchTags() {
-      try {
-        if (user?.uid) {
-          const tagsData = await getTags(user.uid);
-          console.log('TagsSection: fetched tags', tagsData);
-          setTags(tagsData);
-        }
-      } catch (error) {
-        console.error('Error fetching tags:', error);
-      }
-    }
-    fetchTags();
-  }, [user]);
+  const { tags, addCustomTag, removeCustomTag, updateTag } = useTags(user?.uid);
 
   const handleAddTag = async (name: string, color: string) => {
     if (!user?.uid) return;
@@ -50,8 +35,6 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     
     try {
       await addCustomTag(newTagObj);
-      const tagsData = await getTags(user.uid);
-      setTags(tagsData);
     } catch (error: unknown) {
       const err = error as { message?: string } | null;
       const message = err?.message === 'Reserved tag name'
@@ -64,15 +47,13 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const handleRemoveTag = async (tagName: string) => {
     try {
       if (user?.uid) {
-        const result = await removeCustomTag(user.uid, tagName);
+        const result = await removeCustomTag(tagName);
         if (result?.affectedThoughts != null) {
           const count = result.affectedThoughts as number;
           if (count > 0) {
             toast.success(`${count} ${t('structure.thoughts')} ${t('actions.remove').toLowerCase()}`);
           }
         }
-        const tagsData = await getTags(user.uid);
-        setTags(tagsData);
       }
     } catch (error) {
       console.error('Error removing tag:', error);
@@ -89,8 +70,6 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     const updatedTag = { ...currentTagBeingEdited, color: newColor };
     try {
       await updateTag(updatedTag);
-      const tagsData = await getTags(user.uid);
-      setTags(tagsData);
     } catch (error) {
       console.error("Error updating tag color:", error);
     } finally {

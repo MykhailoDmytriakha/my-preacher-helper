@@ -1,5 +1,6 @@
 import { SermonOutline, SermonPoint } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 /**
  * Fetches the outline for a specific sermon
@@ -8,6 +9,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
  */
 export const getSermonOutline = async (sermonId: string): Promise<SermonOutline | undefined> => {
   try {
+    if (isBrowserOffline()) {
+      return undefined;
+    }
     const response = await fetch(`${API_BASE}/api/sermons/outline?sermonId=${sermonId}`, {
       cache: "no-store",
       headers: {
@@ -44,6 +48,9 @@ export const updateSermonOutline = async (sermonId: string, outline: SermonOutli
   }
   
   try {
+    if (isBrowserOffline()) {
+      return null;
+    }
     const response = await fetch(`${API_BASE}/api/sermons/outline?sermonId=${sermonId}`, {
       method: "PUT",
       headers: { 
@@ -77,6 +84,9 @@ export const generateSermonPointsForSection = async (
   section: 'introduction' | 'main' | 'conclusion'
 ): Promise<SermonPoint[]> => {
   try {
+    if (isBrowserOffline()) {
+      return [];
+    }
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
       method: 'POST',
       headers: {

@@ -1,3 +1,15 @@
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  // disable: process.env.NODE_ENV === 'development',
+  disable: false,
+  register: true,
+  skipWaiting: true,
+  runtimeCaching: require('next-pwa/cache'),
+  fallbacks: {
+    document: '/offline.html',
+  },
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true, // Enable Strict Mode to surface issues early
@@ -53,4 +65,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withPWA(nextConfig);

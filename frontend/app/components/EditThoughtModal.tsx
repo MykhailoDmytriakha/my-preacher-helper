@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
@@ -102,12 +103,14 @@ const OutlinePointSelect = ({
   filteredSermonPoints,
   selectedPointInfo,
   t,
+  disabled = false,
 }: {
   selectedSermonPointId: string | undefined;
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   filteredSermonPoints: Partial<Record<OutlineSectionKey, SermonPoint[]>>;
   selectedPointInfo: SermonPointInfo | undefined;
   t: TranslateFn;
+  disabled?: boolean;
 }) => (
   <div className="mb-4">
     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -117,6 +120,7 @@ const OutlinePointSelect = ({
       value={selectedSermonPointId || ""}
       onChange={onChange}
       className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+      disabled={disabled}
     >
       <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
 
@@ -187,6 +191,7 @@ const TagsSection = ({
   onRemoveTag,
   onAddTag,
   t,
+  disabled = false,
 }: {
   tags: string[];
   allowedTags: AllowedTag[];
@@ -194,6 +199,7 @@ const TagsSection = ({
   onRemoveTag: (index: number) => void;
   onAddTag: (tagName: string) => void;
   t: TranslateFn;
+  disabled?: boolean;
 }) => (
   <div className="mb-4">
     <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
@@ -203,7 +209,7 @@ const TagsSection = ({
         const tagInfo = allowedTags.find((t) => t.name === tag);
         const displayName = getTagDisplayName(t, tag, tagInfo?.translationKey);
         const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
-        const className = `cursor-pointer ${baseClassName}`;
+        const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
         const iconInfo = isStructureTag(tag) ? getStructureIcon(tag) : null;
 
         return (
@@ -211,7 +217,7 @@ const TagsSection = ({
             key={tag + idx}
             label={displayName}
             ariaLabel={`Remove tag ${displayName}`}
-            onClick={() => onRemoveTag(idx)}
+            onClick={disabled ? () => {} : () => onRemoveTag(idx)}
             className={className}
             style={style}
             iconHtml={iconInfo?.svg ?? null}
@@ -227,7 +233,7 @@ const TagsSection = ({
       {availableTags.map((tag) => {
         const displayName = getTagDisplayName(t, tag.name, tag.translationKey);
         const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);
-        const className = `cursor-pointer ${baseClassName}`;
+        const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
         const iconInfo = isStructureTag(tag.name) ? getStructureIcon(tag.name) : null;
 
         return (
@@ -235,7 +241,7 @@ const TagsSection = ({
             key={tag.name}
             label={displayName}
             ariaLabel={`Add tag ${displayName}`}
-            onClick={() => onAddTag(tag.name)}
+            onClick={disabled ? () => {} : () => onAddTag(tag.name)}
             className={className}
             style={style}
             iconHtml={iconInfo?.svg ?? null}
@@ -257,6 +263,8 @@ export default function EditThoughtModal({
   onSave, 
   onClose 
 }: EditThoughtModalProps) {
+  const isOnline = useOnlineStatus();
+  const isReadOnly = !isOnline;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
@@ -275,21 +283,25 @@ export default function EditThoughtModal({
     selectedSermonPointId !== initialSermonPointId;
 
   const handleAddTag = (tag: string) => {
+    if (isReadOnly) return;
     if (!tags.includes(tag)) {
       setTags([...tags, tag]);
     }
   };
 
   const handleRemoveTag = (index: number) => {
+    if (isReadOnly) return;
     setTags(tags.filter((_, i) => i !== index));
   };
 
   const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (isReadOnly) return;
     const value = e.target.value;
     setSelectedSermonPointId(value === "" ? undefined : value);
   };
 
   const handleSave = () => {
+    if (isReadOnly) return;
     setIsSubmitting(true);
     try {
       onSave(text, tags, selectedSermonPointId);
@@ -403,7 +415,7 @@ export default function EditThoughtModal({
                   onRecordingComplete={handleDictationComplete}
                   isProcessing={isDictating}
                   maxDuration={90}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isReadOnly}
                   onError={(errorMessage) => {
                     toast.error(errorMessage);
                     setIsDictating(false);
@@ -421,6 +433,7 @@ export default function EditThoughtModal({
           rows={6}
           style={textareaMaxHeight ? { maxHeight: `${textareaMaxHeight}px` } : undefined}
           className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none overflow-y-auto dark:bg-gray-700 dark:text-white"
+          disabled={isSubmitting || isReadOnly}
         />
 
         <div ref={metaRef} className="mt-4 space-y-4">
@@ -431,6 +444,7 @@ export default function EditThoughtModal({
               filteredSermonPoints={filteredSermonPoints}
               selectedPointInfo={selectedPointInfo}
               t={t}
+              disabled={isReadOnly}
             />
           )}
 
@@ -441,6 +455,7 @@ export default function EditThoughtModal({
             onRemoveTag={handleRemoveTag}
             onAddTag={handleAddTag}
             t={t}
+            disabled={isReadOnly}
           />
         </div>
 
@@ -455,7 +470,7 @@ export default function EditThoughtModal({
           </button>
           <button 
             type="button" 
-            disabled={!isChanged || isSubmitting} 
+            disabled={!isChanged || isSubmitting || isReadOnly} 
             onClick={handleSave} 
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
           >

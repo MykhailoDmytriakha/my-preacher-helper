@@ -127,6 +127,8 @@ Promote: Add to Long-Term as protocol
   - `## Decisions`
   - `## Next Steps`
 - **Deprecations:** `.session-context.md` and `.temp/INVESTIGATION.md` are not used.
+- **Logging cadence (mandatory):** Make **substantial** entries in the session log after each milestone, whenever new information is discovered, whenever a decision is made, and whenever files are changed.
+- **Logging tool (mandatory):** Use `74-mid-session-save-150` to create these session log entries.
 
 ---
 

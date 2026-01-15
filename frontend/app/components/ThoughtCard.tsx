@@ -43,6 +43,7 @@ interface ThoughtCardProps {
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
+  isReadOnly?: boolean;
 }
 
 interface TagsDisplayProps {
@@ -65,7 +66,8 @@ const ThoughtCard = ({
   sermonId,
   onDelete,
   onEditStart,
-  onThoughtUpdate
+  onThoughtUpdate,
+  isReadOnly = false
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
 
@@ -136,6 +138,7 @@ const ThoughtCard = ({
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag]);
 
   const handleSermonPointChange = useCallback(async (outlinePointId: string | undefined) => {
+    if (isReadOnly) return;
     if (!sermonId || !onThoughtUpdate) return;
 
     const updatedThought: Thought = {
@@ -151,7 +154,7 @@ const ThoughtCard = ({
       console.error('Failed to update outline point:', error);
       throw error;
     }
-  }, [sermonId, thought, onThoughtUpdate]);
+  }, [isReadOnly, sermonId, thought, onThoughtUpdate]);
 
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
@@ -202,6 +205,7 @@ const ThoughtCard = ({
           thoughtText={thought.text}
           onEdit={() => onEditStart(thought, index)}
           onDelete={() => onDelete(index, thought.id)}
+          isReadOnly={isReadOnly}
         />
       </div>
 
@@ -243,7 +247,7 @@ const ThoughtCard = ({
           thought={thought}
           sermonOutline={sermonOutline}
           onSermonPointChange={handleSermonPointChange}
-          disabled={!sermonId || !onThoughtUpdate}
+          disabled={isReadOnly || !sermonId || !onThoughtUpdate}
         />
       </motion.div>
     </motion.div>
