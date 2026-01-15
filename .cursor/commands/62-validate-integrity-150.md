@@ -258,9 +258,8 @@ RECOMMENDATIONS:
 
 - **gated-exec-150** → Executes the plan
 - **integrity-check-150** → Validates the result
-- **session-save-150** → Documents for continuity
+- **74-mid-session-save-150** → Documents continuity via checkpoints
 
 ---
 
 **Remember:** Integrity-check isn't criticism — it's quality assurance. An honest 85 score with documented issues is more valuable than a false 100. The check protects you and the user from preventable problems.
-

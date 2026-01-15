@@ -49,15 +49,15 @@ Before saving, collect data from all sources:
 
 | Source | What to Read | Purpose |
 |--------|--------------|---------|
-| `.session-context.md` | Progress Log (✅/❌/🔄) | Raw data for lessons |
+| `.sessions/SESSION_[session_name].md` | Progress Log / Findings / Decisions | Raw data for lessons |
 | Chat history | Current conversation context | What was discussed, tried, decided |
-| `MEMORY.md` | Session State, Lessons Inbox | Current state, existing lessons |
+| `MEMORY.md` | Lessons Inbox | Existing lessons |
 | Files touched | Recent changes | What was modified |
 
 **Critical:** Don't start saving until you've read all sources!
 
 ### Step 1: EXTRACT LESSONS FROM PROGRESS LOG
-Review `.session-context.md` Progress Log and extract lessons:
+Review the session log Progress Log and extract lessons:
 - Look for patterns in ❌ (what didn't work)
 - Identify root causes from 🔄 (what was tried)
 - Confirm solutions from ✅ (what worked)
@@ -187,7 +187,7 @@ Session Flow:
 ```
 
 **Close-session responsibility:**
-1. Read accumulated Progress Logs from `.session-context.md`
+1. Read accumulated Progress Logs from `.sessions/SESSION_[session_name].md`
 2. Extract patterns → formulate lessons
 3. Write lessons to `MEMORY.md` Lessons (Inbox)
 4. Create final handoff with full context
@@ -197,7 +197,7 @@ Session Flow:
 ```
 📁 SAVE LOCATIONS
 ├── MEMORY.md              # Project memory file + extracted lessons
-├── .session-context.md    # Session-specific file (read & update)
+├── .sessions/SESSION_[session_name].md    # Session-specific log (read & update)
 ├── Project README         # For major milestones
 └── Git commit message     # For code changes
 ```
@@ -206,14 +206,14 @@ Session Flow:
 
 | Location | READ | WRITE |
 |----------|------|-------|
-| `.session-context.md` | Progress Log, checkpoints | Final handoff state |
-| `MEMORY.md` | Session State, existing lessons | New lessons, updated state |
+| `.sessions/SESSION_[session_name].md` | Progress Log, checkpoints, findings | Final handoff state |
+| `MEMORY.md` | Lessons Inbox | New lessons |
 | Chat history | Full conversation context | — |
 | Files touched | What was modified | — |
 
 ## Operational Rules
 
-1. **READ SOURCES FIRST:** Gather from .session-context.md, chat, MEMORY.md before saving
+1. **READ SOURCES FIRST:** Gather from the session log, chat, MEMORY.md before saving
 2. **EXTRACT LESSONS:** Don't close without reviewing Progress Log for lessons
 3. **SAVE BEFORE ENDING:** Always save context before session ends
 4. **RESTORE BEFORE STARTING:** Check for saved context when starting
@@ -226,7 +226,7 @@ Session Flow:
 
 ### Example: Extracting Lessons from Progress Log
 
-**Input: Progress Log from `.session-context.md`**
+**Input: Progress Log from `.sessions/SESSION_[session_name].md`**
 ```
 ### Checkpoint #1
 ❌ Didn't Work: Direct state update in useEffect — infinite loop
@@ -285,12 +285,12 @@ Key Decisions:
 | Separated action-plan as own skill | Needed as component in chains |
 
 Next Steps:
-1. **Immediate:** Create session-save-150 (context window low)
+1. **Immediate:** Create a mid-session checkpoint (`74-mid-session-save-150`) if context is low
 2. **Then:** Continue with remaining protocols
 3. **Later:** Test skills integration
 
 Context to Remember:
-- Skills go in ./skills/ folder
+- Skills go in ./.codex/skills/ folder
 - Each skill needs SKILL.md with yaml frontmatter
 - chain-flow orchestrates other skills
 
@@ -305,10 +305,9 @@ Handoff Status: ✅ Ready
 | **Vague save** | Can't understand notes | Ask questions, check artifacts |
 | **Outdated context** | Things changed since save | Verify current state, update |
 | **Missing decisions** | Don't know why choices made | Review code/docs, make new decision |
-| **Skipped Progress Log** | Lessons not extracted | Re-read .session-context.md, extract |
+| **Skipped Progress Log** | Lessons not extracted | Re-read session log, extract |
 | **Didn't read sources** | Incomplete handoff | Gather from all sources, redo save |
 
 ---
 
 **Remember:** Future you (or next session) will thank present you for good notes. Context loss is expensive — prevention is cheap.
-

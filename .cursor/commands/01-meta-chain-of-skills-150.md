@@ -22,8 +22,9 @@ description: "[01] META. Сканирует доступные skills, созд�
 🔍 SCANNING SYSTEM...
 
 Looking for skills in:
-- ./skills/ (project skills)
-- ./.claude/skills/ (project-specific)
+- ./.codex/skills/ (project skills, canonical)
+- ./skills/ (legacy project skills)
+- ./.claude/skills/ (legacy project-specific)
 - ~/.claude/skills/ (personal skills)
 
 Found skills: N total
@@ -88,8 +89,9 @@ Continue to next step? (Yes / Pause / Reroute / Stop)
 Find all available skills:
 ```bash
 # Check standard locations
-ls -la ./skills/ 2>/dev/null || echo "No project skills"
-ls -la ./.claude/skills/ 2>/dev/null || echo "No project-specific skills"
+ls -la ./.codex/skills/ 2>/dev/null || echo "No project skills"
+ls -la ./skills/ 2>/dev/null || echo "No legacy project skills"
+ls -la ./.claude/skills/ 2>/dev/null || echo "No legacy project-specific skills"
 ls -la ~/.claude/skills/ 2>/dev/null || echo "No personal skills"
 ```
 
@@ -158,7 +160,7 @@ The chain can include any of these skills:
 | `tidy-up-150` | Need quick cleanup |
 | `task-track-150` | Need status management |
 | `lessons-learn` | Need to capture learnings |
-| `session-save-150` | Need to save progress |
+| `74-mid-session-save-150` | Need a mid-session checkpoint |
 | `ask-ai-150` | Need external AI consultation |
 
 ## Common Route Templates

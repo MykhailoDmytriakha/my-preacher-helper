@@ -1,6 +1,6 @@
 ---
 name: 73-close-lessons-learn-150
-description: "[73] CLOSE. Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, updating Session State, or enhancing Project Architecture Quick Reference with new insights."
+description: "[73] CLOSE. Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, or enhancing Project Architecture Quick Reference with new insights."
 ---
 
 # Close-Lessons-Learn 150 Protocol
@@ -19,8 +19,9 @@ Use this skill when:
 
 ## Workflow
 
-1. **Open `MEMORY.md`** (repo root).
-2. **Append a new Lesson** to `## 🆕 Lessons (Inbox)` using this template:
+1. **Read the active session log** in `.sessions/SESSION_[session_name].md` for evidence and context.
+2. **Open `MEMORY.md`** (repo root).
+3. **Append a new Lesson** to `## 🆕 Lessons (Inbox)` using this template:
 
 ```
 ### <YYYY-MM-DD> <Short title>
@@ -31,14 +32,12 @@ Use this skill when:
 **Principle:** <one-sentence rule for the future>
 ```
 
-3. **If 3+ related lessons exist**, create a Short‑Term entry:
+4. **If 3+ related lessons exist**, create a Short‑Term entry:
    - Move the related lessons (or summarize them) into `## 🔄 Short-Term Memory`.
    - Write a common pattern and an emerging principle.
 
-4. **If a principle is stable**, promote it to `## 💎 Long-Term Memory` as a protocol:
+5. **If a principle is stable**, promote it to `## 💎 Long-Term Memory` as a protocol:
    - Format: Context → Protocol → Reasoning.
-
-5. **Update Session State** only if it affects the current task.
 
 6. **Review Project Architecture Quick Reference** and enhance if needed:
    - Check if the lesson reveals new architectural insights (new directories, patterns, workflows)

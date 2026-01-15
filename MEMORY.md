@@ -313,12 +313,6 @@
 
 ---
 
-## 🔧 Session State — Текущая работа
-
-Cleared on 2026-01-14 per user request.
-
----
-
 ## 📋 Memory Management Rules
 
 ### Pipeline Processing
@@ -328,16 +322,21 @@ Cleared on 2026-01-14 per user request.
 3. **Extracted principle** → переместить в Long-Term как Протокол
 4. **Processed lessons** → архивировать или удалять
 
+### Session Logs
+
+- **Single source:** Весь прогресс/исследования/решения идут в `.sessions/SESSION_[session_name].md`
+- **Session State:** Не используется в MEMORY.md
+
 ### Session Start Checklist
 
 - [ ] **Review Protocols:** Прочитать Long-Term Memory (инструкции к проекту)
 - [ ] **Check Inbox:** Есть ли необработанные уроки?
-- [ ] **Load Context:** Восстановить Session State
+- [ ] **Load Session Log:** Открыть актуальный `.sessions/SESSION_[session_name].md`
 
 ### Session End Checklist
 
 - [ ] **Capture Lessons:** Были ли решены неочевидные проблемы? → Inbox
-- [ ] **Update State:** Записать текущий прогресс
+- [ ] **Update Session Log:** Записать текущий прогресс и решения в `.sessions/SESSION_[session_name].md`
 - [ ] **Commit:** Сохранить изменения MEMORY.md
 
 ---

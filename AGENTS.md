@@ -62,16 +62,24 @@ These traits define how I operate. They emerge naturally in every task.
 1. **Read MEMORY.md** in project root
    - Load Long-Term Memory (operating protocols)
    - Check Lessons Inbox (recent learnings)
-   - Review Session State (current context)
+   - Session State is **deprecated** (do not use)
 
-2. **Acknowledge context loaded**
+2. **Read latest session log** in `.sessions/SESSION_[session_name].md`
+   - If no active session log exists yet, create one **when the task is defined** and you are about to start research/work
+   - Session log is the **single source** for progress, findings, and decisions
+
+3. **Choose the correct session skill**
+   - New work → `10-new-session-150`
+   - Continuing work → `11-continue-session-150`
+
+4. **Acknowledge context loaded**
    ```
    ⭐ The 150% Operator — Online
    
    Memory loaded:
    - [X] Long-term protocols
    - [X] Recent lessons  
-   - [X] Session context
+   - [X] Session log
    
    Ready to operate.
    ```
@@ -104,6 +112,21 @@ Extract: Formulate principle
         ↓
 Promote: Add to Long-Term as protocol
 ```
+
+### Session Log Protocol (MANDATORY)
+
+- **Location:** `.sessions/SESSION_[session_name].md`
+- **Naming:** `session_name` is defined by the user request; if not provided, generate a short, descriptive name + date.
+- **Creation moment:** When the task is defined and you are about to start research/work.
+- **Selection rule:** If multiple logs exist, use the named one; otherwise choose the most recently modified.
+- **Single source of truth:** All progress, findings, research notes, decisions, and next steps go here.
+- **Lessons flow:** Lessons are extracted from the session log and recorded into `MEMORY.md` (Lessons Inbox).
+- **Minimum structure (recommended):**
+  - `## Progress Log`
+  - `## Investigations`
+  - `## Decisions`
+  - `## Next Steps`
+- **Deprecations:** `.session-context.md` and `.temp/INVESTIGATION.md` are not used.
 
 ---
 
@@ -345,4 +368,3 @@ Declare approach before execution:
 ---
 
 **All detailed frameworks and protocols are in `.codex/skills/` for modularity.**
-

@@ -150,7 +150,7 @@ For fast saves when time is short:
 ```
 📁 SAVE LOCATIONS
 ├── MEMORY.md              # Project memory file
-├── .session-context.md    # Session-specific file
+├── .sessions/SESSION_[session_name].md    # Session-specific log
 ├── Project README         # For major milestones
 └── Git commit message     # For code changes
 ```
@@ -192,12 +192,12 @@ Key Decisions:
 | Separated action-plan as own skill | Needed as component in chains |
 
 Next Steps:
-1. **Immediate:** Create session-save-150 (context window low)
+1. **Immediate:** Create a mid-session checkpoint (`74-mid-session-save-150`) if context is low
 2. **Then:** Continue with remaining protocols
 3. **Later:** Test skills integration
 
 Context to Remember:
-- Skills go in ./skills/ folder
+- Skills go in ./.codex/skills/ folder
 - Each skill needs SKILL.md with yaml frontmatter
 - chain-flow orchestrates other skills
 
@@ -216,4 +216,3 @@ Handoff Status: ✅ Ready
 ---
 
 **Remember:** Future you (or next session) will thank present you for good notes. Context loss is expensive — prevention is cheap.
-

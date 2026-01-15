@@ -14,9 +14,9 @@ Run in three stages:
 
 ## Stage 1 — Research refactor options (iterative)
 
-1. **Create or reuse investigation log** at `.temp/INVESTIGATION.md`.
-   - If the file does not exist, create it and add the template below.
-   - Keep all research notes in this file only (no scattered notes in chat).
+1. **Create or reuse the session log** at `.sessions/SESSION_[session_name].md`.
+   - If the file does not exist, create it and add the investigation template below.
+   - Keep all research notes inside the session log only (no scattered notes in chat).
 
 2. **Define the core question** (the refactor goal).
    - Write a single sentence: “We need to refactor X to achieve Y.”
@@ -52,32 +52,34 @@ Run in three stages:
 ### Investigation log template
 
 ```
-# Investigation Log: <short topic>
+## Investigations
 
-## Core question
+### Investigation: <short topic>
+
+#### Core question
 - ...
 
-## Scope
+#### Scope
 - Core (100%):
   - ...
 - Boundary (50%):
   - ...
 
-## Findings
+#### Findings
 - <fact> (source: file path / command)
   - Subfinding
 
-## Hypotheses
+#### Hypotheses
 - H1: ...
   - Prediction: ...
   - Test: ...
   - Status: pending/confirmed/rejected
 
-## Refactor options
+#### Refactor options
 - Option A: ... (pros/cons)
 - Option B: ... (pros/cons)
 
-## Next branches
+#### Next branches
 - ...
 ```
 

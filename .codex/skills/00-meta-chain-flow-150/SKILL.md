@@ -42,9 +42,10 @@ Chain-Flow finds available skills by:
 ### Where to Look for Skills
 ```
 📁 SKILL LOCATIONS (search in order)
-├── ./skills/                 # Current project skills folder
-├── ./.claude/skills/         # Project-level Claude skills
-├── ~/.claude/skills/         # Personal skills (home directory)
+├── ./.codex/skills/          # Project skills folder (canonical)
+├── ./skills/                 # Legacy project skills (if present)
+├── ./.claude/skills/         # Legacy project Claude skills (if present)
+├── ~/.claude/skills/         # Personal skills (home directory, if present)
 ├── Plugin skills             # From installed plugins
 └── Built-in capabilities     # Agent's native abilities
 ```
@@ -52,12 +53,13 @@ Chain-Flow finds available skills by:
 ### How to Discover Skills
 ```bash
 # Find all skill directories
+ls -la ./.codex/skills/ 2>/dev/null
 ls -la ./skills/ 2>/dev/null
 ls -la ./.claude/skills/ 2>/dev/null
 ls -la ~/.claude/skills/ 2>/dev/null
 
 # Read each SKILL.md to understand capabilities
-cat ./skills/*/SKILL.md | head -20  # Read descriptions
+cat ./.codex/skills/*/SKILL.md | head -20  # Read descriptions
 ```
 
 ### Discovery Process
@@ -98,6 +100,7 @@ Understand what the task requires:
 Find what skills are available:
 ```
 🔍 Skill Discovery:
+- Scanning ./.codex/skills/ ...
 - Scanning ./skills/ ...
 - Scanning ./.claude/skills/ ...
 - Scanning ~/.claude/skills/ ...
@@ -109,7 +112,7 @@ Found Skills:
 ├── action-plan-150     — Create actionable plans with steps/risks
 ├── deep-think-150      — Quality reasoning and analysis
 ├── max-quality-150     — High quality execution
-├── session-save-150    — Save session context for continuity
+├── 74-mid-session-save-150    — Mid-session checkpoint for continuity
 ├── gated-exec-150      — Execute with confirmation gates
 ├── proof-grade-150     — Verify facts with confidence levels
 ├── integrity-check-150 — Final quality self-check
@@ -362,4 +365,3 @@ deep-think         max-quality          [others]
 ---
 
 **Remember:** Complex problems need chains of skills, not single skills. Chain-Flow builds the right chain, explains why, and executes step-by-step with your confirmation. You stay in control while getting the benefit of orchestrated skill application.
-

@@ -7,7 +7,7 @@ description: "[21] UNDERSTAND. Deep research workflow for this project using 150
 
 ## Goal
 
-Perform deep, evidence-based research by mapping both core scope (100%) and boundary scope (50%), while maintaining a structured investigation log that captures what was found and what to explore next.
+Perform deep, evidence-based research by mapping both core scope (100%) and boundary scope (50%), while maintaining a structured session log section that captures what was found and what to explore next.
 
 ## Core principles
 
@@ -123,39 +123,41 @@ For any investigation, design decision, or multi-step research:
    - Concrete steps and expected evidence sources.
 2. For simple, single-step actions, skip the declaration but still follow evidence-based reasoning.
 
-## Research log (mandatory)
+## Session research log (mandatory)
 
-Create or reuse a file named:
+Create or reuse the active session log:
 
-`.temp/INVESTIGATION.md`
+`.sessions/SESSION_[session_name].md`
 
-If `.temp/` does not exist, create it. This file is the working memory for the investigation.
+If `.sessions/` does not exist, create it. If no session log exists yet, create one now using the user-defined `session_name` (or propose a short descriptive name + date). The session log is the **single working memory** for investigations, progress, and decisions.
 
-### Log structure (use nested bullets)
+### Investigation structure (inside the session log)
 
 ```
-# Investigation Log: <short topic>
+## Investigations
 
-## Core question
+### Investigation: <short topic>
+
+#### Core question
 - <what we are trying to answer>
 
-## Scope
+#### Scope
 - Core (100%):
   - ...
 - Boundary (50%):
   - ...
 
-## Findings
+#### Findings
 - <fact> (source: file path / command / web)
   - Subfinding
 
-## Hypotheses
+#### Hypotheses
 - H1: ...
   - Prediction: ...
   - Test: ...
   - Status: pending/confirmed/rejected
 
-## Next branches
+#### Next branches
 - ...
   - ...
 ```
@@ -183,7 +185,7 @@ If `.temp/` does not exist, create it. This file is the working memory for the i
 ## Output expectations
 
 - Provide a short summary of findings.
-- Provide the path to the investigation log file.
+- Provide the path to the session log file.
 - Ask for confirmation before large changes based on the research.
 - Explicitly report completion status using technical criteria:
   - "Complete" only if all branches in the log are addressed, all hypotheses are confirmed/rejected, and no open scope items remain.
