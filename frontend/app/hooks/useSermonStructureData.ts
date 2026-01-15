@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ const RUSSIAN_SECTION_NAMES = ["вступление", "основная час�
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {
   const isOnline = useOnlineStatus();
+  const isOnlineResolved = typeof isOnline === 'boolean' ? isOnline : true;
   const queryClient = useQueryClient();
   const [sermon, setSermonState] = useState<Sermon | null>(null);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
@@ -60,28 +61,6 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     });
   }, [queryClient, sermonId]);
 
-  const sermonQuery = useQuery({
-    queryKey: ["sermon", sermonId],
-    queryFn: () => getSermonById(sermonId as string),
-    enabled: Boolean(sermonId) && isOnline,
-    staleTime: 60_000,
-  });
-
-  const outlineQuery = useQuery({
-    queryKey: ["sermon-outline", sermonId],
-    queryFn: () => getSermonOutline(sermonId as string),
-    enabled: Boolean(sermonId) && isOnline,
-    staleTime: 60_000,
-  });
-
-  useEffect(() => {
-    if (outlineQuery.error) {
-      console.error("Error fetching sermon outline:", outlineQuery.error);
-      toast.error(t('errors.fetchOutlineError'));
-    }
-  }, [outlineQuery.error, t]);
-
-
   useEffect(() => {
     async function initializeSermon() {
       if (!sermonId) {
@@ -96,17 +75,14 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       setError(null); // Clear previous errors
 
       try {
-        const cachedSermon = sermonQuery.data
-          ?? queryClient.getQueryData<Sermon>(["sermon", sermonId]);
-        if (sermonQuery.error && !cachedSermon) {
-          const errorMessage = sermonQuery.error instanceof Error
-            ? sermonQuery.error.message
-            : t('errors.fetchSermonStructureError');
-          setError(errorMessage);
-          toast.error(errorMessage);
-          setLoading(false);
-          return;
-        }
+        const cachedSermon = isOnlineResolved
+          ? await queryClient.fetchQuery({
+              queryKey: ["sermon", sermonId],
+              queryFn: () => getSermonById(sermonId),
+              staleTime: 60_000,
+              networkMode: 'always',
+            })
+          : queryClient.getQueryData<Sermon>(["sermon", sermonId]);
         const fetchedSermon = cachedSermon;
         if (!fetchedSermon) {
           setSermon(null);
@@ -123,13 +99,14 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         let tagsData: { requiredTags: Tag[]; customTags: Tag[] };
         const tagsQueryKey = ['tags', fetchedSermon.userId];
         try {
-            if (!isOnline) {
+            if (!isOnlineResolved) {
               tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
             } else {
               tagsData = await queryClient.fetchQuery({
                 queryKey: tagsQueryKey,
                 queryFn: () => getTags(fetchedSermon.userId),
-                staleTime: 60_000
+                staleTime: 60_000,
+                networkMode: 'always'
               });
             }
         } catch (tagError) {
@@ -309,9 +286,24 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
          });
 
         // Step 3: Fetch and set outline points
-        const outlineData = outlineQuery.data
-          ?? queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId])
-          ?? fetchedSermon.outline;
+        let outlineData: SermonOutline | undefined;
+        if (isOnlineResolved) {
+          try {
+            outlineData = await queryClient.fetchQuery({
+              queryKey: ["sermon-outline", sermonId],
+              queryFn: () => getSermonOutline(sermonId),
+              staleTime: 60_000,
+              networkMode: 'always',
+            });
+          } catch (outlineError) {
+            console.error("Error fetching sermon outline:", outlineError);
+            toast.error(t('errors.fetchOutlineError'));
+            outlineData = undefined;
+          }
+        } else {
+          outlineData = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
+        }
+        outlineData = outlineData ?? fetchedSermon.outline;
         if (outlineData) {
           setSermonPoints({
             introduction: outlineData.introduction || [],
@@ -393,11 +385,11 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
     initializeSermon();
     // Ensure dependencies are correct. 't' is included as columnTitles depends on it.
-  }, [sermonId, t, columnTitles, isOnline, queryClient, sermonQuery.data, outlineQuery.data, setSermon]);
+  }, [sermonId, t, columnTitles, isOnlineResolved, queryClient, setSermon]);
 
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {
-    const outlineData = outlineQuery.data ?? sermon?.outline;
+    const outlineData = sermon?.outline;
     if (outlineData) {
       setSermonPoints({
         introduction: outlineData.introduction || [],
@@ -405,7 +397,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         conclusion: outlineData.conclusion || [],
       });
     }
-  }, [outlineQuery.data, sermon?.outline]);
+  }, [sermon?.outline]);
 
   return {
     sermon,
