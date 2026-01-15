@@ -26,6 +26,7 @@ const eslintConfig = [
       "**/.turbo/**",
       "**/next-env.d.ts",
       "**/public/workbox-*.js",
+      "**/public/sw.js",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

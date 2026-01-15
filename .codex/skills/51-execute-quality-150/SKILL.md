@@ -195,6 +195,18 @@ Recommendations: [detailed fixes]"
 
 Use both when task requires excellent thinking AND excellent execution.
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Execute-Quality 150 Complete
+**Task:** <task executed>
+**Quality Score:** <confidence %>
+**Verified:** <what was verified>
+**Artifacts:** <files delivered>
+```
+
 ---
 
 **Remember:** max-quality-150 is not about being slow — it's about being thorough. The extra effort upfront prevents costly mistakes later. Quality is an investment, not an expense.

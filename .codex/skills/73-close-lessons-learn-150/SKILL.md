@@ -50,3 +50,16 @@ Use this skill when:
 - Report exactly what you recorded or moved.
 - If you did **not** write a lesson, say why.
 - If you updated the Project Architecture Quick Reference, specify what was added or modified.
+
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Close-Lessons-Learn 150 Complete
+**Lessons Recorded:** <count>
+**Type:** <Inbox/Short/Long-Term>
+**Key Principle:** <one-line summary>
+```
+
+---

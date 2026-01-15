@@ -309,6 +309,18 @@ Confidence: 95%
 | **deep-think-150** | HOW to reason about findings |
 | **impact-map-150** | WHAT the findings affect |
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Understand-Deep 150 Complete
+**Topic:** <research topic>
+**Sources:** <internal/external sources used>
+**Key Findings:** <bullet points>
+**Synthesis:** <combined insight>
+```
+
 ---
 
 **Remember:** Most questions need BOTH worlds. Internal context tells you "what we have and why". External knowledge tells you "what's possible and what others learned". Deep research combines both for complete understanding.

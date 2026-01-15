@@ -230,6 +230,17 @@ goal-clarity → research-deep → impact-map → action-plan → execute
    want          know         affected     do it
 ```
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Plan-Action 150 Complete
+**Action:** Created/Updated action plan
+**Result:** <plan readiness>
+**Artifacts:** <task.md/implementation_plan.md>
+```
+
 ---
 
 **Remember:** A plan isn't bureaucracy — it's a map. You can deviate from a map, but you can't deviate from nothing. Plans prevent the chaos of "figuring it out as we go."

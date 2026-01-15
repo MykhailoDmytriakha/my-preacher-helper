@@ -127,8 +127,50 @@ Promote: Add to Long-Term as protocol
   - `## Decisions`
   - `## Next Steps`
 - **Deprecations:** `.session-context.md` and `.temp/INVESTIGATION.md` are not used.
-- **Logging cadence (mandatory):** Make **substantial** entries in the session log after each milestone, whenever new information is discovered, whenever a decision is made, and whenever files are changed.
-- **Logging tool (mandatory):** Use `74-mid-session-save-150` to create these session log entries.
+- **Logging cadence (mandatory):**
+  - After reading **any 3+ files** for investigation → write Read entry
+  - After **any decision** that affects implementation → write Decision entry
+  - After **each file change** → write Changed entry
+  - After discovering **any problem** → write Problem entry
+  - **Every 20 minutes** of work → checkpoint via `74-mid-session-save-150`
+- **Logging tool (mandatory):** Use `74-mid-session-save-150` and the formats below to create these session log entries.
+
+### Mandatory Entry Formats
+
+Every log entry MUST follow one of these formats:
+
+#### After reading files for investigation:
+```
+### [HH:MM] Read: <file paths or generic scope>
+**Purpose:** <why reading these files>
+**Found:** <key findings, bullet points>
+**Implications:** <what this means for the task>
+```
+
+#### After making a decision:
+```
+### [HH:MM] Decision: <decision title>
+**Context:** <why decision was needed>
+**Options considered:** <at least 2>
+**Chosen:** <which option and why>
+**Rejected:** <why others rejected>
+```
+
+#### After changing files:
+```
+### [HH:MM] Changed: <file paths or component>
+**What:** <what was changed>
+**Why:** <reasoning>
+**Risk:** <potential issues>
+```
+
+#### After discovering problem/blocker:
+```
+### [HH:MM] Problem: <title>
+**Symptom:** <what's happening>
+**Attempted:** <what was tried>
+**Status:** <resolved/blocked/investigating>
+```
 
 ---
 
