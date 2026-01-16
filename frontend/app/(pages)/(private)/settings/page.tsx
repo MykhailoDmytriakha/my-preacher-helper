@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
+import DebugModeToggle from "@/components/settings/DebugModeToggle";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
 import TagsSection from "@/components/settings/TagsSection";
@@ -44,6 +45,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UserSettingsSection user={user} />
             <PrepModeToggle />
+            <DebugModeToggle />
           </div>
         );
       case 'tags':
@@ -53,6 +55,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UserSettingsSection user={user} />
             <PrepModeToggle />
+            <DebugModeToggle />
           </div>
         );
     }

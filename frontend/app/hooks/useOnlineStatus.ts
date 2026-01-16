@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { debugLog } from '@/utils/debugMode';
+
 export function useOnlineStatus(): boolean {
   const [isOnline, setIsOnline] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -9,8 +11,16 @@ export function useOnlineStatus(): boolean {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    debugLog('Online status initialized', { isOnline: window.navigator.onLine });
+
+    const handleOnline = () => {
+      debugLog('Online status changed', { isOnline: true });
+      setIsOnline(true);
+    };
+    const handleOffline = () => {
+      debugLog('Online status changed', { isOnline: false });
+      setIsOnline(false);
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSermonById } from "@services/sermon.service";
+import { debugLog } from "@/utils/debugMode";
 import { auth } from "@services/firebaseAuth.service";
 
 import type { Sermon, Thought } from "@/models/models";
@@ -65,6 +66,7 @@ function useSermon(sermonId: string) {
   useEffect(() => {
     if (!sermonId || data || !cachedSermonFromList) return;
     queryClient.setQueryData(["sermon", sermonId], cachedSermonFromList);
+    debugLog("Sermon cache hydrated from list", { sermonId });
   }, [cachedSermonFromList, data, queryClient, sermonId]);
 
   const sermon = data ?? cachedSermonFromList ?? null;

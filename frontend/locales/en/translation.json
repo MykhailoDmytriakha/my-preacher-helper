@@ -199,6 +199,10 @@
       "title": "Preparation Mode (Beta)",
       "description": "Enable access to the new preparation mode workflow"
     },
+    "debugMode": {
+      "title": "Debug Mode",
+      "description": "Enable extra console logging for troubleshooting"
+    },
     "appearance": {
       "title": "Appearance",
       "themeMode": "Theme mode",

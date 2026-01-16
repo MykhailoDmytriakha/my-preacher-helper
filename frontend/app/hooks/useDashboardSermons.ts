@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Sermon } from '@/models/models';
+import { debugLog } from '@/utils/debugMode';
 import { auth } from '@services/firebaseAuth.service';
 import { getSermons } from '@services/sermon.service';
 
@@ -52,6 +54,15 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
     enabled: !!uid && isOnline, // Only fetch if we have a user ID and online
     staleTime: 60 * 1000, // 1 minute
   });
+
+  useEffect(() => {
+    debugLog('Dashboard sermons state', {
+      isOnline,
+      uid,
+      count: sermons.length,
+      isLoading,
+    });
+  }, [isOnline, uid, sermons.length, isLoading]);
 
   const refresh = async () => {
     if (!isOnline) return;

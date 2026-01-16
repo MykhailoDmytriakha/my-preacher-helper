@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
+import { debugLog } from '@/utils/debugMode';
 
 import type { Tag } from '@/models/models';
 
@@ -27,6 +28,16 @@ export function useTags(userId: string | null | undefined) {
   });
 
   const tags = tagsQuery.data ?? EMPTY_TAGS;
+
+  useEffect(() => {
+    debugLog('Tags state', {
+      isOnline,
+      userId,
+      requiredCount: tags.requiredTags?.length ?? 0,
+      customCount: tags.customTags?.length ?? 0,
+      isLoading: tagsQuery.isLoading,
+    });
+  }, [isOnline, userId, tags.requiredTags, tags.customTags, tagsQuery.isLoading]);
 
   const allTags = useMemo(
     () => [...(tags.requiredTags ?? []), ...(tags.customTags ?? [])],

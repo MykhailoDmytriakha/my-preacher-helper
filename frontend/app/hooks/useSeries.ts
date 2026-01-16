@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { debugLog } from "@/utils/debugMode";
 import {
   addSermonToSeries,
   createSeries,
@@ -41,6 +42,16 @@ export function useSeries(userId: string | null) {
     enabled: !!userId && isOnline,
     staleTime: 60 * 1000,
   });
+
+  useEffect(() => {
+    debugLog("Series state", {
+      isOnline,
+      userId,
+      count: series.length,
+      isLoading,
+      isFetching,
+    });
+  }, [isOnline, userId, series.length, isLoading, isFetching]);
 
   const createSeriesMutation = useMutation({
     mutationFn: (payload: Omit<Series, "id">) => createSeries(payload),
