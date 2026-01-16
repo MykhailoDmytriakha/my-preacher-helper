@@ -11,7 +11,7 @@ const runtimeCaching = [
         maxEntries: 64,
         maxAgeSeconds: 24 * 60 * 60,
       },
-      networkTimeoutSeconds: 2,
+      networkTimeoutSeconds: 1,
     },
   },
   {
@@ -24,7 +24,7 @@ const runtimeCaching = [
         maxEntries: 128,
         maxAgeSeconds: 24 * 60 * 60,
       },
-      networkTimeoutSeconds: 2,
+      networkTimeoutSeconds: 1,
     },
   },
   ...defaultRuntimeCaching.map((entry) => {
@@ -41,7 +41,7 @@ const runtimeCaching = [
             ...entry.options.expiration,
             maxEntries: 64,
           },
-          networkTimeoutSeconds: 3,
+          networkTimeoutSeconds: 1,
         },
       };
     }
@@ -55,7 +55,7 @@ const runtimeCaching = [
             ...entry.options.expiration,
             maxEntries: 128,
           },
-          networkTimeoutSeconds: 3,
+          networkTimeoutSeconds: 1,
         },
       };
     }
