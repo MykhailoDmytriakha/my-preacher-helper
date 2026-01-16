@@ -1,11 +1,13 @@
 import { Sermon, Preparation } from '@/models/models';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+const OFFLINE_ERROR = 'Offline: operation not available.';
 
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
   try {
     if (isBrowserOffline()) {
-      return [];
+      throw new Error(OFFLINE_ERROR);
     }
     const response = await fetch(`${API_BASE}/api/sermons?userId=${userId}`, {
       cache: "no-store"
@@ -18,14 +20,14 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
     return data.sort((a: Sermon, b: Sermon) => new Date(b.date).getTime() - new Date(a.date).getTime());
   } catch (error) {
     console.error('getSermons: Error fetching sermons:', error);
-    return [];
+    throw error;
   }
 };
 
 export const getSermonById = async (id: string): Promise<Sermon | undefined> => {
   try {
     if (isBrowserOffline()) {
-      return undefined;
+      throw new Error(OFFLINE_ERROR);
     }
     const response = await fetch(`${API_BASE}/api/sermons/${id}`);
     if (!response.ok) {
@@ -36,14 +38,14 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
     return data;
   } catch (error) {
     console.error(`getSermonById: Error fetching sermon ${id}:`, error);
-    return undefined;
+    throw error;
   }
 };
 
 export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> => {
   try {
     if (isBrowserOffline()) {
-      throw new Error('Offline: operation not available.');
+      throw new Error(OFFLINE_ERROR);
     }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/sermons`, {

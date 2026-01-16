@@ -1,9 +1,14 @@
 import { Series } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+const OFFLINE_ERROR = 'Offline: operation not available.';
 
 export const getAllSeries = async (userId: string): Promise<Series[]> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const response = await fetch(`${API_BASE}/api/series?userId=${userId}`, {
       cache: "no-store"
     });
@@ -27,12 +32,15 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
     });
   } catch (error) {
     console.error('getAllSeries: Error fetching series:', error);
-    return [];
+    throw error;
   }
 };
 
 export const getSeriesById = async (seriesId: string): Promise<Series | undefined> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`);
 
     if (!response.ok) {
@@ -44,12 +52,15 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
     return data;
   } catch (error) {
     console.error(`getSeriesById: Error fetching series ${seriesId}:`, error);
-    return undefined;
+    throw error;
   }
 };
 
 export const createSeries = async (series: Omit<Series, 'id'>): Promise<Series> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series`, {
       method: 'POST',
@@ -72,6 +83,9 @@ export const createSeries = async (series: Omit<Series, 'id'>): Promise<Series> 
 
 export const updateSeries = async (seriesId: string, updates: Partial<Series>): Promise<Series> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       method: 'PUT',
@@ -94,6 +108,9 @@ export const updateSeries = async (seriesId: string, updates: Partial<Series>): 
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       method: 'DELETE',
     });
@@ -110,6 +127,9 @@ export const deleteSeries = async (seriesId: string): Promise<void> => {
 
 export const addSermonToSeries = async (seriesId: string, sermonId: string, position?: number): Promise<void> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons`, {
       method: 'POST',
@@ -129,6 +149,9 @@ export const addSermonToSeries = async (seriesId: string, sermonId: string, posi
 
 export const removeSermonFromSeries = async (seriesId: string, sermonId: string): Promise<void> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons?sermonId=${sermonId}`, {
       method: 'DELETE',
     });
@@ -145,6 +168,9 @@ export const removeSermonFromSeries = async (seriesId: string, sermonId: string)
 
 export const reorderSermons = async (seriesId: string, sermonIds: string[]): Promise<void> => {
   try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons`, {
       method: 'PUT',

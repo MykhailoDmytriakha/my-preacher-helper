@@ -48,7 +48,7 @@ describe('User Settings Service - Prep Mode Functions', () => {
             }
           },
           {
-            name: 'handles API errors gracefully',
+            name: 'throws on API errors',
             run: async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -58,9 +58,7 @@ describe('User Settings Service - Prep Mode Functions', () => {
 
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-              const result = await getUserSettings('user1');
-
-              expect(result).toBeNull();
+              await expect(getUserSettings('user1')).rejects.toThrow();
               expect(consoleSpy).toHaveBeenCalledWith(
                 'Error getting user settings:',
                 expect.any(Error)
@@ -70,15 +68,13 @@ describe('User Settings Service - Prep Mode Functions', () => {
             }
           },
           {
-            name: 'handles network errors gracefully',
+            name: 'throws on network errors',
             run: async () => {
               mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-              const result = await getUserSettings('user1');
-
-              expect(result).toBeNull();
+              await expect(getUserSettings('user1')).rejects.toThrow('Network error');
               expect(consoleSpy).toHaveBeenCalledWith(
                 'Error getting user settings:',
                 expect.any(Error)

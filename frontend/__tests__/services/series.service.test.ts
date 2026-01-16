@@ -87,7 +87,7 @@ describe('Series Service', () => {
       expect(result[1].title).toBe('Series A'); // no startDate, comes second
     });
 
-    it('should return empty array on API error', async () => {
+    it('should throw on API error', async () => {
       const mockResponse = {
         ok: false,
         status: 500,
@@ -96,23 +96,19 @@ describe('Series Service', () => {
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      const result = await getAllSeries('user-1');
-
-      expect(result).toEqual([]);
+      await expect(getAllSeries('user-1')).rejects.toThrow('Failed to fetch series');
       expect(consoleSpy).toHaveBeenCalledWith('getAllSeries: Response not ok, status: 500');
 
       consoleSpy.mockRestore();
     });
 
-    it('should return empty array on fetch error', async () => {
+    it('should throw on fetch error', async () => {
       const error = new Error('Network error');
       mockFetch.mockRejectedValue(error);
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      const result = await getAllSeries('user-1');
-
-      expect(result).toEqual([]);
+      await expect(getAllSeries('user-1')).rejects.toThrow('Network error');
       expect(consoleSpy).toHaveBeenCalledWith('getAllSeries: Error fetching series:', error);
 
       consoleSpy.mockRestore();
@@ -147,7 +143,7 @@ describe('Series Service', () => {
       expect(result).toEqual(mockSeries);
     });
 
-    it('should return undefined on API error', async () => {
+    it('should throw on API error', async () => {
       const mockResponse = {
         ok: false,
         status: 404,
@@ -156,23 +152,19 @@ describe('Series Service', () => {
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      const result = await getSeriesById('series-1');
-
-      expect(result).toBeUndefined();
+      await expect(getSeriesById('series-1')).rejects.toThrow('Failed to fetch series');
       expect(consoleSpy).toHaveBeenCalledWith('getSeriesById: Response not ok for id series-1, status: 404');
 
       consoleSpy.mockRestore();
     });
 
-    it('should return undefined on fetch error', async () => {
+    it('should throw on fetch error', async () => {
       const error = new Error('Network error');
       mockFetch.mockRejectedValue(error);
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      const result = await getSeriesById('series-1');
-
-      expect(result).toBeUndefined();
+      await expect(getSeriesById('series-1')).rejects.toThrow('Network error');
       expect(consoleSpy).toHaveBeenCalledWith('getSeriesById: Error fetching series series-1:', error);
 
       consoleSpy.mockRestore();

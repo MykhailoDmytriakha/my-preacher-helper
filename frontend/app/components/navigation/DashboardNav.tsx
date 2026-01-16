@@ -13,6 +13,7 @@ import { primaryNavItems, isNavItemActive } from "@/components/navigation/navCon
 import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import { getNavItemTheme } from "@/utils/themeColors";
 
@@ -20,6 +21,7 @@ import ModeToggle from "./ModeToggle";
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
+  const isOnline = useOnlineStatus();
   const {
     showFeedbackModal,
     handleFeedbackClick,
@@ -115,6 +117,7 @@ export default function DashboardNav() {
           {/* Left: Logo */}
           <Link
             href="/dashboard"
+            prefetch={isOnline}
             className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
             aria-label={t('navigation.dashboard') as string}
           >
@@ -148,7 +151,7 @@ export default function DashboardNav() {
                       <Link
                         key={item.key}
                         href={item.href}
-                        prefetch
+                        prefetch={isOnline}
                         aria-current={active ? 'page' : undefined}
                         className={`flex items-center gap-2 px-4 py-2 text-sm transition ${
                           active
@@ -179,7 +182,7 @@ export default function DashboardNav() {
                   <li key={item.key}>
                     <Link
                       href={item.href}
-                      prefetch
+                      prefetch={isOnline}
                       aria-current={active ? 'page' : undefined}
                       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${
                         active
@@ -237,7 +240,11 @@ export default function DashboardNav() {
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
             <div className="flex items-center">
-              <Link href="/dashboard" className="flex items-center text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <Link
+                href="/dashboard"
+                prefetch={isOnline}
+                className="flex items-center text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+              >
                 {!isDashboard && (
                   <span suppressHydrationWarning={true}>
                     {t('navigation.dashboard')}

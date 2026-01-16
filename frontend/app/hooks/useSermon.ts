@@ -1,16 +1,54 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSermonById } from "@services/sermon.service";
+import { auth } from "@services/firebaseAuth.service";
 
 import type { Sermon, Thought } from "@/models/models";
 
 type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
 
+function resolveUid(): string | undefined {
+  const currentUser = auth.currentUser;
+  if (currentUser?.uid) {
+    return currentUser.uid;
+  }
+
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  try {
+    const guestData = window.localStorage.getItem('guestUser');
+    if (!guestData) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(guestData) as { uid?: string };
+    return parsed.uid;
+  } catch (error) {
+    console.error('Error parsing guestUser from localStorage', error);
+    return undefined;
+  }
+}
+
 function useSermon(sermonId: string) {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
+  const uid = resolveUid();
+
+  const { data: cachedSermons = [] } = useQuery<Sermon[]>({
+    queryKey: ['sermons', uid],
+    queryFn: () => Promise.resolve([]),
+    enabled: false,
+    staleTime: 60 * 1000,
+  });
+
+  const cachedSermonFromList = useMemo(
+    () => cachedSermons.find((item) => item.id === sermonId) ?? null,
+    [cachedSermons, sermonId]
+  );
 
   const {
     data,
@@ -24,7 +62,12 @@ function useSermon(sermonId: string) {
     staleTime: 60 * 1000,
   });
 
-  const sermon = data ?? null;
+  useEffect(() => {
+    if (!sermonId || data || !cachedSermonFromList) return;
+    queryClient.setQueryData(["sermon", sermonId], cachedSermonFromList);
+  }, [cachedSermonFromList, data, queryClient, sermonId]);
+
+  const sermon = data ?? cachedSermonFromList ?? null;
 
   const setSermon = useCallback(
     (updater: SermonUpdater) => {

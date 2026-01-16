@@ -226,7 +226,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     }
 
     if (isBrowserOffline()) {
-      return null;
+      throw new Error('Offline: operation not available.');
     }
 
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
@@ -235,10 +235,10 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     }
 
     const data = await response.json();
-    return data.settings;
+    return data.settings ?? null;
   } catch (error) {
     console.error('Error getting user settings:', error);
-    return null;
+    throw error;
   }
 }
 
