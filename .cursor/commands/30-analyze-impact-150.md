@@ -245,6 +245,18 @@ goal-clarity-150 → impact-map-150 → deep-think-150 → max-quality-150
    the goal          affected          through           well
 ```
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Analyze-Impact 150 Complete
+**Core Change:** <what is changing>
+**Blast Radius:** <Small/Medium/Large>
+**Key Dependencies:** <critical up/downstream>
+**Risks:** <identified risks>
+```
+
 ---
 
 **Remember:** Every change has ripple effects. The question isn't "will something else be affected?" but "what will be affected and how much?" Impact mapping turns surprises into planned awareness.

@@ -272,6 +272,18 @@ Status: ✅ Verified
 - **task-track-150** → Manages task lifecycle
 - **integrity-check-150** → Validates before completion
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Close-Task 150 Complete
+**Task:** <task updated>
+**New Status:** <status>
+**Reason:** <transition reason>
+**Artifacts:** <verified deliverables>
+```
+
 ---
 
 **Remember:** Task tracking isn't bureaucracy — it's clarity. One status, one location, artifacts that prove completion. When everyone knows the real state, work flows smoothly.

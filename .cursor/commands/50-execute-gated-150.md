@@ -211,6 +211,18 @@ User: "Yes"
 - **gated-exec-150** → Executes the plan with control
 - **integrity-check-150** → Validates after completion
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Execute-Gated 150 Complete
+**Plan Executed:** <plan name>
+**Steps Completed:** <X/N>
+**Outcome:** <Success/Rolled Back>
+**Artifacts:** <files changed>
+```
+
 ---
 
 **Remember:** Gated execution isn't slow — it's safe. The gates prevent costly mistakes and keep you in control. Every "Yes" is a conscious decision, every step is reversible.

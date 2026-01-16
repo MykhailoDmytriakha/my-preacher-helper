@@ -156,6 +156,17 @@ This Skill is **universal** and applies to any situation requiring quality think
 - **During review:** Analyzing code, plans, or solutions
 - **Anytime:** When you need to think, not just react
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Analyze-Think 150 Complete
+**Topic:** <what was analyzed>
+**Conclusion:** <key insight/decision>
+**Risks:** <identified risks>
+```
+
 ---
 
 **Remember:** Deep-Think 150 is not about slowing down — it's about thinking better. Apply the depth appropriate to the complexity. Simple questions get simple analysis; complex problems get full Deep-Think treatment.

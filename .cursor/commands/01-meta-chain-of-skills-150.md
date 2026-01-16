@@ -366,6 +366,18 @@ Continue? (Yes / Pause / Reroute / Stop)
 
 **Key difference:** `chain-of-skills` is the user-facing execution experience, while other skills are the individual actions in each step.
 
+## Session Log Entry (MANDATORY)
+
+After completing the chain, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Chain-of-Skills 150 Complete
+**Goal:** <original goal>
+**Result:** <Success/Partial>
+**Steps Executed:** <N>
+**Artifacts:** <key outputs>
+```
+
 ---
 
 **Remember:** Scan skills → build plan → execute step by step → confirm each step. Simple, controlled, user in charge.

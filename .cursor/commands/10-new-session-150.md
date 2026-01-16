@@ -1,6 +1,6 @@
 ---
 name: 10-new-session-150
-description: "[10] NEW. Start a NEW session for this project. Use when beginning a fresh task to load AGENTS.md, MEMORY.md, and core project context (README), then create a NEW session log and confirm readiness."
+description: "[10] NEW. Start a NEW session for this project. Use when beginning a fresh task to load AGENTS.md, MEMORY.md, core project context (README), then create a NEW session log and confirm readiness."
 ---
 
 # New-Session 150 Protocol

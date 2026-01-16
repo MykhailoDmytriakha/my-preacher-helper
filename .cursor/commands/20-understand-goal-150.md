@@ -211,6 +211,17 @@ Want to confirm before I continue."
 
 Use together: **Clarity** on what to do → **Think** deeply about how → **Execute** with max quality.
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Understand-Goal 150 Complete
+**Action:** Clarified goals and constraints
+**Result:** <clarity achieved/confirmed>
+**Artifacts:** <updated docs/plans>
+```
+
 ---
 
 **Remember:** Clarity is not a one-time event. Goals can shift, requirements can change, understanding can be incomplete. Use this skill whenever you need to be sure you're solving the right problem the right way.

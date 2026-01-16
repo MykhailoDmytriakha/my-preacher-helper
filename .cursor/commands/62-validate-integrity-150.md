@@ -260,6 +260,18 @@ RECOMMENDATIONS:
 - **integrity-check-150** → Validates the result
 - **74-mid-session-save-150** → Documents continuity via checkpoints
 
+## Session Log Entry (MANDATORY)
+
+After completing this skill, write to `.sessions/SESSION_[name].md`:
+
+```
+### [HH:MM] Validate-Integrity 150 Complete
+**Target:** <what was validated>
+**Score:** <X/100>
+**Issues:** <found issues/none>
+**Recommendation:** <Deliver/Fix>
+```
+
 ---
 
 **Remember:** Integrity-check isn't criticism — it's quality assurance. An honest 85 score with documented issues is more valuable than a false 100. The check protects you and the user from preventable problems.
