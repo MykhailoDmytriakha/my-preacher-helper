@@ -1,3 +1,69 @@
+const defaultRuntimeCaching = require('next-pwa/cache');
+
+const runtimeCaching = [
+  {
+    urlPattern: ({ url, request }) =>
+      request.mode === 'navigate' && self.origin === url.origin,
+    handler: 'NetworkFirst',
+    options: {
+      cacheName: 'html-pages',
+      expiration: {
+        maxEntries: 64,
+        maxAgeSeconds: 24 * 60 * 60,
+      },
+      networkTimeoutSeconds: 2,
+    },
+  },
+  {
+    urlPattern: ({ url }) =>
+      self.origin === url.origin && url.searchParams.has('_rsc'),
+    handler: 'NetworkFirst',
+    options: {
+      cacheName: 'rsc-payloads',
+      expiration: {
+        maxEntries: 128,
+        maxAgeSeconds: 24 * 60 * 60,
+      },
+      networkTimeoutSeconds: 2,
+    },
+  },
+  ...defaultRuntimeCaching.map((entry) => {
+    if (!entry?.options?.cacheName) {
+      return entry;
+    }
+
+    if (entry.options.cacheName === 'apis') {
+      return {
+        ...entry,
+        options: {
+          ...entry.options,
+          expiration: {
+            ...entry.options.expiration,
+            maxEntries: 64,
+          },
+          networkTimeoutSeconds: 3,
+        },
+      };
+    }
+
+    if (entry.options.cacheName === 'others') {
+      return {
+        ...entry,
+        options: {
+          ...entry.options,
+          expiration: {
+            ...entry.options.expiration,
+            maxEntries: 128,
+          },
+          networkTimeoutSeconds: 3,
+        },
+      };
+    }
+
+    return entry;
+  }),
+];
+
 const withPWA = require('next-pwa')({
   dest: 'public',
   // disable: process.env.NODE_ENV === 'development',
@@ -5,7 +71,7 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   buildExcludes: [/app-build-manifest\.json$/],
-  runtimeCaching: require('next-pwa/cache'),
+  runtimeCaching,
   fallbacks: {
     document: '/offline.html',
   },
