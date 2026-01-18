@@ -52,7 +52,6 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
       return getSermons(uid);
     },
     enabled: !!uid && isOnline, // Only fetch if we have a user ID and online
-    staleTime: 60 * 1000, // 1 minute
   });
 
   useEffect(() => {

@@ -60,7 +60,6 @@ function useSermon(sermonId: string) {
     queryKey: ["sermon", sermonId],
     queryFn: () => getSermonById(sermonId),
     enabled: Boolean(sermonId) && isOnline,
-    staleTime: 60 * 1000,
   });
 
   useEffect(() => {
