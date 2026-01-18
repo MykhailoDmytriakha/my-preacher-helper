@@ -105,6 +105,60 @@ export const OutlinePointGuidanceTooltip: React.FC<{
   popoverAlignment?: PopoverAlignment;
 }> = ({ t, popoverAlignment = 'left' }) => {
   const { open, setOpen, popoverRef } = useDismissablePopover();
+  const tooltipRef = React.useRef<HTMLDivElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = React.useState<{
+    vertical: 'top' | 'bottom';
+    horizontal: 'left' | 'right';
+  }>({ vertical: 'top', horizontal: popoverAlignment === 'right' ? 'right' : 'left' });
+
+  // Calculate tooltip positioning to stay within container bounds
+  React.useEffect(() => {
+    if (!open || !tooltipRef.current || !popoverRef.current) return;
+
+    const tooltip = tooltipRef.current;
+    const trigger = popoverRef.current;
+    const container = trigger.closest('.overflow-y-auto') as HTMLElement;
+
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    // Calculate preferred position (above trigger)
+    const preferredTop = triggerRect.top - tooltipRect.height - 8; // 8px margin
+    const preferredLeft = popoverAlignment === 'right'
+      ? triggerRect.right - tooltipRect.width
+      : triggerRect.left;
+
+    // Check if tooltip fits in preferred position
+    const fitsAbove = preferredTop >= containerRect.top;
+
+    let vertical: 'top' | 'bottom' = 'top';
+    let horizontal: 'left' | 'right' = popoverAlignment === 'right' ? 'right' : 'left';
+
+    if (!fitsAbove) {
+      // If doesn't fit above, try below
+      const belowTop = triggerRect.bottom + 8;
+      const fitsBelow = belowTop + tooltipRect.height <= containerRect.bottom;
+
+      if (fitsBelow) {
+        vertical = 'bottom';
+      } else {
+        // If doesn't fit below either, keep above but adjust horizontal if needed
+        vertical = 'top';
+      }
+    }
+
+    // Adjust horizontal position if tooltip would overflow container
+    if (preferredLeft < containerRect.left) {
+      horizontal = 'left'; // Force left alignment
+    } else if (preferredLeft + tooltipRect.width > containerRect.right) {
+      horizontal = 'right'; // Force right alignment
+    }
+
+    setTooltipPosition({ vertical, horizontal });
+  }, [open, popoverAlignment, popoverRef]);
 
   return (
     <div className="relative shrink-0" ref={popoverRef}>
@@ -118,7 +172,14 @@ export const OutlinePointGuidanceTooltip: React.FC<{
         <InformationCircleIcon className="h-5 w-5 text-blue-500 dark:text-blue-300 group-hover:text-blue-600 dark:group-hover:text-blue-200" />
       </button>
       {open && (
-        <div className={`absolute bottom-full mb-2 z-[60] w-[300px] ${popoverAlignment === 'right' ? 'right-0' : 'left-0'}`}>
+        <div
+          ref={tooltipRef}
+          className={`absolute z-[60] w-[300px] ${
+            tooltipPosition.vertical === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          } ${
+            tooltipPosition.horizontal === 'right' ? 'right-0' : 'left-0'
+          }`}
+        >
           <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs text-left">
             <div className="font-semibold mb-1 text-gray-800 dark:text-gray-100">
               {t('structure.outlineHelp.title')}

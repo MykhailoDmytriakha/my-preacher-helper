@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-17 Tooltip Boundary Detection Implementation
+**Problem:** OutlinePointGuidanceTooltip was extending beyond scrollable container boundaries, causing poor UX where tooltip content would be cut off or not visible.
+**Attempts:** Initially considered fixed positioning, but needed container-aware positioning within scrollable areas.
+**Solution:** Implemented boundary detection using getBoundingClientRect() to measure container bounds, with automatic repositioning from above→below button when insufficient space, and horizontal alignment adjustments to prevent overflow.
+**Why it worked:** Absolute positioning with z-index works for global positioning, but scrollable containers require measuring container bounds relative to viewport and trigger position; useEffect with DOM measurements enables dynamic repositioning.
+**Principle:** For tooltips in scrollable containers, implement boundary detection using container.closest('.scrollable-class') and getBoundingClientRect() measurements, with fallback positioning strategies (above→below, left→right adjustments).
+
 ### 2026-01-17 AddThoughtManual button disabled offline due to useTags enabled condition
 **Problem:** "Добавить мысль вручную" button stopped working on production after IndexDB offline mode addition because useTags had `enabled: Boolean(userId) && isOnline`, preventing cache reads offline.
 **Attempts:** Analyzed AddThoughtManual component logic, traced dataReady calculation, identified useTags offline behavior.
