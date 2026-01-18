@@ -4,6 +4,7 @@ import { User, onAuthStateChanged, IdTokenResult } from 'firebase/auth';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 import { auth } from '@/services/firebaseAuth.service';
+import { debugLog } from '@/utils/debugMode';
 
 interface AuthContextType {
   user: User | null;
@@ -190,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (!isMounted) return;
 
-      console.log('Firebase auth state changed:', currentUser ? `User: ${currentUser.uid}` : 'No user');
+      debugLog('Firebase auth state changed:', currentUser ? `User: ${currentUser.uid}` : 'No user');
       
       setUser(currentUser);
       setIsAuthenticated(Boolean(currentUser));

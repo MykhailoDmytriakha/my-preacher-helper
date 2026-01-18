@@ -344,7 +344,9 @@
   "manualThought": {
     "addManual": "Add Manual Thought",
     "placeholder": "Enter your thought...",
-    "addedSuccess": "Thought added successfully"
+    "addedSuccess": "Thought added successfully",
+    "offlineDisabled": "Manual thought creation is not available offline",
+    "offlineWarning": "You are currently offline. Manual thoughts cannot be saved until you reconnect."
   },
   "thought": {
     "tagsLabel": "Tags:",

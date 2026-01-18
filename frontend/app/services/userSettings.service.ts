@@ -1,5 +1,6 @@
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../frontend/locales/constants';
 import { UserSettings } from '@/models/models';
+import { debugLog } from '@/utils/debugMode';
 
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
@@ -279,22 +280,22 @@ export async function updatePrepModeAccess(userId: string, enabled: boolean): Pr
  */
 export async function hasPrepModeAccess(userId: string): Promise<boolean> {
   try {
-    console.log('🔍 hasPrepModeAccess: called with userId:', userId);
+    debugLog('🔍 hasPrepModeAccess: called with userId:', userId);
     // For guest users (no userId): Always return true
     if (!userId) {
-      console.log('👤 hasPrepModeAccess: guest user, returning true');
+      debugLog('👤 hasPrepModeAccess: guest user, returning true');
       return true;
     }
 
-    console.log('👤 hasPrepModeAccess: authenticated user, fetching settings...');
+    debugLog('👤 hasPrepModeAccess: authenticated user, fetching settings...');
     if (isBrowserOffline()) {
       return false;
     }
     // For authenticated users: check settings.enablePrepMode, default to false
     const settings = await getUserSettings(userId);
-    console.log('📊 hasPrepModeAccess: fetched settings:', settings);
+    debugLog('📊 hasPrepModeAccess: fetched settings:', settings);
     const access = settings?.enablePrepMode || false;
-    console.log('✅ hasPrepModeAccess: access result:', access);
+    debugLog('✅ hasPrepModeAccess: access result:', access);
     return access;
   } catch (error) {
     console.error('❌ hasPrepModeAccess: Error checking prep mode access:', error);

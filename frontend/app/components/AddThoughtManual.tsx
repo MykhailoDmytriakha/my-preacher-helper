@@ -7,9 +7,11 @@ import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 import { toast } from 'sonner';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import useSermon from '@/hooks/useSermon';
 import { useTags } from '@/hooks/useTags';
 import { Thought, SermonOutline } from '@/models/models';
+import { debugLog } from '@/utils/debugMode';
 import { PlusIcon } from '@components/Icons';
 import { createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -40,9 +42,14 @@ export default function AddThoughtManual({
   const { sermon, loading: sermonLoading } = useSermon(sermonId);
   const shouldLoadTags = !allowedTagsProp || allowedTagsProp.length === 0;
   const { allTags, loading: tagsLoading } = useTags(shouldLoadTags ? sermon?.userId : null);
+  const isOnline = useOnlineStatus();
 
   const effectiveOutline: SermonOutline | undefined = useMemo(
-    () => sermonOutlineProp ?? sermon?.outline,
+    () => sermonOutlineProp ?? sermon?.outline ?? {
+      introduction: [{ id: '1', text: 'Introduction' }],
+      main: [{ id: '2', text: 'Main Point 1' }],
+      conclusion: [{ id: '3', text: 'Conclusion' }],
+    },
     [sermonOutlineProp, sermon?.outline]
   );
   const effectiveAllowedTags = useMemo(() => {
@@ -55,12 +62,15 @@ export default function AddThoughtManual({
       translationKey: tag.translationKey,
     }));
   }, [allowedTagsProp, allTags]);
+
   const dataLoading = (!sermonOutlineProp && sermonLoading) || (shouldLoadTags && tagsLoading);
   const dataReady = Boolean(effectiveOutline) && effectiveAllowedTags.length > 0;
+
 
   // If user clicked the button before data finished loading, open once ready
   useEffect(() => {
     if (!dataLoading && pendingOpen && dataReady) {
+      debugLog('AddThoughtManual: opening pending modal (data ready)');
       setOpen(true);
       setPendingOpen(false);
     }
@@ -86,9 +96,22 @@ export default function AddThoughtManual({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (disabled) return;
+    debugLog('AddThoughtManual: form submit attempt', {
+      disabled,
+      isOnline,
+      textLength: text.trim().length,
+      selectedOutlinePoint: selectedSermonPointId,
+      tagsCount: tags.length,
+    });
+    if (disabled || !isOnline) {
+      debugLog('AddThoughtManual: submit blocked', { disabled, isOnline });
+      return;
+    }
     const trimmedText = text.trim();
-    if (!trimmedText) return;
+    if (!trimmedText) {
+      debugLog('AddThoughtManual: submit blocked - empty text');
+      return;
+    }
 
     const newThought: Thought = {
       id: '',
@@ -99,8 +122,10 @@ export default function AddThoughtManual({
     };
 
     try {
+      debugLog('AddThoughtManual: creating thought', { sermonId, thought: newThought });
       setIsSubmitting(true);
       const savedThought = await createManualThought(sermonId, newThought);
+      debugLog('AddThoughtManual: thought created successfully', { thoughtId: savedThought.id });
       onNewThought(savedThought);
       toast.success(t('manualThought.addedSuccess'));
       setText("");
@@ -108,6 +133,7 @@ export default function AddThoughtManual({
       setSelectedSermonPointId(undefined);
       setOpen(false);
     } catch (error) {
+      debugLog('AddThoughtManual: thought creation failed', { error });
       console.error("Error adding thought manually:", error);
       toast.error(t('errors.addThoughtError') || 'Failed to add thought. Please try again.');
     } finally {
@@ -156,6 +182,13 @@ export default function AddThoughtManual({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="manual-thought-modal-title" className="text-2xl font-bold mb-6">{t('manualThought.addManual')}</h2>
+        {!isOnline && (
+          <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 rounded-md">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              {t('manualThought.offlineWarning', 'You are currently offline. Manual thoughts cannot be saved until you reconnect.')}
+            </p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
             <div className="mb-6 flex-grow overflow-auto">
               <div className="mb-4">
@@ -296,7 +329,7 @@ export default function AddThoughtManual({
               <button
                 type="submit"
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                disabled={isSubmitting || !text.trim() || dataLoading || disabled}
+                disabled={isSubmitting || !text.trim() || dataLoading || disabled || !isOnline}
               >
                 {isSubmitting ? t('buttons.saving') : t('buttons.save')}
               </button>
@@ -310,16 +343,24 @@ export default function AddThoughtManual({
     <>
       <button
         onClick={() => {
-          if (disabled) return;
+          debugLog('AddThoughtManual: button clicked', {
+            dataLoading,
+            dataReady,
+            isOnline,
+            disabled,
+          });
           const hasDataReady = dataReady;
           if (hasDataReady) {
+            debugLog('AddThoughtManual: opening modal');
             setOpen(true);
           } else {
+            debugLog('AddThoughtManual: setting pending open (waiting for data)');
             setPendingOpen(true);
           }
         }}
         className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center gap-2 disabled:opacity-70"
-        disabled={dataLoading || disabled}
+        disabled={dataLoading}
+        title={!isOnline ? t('manualThought.offlineDisabled', 'Manual thought creation is not available offline') : undefined}
       >
         <PlusIcon className="w-5 h-5" />
         {dataLoading ? t('settings.loading') : t('manualThought.addManual')}

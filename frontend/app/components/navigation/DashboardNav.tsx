@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
+import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 
 import ModeToggle from "./ModeToggle";
@@ -29,7 +30,7 @@ export default function DashboardNav() {
     handleSubmitFeedback
   } = useFeedback();
   const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
-  console.log('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
+  debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navDropdownOpen, setNavDropdownOpen] = useState(false);
   const pathname = usePathname();

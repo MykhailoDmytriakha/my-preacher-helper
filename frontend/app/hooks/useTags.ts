@@ -22,8 +22,16 @@ export function useTags(userId: string | null | undefined) {
 
   const tagsQuery = useQuery<TagPayload>({
     queryKey: buildQueryKey(userId),
-    queryFn: () => (userId ? getTags(userId) : Promise.resolve(EMPTY_TAGS)),
-    enabled: Boolean(userId) && isOnline,
+    queryFn: () => (userId ? getTags(userId) : Promise.resolve({
+      requiredTags: [
+        { id: '1', name: 'intro', color: '#3B82F6', translationKey: 'tags.introduction' },
+        { id: '2', name: 'main', color: '#10B981', translationKey: 'tags.mainPart' },
+        { id: '3', name: 'conclusion', color: '#F59E0B', translationKey: 'tags.conclusion' },
+      ],
+      customTags: [],
+    })),
+    enabled: true, // Always enabled for offline cache access
+    networkMode: isOnline ? 'online' : 'offlineFirst',
     staleTime: 60_000,
   });
 

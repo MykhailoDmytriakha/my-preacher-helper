@@ -85,54 +85,48 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             />
           </div>
         </div>
-        <div className="flex items-stretch text-xs sm:text-sm">
-          <div className="flex-1 flex flex-col items-center text-center" style={{ color: introColor }}>
-            <div className="text-base sm:text-lg font-bold">{introPercentage}%</div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex flex-row text-xs sm:text-sm min-h-[120px] overflow-hidden" style={{ display: 'flex', flexDirection: 'row' }}>
+          <div className="flex-1 flex flex-col justify-center items-center text-center px-2 min-w-0" style={{ color: introColor, flex: '1 1 0%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <div className="text-base sm:text-lg font-bold mb-1">{introPercentage}%</div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-tight">
               &ldquo;{t('tags.introduction')}&rdquo; <br />
               {t(structureRecommendedTranslationKey, { percent: 20 })}
             </span>
-            <div className="mt-auto pt-2">
-              <Link
-                href={getFocusModeUrl('introduction', sermon.id)}
-                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors`}
-              >
-                {t(structureFocusModeTranslationKey)}
-              </Link>
-            </div>
+            <Link
+              href={getFocusModeUrl('introduction', sermon.id)}
+              className={`inline-flex items-center justify-center h-8 px-3 ${getFocusModeButtonColors('introduction').bg} ${getFocusModeButtonColors('introduction').hover} ${getFocusModeButtonColors('introduction').text} rounded text-xs transition-colors`}
+            >
+              {t(structureFocusModeTranslationKey)}
+            </Link>
           </div>
-          <div className="self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-2 sm:mx-4" />
-          <div className="flex-1 flex flex-col items-center text-center" style={{ color: mainColor }}>
-            <div className="text-base sm:text-lg font-bold">{mainPercentage}%</div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex-shrink-0 self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-1 sm:mx-2" style={{ flexShrink: 0, alignSelf: 'stretch' }} />
+          <div className="flex-1 flex flex-col justify-center items-center text-center px-2 min-w-0" style={{ color: mainColor, flex: '1 1 0%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <div className="text-base sm:text-lg font-bold mb-1">{mainPercentage}%</div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-tight">
               &ldquo;{t('tags.mainPart')}&rdquo;
               <br />
               {t(structureRecommendedTranslationKey, { percent: 60 })}
             </span>
-            <div className="mt-auto pt-2">
-              <Link
-                href={getFocusModeUrl('main', sermon.id)}
-                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors`}
-              >
-                {t(structureFocusModeTranslationKey)}
-              </Link>
-            </div>
+            <Link
+              href={getFocusModeUrl('main', sermon.id)}
+              className={`inline-flex items-center justify-center h-8 px-3 ${getFocusModeButtonColors('mainPart').bg} ${getFocusModeButtonColors('mainPart').hover} ${getFocusModeButtonColors('mainPart').text} rounded text-xs transition-colors`}
+            >
+              {t(structureFocusModeTranslationKey)}
+            </Link>
           </div>
-          <div className="self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-2 sm:mx-4" />
-          <div className="flex-1 flex flex-col items-center text-center" style={{ color: conclusionColor }}>
-            <div className="text-base sm:text-lg font-bold">{conclusionPercentage}%</div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex-shrink-0 self-stretch w-px bg-gray-200 dark:bg-gray-700 mx-1 sm:mx-2" style={{ flexShrink: 0, alignSelf: 'stretch' }} />
+          <div className="flex-1 flex flex-col justify-center items-center text-center px-2 min-w-0" style={{ color: conclusionColor, flex: '1 1 0%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <div className="text-base sm:text-lg font-bold mb-1">{conclusionPercentage}%</div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-tight">
               &ldquo;{t('tags.conclusion')}&rdquo; <br />
               {t(structureRecommendedTranslationKey, { percent: 20 })}
             </span>
-            <div className="mt-auto pt-2">
-              <Link
-                href={getFocusModeUrl('conclusion', sermon.id)}
-                className={`inline-flex items-center justify-center h-9 px-3 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors`}
-              >
-                {t(structureFocusModeTranslationKey)}
-              </Link>
-            </div>
+            <Link
+              href={getFocusModeUrl('conclusion', sermon.id)}
+              className={`inline-flex items-center justify-center h-8 px-3 ${getFocusModeButtonColors('conclusion').bg} ${getFocusModeButtonColors('conclusion').hover} ${getFocusModeButtonColors('conclusion').text} rounded text-xs transition-colors`}
+            >
+              {t(structureFocusModeTranslationKey)}
+            </Link>
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
   generatePossibleDirections,
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
+import { debugLog } from "@/utils/debugMode";
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
 
@@ -60,7 +61,7 @@ const getSectionHintsFromInsightsOrContent = (
   // First try to get from insights.sectionHints
   if (insights?.sectionHints) {
     if (shouldLog) {
-      console.log('🎯 Getting thoughts plan from insights.sectionHints', insights.sectionHints);
+      debugLog('🎯 Getting thoughts plan from insights.sectionHints', insights.sectionHints);
     }
     const tp = insights.sectionHints as unknown as Partial<Record<keyof SectionHints, unknown>>;
     return {
@@ -72,7 +73,7 @@ const getSectionHintsFromInsightsOrContent = (
 
   // If not available in insights, convert sermon content to SectionHints format
   if (shouldLog) {
-    console.log('🎯 Getting thoughts plan from sermon content', content);
+    debugLog('🎯 Getting thoughts plan from sermon content', content);
   }
   if (content) {
     return {

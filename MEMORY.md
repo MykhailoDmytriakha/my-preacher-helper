@@ -9,6 +9,27 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-17 AddThoughtManual button disabled offline due to useTags enabled condition
+**Problem:** "Добавить мысль вручную" button stopped working on production after IndexDB offline mode addition because useTags had `enabled: Boolean(userId) && isOnline`, preventing cache reads offline.
+**Attempts:** Analyzed AddThoughtManual component logic, traced dataReady calculation, identified useTags offline behavior.
+**Solution:** Changed useTags query to `enabled: Boolean(userId)` and `networkMode: isOnline ? 'online' : 'offlineFirst'` to allow persisted cache reads when offline while preventing network requests.
+**Why it worked:** React Query with persisted cache can serve data offline, but `enabled: false` prevents both fetching and cache reading; `networkMode: 'offlineFirst'` allows cache-first behavior offline.
+**Principle:** For offline-capable queries, use `networkMode: 'offlineFirst'` instead of disabling queries offline to preserve cache access while preventing network requests.
+
+### 2026-01-17 Dynamic Debug Logging Pattern Implementation
+**Problem:** Need user-controllable debug logging without console pollution in production.
+**Attempts:** Considered conditional console.log calls, but needed centralized control.
+**Solution:** Implemented `debugLog()` utility from `@/utils/debugMode` with user toggle in settings. Applied pattern to AddThoughtManual component for troubleshooting.
+**Why it worked:** Single source of truth for debug state, persisted in localStorage, allows users to enable detailed logging without code changes.
+**Principle:** Use `debugLog()` instead of `console.log` for user-controllable debugging with settings UI toggle.
+
+### 2026-01-16 Faster offline fallback requires shorter Workbox timeout
+**Problem:** Offline navigation felt inconsistent because Workbox waited too long before falling back to cache.
+**Attempts:** Observed slow/offline behavior with default `networkTimeoutSeconds` values.
+**Solution:** Set Workbox `networkTimeoutSeconds` to 1 for HTML, RSC, and default runtime caches.
+**Why it worked:** A shorter timeout triggers cache fallback quickly when the network is unavailable or flaky.
+**Principle:** For reliable offline UX, keep Workbox `networkTimeoutSeconds` low so cache wins fast on bad networks.
+
 ### 2026-01-15 Offline structure requires React Query cache alignment
 **Problem:** `/sermons/[id]/structure` and focus mode showed "Sermon not found" offline because data initialization returned early and bypassed persisted cache.
 **Attempts:** Traced data flow, confirmed direct `getSermonById`/`getSermonOutline` usage and offline early-return path.
@@ -138,6 +159,17 @@
 - Coverage ceiling for DnD handlers with normalized inputs (2026-01-15)
 
 **Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
+
+### Offline Mode Implementation Patterns (6 lessons)
+**Common Pattern:** Offline functionality broken by aggressive online-only guards and cache access issues
+|- AddThoughtManual button disabled offline due to useTags enabled condition (2026-01-17)
+|- Offline structure requires React Query cache alignment (2026-01-15)
+|- React Query tests require QueryClientProvider (2026-01-15)
+|- Faster offline fallback requires shorter Workbox timeout (2026-01-16)
+|- Ignore generated Workbox in ESLint (2026-01-15)
+|- Offline banner requires offline status hook (2026-01-15)
+
+**Emerging Principle:** Offline features require: (1) `networkMode: 'offlineFirst'` for cache-first queries, (2) QueryClientProvider in tests, (3) Short Workbox timeouts, (4) Proper ESLint ignores for generated files.
 
 ### Logic Decoupling & Protocol 150 (3 lessons)
 **Common Pattern:** Extracting logic from monolithic components and validating with multi-layered testing.
@@ -287,6 +319,13 @@
 *   **Protocol:** `grep` ключа → Обновление **ВСЕХ ТРЕХ** файлов (`en`, `ru`, `uk`) в одном коммите.
 *   **Reasoning:** CI тесты покрытия переводов упадут, если пропустить язык.
 
+### 🔧 Developer Experience Protocols
+
+**Dynamic Debug Logging**
+*   **Context:** Отладка в production с пользовательским контролем.
+*   **Protocol:** Используй `debugLog()` из `@/utils/debugMode` вместо прямого `console.log`. Логирование включается/выключается через настройки пользователя (Debug Mode Toggle).
+*   **Reasoning:** Позволяет пользователям включать подробное логирование для troubleshooting без засорения production консоли. Сохраняет performance когда отключено.
+
 ### 🧭 Architecture & Navigation Protocols
 
 **Next.js 15 Async Params**
@@ -310,6 +349,11 @@
 *   **Context:** Рефакторинг UI компонентов с DOM-сенситивными тестами.
 *   **Protocol:** Сохраняй ключевые классы/DOM структуру и проверяй логические секции в обоих режимах.
 *   **Reasoning:** Предотвращает поломку UI и тестов при рефакторинге фокус-мода.
+
+**Dynamic Debug Logging Pattern**
+*   **Context:** Отладка в production с пользовательским контролем.
+*   **Protocol:** Используй `debugLog()` из `@/utils/debugMode` вместо прямого `console.log`. Логирование включается/выключается через настройки пользователя (Debug Mode Toggle).
+*   **Reasoning:** Позволяет пользователям включать подробное логирование для troubleshooting без засорения production консоли. Сохраняет performance когда отключено.
 
 **Test Coverage Verification**
 *   **Context:** Проверка что изменения покрыты тестами.
@@ -401,4 +445,5 @@
 - Colors: Use `@/utils/themeColors`, never hardcode
 - Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
+- Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
 - Comments: English only in code

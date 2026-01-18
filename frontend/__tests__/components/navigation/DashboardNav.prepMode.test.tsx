@@ -4,6 +4,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { setDebugModeEnabled } from '@/utils/debugMode';
 
 // Mocks
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children }: any) => <a>{children}</a> }));
@@ -20,6 +21,8 @@ const resetScenario = () => {
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
   prepModeAccessState = { hasAccess: true, loading: false };
+  // Enable debug mode for tests to verify logging
+  setDebugModeEnabled(true);
 };
 
 jest.mock('next/navigation', () => ({
@@ -207,7 +210,7 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
               pathnameMock = '/sermons/test-sermon-id';
               render(<DashboardNav />);
 
-              expect(consoleSpy).toHaveBeenCalledWith('🔧 DashboardNav: showWizardButton:', true, 'prepModeLoading:', false);
+              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '🔧 DashboardNav: showWizardButton:', true, 'prepModeLoading:', false);
             }
           }
         ],

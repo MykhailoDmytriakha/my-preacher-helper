@@ -4,12 +4,13 @@ import { useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 
 import { useAuth as useAuthProvider } from '@/providers/AuthProvider';
+import { debugLog } from "@/utils/debugMode";
 import { signInWithGoogle, signInAsGuest, logOut, auth } from "@services/firebaseAuth.service";
 import { updateUserProfile } from "@services/userSettings.service";
 
 export function useAuth() {
   const { user, loading } = useAuthProvider();
-  console.log('🔐 useAuth: user:', user?.uid, 'loading:', loading);
+  debugLog('🔐 useAuth: user:', user?.uid, 'loading:', loading);
   const router = useRouter();
   const { i18n } = useTranslation();
 

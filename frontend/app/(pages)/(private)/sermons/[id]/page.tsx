@@ -103,6 +103,7 @@ export default function SermonPage() {
   const isOnline = useOnlineStatus();
   const isReadOnly = !isOnline;
 
+
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');

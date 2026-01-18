@@ -4,6 +4,7 @@ import {
   hasPrepModeAccess
 } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { setDebugModeEnabled } from '@/utils/debugMode';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -13,6 +14,8 @@ describe('User Settings Service - Prep Mode Functions', () => {
   const resetScenario = () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
+    // Enable debug mode for tests to verify logging
+    setDebugModeEnabled(true);
   };
 
   beforeEach(resetScenario);
@@ -196,7 +199,7 @@ describe('User Settings Service - Prep Mode Functions', () => {
 
               expect(result).toBe(true);
               expect(mockFetch).not.toHaveBeenCalled();
-              expect(consoleSpy).toHaveBeenCalledWith('👤 hasPrepModeAccess: guest user, returning true');
+              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '👤 hasPrepModeAccess: guest user, returning true');
 
               consoleSpy.mockRestore();
             }
@@ -214,9 +217,9 @@ describe('User Settings Service - Prep Mode Functions', () => {
               const result = await hasPrepModeAccess('user1');
 
               expect(result).toBe(true);
-              expect(consoleSpy).toHaveBeenCalledWith('👤 hasPrepModeAccess: authenticated user, fetching settings...');
-              expect(consoleSpy).toHaveBeenCalledWith('📊 hasPrepModeAccess: fetched settings:', { enablePrepMode: true });
-              expect(consoleSpy).toHaveBeenCalledWith('✅ hasPrepModeAccess: access result:', true);
+              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '👤 hasPrepModeAccess: authenticated user, fetching settings...');
+              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '📊 hasPrepModeAccess: fetched settings:', { enablePrepMode: true });
+              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '✅ hasPrepModeAccess: access result:', true);
 
               consoleSpy.mockRestore();
             }

@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { getSermonById } from "@services/sermon.service";
 import { debugLog } from "@/utils/debugMode";
 import { auth } from "@services/firebaseAuth.service";
+import { getSermonById } from "@services/sermon.service";
 
 import type { Sermon, Thought } from "@/models/models";
 
