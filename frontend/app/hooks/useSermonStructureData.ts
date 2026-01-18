@@ -55,7 +55,10 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     setSermonState((prev) => {
       const next = updater instanceof Function ? updater(prev) : updater;
       if (sermonId) {
+        // Update in-memory cache for immediate UI feedback
         queryClient.setQueryData(["sermon", sermonId], next ?? undefined);
+      // Invalidate to ensure persisted cache syncs with fresh server data
+      queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
       }
       return next;
     });

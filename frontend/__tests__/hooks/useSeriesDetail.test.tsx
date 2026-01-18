@@ -184,7 +184,7 @@ describe('useSeriesDetail', () => {
       });
 
       expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-1', 'new-sermon-id', 3);
-      expect(mockGetSeriesById).toHaveBeenCalledTimes(2); // initial + refresh
+      expect(mockGetSeriesById).toHaveBeenCalledTimes(3); // initial + refresh + invalidate
     });
 
     it('should handle add sermon error', async () => {

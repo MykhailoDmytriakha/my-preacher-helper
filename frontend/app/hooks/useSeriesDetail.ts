@@ -79,13 +79,14 @@ export function useSeriesDetail(seriesId: string) {
         await addSermonToSeries(series.id, sermonId, position);
         await refreshSeriesDetail();
         queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
       } catch (e: unknown) {
         const errorObj = e instanceof Error ? e : new Error(String(e));
         setMutationError(errorObj);
         throw errorObj;
       }
     },
-    [series, refreshSeriesDetail, queryClient]
+    [series, refreshSeriesDetail, queryClient, seriesId]
   );
 
   const addSermons = useCallback(
@@ -188,6 +189,7 @@ export function useSeriesDetail(seriesId: string) {
         });
 
         queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
       } catch (e: unknown) {
         if (previous) {
           queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
@@ -221,6 +223,7 @@ export function useSeriesDetail(seriesId: string) {
 
         await removeSermonFromSeries(series.id, sermonId);
         queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
       } catch (e: unknown) {
         if (previous) {
           queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
@@ -259,6 +262,8 @@ export function useSeriesDetail(seriesId: string) {
 
       try {
         await reorderSermonsAPI(series.id, sermonIds);
+        // Invalidate to ensure persisted cache syncs after reorder
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
       } catch (e: unknown) {
         if (previous) {
           queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);

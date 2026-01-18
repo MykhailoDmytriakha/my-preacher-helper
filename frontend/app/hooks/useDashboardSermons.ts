@@ -94,6 +94,8 @@ export function useSermonMutations() {
       if (!old) return [updatedSermon];
       return old.map((s) => (s.id === updatedSermon.id ? updatedSermon : s));
     });
+    // Invalidate to ensure persisted cache syncs
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
   };
 
   const deleteSermonFromCache = (id: string) => {
@@ -101,6 +103,8 @@ export function useSermonMutations() {
       if (!old) return [];
       return old.filter((s) => s.id !== id);
     });
+    // Invalidate to ensure persisted cache syncs
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
   };
 
   const addSermonToCache = (newSermon: Sermon) => {
@@ -108,6 +112,8 @@ export function useSermonMutations() {
       if (!old) return [newSermon];
       return [newSermon, ...old];
     });
+    // Invalidate to ensure persisted cache syncs
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
   };
 
   return { updateSermonCache, deleteSermonFromCache, addSermonToCache };

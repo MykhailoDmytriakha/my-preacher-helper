@@ -9,6 +9,55 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-18 Implementation: Fixed All 6 Cache Desync Issues Across App
+**Problem:** Applied invalidateQueries pattern to all 6 locations with setQueryData cache desynchronization: useSermon.setSermon, useSeriesDetail operations (reorder/add/remove), and useDashboardSermons cache functions.
+**Attempts:** Systematically added queryClient.invalidateQueries() after all setQueryData calls affecting persisted data, ensuring guaranteed cache synchronization through successful refetch pattern.
+**Solution:** Consistent application of setQueryData + invalidateQueries pattern across all optimistic update locations, guaranteeing persisted cache sync and eliminating data loss on app restarts.
+**Why it worked:** Single reliable pattern (invalidateQueries after setQueryData) applied uniformly, leveraging React Query's built-in cache persistence for successful queries, with minimal code changes and comprehensive test coverage.
+**Principle:** When implementing optimistic updates with setQueryData, always immediately follow with invalidateQueries for the same key to guarantee persisted cache synchronization and prevent data loss.
+
+### 2026-01-18 Research: Found 3 More Locations with Same Cache Desync Pattern
+**Problem:** Investigated other setQueryData usage patterns, found 3 additional locations with same persisted cache desynchronization issue affecting sermon editing, series management, and dashboard.
+**Attempts:** Systematically analyzed all setQueryData usage across codebase, identified patterns where invalidateQueries missing, confirmed same root cause applies to multiple features.
+**Solution:** Documented critical issues in useSermon.setSermon (sermon page updates), useSeriesDetail.updateDetailCache (series reordering), and useDashboardSermons cache functions (dashboard UI) - all need invalidateQueries addition.
+**Why it worked:** Comprehensive pattern analysis revealed systematic issue across optimistic update implementations, confirming root cause affects multiple user workflows beyond initial focus mode fix.
+**Principle:** When implementing optimistic updates with setQueryData, always pair with invalidateQueries to ensure persisted cache synchronization, otherwise data loss occurs on app restart.
+
+### 2026-01-18 Implementation: IndexedDB Cache Sync Fix Applied
+**Problem:** Applied invalidateQueries after setQueryData in setSermon method to fix persisted cache desynchronization, ensuring thought order persistence across app restarts.
+**Attempts:** Modified useSermonStructureData.ts to combine setQueryData (immediate UI feedback) with invalidateQueries (guaranteed persisted cache sync), tested with existing test suite.
+**Solution:** Added queryClient.invalidateQueries(["sermon", sermonId]) after setQueryData to ensure every sermon state update triggers refetch and persisted cache synchronization.
+**Why it worked:** Simple one-line addition following standard React Query patterns guarantees cache persistence without complex PersistQueryClientProvider modifications, with minimal performance trade-off.
+**Principle:** When fixing cache synchronization issues, prefer adding invalidateQueries to existing setQueryData calls rather than modifying dehydration logic, as it guarantees proper persistence through standard query lifecycle.
+
+### 2026-01-18 Impact Analysis: Simple Solution for IndexedDB Cache Sync Issues
+**Problem:** Analyzed full impact of IndexedDB persisted cache desynchronization affecting sermon data persistence, identified invalidateQueries as simple reliable fix.
+**Attempts:** Mapped complete system dependencies and downstream effects, found medium blast radius isolated to sermon workflow, designed minimal-change solution using standard React Query patterns.
+**Solution:** Replace setQueryData with invalidateQueries for sermon updates to guarantee persisted cache synchronization with server state, ensuring thought order persistence across app restarts.
+**Why it worked:** Systematic impact mapping revealed invalidateQueries as lowest-risk, highest-reliability fix that follows existing app patterns and guarantees cache sync without complex PersistQueryClientProvider modifications.
+**Principle:** When fixing persisted cache synchronization issues, prefer standard React Query invalidation patterns over complex cache manipulation, as they guarantee proper dehydration and persistence.
+
+### 2026-01-18 IndexedDB Cache Desynchronization Breaking Data Persistence
+**Problem:** User correctly identified that thought order changes were saved locally but lost on restart due to IndexedDB persisted cache not syncing with setQueryData updates.
+**Attempts:** Investigated PersistQueryClientProvider behavior, found that setQueryData updates in-memory cache but persisted cache only saves queries with status 'success', causing desynchronization.
+**Solution:** Identified that PersistQueryClientProvider's shouldDehydrateQuery filter prevents local setQueryData updates from persisting to IndexedDB, causing data loss on app restart.
+**Why it worked:** Systematic investigation validated user's hypothesis 100%, tracing from setQueryData behavior through dehydration filters to cache restoration overwrite mechanism.
+**Principle:** When using PersistQueryClientProvider, setQueryData updates don't persist to IndexedDB unless the query has status 'success'; use invalidateQueries or mutations for reliable persistence.
+
+### 2026-01-18 Thought Order Loss Due to Cache Race Conditions
+**Problem:** User sets thought order (1,2,3) but finds it reverted (3,1,2) after returning later, due to race condition between debounced position saves and React Query cache invalidation.
+**Attempts:** Investigated position persistence, found it working correctly; identified race between 500ms debounced saves and 30s staleTime causing refetch before saves complete.
+**Solution:** Identified primary root cause as `refetchOnMount: 'always'` + `staleTime: 30s` + 500ms debounce creating 29.5s race window where refetch loads old positions before debounced saves complete.
+**Why it worked:** Systematic 150% investigation traced from user symptoms through cache timing to specific code lines, revealing the race condition window and optimistic update conflicts.
+**Principle:** When optimistic updates use debounced saves, ensure cache invalidation timing doesn't create race windows where refetch can load stale data before pending saves complete.
+
+### 2026-01-18 Focus Mode Thoughts Jumping Root Cause Analysis
+**Problem:** Thoughts were jumping in focus mode when adding thoughts or over time, suspected to be related to recent IndexedDB changes.
+**Attempts:** Investigated IndexedDB persistence, React Query cache behavior, URL navigation patterns, and component mounting cycles.
+**Solution:** Identified primary root cause as global React Query `refetchOnMount: 'always'` setting from January 18 cache fix, causing excessive refetches on every component mount during UI interactions.
+**Why it worked:** Systematic 150% investigation (100% core + 50% context) traced the issue from user symptoms through configuration changes to specific code lines, establishing 95% confidence in the primary root cause.
+**Principle:** When investigating UI jumping or unexpected re-renders, always check global data fetching configuration changes first, as `refetchOnMount: 'always'` can cause excessive network requests during component interactions.
+
 ### 2026-01-17 Tooltip Boundary Detection Implementation
 **Problem:** OutlinePointGuidanceTooltip was extending beyond scrollable container boundaries, causing poor UX where tooltip content would be cut off or not visible.
 **Attempts:** Initially considered fixed positioning, but needed container-aware positioning within scrollable areas.

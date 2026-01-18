@@ -76,6 +76,8 @@ function useSermon(sermonId: string) {
         const resolved = updater instanceof Function ? updater(previous ?? null) : updater;
         return resolved ?? undefined;
       });
+      // Invalidate to ensure persisted cache syncs with fresh server data
+      queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
     },
     [queryClient, sermonId]
   );
