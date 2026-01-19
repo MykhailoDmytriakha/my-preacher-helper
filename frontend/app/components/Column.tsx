@@ -1083,7 +1083,7 @@ export default function Column({
         </button>
 
         <div className="space-y-6 md:space-y-6 space-y-8">
-          {/* In focus mode, show outline points even when there are no items */}
+          {/* In focus mode, show outline points and unassigned thoughts */}
           {localSermonPoints && localSermonPoints.length > 0 ? (
             <>
               {/* Render placeholders for each outline point with their thoughts */}
@@ -1111,12 +1111,34 @@ export default function Column({
                   setAudioError={setAudioError}
                 />
               ))}
+              {/* Always show unassigned thoughts section in focus mode */}
               {renderUnassignedThoughtsSection(unassignedItemsForDisplay)}
             </>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-              {t('structure.noEntries', { defaultValue: 'No entries' })}
-            </div>
+            /* When no outline points exist, show all items including unassigned ones */
+            items.length === 0 ? (
+              <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
+                {t('structure.noEntries')}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <SortableItem
+                    key={item.id}
+                    item={item}
+                    containerId={id}
+                    onEdit={onEdit}
+                    isHighlighted={item.id in highlightedItems}
+                    highlightType={highlightedItems[item.id]?.type}
+                    onKeep={onKeepItem}
+                    onRevert={onRevertItem}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    disabled={false}
+                  />
+                ))}
+              </div>
+            )
           )}
         </div>
       </div>

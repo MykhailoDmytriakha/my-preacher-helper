@@ -18,6 +18,7 @@ import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
 import { SwitchViewIcon } from "@/components/Icons";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
+import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -1033,6 +1034,10 @@ const PlanMainLayout = ({
       className="p-4"
       data-testid="sermon-plan-page-container"
     >
+      <ProgressSidebar
+        outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
+        savedSermonPoints={savedSermonPoints}
+      />
       <style jsx global>{sectionButtonStyles}</style>
       <style jsx global>{`
         /* Prevent scroll anchoring in dynamic plan columns */
