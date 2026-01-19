@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-18 Implementation: Fixed Dashboard Preached Status Sync Issue
+**Problem:** Sermon preached status wasn't updating immediately in dashboard after marking as preached/unpreached - status showed old state for several seconds before refreshing.
+**Attempts:** Initially investigated cache race conditions, examined PersistQueryClientProvider behavior, checked timing between API calls and cache updates.
+**Solution:** Added proper query invalidation for dashboard cache ['sermons', uid] in OptionMenu component's handleTogglePreached and handleSavePreachDate functions, ensuring both calendar and dashboard caches update simultaneously.
+**Why it worked:** OptionMenu was only invalidating calendar cache ['calendarSermons'] but dashboard uses ['sermons', uid] - adding the missing invalidation ensures immediate UI sync across all components.
+**Principle:** When updating shared data across multiple components with different query keys, invalidate ALL relevant query keys to prevent UI desynchronization and stale data display.
+
 ### 2026-01-18 Implementation: Fixed All 6 Cache Desync Issues Across App
 **Problem:** Applied invalidateQueries pattern to all 6 locations with setQueryData cache desynchronization: useSermon.setSermon, useSeriesDetail operations (reorder/add/remove), and useDashboardSermons cache functions.
 **Attempts:** Systematically added queryClient.invalidateQueries() after all setQueryData calls affecting persisted data, ensuring guaranteed cache synchronization through successful refetch pattern.

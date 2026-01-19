@@ -9,10 +9,35 @@ import { Sermon, PreachDate } from "@/models/models";
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
+import { auth } from "@services/firebaseAuth.service";
 import * as preachDatesService from "@services/preachDates.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
 
 import "@locales/i18n";
+
+function resolveUid(): string | undefined {
+  const currentUser = auth.currentUser;
+  if (currentUser?.uid) {
+    return currentUser.uid;
+  }
+
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  try {
+    const guestData = window.localStorage.getItem('guestUser');
+    if (!guestData) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(guestData) as { uid?: string };
+    return parsed.uid;
+  } catch (error) {
+    console.error('Error parsing guestUser from localStorage', error);
+    return undefined;
+  }
+}
 
 interface OptionMenuProps {
   sermon: Sermon;
@@ -112,11 +137,18 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
         preachDates: [] // Clear preach dates in local state
       });
 
-      // Invalidate calendar cache to reflect changes across tabs
+      // Invalidate both calendar and dashboard caches to reflect changes across tabs
       queryClient.invalidateQueries({
         queryKey: ['calendarSermons'],
         exact: false // Match all calendarSermons queries regardless of parameters
       });
+      const uid = resolveUid();
+      if (uid) {
+        queryClient.invalidateQueries({
+          queryKey: ['sermons', uid],
+          exact: true
+        });
+      }
 
       if (updated && onUpdate) {
         onUpdate(updated);
@@ -143,11 +175,18 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
         isPreached: true
       });
 
-      // Invalidate calendar cache to reflect changes across tabs
+      // Invalidate both calendar and dashboard caches to reflect changes across tabs
       queryClient.invalidateQueries({
         queryKey: ['calendarSermons'],
         exact: false // Match all calendarSermons queries regardless of parameters
       });
+      const uid = resolveUid();
+      if (uid) {
+        queryClient.invalidateQueries({
+          queryKey: ['sermons', uid],
+          exact: true
+        });
+      }
 
       if (updated && onUpdate) {
         onUpdate(updated);
