@@ -1,11 +1,11 @@
-import { 
-  useSensors, 
-  useSensor, 
+import {
+  useSensors,
+  useSensor,
   MouseSensor,
   TouchSensor,
   DragStartEvent,
   DragOverEvent,
-  DragEndEvent 
+  DragEndEvent
 } from "@dnd-kit/core";
 import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
@@ -118,6 +118,237 @@ const shouldSkipUpdate = (
   return false;
 };
 
+// Helper: Identify drop target and metadata
+interface DropTargetInfo {
+  overContainer: string;
+  outlinePointId: string | null | undefined;
+  droppedOnItem: boolean;
+  targetItemIndex: number;
+  targetItemSermonPointId: string | null;
+}
+
+const identifyDropTarget = (
+  over: DragEndEvent['over'],
+  containers: Record<string, Item[]>
+): DropTargetInfo => {
+  // Provide defaults if over is null (shouldn't happen but TypeScript requires it)
+  if (!over) {
+    return {
+      overContainer: '',
+      outlinePointId: undefined,
+      droppedOnItem: false,
+      targetItemIndex: -1,
+      targetItemSermonPointId: null,
+    };
+  }
+
+  let overContainer = over.data.current?.container;
+  let outlinePointId = over.data.current?.outlinePointId;
+  let droppedOnItem = false;
+  let targetItemIndex = -1;
+  let targetItemSermonPointId: string | null = null;
+
+  // Check if we're dropping on an outline point placeholder
+  if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
+    const dropTargetId = over.id.toString();
+    outlinePointId = dropTargetId.replace(OUTLINE_POINT_PREFIX, '');
+    overContainer = over.data.current?.container;
+  } else if (over.id.toString().startsWith(UNASSIGNED_PREFIX)) {
+    outlinePointId = null;
+    overContainer = over.data.current?.container;
+  } else if (over.id === "dummy-drop-zone" || over.id === "ambiguous-additional-drop") {
+    overContainer = "ambiguous";
+  } else if (!overContainer) {
+    overContainer = String(over.id);
+  }
+
+  // Find the index of the target item in the destination container
+  if (
+    over.id !== overContainer &&
+    !over.id.toString().startsWith(OUTLINE_POINT_PREFIX) &&
+    !over.id.toString().startsWith(UNASSIGNED_PREFIX)
+  ) {
+    droppedOnItem = true;
+    targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;
+    if (targetItemIndex !== -1) {
+      const targetItem = containers[overContainer][targetItemIndex];
+      targetItemSermonPointId = targetItem?.outlinePointId ?? null;
+    }
+  }
+
+  return {
+    overContainer,
+    outlinePointId,
+    droppedOnItem,
+    targetItemIndex,
+    targetItemSermonPointId,
+  };
+};
+
+// Helper: Calculate item placement in containers
+const calculateItemPlacement = (
+  containers: Record<string, Item[]>,
+  activeContainer: string,
+  overContainer: string,
+  activeId: string | number,
+  droppedOnItem: boolean,
+  targetItemIndex: number
+): Record<string, Item[]> => {
+  const updatedContainers = { ...containers };
+
+  if (activeContainer === overContainer) {
+    const items = [...updatedContainers[activeContainer]];
+    const oldIndex = items.findIndex((item) => item.id === activeId);
+
+    if (oldIndex !== -1) {
+      if (droppedOnItem && targetItemIndex !== -1) {
+        const [draggedItem] = items.splice(oldIndex, 1);
+        items.splice(targetItemIndex, 0, draggedItem);
+      } else if (!droppedOnItem) {
+        const [draggedItem] = items.splice(oldIndex, 1);
+        items.push(draggedItem);
+      }
+
+      updatedContainers[activeContainer] = items;
+    }
+  } else {
+    const activeItems = [...updatedContainers[activeContainer]];
+    const overItems = [...updatedContainers[overContainer]];
+
+    const activeIndex = activeItems.findIndex((item) => item.id === activeId);
+    if (activeIndex !== -1) {
+      const [draggedItem] = activeItems.splice(activeIndex, 1);
+
+      if (droppedOnItem && targetItemIndex !== -1) {
+        overItems.splice(targetItemIndex, 0, draggedItem);
+      } else {
+        overItems.push(draggedItem);
+      }
+
+      updatedContainers[activeContainer] = activeItems;
+      updatedContainers[overContainer] = overItems;
+    }
+  }
+
+  return updatedContainers;
+};
+
+// Helper: Determine outline point assignment
+const determineOutlinePointAssignment = (
+  outlinePointId: string | null | undefined,
+  droppedOnItem: boolean,
+  targetItemSermonPointId: string | null,
+  movedItem: Item,
+  activeContainer: string,
+  overContainer: string,
+  sermon: Sermon
+): string | null | undefined => {
+  // If dropped on a specific item and no explicit outline point target was set,
+  // inherit the target item's outline point assignment
+  if (typeof outlinePointId === 'undefined' && droppedOnItem) {
+    return targetItemSermonPointId;
+  }
+
+  // If dropped on container area (not a specific item or special placeholder),
+  // default to unassigned in the current/target section
+  if (typeof outlinePointId === 'undefined' && !droppedOnItem) {
+    return null;
+  }
+
+  // Explicit assignment
+  if (typeof outlinePointId === 'string') {
+    return outlinePointId;
+  }
+
+  if (outlinePointId === null) {
+    return null;
+  }
+
+  // No explicit outline point change requested
+  const preliminarySermonPointId: string | null | undefined = movedItem.outlinePointId;
+
+  // If container changed and previous outline point belongs to a different section, clear it
+  if (activeContainer !== overContainer && preliminarySermonPointId && sermon.outline) {
+    const sectionPoints =
+      overContainer === 'introduction' ? sermon.outline.introduction
+        : overContainer === 'main' ? sermon.outline.main
+          : overContainer === 'conclusion' ? sermon.outline.conclusion
+            : [];
+    const belongsToNewSection = sectionPoints?.some((p: SermonPoint) => p.id === preliminarySermonPointId);
+    if (!belongsToNewSection) {
+      return null;
+    }
+  }
+
+  return preliminarySermonPointId;
+};
+
+// Helper: Build updated item with new properties
+const buildUpdatedItem = (
+  movedItem: Item,
+  overContainer: string,
+  finalSermonPointId: string | null | undefined,
+  columnTitles: Record<string, string>,
+  updatedContainers: Record<string, Item[]>,
+  movedIndex: number
+): Item => {
+  // Determine the correct required tag for the destination container
+  let updatedRequiredTags: string[] = [];
+  if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
+    updatedRequiredTags = [columnTitles[overContainer as keyof typeof columnTitles]];
+  }
+
+  // Compute new positional rank within the destination group
+  const groupKey = finalSermonPointId || '__unassigned__';
+  const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
+
+  return {
+    ...movedItem,
+    requiredTags: updatedRequiredTags,
+    outlinePointId: finalSermonPointId,
+    position: newPos,
+  };
+};
+
+// Helper: Persist thought change
+const persistThoughtChange = (
+  sermon: Sermon,
+  movedItem: Item,
+  updatedRequiredTags: string[],
+  finalSermonPointId: string | null | undefined,
+  newPos: number,
+  debouncedSaveThought: (sermonId: string, thought: Thought) => void
+): boolean => {
+  const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
+  if (thought) {
+    const updatedThought: Thought = {
+      ...thought,
+      tags: [
+        ...updatedRequiredTags,
+        ...(movedItem.customTagNames || []).map((tag) => tag.name),
+      ],
+      outlinePointId: finalSermonPointId,
+      position: newPos,
+    };
+    debouncedSaveThought(sermon.id, updatedThought);
+    return true;
+  }
+  return false;
+};
+
+// Helper: Handle structure update
+const handleStructureUpdate = async (
+  sermon: Sermon,
+  newStructure: { introduction: string[]; main: string[]; conclusion: string[]; ambiguous: string[] },
+  setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>
+): Promise<void> => {
+  const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
+  if (changesDetected) {
+    await updateStructure(sermon.id, newStructure);
+    setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure } : prev));
+  }
+};
+
 interface UseStructureDndProps {
   containers: Record<string, Item[]>;
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
@@ -159,10 +390,10 @@ export const useStructureDnd = ({
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const id = String(event.active.id);
-    
+
     setIsDragEnding(false);
     setActiveId(id);
-    
+
     // Capture the original container at the start of the drag
     const original = Object.keys(containers).find((key) =>
       containers[key].some((item) => item.id === id)
@@ -225,10 +456,10 @@ export const useStructureDnd = ({
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
-    
+
     // Set drag ending flag immediately to prevent interference
     setIsDragEnding(true);
-    
+
     // Early return if no valid drop target
     if (!over || !sermon) {
       setActiveId(null);
@@ -238,44 +469,11 @@ export const useStructureDnd = ({
     }
 
     const activeContainer = originalContainer;
-    let overContainer = over.data.current?.container;
-    let outlinePointId = over.data.current?.outlinePointId;
-    
-    // Check if we're dropping on an outline point placeholder
-    if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
-      const dropTargetId = over.id.toString();
-      outlinePointId = dropTargetId.replace(OUTLINE_POINT_PREFIX, '');
-      overContainer = over.data.current?.container;
-    } 
-    else if (over.id.toString().startsWith(UNASSIGNED_PREFIX)) {
-      outlinePointId = null;
-      overContainer = over.data.current?.container;
-    } 
-    else if (over.id === "dummy-drop-zone" || over.id === "ambiguous-additional-drop") {
-      overContainer = "ambiguous";
-    } else if (!overContainer) {
-      overContainer = String(over.id);
-    }
-    
-    // Find the index of the target item in the destination container
-    let targetItemIndex = -1;
-    let droppedOnItem = false;
-    let targetItemSermonPointId: string | null = null;
 
-    if (
-      over.id !== overContainer &&
-      !over.id.toString().startsWith(OUTLINE_POINT_PREFIX) &&
-      !over.id.toString().startsWith(UNASSIGNED_PREFIX)
-    ) {
-      droppedOnItem = true;
-      targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;
-      if (targetItemIndex !== -1) {
-        const targetItem = containers[overContainer][targetItemIndex];
-        // If target item is unassigned, explicitly use null to signal clearing assignment
-        targetItemSermonPointId = targetItem?.outlinePointId ?? null;
-      }
-    }
-    
+    // Identify drop target
+    const dropTarget = identifyDropTarget(over, containers);
+    const { overContainer, outlinePointId, droppedOnItem, targetItemIndex, targetItemSermonPointId } = dropTarget;
+
     if (
       !activeContainer ||
       !overContainer ||
@@ -286,70 +484,51 @@ export const useStructureDnd = ({
       setIsDragEnding(false);
       return;
     }
-    
+
     // Store the previous state for potential rollback
     const previousContainers = { ...containers };
     const previousSermon = { ...sermon };
-    
+
     // Perform the UI update immediately for smooth UX
-    let updatedContainers = { ...containers };
-    
-    if (activeContainer === overContainer) {
-      const items = [...updatedContainers[activeContainer]];
-      const oldIndex = items.findIndex((item) => item.id === active.id);
-      
-      if (oldIndex !== -1) {
-        if (droppedOnItem && targetItemIndex !== -1) {
-          const [draggedItem] = items.splice(oldIndex, 1);
-          items.splice(targetItemIndex, 0, draggedItem);
-        } else if (!droppedOnItem) {
-          const [draggedItem] = items.splice(oldIndex, 1);
-          items.push(draggedItem);
-        }
-        
-        updatedContainers[activeContainer] = items;
-      }
-    } else {
-      const activeItems = [...updatedContainers[activeContainer]];
-      const overItems = [...updatedContainers[overContainer]];
-      
-      const activeIndex = activeItems.findIndex((item) => item.id === active.id);
-      if (activeIndex !== -1) {
-        const [draggedItem] = activeItems.splice(activeIndex, 1);
-        
-        if (droppedOnItem && targetItemIndex !== -1) {
-          overItems.splice(targetItemIndex, 0, draggedItem);
-        } else {
-          overItems.push(draggedItem);
-        }
-        
-        updatedContainers[activeContainer] = activeItems;
-        updatedContainers[overContainer] = overItems;
-      }
-    }
-    
-    // Update outline point ID in the moved item immediately (before API calls)
-    // If dropped on a specific item and no explicit outline point target was set,
-    // inherit the target item's outline point assignment
-    if (typeof outlinePointId === 'undefined' && droppedOnItem) {
-      outlinePointId = targetItemSermonPointId;
-    }
-    // If dropped on container area (not a specific item or special placeholder),
-    // default to unassigned in the current/target section
-    if (typeof outlinePointId === 'undefined' && !droppedOnItem) {
-      outlinePointId = null;
+    let updatedContainers = calculateItemPlacement(
+      containers,
+      activeContainer,
+      overContainer,
+      active.id,
+      droppedOnItem,
+      targetItemIndex
+    );
+
+    // Find moved item
+    const movedIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
+    if (movedIndex === -1) {
+      setActiveId(null);
+      setOriginalContainer(null);
+      setIsDragEnding(false);
+      return;
     }
 
-    if (activeContainer !== overContainer || outlinePointId !== undefined) {
-      const itemIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
-      if (itemIndex !== -1) {
-        updatedContainers[overContainer][itemIndex] = {
-          ...updatedContainers[overContainer][itemIndex],
-          outlinePointId: outlinePointId
-        };
-      }
+    const movedItem = updatedContainers[overContainer][movedIndex];
+
+    // Determine final outline point assignment
+    const finalSermonPointId = determineOutlinePointAssignment(
+      outlinePointId,
+      droppedOnItem,
+      targetItemSermonPointId,
+      movedItem,
+      activeContainer,
+      overContainer,
+      sermon
+    );
+
+    // Update outline point ID in the moved item
+    if (activeContainer !== overContainer || finalSermonPointId !== undefined) {
+      updatedContainers[overContainer][movedIndex] = {
+        ...updatedContainers[overContainer][movedIndex],
+        outlinePointId: finalSermonPointId
+      };
     }
-    
+
     // Dedupe by id within affected containers before applying (safety)
     if (activeContainer === overContainer) {
       updatedContainers[overContainer] = ensureUniqueItems(updatedContainers[overContainer]);
@@ -364,12 +543,12 @@ export const useStructureDnd = ({
     // Apply state updates immediately
     setContainers(updatedContainers);
     containersRef.current = updatedContainers;
-    
+
     // Clear drag state immediately
     setActiveId(null);
     setOriginalContainer(null);
     setIsDragEnding(false);
-    
+
     // Build newStructure for API update
     const newStructure = {
       introduction: dedupeIds(updatedContainers.introduction.map((item) => item.id)),
@@ -377,132 +556,84 @@ export const useStructureDnd = ({
       conclusion: dedupeIds(updatedContainers.conclusion.map((item) => item.id)),
       ambiguous: dedupeIds(updatedContainers.ambiguous.map((item) => item.id)),
     };
-    
+
     // Make API calls in background with rollback on error
     try {
       // Update outline point assignment and required section tag if needed
       let positionPersisted = false;
-      if (activeContainer !== overContainer || outlinePointId !== undefined) {
-        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
-        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
+      if (activeContainer !== overContainer || finalSermonPointId !== undefined) {
+        const updatedMoved = updatedContainers[overContainer][movedIndex];
+        const updatedItem = buildUpdatedItem(
+          updatedMoved,
+          overContainer,
+          finalSermonPointId,
+          columnTitles,
+          updatedContainers,
+          movedIndex
+        );
 
-        if (movedItem && sermon) {
-          // Determine the correct required tag for the destination container
-          let updatedRequiredTags: string[] = [];
-          if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
-            updatedRequiredTags = [columnTitles[overContainer as keyof typeof columnTitles]];
-          }
+        // Update UI with final item
+        updatedContainers[overContainer][movedIndex] = updatedItem;
+        setContainers(updatedContainers);
+        containersRef.current = updatedContainers;
 
-          // Determine final outlinePointId value to persist
-          let finalSermonPointId: string | null | undefined = undefined;
-
-          if (typeof outlinePointId === 'string') {
-            finalSermonPointId = outlinePointId;
-          } else if (outlinePointId === null) {
-            finalSermonPointId = null;
-          } else {
-            // No explicit outline point change requested
-            finalSermonPointId = movedItem.outlinePointId;
-
-            // If container changed and previous outline point belongs to a different section, clear it
-            if (activeContainer !== overContainer && finalSermonPointId && sermon.outline) {
-              const sectionPoints =
-                overContainer === 'introduction' ? sermon.outline.introduction
-                : overContainer === 'main' ? sermon.outline.main
-                : overContainer === 'conclusion' ? sermon.outline.conclusion
-                : [];
-              const belongsToNewSection = sectionPoints?.some((p: SermonPoint) => p.id === finalSermonPointId);
-              if (!belongsToNewSection) {
-                finalSermonPointId = null;
-              }
-            }
-          }
-
-          // Compute new positional rank within the destination group
-          const groupKey = finalSermonPointId || '__unassigned__';
-          const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
-
-          // Reflect these updates in local containers immediately to keep UI and persistence consistent
-          updatedContainers[overContainer][movedIndex] = {
-            ...movedItem,
-            requiredTags: updatedRequiredTags,
-            outlinePointId: finalSermonPointId,
-            position: newPos,
-          };
-          setContainers(updatedContainers);
-          containersRef.current = updatedContainers;
-
-          // Persist the updated thought
-          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
-          if (thought) {
-            const updatedThought: Thought = {
-              ...thought,
-              tags: [
-                ...updatedRequiredTags,
-                ...(movedItem.customTagNames || []).map((tag) => tag.name),
-              ],
-              outlinePointId: finalSermonPointId,
-              position: newPos,
-            };
-            debouncedSaveThought(sermon.id, updatedThought);
-            positionPersisted = true;
-          }
-        }
+        // Persist the updated thought
+        positionPersisted = persistThoughtChange(
+          sermon,
+          updatedItem,
+          updatedItem.requiredTags || [],
+          updatedItem.outlinePointId,
+          updatedItem.position || 0,
+          debouncedSaveThought
+        );
       }
 
       // If only reordering within the same group (no container or outline change), still persist position
       if (!positionPersisted) {
-        const movedIndex = updatedContainers[overContainer].findIndex((item) => item.id === active.id);
-        const movedItem = movedIndex !== -1 ? updatedContainers[overContainer][movedIndex] : undefined;
-        if (movedItem && sermon) {
-          const groupKey = (movedItem.outlinePointId || '__unassigned__');
-          const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
+        const currentMoved = updatedContainers[overContainer][movedIndex];
+        const groupKey = (currentMoved.outlinePointId || '__unassigned__');
+        const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
 
-          // Update UI and persist
-          updatedContainers[overContainer][movedIndex] = {
-            ...movedItem,
+        // Update UI and persist
+        updatedContainers[overContainer][movedIndex] = {
+          ...currentMoved,
+          position: newPos,
+        };
+        setContainers(updatedContainers);
+        containersRef.current = updatedContainers;
+
+        const thought = sermon.thoughts.find((t: Thought) => t.id === currentMoved.id);
+        if (thought) {
+          const updatedThought: Thought = {
+            ...thought,
             position: newPos,
           };
-          setContainers(updatedContainers);
-          containersRef.current = updatedContainers;
-
-          const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
-          if (thought) {
-            const updatedThought: Thought = {
-              ...thought,
-              position: newPos,
-            };
-            debouncedSaveThought(sermon.id, updatedThought);
-          }
+          debouncedSaveThought(sermon.id, updatedThought);
         }
       }
-      
+
       // Update structure if needed
-      const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
-      if (changesDetected) {
-        await updateStructure(sermon.id, newStructure);
-        setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure} : prev));
-      }
-      
+      await handleStructureUpdate(sermon, newStructure, setSermon);
+
     } catch (error) {
       console.error("Error updating drag and drop:", error);
-      
+
       // Rollback optimistic updates on error
       setContainers(previousContainers);
       containersRef.current = previousContainers;
       setSermon(previousSermon);
-      
+
       // Show user-friendly error message
       toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
     }
   }, [
-    sermon, 
-    originalContainer, 
-    containers, 
-    setContainers, 
-    containersRef, 
-    setActiveId, 
-    setOriginalContainer, 
+    sermon,
+    originalContainer,
+    containers,
+    setContainers,
+    containersRef,
+    setActiveId,
+    setOriginalContainer,
     setIsDragEnding,
     columnTitles,
     debouncedSaveThought,

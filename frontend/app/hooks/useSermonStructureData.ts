@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought } from '@/models/models';
+import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
@@ -13,6 +13,273 @@ import { getSectionBaseColor } from '@lib/sections';
 // Constants for repeated strings
 const DEFAULT_SECTION_NAMES = ["introduction", "main part", "conclusion"];
 const RUSSIAN_SECTION_NAMES = ["вступление", "основная часть", "заключение"];
+
+// Helper: Fetch sermon data
+async function fetchSermonData(
+  sermonId: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+  isOnlineResolved: boolean
+): Promise<Sermon | null> {
+  const cachedSermon = isOnlineResolved
+    ? await queryClient.fetchQuery({
+      queryKey: ["sermon", sermonId],
+      queryFn: () => getSermonById(sermonId),
+      staleTime: 60_000,
+      networkMode: 'always',
+    })
+    : queryClient.getQueryData<Sermon>(["sermon", sermonId]);
+  return cachedSermon ?? null;
+}
+
+// Helper: Fetch and process tags
+async function fetchTagsData(
+  fetchedSermon: Sermon,
+  queryClient: ReturnType<typeof useQueryClient>,
+  isOnlineResolved: boolean,
+  t: TFunction
+): Promise<{
+  requiredTags: Tag[];
+  customTags: Tag[];
+  allTags: Record<string, { name: string; color?: string }>;
+}> {
+  let tagsData: { requiredTags: Tag[]; customTags: Tag[] };
+  const tagsQueryKey = ['tags', fetchedSermon.userId];
+
+  try {
+    if (!isOnlineResolved) {
+      tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
+    } else {
+      tagsData = await queryClient.fetchQuery({
+        queryKey: tagsQueryKey,
+        queryFn: () => getTags(fetchedSermon.userId),
+        staleTime: 60_000,
+        networkMode: 'always'
+      });
+    }
+  } catch (tagError) {
+    console.error("Error fetching tags:", tagError);
+    tagsData = { requiredTags: [], customTags: [] };
+    toast.error(t('errors.fetchTagsError'));
+  }
+
+  const allTags: Record<string, { name: string; color?: string }> = {};
+  (tagsData.requiredTags || []).forEach((tag: Tag) => {
+    const normalizedName = tag.name.trim().toLowerCase();
+    allTags[normalizedName] = { name: tag.name, color: tag.color };
+  });
+  (tagsData.customTags || []).forEach((tag: Tag) => {
+    const normalizedName = tag.name.trim().toLowerCase();
+    if (!allTags[normalizedName]) {
+      allTags[normalizedName] = { name: tag.name, color: tag.color };
+    }
+  });
+
+  return { ...tagsData, allTags };
+}
+
+// Helper: Process thoughts into items
+function processThoughtsIntoItems(
+  fetchedSermon: Sermon,
+  allTags: Record<string, { name: string; color?: string }>
+): Record<string, Item> {
+  const allThoughtItems: Record<string, Item> = {};
+
+  (fetchedSermon.thoughts || []).forEach((thought: Thought) => {
+    const stableId = thought.id;
+    const normalizedTags = Array.isArray(thought.tags)
+      ? thought.tags.map((tag: string) => tag.trim().toLowerCase())
+      : [];
+
+    const customTagNames = normalizedTags.filter(
+      (tag: string) =>
+        !RUSSIAN_SECTION_NAMES.includes(tag) &&
+        !DEFAULT_SECTION_NAMES.includes(tag)
+    );
+
+    const enrichedCustomTags = customTagNames.map((tagName: string) => {
+      const tagInfo = allTags[tagName];
+      const color = tagInfo?.color || "#4c51bf";
+      return {
+        name: tagInfo?.name || tagName,
+        color: color,
+      };
+    });
+
+    const relevantTags = normalizedTags.filter((tag: string) =>
+      RUSSIAN_SECTION_NAMES.includes(tag) ||
+      DEFAULT_SECTION_NAMES.includes(tag)
+    );
+
+    let outlinePointData;
+    if (thought.outlinePointId && fetchedSermon.outline) {
+      const outlineSections = ['introduction', 'main', 'conclusion'] as const;
+      for (const section of outlineSections) {
+        const point = fetchedSermon.outline[section]?.find((p: SermonPoint) => p.id === thought.outlinePointId);
+        if (point) {
+          outlinePointData = {
+            text: point.text,
+            section: ''
+          };
+          break;
+        }
+      }
+    }
+
+    const item: Item = {
+      id: stableId,
+      content: thought.text,
+      customTagNames: enrichedCustomTags,
+      requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
+      outlinePoint: outlinePointData,
+      outlinePointId: thought.outlinePointId,
+      position: (thought as { position?: number }).position
+    };
+
+    allThoughtItems[stableId] = item;
+  });
+
+  return allThoughtItems;
+}
+
+// Helper: Distribute items to sections
+function distributeItemsToSections(
+  allThoughtItems: Record<string, Item>,
+  structure: ThoughtsBySection | string | undefined,
+  columnTitles: Record<string, string>
+): {
+  intro: Item[];
+  main: Item[];
+  concl: Item[];
+  ambiguous: Item[];
+} {
+  const intro: Item[] = [];
+  const main: Item[] = [];
+  const concl: Item[] = [];
+  const ambiguous: Item[] = [];
+  const usedIds = new Set<string>();
+
+  // Step 1: Process structure if it exists
+  if (structure) {
+    const structureObj = typeof structure === "string"
+      ? JSON.parse(structure)
+      : structure;
+
+    if (structureObj && typeof structureObj === 'object') {
+      ["introduction", "main", "conclusion"].forEach((section) => {
+        if (Array.isArray(structureObj[section])) {
+          const target = section === "introduction" ? intro : section === "main" ? main : concl;
+          const sectionTagName = columnTitles[section];
+          const seen = new Set<string>();
+          const orderedUniqueIds = structureObj[section].filter((id: string) => {
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+
+          const itemsForSection = orderedUniqueIds
+            .map((thoughtId: string) => allThoughtItems[thoughtId])
+            .filter(Boolean) as Item[];
+
+          const withSectionTag = itemsForSection.map((it) => ({
+            ...it,
+            requiredTags: it.requiredTags?.includes(sectionTagName)
+              ? it.requiredTags
+              : [...(it.requiredTags || []), sectionTagName]
+          }));
+
+          const allPos = withSectionTag.length > 0 && withSectionTag.every(i => typeof i.position === 'number');
+          const sorted = allPos
+            ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
+            : withSectionTag;
+          for (const item of sorted) {
+            target.push(item);
+            usedIds.add(item.id);
+          }
+        }
+      });
+    }
+  }
+
+  // Step 2: Add remaining thoughts
+  Object.values(allThoughtItems).forEach(item => {
+    if (!usedIds.has(item.id)) {
+      const itemRequiredTags = item.requiredTags || [];
+      let placed = false;
+      if (itemRequiredTags.length === 1) {
+        const tagName = itemRequiredTags[0];
+        if (tagName === columnTitles.introduction) {
+          intro.push(item);
+          placed = true;
+        } else if (tagName === columnTitles.main) {
+          main.push(item);
+          placed = true;
+        } else if (tagName === columnTitles.conclusion) {
+          concl.push(item);
+          placed = true;
+        }
+      }
+
+      if (!placed) {
+        item.requiredTags = [];
+        ambiguous.push(item);
+      }
+    }
+  });
+
+  return { intro, main, concl, ambiguous };
+}
+
+// Helper: Fetch outline data
+async function fetchOutlineData(
+  sermonId: string,
+  fetchedSermon: Sermon,
+  queryClient: ReturnType<typeof useQueryClient>,
+  isOnlineResolved: boolean,
+  t: TFunction
+): Promise<SermonOutline | undefined> {
+  let outlineData: SermonOutline | undefined;
+
+  if (isOnlineResolved) {
+    try {
+      outlineData = await queryClient.fetchQuery({
+        queryKey: ["sermon-outline", sermonId],
+        queryFn: () => getSermonOutline(sermonId),
+        staleTime: 60_000,
+        networkMode: 'always',
+      });
+    } catch (outlineError) {
+      console.error("Error fetching sermon outline:", outlineError);
+      toast.error(t('errors.fetchOutlineError'));
+      outlineData = undefined;
+    }
+  } else {
+    outlineData = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
+  }
+
+  return outlineData ?? fetchedSermon.outline;
+}
+
+// Helper: Seed positions for items
+function seedPositions(items: Item[]): Item[] {
+  const anyPos = items.some(i => typeof i.position === 'number');
+  if (!anyPos) {
+    const base = 1000;
+    return items.map((it, idx) => ({ ...it, position: base * (idx + 1) }));
+  }
+  let cursor = 1000;
+  return items.map((it) => {
+    if (typeof it.position === 'number') return it;
+    cursor += 1000;
+    return { ...it, position: cursor };
+  });
+}
+
+// Helper: Sort by position
+function sortByPosition(items: Item[]): Item[] {
+  const anyPos = items.some(i => typeof i.position === 'number');
+  if (!anyPos) return items;
+  return [...items].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY));
+}
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {
   const isOnline = useOnlineStatus();
@@ -57,8 +324,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       if (sermonId) {
         // Update in-memory cache for immediate UI feedback
         queryClient.setQueryData(["sermon", sermonId], next ?? undefined);
-      // Invalidate to ensure persisted cache syncs with fresh server data
-      queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
+        // Invalidate to ensure persisted cache syncs with fresh server data
+        queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
       }
       return next;
     });
@@ -68,25 +335,18 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     async function initializeSermon() {
       if (!sermonId) {
         setLoading(false);
-        setError(null); // Ensure error is cleared
-        setSermon(null); // Clear sermon data
-        setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] }); // Clear containers
+        setError(null);
+        setSermon(null);
+        setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
         return;
       }
 
       setLoading(true);
-      setError(null); // Clear previous errors
+      setError(null);
 
       try {
-        const cachedSermon = isOnlineResolved
-          ? await queryClient.fetchQuery({
-              queryKey: ["sermon", sermonId],
-              queryFn: () => getSermonById(sermonId),
-              staleTime: 60_000,
-              networkMode: 'always',
-            })
-          : queryClient.getQueryData<Sermon>(["sermon", sermonId]);
-        const fetchedSermon = cachedSermon;
+        // Fetch sermon
+        const fetchedSermon = await fetchSermonData(sermonId, queryClient, isOnlineResolved);
         if (!fetchedSermon) {
           setSermon(null);
           setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
@@ -98,39 +358,13 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         }
         setSermon(fetchedSermon);
 
-        // Fetch tags (handle potential errors during tag fetching)
-        let tagsData: { requiredTags: Tag[]; customTags: Tag[] };
-        const tagsQueryKey = ['tags', fetchedSermon.userId];
-        try {
-            if (!isOnlineResolved) {
-              tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
-            } else {
-              tagsData = await queryClient.fetchQuery({
-                queryKey: tagsQueryKey,
-                queryFn: () => getTags(fetchedSermon.userId),
-                staleTime: 60_000,
-                networkMode: 'always'
-              });
-            }
-        } catch (tagError) {
-            console.error("Error fetching tags:", tagError);
-            tagsData = { requiredTags: [], customTags: [] }; // Default to empty if fetch fails
-            toast.error(t('errors.fetchTagsError'));
-        }
-
-
-        const allTags: Record<string, { name: string; color?: string }> = {};
-        (tagsData.requiredTags || []).forEach((tag: Tag) => { // Added type safety and default array
-          const normalizedName = tag.name.trim().toLowerCase();
-          allTags[normalizedName] = { name: tag.name, color: tag.color };
-        });
-        (tagsData.customTags || []).forEach((tag: Tag) => { // Added type safety and default array
-          const normalizedName = tag.name.trim().toLowerCase();
-          // Avoid overwriting required tags if names clash (though unlikely)
-          if (!allTags[normalizedName]) {
-             allTags[normalizedName] = { name: tag.name, color: tag.color };
-          }
-        });
+        // Fetch and process tags
+        const { allTags, requiredTags: _requiredTags, customTags: _customTags } = await fetchTagsData(
+          fetchedSermon,
+          queryClient,
+          isOnlineResolved,
+          t
+        );
 
         setRequiredTagColors({
           introduction: getSectionBaseColor('introduction'),
@@ -142,171 +376,33 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           .filter(
             (tag) =>
               !RUSSIAN_SECTION_NAMES.includes(tag.name.toLowerCase()) &&
-              !DEFAULT_SECTION_NAMES.includes(tag.name.toLowerCase()) // Also check English defaults
+              !DEFAULT_SECTION_NAMES.includes(tag.name.toLowerCase())
           )
           .map(tag => ({
-            name: tag.name, // Ensure name is included
+            name: tag.name,
             color: tag.color || "#808080"
           }));
         setAllowedTags(filteredAllowedTags);
 
-        const allThoughtItems: Record<string, Item> = {};
-        (fetchedSermon.thoughts || []).forEach((thought: Thought) => { // Added default array
-            const stableId = thought.id;
-            
-            // Ensure tags is an array before mapping
-            const normalizedTags = Array.isArray(thought.tags)
-              ? thought.tags.map((tag: string) => tag.trim().toLowerCase())
-              : [];
+        // Process thoughts into items
+        const allThoughtItems = processThoughtsIntoItems(fetchedSermon, allTags);
 
-            const customTagNames = normalizedTags.filter(
-                (tag: string) =>
-                    !RUSSIAN_SECTION_NAMES.includes(tag) &&
-                    !DEFAULT_SECTION_NAMES.includes(tag) // Also check English defaults
-            );
-            const enrichedCustomTags = customTagNames.map((tagName: string) => {
-              const tagInfo = allTags[tagName];
-              const color = tagInfo?.color || "#4c51bf"; // Default color if tag not found
-              return {
-                name: tagInfo?.name || tagName,
-                color: color,
-              };
-            });
+        // Distribute items to sections
+        const { intro, main, concl, ambiguous } = distributeItemsToSections(
+          allThoughtItems,
+          fetchedSermon.structure,
+          columnTitles
+        );
 
-            const relevantTags = normalizedTags.filter((tag: string) =>
-                RUSSIAN_SECTION_NAMES.includes(tag) ||
-                DEFAULT_SECTION_NAMES.includes(tag) // Also check English defaults
-            );
+        // Fetch outline
+        const outlineData = await fetchOutlineData(
+          sermonId,
+          fetchedSermon,
+          queryClient,
+          isOnlineResolved,
+          t
+        );
 
-            let outlinePointData;
-            if (thought.outlinePointId && fetchedSermon.outline) {
-                const outlineSections = ['introduction', 'main', 'conclusion'] as const;
-                for (const section of outlineSections) {
-                    const point = fetchedSermon.outline[section]?.find((p: SermonPoint) => p.id === thought.outlinePointId);
-                    if (point) {
-                        outlinePointData = {
-                            text: point.text,
-                            section: '' // Don't show section in structure page
-                        };
-                        break;
-                    }
-                }
-            }
-
-            const item: Item = {
-              id: stableId,
-              content: thought.text,
-              customTagNames: enrichedCustomTags,
-              // Map relevant tag names back to display names using allTags
-              requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
-              outlinePoint: outlinePointData,
-              outlinePointId: thought.outlinePointId,
-              position: (thought as { position?: number }).position
-            };
-            
-            allThoughtItems[stableId] = item;
-        });
-
-
-        const intro: Item[] = [];
-        const main: Item[] = [];
-        const concl: Item[] = [];
-        const ambiguous: Item[] = [];
-        const usedIds = new Set<string>();
-
-        // Step 1: Process structure if it exists (respect positions where available)
-        if (fetchedSermon.structure) {
-            const structureObj = typeof fetchedSermon.structure === "string"
-                ? JSON.parse(fetchedSermon.structure)
-                : fetchedSermon.structure;
-
-            if (structureObj && typeof structureObj === 'object') {
-                ["introduction", "main", "conclusion"].forEach((section) => {
-                    if (Array.isArray(structureObj[section])) {
-                        const target = section === "introduction" ? intro : section === "main" ? main : concl;
-                        const sectionTagName = columnTitles[section]; // Get translated name for tagging
-                        const seen = new Set<string>();
-                        const orderedUniqueIds = structureObj[section].filter((id: string) => {
-                          if (seen.has(id)) return false;
-                          seen.add(id);
-                          return true;
-                        });
-                        
-                        // If positions exist, use them to sort within the section; otherwise keep order from structure
-                        const itemsForSection = orderedUniqueIds
-                          .map((thoughtId: string) => allThoughtItems[thoughtId])
-                          .filter(Boolean) as Item[];
-                        
-                        const withSectionTag = itemsForSection.map((it) => ({ 
-                          ...it, 
-                          // Keep the original requiredTags but add the section tag if it's not already there
-                          requiredTags: it.requiredTags?.includes(sectionTagName) 
-                            ? it.requiredTags 
-                            : [...(it.requiredTags || []), sectionTagName]
-                        }));
-                        
-                        const allPos = withSectionTag.length > 0 && withSectionTag.every(i => typeof i.position === 'number');
-                        const sorted = allPos
-                          ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
-                          : withSectionTag;
-                        for (const item of sorted) {
-                          target.push(item);
-                          usedIds.add(item.id);
-                        }
-                    }
-                });
-            }
-        }
-
-        // Step 2: Add remaining thoughts, trying to sort by tag first
-         Object.values(allThoughtItems).forEach(item => {
-           if (!usedIds.has(item.id)) {
-             // Check the item's *own* required tags (derived from thought tags)
-             const itemRequiredTags = item.requiredTags || [];
-             let placed = false;
-             if (itemRequiredTags.length === 1) {
-                 const tagName = itemRequiredTags[0];
-                 // Use columnTitles which holds the translated names used for tagging
-                 if (tagName === columnTitles.introduction) {
-                     intro.push(item);
-                     placed = true;
-                 } else if (tagName === columnTitles.main) {
-                     main.push(item);
-                     placed = true;
-                 } else if (tagName === columnTitles.conclusion) {
-                     concl.push(item);
-                     placed = true;
-                 }
-             }
-
-             // If not placed by tag, put it in ambiguous
-             if (!placed) {
-                 // Clear potentially incorrect requiredTags before adding to ambiguous
-                 item.requiredTags = [];
-                 ambiguous.push(item);
-             }
-           }
-         });
-
-        // Step 3: Fetch and set outline points
-        let outlineData: SermonOutline | undefined;
-        if (isOnlineResolved) {
-          try {
-            outlineData = await queryClient.fetchQuery({
-              queryKey: ["sermon-outline", sermonId],
-              queryFn: () => getSermonOutline(sermonId),
-              staleTime: 60_000,
-              networkMode: 'always',
-            });
-          } catch (outlineError) {
-            console.error("Error fetching sermon outline:", outlineError);
-            toast.error(t('errors.fetchOutlineError'));
-            outlineData = undefined;
-          }
-        } else {
-          outlineData = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
-        }
-        outlineData = outlineData ?? fetchedSermon.outline;
         if (outlineData) {
           setSermonPoints({
             introduction: outlineData.introduction || [],
@@ -317,58 +413,16 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           setSermonPoints({ introduction: [], main: [], conclusion: [] });
         }
 
-        // Ensure items have positions for stable ordering
-        const seedPositions = (items: Item[]) => {
-          // If none have position, seed sequentially
-          const anyPos = items.some(i => typeof i.position === 'number');
-          if (!anyPos) {
-            const base = 1000;
-            return items.map((it, idx) => ({ ...it, position: base * (idx + 1) }));
-          }
-          // If some have, fill gaps preserving current order
-          let cursor = 1000;
-          return items.map((it) => {
-            if (typeof it.position === 'number') return it;
-            cursor += 1000;
-            return { ...it, position: cursor };
-          });
-        };
-
-        // Sort by position if present
-        const sortByPosition = (items: Item[]) => {
-          const anyPos = items.some(i => typeof i.position === 'number');
-          if (!anyPos) return items;
-          return [...items].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY));
-        };
-
-        // Step 4: Set final container state (sorted by position when available)
+        // Set final container state with positions
         const finalContainers = {
           introduction: sortByPosition(seedPositions(intro)),
           main: sortByPosition(seedPositions(main)),
           conclusion: sortByPosition(seedPositions(concl)),
           ambiguous: sortByPosition(seedPositions(ambiguous)),
         };
-        
+
         setContainers(finalContainers);
-        setIsAmbiguousVisible(ambiguous.length > 0); // Update visibility based on final ambiguous content
-
-
-        // Step 5: Update structure in backend if necessary (optional, based on original logic)
-        // This might be better handled explicitly by the component after user actions like drag/drop
-        /*
-        const newStructure = {
-          introduction: intro.map((item) => item.id),
-          main: main.map((item) => item.id),
-          conclusion: concl.map((item) => item.id),
-          // Ambiguous items might not need to be saved in the 'structure' document
-          // unless specifically intended. Check original requirements.
-          ambiguous: ambiguous.map((item) => item.id),
-        };
-        if (isStructureChanged(fetchedSermon.structure || {}, newStructure)) {
-           console.log("ThoughtsBySection changed on initial load, potentially updating backend.");
-           // await updateStructure(sermonId, newStructure); // Consider if auto-update on load is desired
-        }
-        */
+        setIsAmbiguousVisible(ambiguous.length > 0);
 
       } catch (err) {
         console.error("Error initializing sermon data:", err);
