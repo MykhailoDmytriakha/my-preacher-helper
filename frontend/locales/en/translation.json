@@ -107,6 +107,7 @@
   },
   "addSermon": {
     "newSermon": "New Sermon",
+    "createNewSermon": "Create New Sermon",
     "titleLabel": "Title",
     "titlePlaceholder": "Enter sermon title",
     "titleExample": "Example:\n\"The Power of Faith in Trials\"",
@@ -1325,7 +1326,10 @@
         "selectSeriesForAdd": "Add to Series",
         "selectSeriesForChange": "Change Series",
         "addSermon": "Add Sermon",
-        "selectSermons": "Select Sermons"
+        "selectSermons": "Select Sermons",
+        "addSelected": "Add Selected",
+        "adding": "Adding...",
+        "selectedCount": "{{count}} selected"
       },
       "detail": {
         "sermonsInSeries": "Sermons in this series",
@@ -1334,7 +1338,12 @@
         "dragToReorder": "Drag sermons to reorder them",
         "sermonCount": "{{count}} sermon(s)",
         "duration": "Duration",
-        "completedCount": "{{completed}} of {{total}} completed"
+        "completedCount": "{{completed}} of {{total}} completed",
+        "selectSermonsTitle": "Select Sermons",
+        "selectSermonsDescription": "Preview of thesis/thought, date and number of notes will help you navigate quickly.",
+        "noSermonsFound": "No sermons found for this query",
+        "noSermonsAvailable": "No sermons available to add yet",
+        "clearSearch": "Clear search"
       },
       "filters": {
         "allSermons": "All Sermons",

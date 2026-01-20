@@ -16,16 +16,29 @@ import { createSermon } from '@services/sermon.service';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;
+  preSelectedSeriesId?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
+  showTriggerButton?: boolean;
 }
 
-export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalProps) {
+export default function AddSermonModal({
+  onNewSermonCreated,
+  preSelectedSeriesId,
+  isOpen,
+  onClose,
+  showTriggerButton = true
+}: AddSermonModalProps) {
+  // showTriggerButton is used to conditionally render the trigger button
   const { t } = useTranslation();
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const handleClose = onClose || (() => setInternalOpen(false));
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
-  const [selectedSeriesId, setSelectedSeriesId] = useState<string>('');
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,12 +82,12 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
     setTitle('');
     setVerse('');
     setSelectedSeriesId('');
-    setOpen(false);
+    handleClose();
 
   };
 
   const modalContent = (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[110] p-4" onClick={handleClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-2xl font-bold mb-6">{t('addSermon.newSermon')}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
@@ -135,9 +148,9 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
             </select>
           </div>
           <div className="flex justify-end gap-3 mt-auto">
-            <button 
-              type="button" 
-              onClick={() => setOpen(false)}
+            <button
+              type="button"
+              onClick={handleClose}
               className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500"
             >
               {t('addSermon.cancel')}
@@ -156,14 +169,16 @@ export default function AddSermonModal({ onNewSermonCreated }: AddSermonModalPro
 
   return (
     <>
-      <button 
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-        aria-label="Add new sermon"
-      >
-        <PlusIcon className="w-5 h-5" />
-        {t('addSermon.newSermon')}
-      </button>
+      {showTriggerButton && (
+        <button
+          onClick={() => setInternalOpen(true)}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+          aria-label="Add new sermon"
+        >
+          <PlusIcon className="w-5 h-5" />
+          {t('addSermon.newSermon')}
+        </button>
+      )}
 
       {open && createPortal(modalContent, document.body)}
     </>

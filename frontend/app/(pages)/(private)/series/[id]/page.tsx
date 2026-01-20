@@ -414,6 +414,7 @@ export default function SeriesDetailPage() {
           onClose={() => setShowAddSermonModal(false)}
           onAddSermons={handleAddSermonsToSeries}
           currentSeriesSermonIds={sermons.map((s) => s.id)}
+          seriesId={seriesId}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import AddSermonModal from '@/components/AddSermonModal';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { formatDate } from '@utils/dateFormatter';
@@ -13,18 +14,21 @@ interface AddSermonToSeriesModalProps {
   onClose: () => void;
   onAddSermons: (sermonIds: string[]) => void;
   currentSeriesSermonIds: string[];
+  seriesId: string;
 }
 
 export default function AddSermonToSeriesModal({
   onClose,
   onAddSermons,
-  currentSeriesSermonIds
+  currentSeriesSermonIds,
+  seriesId
 }: AddSermonToSeriesModalProps) {
   const { t } = useTranslation();
   const { sermons, loading: sermonsLoading } = useDashboardSermons();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
+  const [showCreateSermonModal, setShowCreateSermonModal] = useState(false);
 
   const availableSermons = useMemo(
     () => sermons.filter((sermon) => !currentSeriesSermonIds.includes(sermon.id)),
@@ -75,10 +79,10 @@ export default function AddSermonToSeriesModal({
                 {t('workspaces.series.actions.addSermon')}
               </p>
               <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-gray-100">
-                Выберите проповеди
+                {t('workspaces.series.detail.selectSermonsTitle')}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Превью тезиса/мысли, дата и количество заметок помогут быстро ориентироваться.
+                {t('workspaces.series.detail.selectSermonsDescription')}
               </p>
             </div>
             <button
@@ -104,20 +108,20 @@ export default function AddSermonToSeriesModal({
             {sermonsLoading ? (
               <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-b-transparent border-blue-600 mr-3" />
-                Loading sermons...
+                {t('workspaces.series.loadingSeries')}
               </div>
             ) : filteredSermons.length === 0 ? (
               <div className="text-center py-10 text-gray-500 dark:text-gray-400">
                 {searchQuery.trim()
-                  ? 'Нет проповедей по запросу'
-                  : 'Пока нет проповедей для добавления'}
+                  ? t('workspaces.series.detail.noSermonsFound')
+                  : t('workspaces.series.detail.noSermonsAvailable')}
                 {searchQuery.trim() && (
                   <div>
                     <button
                       onClick={() => setSearchQuery('')}
                       className="mt-2 text-blue-600 hover:text-blue-700"
                     >
-                      Сбросить поиск
+                      {t('workspaces.series.detail.clearSearch')}
                     </button>
                   </div>
                 )}
@@ -169,7 +173,7 @@ export default function AddSermonToSeriesModal({
                               {formatDate(sermon.date)}
                             </span>
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                              {sermon.thoughts?.length || 0} thoughts
+                              {sermon.thoughts?.length || 0} {t('dashboard.thoughts')}
                             </span>
                           </div>
                         </div>
@@ -183,7 +187,7 @@ export default function AddSermonToSeriesModal({
 
           <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4 dark:border-gray-800">
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {selectedSermonIds.size} выбрано
+              {t('workspaces.series.actions.selectedCount', { count: selectedSermonIds.size })}
             </span>
             <div className="flex gap-3">
               <button
@@ -193,6 +197,13 @@ export default function AddSermonToSeriesModal({
                 {t('common.cancel') || 'Cancel'}
               </button>
               <button
+                onClick={() => setShowCreateSermonModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
+              >
+                <PlusIcon className="h-4 w-4" />
+                {t('addSermon.createNewSermon')}
+              </button>
+              <button
                 onClick={handleAddSelected}
                 disabled={selectedSermonIds.size === 0 || isAdding}
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
@@ -200,12 +211,12 @@ export default function AddSermonToSeriesModal({
                 {isAdding ? (
                   <>
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent border-white" />
-                    Adding...
+                    {t('workspaces.series.actions.adding')}
                   </>
                 ) : (
                   <>
                     <PlusIcon className="h-4 w-4" />
-                    Add Selected
+                    {t('workspaces.series.actions.addSelected')}
                   </>
                 )}
               </button>
@@ -213,6 +224,19 @@ export default function AddSermonToSeriesModal({
           </div>
         </div>
       </div>
+
+      {/* Create New Sermon Modal */}
+      <AddSermonModal
+        showTriggerButton={false}
+        isOpen={showCreateSermonModal}
+        onClose={() => setShowCreateSermonModal(false)}
+        preSelectedSeriesId={seriesId}
+        onNewSermonCreated={(newSermon) => {
+          // Add the new sermon to the series
+          onAddSermons([newSermon.id]);
+          setShowCreateSermonModal(false);
+        }}
+      />
     </div>
   );
 

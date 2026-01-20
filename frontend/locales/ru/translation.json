@@ -107,6 +107,7 @@
   },
   "addSermon": {
     "newSermon": "Новая проповедь",
+    "createNewSermon": "Создать новую проповедь",
     "titleLabel": "Тема",
     "titlePlaceholder": "Введите тему проповеди",
     "titleExample": "Например:\n\"Сила веры в испытаниях\"",
@@ -1325,7 +1326,10 @@
         "selectSeriesForAdd": "Добавить в серию",
         "selectSeriesForChange": "Изменить серию",
         "addSermon": "Добавить проповедь",
-        "selectSermons": "Выбрать проповеди"
+        "selectSermons": "Выбрать проповеди",
+        "addSelected": "Добавить выбранные",
+        "adding": "Добавление...",
+        "selectedCount": "{{count}} выбрано"
       },
       "detail": {
         "sermonsInSeries": "Проповеди в этой серии",
@@ -1334,7 +1338,12 @@
         "dragToReorder": "Перетаскивайте проповеди для изменения порядка",
         "sermonCount": "{{count}} проповедь(ей)",
         "duration": "Длительность",
-        "completedCount": "{{completed}} из {{total}} завершено"
+        "completedCount": "{{completed}} из {{total}} завершено",
+        "selectSermonsTitle": "Выберите проповеди",
+        "selectSermonsDescription": "Превью тезиса/мысли, дата и количество заметок помогут быстро ориентироваться.",
+        "noSermonsFound": "Нет проповедей по запросу",
+        "noSermonsAvailable": "Пока нет проповедей для добавления",
+        "clearSearch": "Сбросить поиск"
       },
       "filters": {
         "allSermons": "Все проповеди",

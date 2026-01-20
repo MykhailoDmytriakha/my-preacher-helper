@@ -107,6 +107,7 @@
   },
   "addSermon": {
     "newSermon": "Нова проповідь",
+    "createNewSermon": "Створити нову проповідь",
     "titleLabel": "Тема",
     "titlePlaceholder": "Введіть тему проповіді",
     "titleExample": "Наприклад:\n\"Сила віри у випробуваннях\"",
@@ -1325,7 +1326,10 @@
         "selectSeriesForAdd": "Додати до серії",
         "selectSeriesForChange": "Змінити серію",
         "addSermon": "Додати проповідь",
-        "selectSermons": "Вибрати проповіді"
+        "selectSermons": "Вибрати проповіді",
+        "addSelected": "Додати вибрані",
+        "adding": "Додавання...",
+        "selectedCount": "{{count}} вибрано"
       },
       "detail": {
         "sermonsInSeries": "Проповіді в цій серії",
@@ -1334,7 +1338,12 @@
         "dragToReorder": "Перетягуйте проповіді для зміни порядку",
         "sermonCount": "{{count}} проповідь(ей)",
         "duration": "Тривалість",
-        "completedCount": "{{completed}} із {{total}} завершено"
+        "completedCount": "{{completed}} із {{total}} завершено",
+        "selectSermonsTitle": "Виберіть проповіді",
+        "selectSermonsDescription": "Прев'ю тези/думки, дата і кількість нотаток допоможуть швидко орієнтуватися.",
+        "noSermonsFound": "Немає проповідей за запитом",
+        "noSermonsAvailable": "Поки немає проповідей для додавання",
+        "clearSearch": "Очистити пошук"
       },
       "filters": {
         "allSermons": "Всі проповіді",
