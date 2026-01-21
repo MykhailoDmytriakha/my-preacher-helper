@@ -15,11 +15,12 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30 * 1000, // Уменьшили до 30 сек
+            staleTime: 0,
             retry: 1,
             refetchOnWindowFocus: true,
             refetchOnReconnect: true,
-            refetchOnMount: 'always', // Всегда рефетчить при монтировании
+            refetchOnMount: 'always',
+            networkMode: 'online',
             gcTime: ONE_WEEK_MS,
           },
         },
@@ -43,4 +44,3 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
     </PersistQueryClientProvider>
   );
 };
-

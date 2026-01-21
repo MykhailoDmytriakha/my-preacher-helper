@@ -1,7 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { getUserSettings, updatePrepModeAccess } from '@/services/userSettings.service';
 
 import type { UserSettings } from '@/models/models';
@@ -12,11 +13,10 @@ export function useUserSettings(userId: string | null | undefined) {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
 
-  const settingsQuery = useQuery<UserSettings | null>({
+  const settingsQuery = useServerFirstQuery<UserSettings | null>({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getUserSettings(userId) : Promise.resolve(null)),
-    enabled: Boolean(userId) && isOnline,
-    staleTime: 60_000,
+    enabled: Boolean(userId),
   });
 
   const mutationGuard = useCallback(

@@ -1,7 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
 import { debugLog } from '@/utils/debugMode';
 
@@ -20,7 +21,7 @@ export function useTags(userId: string | null | undefined) {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
 
-  const tagsQuery = useQuery<TagPayload>({
+  const tagsQuery = useServerFirstQuery<TagPayload>({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getTags(userId) : Promise.resolve({
       requiredTags: [
@@ -30,9 +31,7 @@ export function useTags(userId: string | null | undefined) {
       ],
       customTags: [],
     })),
-    enabled: true, // Always enabled for offline cache access
-    networkMode: isOnline ? 'online' : 'offlineFirst',
-    staleTime: 60_000,
+    enabled: true,
   });
 
   const tags = tagsQuery.data ?? EMPTY_TAGS;

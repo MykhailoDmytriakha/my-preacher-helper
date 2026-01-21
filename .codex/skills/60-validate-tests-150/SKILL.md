@@ -50,7 +50,7 @@ Cover current uncommitted changes with meaningful tests at >70% coverage (includ
    - Do not leave lint in a failing state.
 
 9. **Run compile**
-   - Execute the standard compile command for the repo `npm run compile` or `tsc --noEmit`
+   - Execute the standard compile command for the repo `npm run compile` or `tsc --noEmit`, best way is from root directory `npm run test && npm run lint:full`
    - Ensure compile is green and **fix compile errors** introduced or surfaced in the process.
    - Do not leave compile in a failing state.
 

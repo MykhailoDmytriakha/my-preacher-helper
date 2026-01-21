@@ -4,6 +4,7 @@ import React from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/providers/AuthProvider';
+import { auth } from '@/services/firebaseAuth.service';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,
@@ -33,6 +34,8 @@ const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnl
 const mockGetShareLinks = getStudyNoteShareLinks as jest.MockedFunction<typeof getStudyNoteShareLinks>;
 const mockCreateShareLink = createStudyNoteShareLink as jest.MockedFunction<typeof createStudyNoteShareLink>;
 const mockDeleteShareLink = deleteStudyNoteShareLink as jest.MockedFunction<typeof deleteStudyNoteShareLink>;
+const defaultAuthUser = auth.currentUser;
+const mutableAuth = auth as { currentUser: unknown };
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -61,9 +64,11 @@ describe('useStudyNoteShareLinks', () => {
   afterEach(() => {
     jest.clearAllMocks();
     window.localStorage.clear();
+    mutableAuth.currentUser = defaultAuthUser;
   });
 
   it('keeps loading true while auth is loading and skips fetching', () => {
+    mutableAuth.currentUser = null;
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({
       user: null,

@@ -1,5 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
-
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PreachDate, Sermon } from '@/models/models';
 import * as preachDatesService from '@services/preachDates.service';
 
@@ -12,7 +11,7 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
     const startStr = startDate?.toISOString().split('T')[0];
     const endStr = endDate?.toISOString().split('T')[0];
 
-    const { data: sermons = [], isLoading, error, refetch } = useQuery({
+    const { data: sermons = [], isLoading, error, refetch } = useServerFirstQuery({
         queryKey: ['calendarSermons', userId, startStr, endStr],
         queryFn: () => {
             if (!userId) return Promise.resolve([]);

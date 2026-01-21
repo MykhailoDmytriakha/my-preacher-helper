@@ -9,6 +9,20 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-21 React Query: Server-first mask must handle shared observers
+**Problem:** Series badge disappeared on Dashboard even though `/api/series` returned data; debug logs showed count flipping from 7 to 0.
+**Attempts:** Enabled server-first reads with `useServerFirstQuery`, added uid resolution to run the series query.
+**Solution:** Track `dataUpdatedAt` inside `useServerFirstQuery` and mark `serverFetched` when data updates, not only when the local `queryFn` runs.
+**Why it worked:** When multiple components subscribe to the same query, only one observer runs the `queryFn`; others never set `serverFetchedRef` and masked data as empty. Using `dataUpdatedAt` detects cache updates for every observer.
+**Principle:** In shared-query hooks, derive “server-fetched” state from cache update signals (e.g., `dataUpdatedAt`), not only from local `queryFn` execution.
+
+### 2026-01-21 Testing: Coverage-driven test fixes need typed mocks + fresh queries
+**Problem:** Coverage tests failed or TypeScript compile failed after adding new tests due to stale DOM references and strict mock typings (read-only fields, wrong arg types).
+**Attempts:** Clicked container instead of checkbox; used require() in tests; passed wrong mock args and tried to assign to readonly fields.
+**Solution:** Re-query DOM elements after state updates, click the checkbox directly, use static imports, and loosen mock typings/casts for readonly fields and params.
+**Why it worked:** React state updates are async and DOM refs go stale; TypeScript enforces readonly and exact signatures for mocks, so typings must match the real hook/service contracts.
+**Principle:** When tests fail after adding coverage, re-query the DOM after state changes and align mock typings with real signatures (use typed jest.fn and safe casts for readonly fields).
+
 ### 2026-01-18 Implementation: Fixed Dashboard Preached Status Sync Issue
 **Problem:** Sermon preached status wasn't updating immediately in dashboard after marking as preached/unpreached - status showed old state for several seconds before refreshing.
 **Attempts:** Initially investigated cache race conditions, examined PersistQueryClientProvider behavior, checked timing between API calls and cache updates.

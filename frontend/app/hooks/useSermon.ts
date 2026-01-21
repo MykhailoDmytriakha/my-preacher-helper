@@ -1,7 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
 import { debugLog } from "@/utils/debugMode";
 import { auth } from "@services/firebaseAuth.service";
 import { getSermonById } from "@services/sermon.service";
@@ -39,12 +40,10 @@ function useSermon(sermonId: string) {
   const isOnline = useOnlineStatus();
   const uid = resolveUid();
 
-  const { data: cachedSermons = [] } = useQuery<Sermon[]>({
-    queryKey: ['sermons', uid],
-    queryFn: () => Promise.resolve([]),
-    enabled: false,
-    staleTime: 60 * 1000,
-  });
+  const cachedSermons = useMemo(() => {
+    if (!uid) return [];
+    return queryClient.getQueryData<Sermon[]>(['sermons', uid]) ?? [];
+  }, [queryClient, uid]);
 
   const cachedSermonFromList = useMemo(
     () => cachedSermons.find((item) => item.id === sermonId) ?? null,
@@ -56,19 +55,20 @@ function useSermon(sermonId: string) {
     isLoading: loading,
     error,
     refetch,
-  } = useQuery({
+  } = useServerFirstQuery({
     queryKey: ["sermon", sermonId],
     queryFn: () => getSermonById(sermonId),
-    enabled: Boolean(sermonId) && isOnline,
+    enabled: Boolean(sermonId),
   });
 
   useEffect(() => {
+    if (isOnline) return;
     if (!sermonId || data || !cachedSermonFromList) return;
     queryClient.setQueryData(["sermon", sermonId], cachedSermonFromList);
     debugLog("Sermon cache hydrated from list", { sermonId });
-  }, [cachedSermonFromList, data, queryClient, sermonId]);
+  }, [cachedSermonFromList, data, isOnline, queryClient, sermonId]);
 
-  const sermon = data ?? cachedSermonFromList ?? null;
+  const sermon = data ?? (isOnline ? null : cachedSermonFromList) ?? null;
 
   const setSermon = useCallback(
     (updater: SermonUpdater) => {

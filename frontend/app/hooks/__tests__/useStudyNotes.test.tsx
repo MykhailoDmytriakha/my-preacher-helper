@@ -5,6 +5,7 @@ import React from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/providers/AuthProvider';
+import { auth } from '@/services/firebaseAuth.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import { useStudyNotes } from '../useStudyNotes';
@@ -33,6 +34,8 @@ jest.mock('@services/studies.service', () => ({
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
 const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
+const defaultAuthUser = auth.currentUser;
+const mutableAuth = auth as { currentUser: unknown };
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -63,9 +66,11 @@ describe('useStudyNotes', () => {
   afterEach(() => {
     jest.clearAllMocks();
     window.localStorage.clear();
+    mutableAuth.currentUser = defaultAuthUser;
   });
 
   it('keeps loading true while auth is in progress and avoids fetching', () => {
+    mutableAuth.currentUser = null;
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({
       user: null,
@@ -120,4 +125,3 @@ describe('useStudyNotes', () => {
     expect(result.current.notes).toEqual(notes);
   });
 });
-

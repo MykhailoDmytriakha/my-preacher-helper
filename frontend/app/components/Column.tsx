@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonOutline, SermonPoint, Thought } from "@/models/models";
 import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from "@/services/outline.service";
@@ -444,6 +445,7 @@ export default function Column({
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
 
   // Basic state for outline points UI
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
@@ -521,6 +523,10 @@ export default function Column({
   // Debounced save function - упрощенная версия по аналогии с SermonOutline.tsx
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId || !isFocusMode) return; // Only save in focus mode with sermonId
+    if (!isOnline) {
+      toast.error(t('errors.saveOutlineError', { defaultValue: 'Failed to save outline' }));
+      return;
+    }
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);

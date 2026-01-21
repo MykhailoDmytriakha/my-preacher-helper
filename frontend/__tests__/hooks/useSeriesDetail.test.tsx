@@ -313,6 +313,32 @@ describe('useSeriesDetail', () => {
       });
     });
 
+    it('uses fallback data when fetched sermon is missing', async () => {
+      const missingId = 'new-sermon-1';
+
+      mockGetSermonById.mockImplementation((id) => {
+        if (id === missingId) return Promise.resolve(undefined);
+        return Promise.resolve(mockSermons.find(s => s.id === id));
+      });
+
+      mockAddSermonToSeries.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.addSermons([missingId]);
+      });
+
+      const added = result.current.sermons.find((sermon: Sermon) => sermon.id === missingId);
+
+      expect(added).toBeTruthy();
+      expect(added?.title).toBe('New Sermon');
+    });
+
     it('should do nothing if no series is loaded', async () => {
       mockGetSeriesById.mockResolvedValue(undefined);
 

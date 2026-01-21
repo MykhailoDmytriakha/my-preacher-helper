@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNote } from '@/models/models';
-import { useAuth } from '@/providers/AuthProvider';
 import {
   createStudyNote,
   deleteStudyNote,
@@ -10,56 +10,15 @@ import {
   updateStudyNote,
 } from '@services/studies.service';
 
-/**
- * Resolve uid from auth context.
- * IMPORTANT: Only returns uid when auth state is settled (not loading).
- * This prevents using stale localStorage data before Firebase auth initializes.
- */
-function useResolveUid(): { uid: string | undefined; isAuthLoading: boolean } {
-  const { user, loading } = useAuth();
-  
-  // Wait for auth to settle before returning any uid
-  // This prevents race conditions where stale localStorage data is used
-  if (loading) {
-    return { uid: undefined, isAuthLoading: true };
-  }
-  
-  // Primary: use user from AuthProvider (reactive to auth state changes)
-  if (user?.uid) {
-    return { uid: user.uid, isAuthLoading: false };
-  }
-  
-  // Fallback: check localStorage for guest user ONLY when auth is settled and no user
-  if (typeof window === 'undefined') {
-    return { uid: undefined, isAuthLoading: false };
-  }
-  
-  try {
-    const guestData = window.localStorage.getItem('guestUser');
-    if (!guestData) {
-      return { uid: undefined, isAuthLoading: false };
-    }
-    const parsed = JSON.parse(guestData) as { uid?: string };
-    return { uid: parsed.uid, isAuthLoading: false };
-  } catch (error) {
-    console.error('useStudyNotes: error parsing guestUser', error);
-    return { uid: undefined, isAuthLoading: false };
-  }
-}
-
 const notesKey = (uid: string | undefined) => ['study-notes', uid];
 
 export function useStudyNotes() {
-  const { uid, isAuthLoading } = useResolveUid();
+  const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
-  const isOnline = useOnlineStatus();
-
-  const notesQuery = useQuery({
+  const notesQuery = useServerFirstQuery({
     queryKey: notesKey(uid),
     queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
-    // Only enable query when auth is settled AND we have a uid
-    enabled: !isAuthLoading && !!uid && isOnline,
-    staleTime: 60_000,
+    enabled: !!uid,
   });
 
   const createNote = useMutation({

@@ -1,5 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
-
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Church } from '@/models/models';
 import { getSermons } from '@services/sermon.service';
 
@@ -9,14 +8,13 @@ export function useUserChurches() {
     const { user } = useAuth();
     const userId = user?.uid;
 
-    const { data: sermons = [], isLoading, error } = useQuery({
+    const { data: sermons = [], isLoading, error } = useServerFirstQuery({
         queryKey: ['sermons', userId, 'all'], // Slightly different key to fetch all for churches
         queryFn: () => {
             if (!userId) return Promise.resolve([]);
             return getSermons(userId);
         },
         enabled: !!userId,
-        staleTime: 5 * 60 * 1000, // 5 minutes cache
     });
 
     const availableChurches = Array.from(

@@ -1,5 +1,5 @@
 import debounce from 'lodash/debounce';
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -14,6 +14,7 @@ interface UsePersistenceProps {
 
 export const usePersistence = ({ setSermon }: UsePersistenceProps) => {
   const { t } = useTranslation();
+  const debouncedThoughtsRef = useRef<Map<string, ReturnType<typeof debounce>>>(new Map());
 
   // Save functions for structure and thoughts
   const saveStructure = useCallback(
@@ -47,16 +48,31 @@ export const usePersistence = ({ setSermon }: UsePersistenceProps) => {
 
   // Create debounced versions
   const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
-  const debouncedSaveThought = useMemo(() => debounce(saveThought, 500), [saveThought]);
+  const debouncedSaveThought = useCallback(
+    (sermonId: string, thought: Thought) => {
+      const key = `${sermonId}:${thought.id}`;
+      let debounced = debouncedThoughtsRef.current.get(key);
+      if (!debounced) {
+        debounced = debounce(saveThought, 500);
+        debouncedThoughtsRef.current.set(key, debounced);
+      }
+      debounced(sermonId, thought);
+    },
+    [saveThought]
+  );
 
   // Prevent stray saves after unmount or navigation
   // Cancel debounced functions on unmount to avoid writing to stale sermons
   useEffect(() => {
+    const debouncedThoughts = debouncedThoughtsRef.current;
     return () => {
-      try { debouncedSaveStructure.cancel(); } catch {}
-      try { debouncedSaveThought.cancel(); } catch {}
+      try { debouncedSaveStructure.flush(); } catch {}
+      debouncedThoughts.forEach((debounced) => {
+        try { debounced.flush(); } catch {}
+      });
+      debouncedThoughts.clear();
     };
-  }, [debouncedSaveStructure, debouncedSaveThought]);
+  }, [debouncedSaveStructure]);
 
   return {
     saveStructure,

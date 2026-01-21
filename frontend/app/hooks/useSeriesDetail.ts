@@ -1,7 +1,7 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
 import { getSeriesById } from "@services/series.service";
 import {
   addSermonToSeries,
@@ -26,18 +26,15 @@ const QUERY_KEYS = {
 export function useSeriesDetail(seriesId: string) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
-  const isOnline = useOnlineStatus();
-
   const {
     data,
     isLoading,
     isFetching,
     error,
     refetch,
-  } = useQuery<SeriesDetailPayload | null>({
+  } = useServerFirstQuery<SeriesDetailPayload | null>({
     queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId],
-    enabled: !!seriesId && isOnline,
-    staleTime: 60 * 1000,
+    enabled: !!seriesId,
     queryFn: async () => {
       if (!seriesId) return null;
 

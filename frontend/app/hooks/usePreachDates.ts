@@ -1,12 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PreachDate } from '@/models/models';
 import * as preachDatesService from '@services/preachDates.service';
 
 export function usePreachDates(sermonId: string) {
     const queryClient = useQueryClient();
 
-    const { data: preachDates = [], isLoading, error } = useQuery({
+    const { data: preachDates = [], isLoading, error } = useServerFirstQuery({
         queryKey: ['preachDates', sermonId],
         queryFn: () => preachDatesService.fetchPreachDates(sermonId),
         enabled: !!sermonId,

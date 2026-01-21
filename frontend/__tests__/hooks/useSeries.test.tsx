@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useSeries } from '@/hooks/useSeries';
 import { Series } from '@/models/models';
 import {
@@ -26,6 +28,14 @@ jest.mock('@/services/series.service', () => ({
   reorderSermons: jest.fn(),
 }));
 
+jest.mock('@/hooks/useResolvedUid', () => ({
+  useResolvedUid: jest.fn(),
+}));
+
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: jest.fn(),
+}));
+
 const mockGetAllSeries = getAllSeries as jest.MockedFunction<typeof getAllSeries>;
 const mockCreateSeries = createSeries as jest.MockedFunction<typeof createSeries>;
 const mockUpdateSeries = updateSeries as jest.MockedFunction<typeof updateSeries>;
@@ -33,6 +43,8 @@ const mockDeleteSeries = deleteSeries as jest.MockedFunction<typeof deleteSeries
 const mockAddSermonToSeries = addSermonToSeries as jest.MockedFunction<typeof addSermonToSeries>;
 const mockRemoveSermonFromSeries = removeSermonFromSeries as jest.MockedFunction<typeof removeSermonFromSeries>;
 const mockReorderSermons = reorderSermons as jest.MockedFunction<typeof reorderSermons>;
+const mockUseResolvedUid = useResolvedUid as jest.MockedFunction<typeof useResolvedUid>;
+const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -78,6 +90,8 @@ describe('useSeries', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetAllSeries.mockResolvedValue(mockSeries);
+    mockUseResolvedUid.mockReturnValue({ uid: undefined, isAuthLoading: false });
+    mockUseOnlineStatus.mockReturnValue(true);
   });
 
   describe('Initial state and data fetching', () => {

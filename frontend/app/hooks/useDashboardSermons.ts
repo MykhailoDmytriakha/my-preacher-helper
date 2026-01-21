@@ -1,7 +1,8 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Sermon } from '@/models/models';
 import { debugLog } from '@/utils/debugMode';
 import { auth } from '@services/firebaseAuth.service';
@@ -45,13 +46,13 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
   // If uid is undefined, we might be loading or not logged in
   const uid = resolveUid();
 
-  const { data: sermons = [], isLoading, error, refetch } = useQuery({
+  const { data: sermons = [], isLoading, error, refetch } = useServerFirstQuery({
     queryKey: ['sermons', uid],
     queryFn: () => {
       if (!uid) return Promise.resolve([]);
       return getSermons(uid);
     },
-    enabled: !!uid && isOnline, // Only fetch if we have a user ID and online
+    enabled: !!uid,
   });
 
   useEffect(() => {

@@ -49,8 +49,8 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
         className={`inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
           isPreached
             ? isPlanAccess
-              ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white'
-              : 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-blue-600 hover:text-white'
+              ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white dark:hover:bg-green-600 dark:hover:text-white'
+              : 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white'
             : isPlanAccess
             ? 'bg-green-600 hover:bg-green-700 text-white'
             : 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -66,7 +66,7 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
           onClick={handlePreachClick}
           className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
             isPreached
-              ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white'
+              ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white dark:hover:bg-green-600 dark:hover:text-white'
               : 'bg-green-600 hover:bg-green-700 text-white'
           }`}
           title={t('plan.preachButton') || 'Preach'}

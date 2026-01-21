@@ -1,54 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNoteShareLink } from '@/models/models';
-import { useAuth } from '@/providers/AuthProvider';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,
   getStudyNoteShareLinks,
 } from '@services/studyNoteShareLinks.service';
 
-function useResolveUid(): { uid: string | undefined; isAuthLoading: boolean } {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return { uid: undefined, isAuthLoading: true };
-  }
-
-  if (user?.uid) {
-    return { uid: user.uid, isAuthLoading: false };
-  }
-
-  if (typeof window === 'undefined') {
-    return { uid: undefined, isAuthLoading: false };
-  }
-
-  try {
-    const guestData = window.localStorage.getItem('guestUser');
-    if (!guestData) {
-      return { uid: undefined, isAuthLoading: false };
-    }
-    const parsed = JSON.parse(guestData) as { uid?: string };
-    return { uid: parsed.uid, isAuthLoading: false };
-  } catch (error) {
-    console.error('useStudyNoteShareLinks: error parsing guestUser', error);
-    return { uid: undefined, isAuthLoading: false };
-  }
-}
-
 const shareLinksKey = (uid: string | undefined) => ['study-note-share-links', uid];
 
 export function useStudyNoteShareLinks() {
-  const { uid, isAuthLoading } = useResolveUid();
+  const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
-  const isOnline = useOnlineStatus();
-
-  const shareLinksQuery = useQuery({
+  const shareLinksQuery = useServerFirstQuery({
     queryKey: shareLinksKey(uid),
     queryFn: () => (uid ? getStudyNoteShareLinks(uid) : Promise.resolve([])),
-    enabled: !isAuthLoading && !!uid && isOnline,
-    staleTime: 60_000,
+    enabled: !!uid,
   });
 
   const createLinkMutation = useMutation({

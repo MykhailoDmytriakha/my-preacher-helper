@@ -193,6 +193,7 @@ describe('usePersistence', () => {
               result.current.debouncedSaveThought('sermon-1', thought2);
             });
             await flushDebounce();
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
             expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', thought2);
           },
         },
@@ -205,6 +206,7 @@ describe('usePersistence', () => {
               result.current.debouncedSaveThought('sermon-2', mockThought);
             });
             await flushDebounce();
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
             expect(mockUpdateThought).toHaveBeenCalledWith('sermon-2', mockThought);
           },
         },

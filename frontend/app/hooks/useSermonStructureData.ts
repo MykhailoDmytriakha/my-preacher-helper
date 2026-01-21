@@ -20,14 +20,13 @@ async function fetchSermonData(
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean
 ): Promise<Sermon | null> {
-  const cachedSermon = isOnlineResolved
-    ? await queryClient.fetchQuery({
-      queryKey: ["sermon", sermonId],
-      queryFn: () => getSermonById(sermonId),
-      staleTime: 60_000,
-      networkMode: 'always',
-    })
-    : queryClient.getQueryData<Sermon>(["sermon", sermonId]);
+  if (isOnlineResolved) {
+    const fetched = await getSermonById(sermonId);
+    queryClient.setQueryData(["sermon", sermonId], fetched ?? undefined);
+    return fetched ?? null;
+  }
+
+  const cachedSermon = queryClient.getQueryData<Sermon>(["sermon", sermonId]);
   return cachedSermon ?? null;
 }
 
@@ -49,12 +48,8 @@ async function fetchTagsData(
     if (!isOnlineResolved) {
       tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
     } else {
-      tagsData = await queryClient.fetchQuery({
-        queryKey: tagsQueryKey,
-        queryFn: () => getTags(fetchedSermon.userId),
-        staleTime: 60_000,
-        networkMode: 'always'
-      });
+      tagsData = await getTags(fetchedSermon.userId);
+      queryClient.setQueryData(tagsQueryKey, tagsData);
     }
   } catch (tagError) {
     console.error("Error fetching tags:", tagError);
@@ -241,12 +236,8 @@ async function fetchOutlineData(
 
   if (isOnlineResolved) {
     try {
-      outlineData = await queryClient.fetchQuery({
-        queryKey: ["sermon-outline", sermonId],
-        queryFn: () => getSermonOutline(sermonId),
-        staleTime: 60_000,
-        networkMode: 'always',
-      });
+      outlineData = await getSermonOutline(sermonId);
+      queryClient.setQueryData(["sermon-outline", sermonId], outlineData ?? undefined);
     } catch (outlineError) {
       console.error("Error fetching sermon outline:", outlineError);
       toast.error(t('errors.fetchOutlineError'));

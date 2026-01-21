@@ -1,7 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useResolvedUid } from "@/hooks/useResolvedUid";
+import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
 import { debugLog } from "@/utils/debugMode";
 import {
   addSermonToSeries,
@@ -26,37 +28,38 @@ const QUERY_KEYS = {
   SERIES_DETAIL: "series-detail",
 } as const;
 
-export function useSeries(userId: string | null) {
+export function useSeries(userId?: string | null) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const isOnline = useOnlineStatus();
+  const { uid: resolvedUid } = useResolvedUid();
+  const effectiveUserId = userId ?? resolvedUid ?? null;
 
   const {
     data: series = [],
     isLoading,
     isFetching,
     error,
-  } = useQuery({
-    queryKey: buildQueryKey(userId),
-    queryFn: () => (userId ? getAllSeries(userId) : Promise.resolve([])),
-    enabled: !!userId && isOnline,
-    staleTime: 60 * 1000,
+  } = useServerFirstQuery({
+    queryKey: buildQueryKey(effectiveUserId),
+    queryFn: () => (effectiveUserId ? getAllSeries(effectiveUserId) : Promise.resolve([])),
+    enabled: !!effectiveUserId,
   });
 
   useEffect(() => {
     debugLog("Series state", {
       isOnline,
-      userId,
+      userId: effectiveUserId,
       count: series.length,
       isLoading,
       isFetching,
     });
-  }, [isOnline, userId, series.length, isLoading, isFetching]);
+  }, [isOnline, effectiveUserId, series.length, isLoading, isFetching]);
 
   const createSeriesMutation = useMutation({
     mutationFn: (payload: Omit<Series, "id">) => createSeries(payload),
     onSuccess: (createdSeries) => {
-      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old = []) => [
+      queryClient.setQueryData<Series[]>(buildQueryKey(effectiveUserId), (old = []) => [
         createdSeries,
         ...(old ?? []),
       ]);
@@ -71,7 +74,7 @@ export function useSeries(userId: string | null) {
     mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series> }) =>
       updateSeries(seriesId, updates),
     onSuccess: (updated) => {
-      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old) =>
+      queryClient.setQueryData<Series[]>(buildQueryKey(effectiveUserId), (old) =>
         (old ?? []).map((s) => (s.id === updated.id ? updated : s))
       );
       queryClient.setQueryData<SeriesDetailCache | undefined>([QUERY_KEYS.SERIES_DETAIL, updated.id], (prev) =>
@@ -92,16 +95,16 @@ export function useSeries(userId: string | null) {
   const deleteSeriesMutation = useMutation({
     mutationFn: (seriesId: string) => deleteSeries(seriesId),
     onMutate: async (seriesId) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<Series[]>(buildQueryKey(userId));
-      queryClient.setQueryData<Series[]>(buildQueryKey(userId), (old = []) =>
+      await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
+      const previous = queryClient.getQueryData<Series[]>(buildQueryKey(effectiveUserId));
+      queryClient.setQueryData<Series[]>(buildQueryKey(effectiveUserId), (old = []) =>
         (old ?? []).filter((s) => s.id !== seriesId)
       );
       return { previous };
     },
     onError: (err, _id, ctx) => {
       if (ctx?.previous) {
-        queryClient.setQueryData(buildQueryKey(userId), ctx.previous);
+        queryClient.setQueryData(buildQueryKey(effectiveUserId), ctx.previous);
       }
       setMutationError(err instanceof Error ? err : new Error(String(err)));
     },
@@ -148,27 +151,27 @@ export function useSeries(userId: string | null) {
   );
 
   const refreshSeries = useCallback(async () => {
-    if (!userId || !isOnline) return;
+    if (!effectiveUserId || !isOnline) return;
     setMutationError(null);
     try {
-      const updated = await getAllSeries(userId);
-      queryClient.setQueryData(buildQueryKey(userId), updated);
+      const updated = await getAllSeries(effectiveUserId);
+      queryClient.setQueryData(buildQueryKey(effectiveUserId), updated);
       return updated;
     } catch (e: unknown) {
       const errorObj = e instanceof Error ? e : new Error(String(e));
       setMutationError(errorObj);
       throw errorObj;
     }
-  }, [queryClient, isOnline, userId]);
+  }, [queryClient, isOnline, effectiveUserId]);
 
   const addSermon = useCallback(
     async (seriesId: string, sermonId: string, position?: number) =>
       mutationGuard(async () => {
         await addSermonToSeries(seriesId, sermonId, position);
         await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
       }),
-    [mutationGuard, queryClient, userId]
+    [mutationGuard, queryClient, effectiveUserId]
   );
 
   const removeSermon = useCallback(
@@ -176,9 +179,9 @@ export function useSeries(userId: string | null) {
       mutationGuard(async () => {
         await removeSermonFromSeries(seriesId, sermonId);
         await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
       }),
-    [mutationGuard, queryClient, userId]
+    [mutationGuard, queryClient, effectiveUserId]
   );
 
   const reorderSeriesSermons = useCallback(
@@ -186,9 +189,9 @@ export function useSeries(userId: string | null) {
       mutationGuard(async () => {
         await reorderSermons(seriesId, sermonIds);
         await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
       }),
-    [mutationGuard, queryClient, userId]
+    [mutationGuard, queryClient, effectiveUserId]
   );
 
   return {
