@@ -149,6 +149,7 @@ describe('useSeriesDetail', () => {
     });
 
     it('should filter out undefined sermons and sort by seriesPosition', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation();
       mockGetSermonById.mockImplementation((id) => {
         if (id === 'sermon-1') return Promise.resolve(mockSermons[0]);
         if (id === 'sermon-2') return Promise.resolve(mockSermons[1]);
@@ -166,6 +167,10 @@ describe('useSeriesDetail', () => {
       });
 
       expect(result.current.sermons).toEqual(mockSermons); // undefined sermon filtered out
+      expect(logSpy).toHaveBeenCalledWith(
+        'Series series-1 contains 1 invalid sermon IDs that were filtered out'
+      );
+      logSpy.mockRestore();
     });
   });
 
@@ -203,6 +208,18 @@ describe('useSeriesDetail', () => {
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });
+    });
+
+    it('wraps non-Error rejections in Error', async () => {
+      mockAddSermonToSeries.mockRejectedValue('boom');
+
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await expect(result.current.addSermon('new-sermon-id')).rejects.toThrow('boom');
     });
 
     it('should do nothing if no series is loaded', async () => {
@@ -294,6 +311,22 @@ describe('useSeriesDetail', () => {
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });
+    });
+
+    it('should do nothing if no series is loaded', async () => {
+      mockGetSeriesById.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() => useSeriesDetail('missing-series'), { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.addSermons(['sermon-1']);
+      });
+
+      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
     });
   });
 

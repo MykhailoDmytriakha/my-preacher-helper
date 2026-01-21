@@ -219,6 +219,63 @@ describe('SeriesRepository', () => {
     });
   });
 
+  describe('removeSermonFromAllSeries', () => {
+    it('should return early when no series contain the sermon', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation();
+      mockWhere.mockReturnValue({
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      });
+
+      await repository.removeSermonFromAllSeries('sermon-1');
+
+      expect(mockWhere).toHaveBeenCalledWith('sermonIds', 'array-contains', 'sermon-1');
+      expect(mockUpdate).not.toHaveBeenCalled();
+      logSpy.mockRestore();
+    });
+
+    it('should remove sermon id from matching series', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation();
+      const docUpdate = jest.fn().mockResolvedValue(undefined);
+      const docs = [
+        {
+          id: 'series-1',
+          data: () => ({ ...mockSeriesData, sermonIds: ['sermon-1', 'sermon-2'] }),
+          ref: { update: docUpdate },
+        },
+        {
+          id: 'series-2',
+          data: () => ({ ...mockSeriesData, sermonIds: ['sermon-1'] }),
+          ref: { update: docUpdate },
+        },
+      ];
+
+      mockWhere.mockReturnValue({
+        get: jest.fn().mockResolvedValue({ empty: false, docs }),
+      });
+
+      await repository.removeSermonFromAllSeries('sermon-1');
+
+      expect(docUpdate).toHaveBeenCalledWith({
+        sermonIds: ['sermon-2'],
+        updatedAt: '2024-01-01T12:00:00.000Z',
+      });
+      expect(docUpdate).toHaveBeenCalledWith({
+        sermonIds: [],
+        updatedAt: '2024-01-01T12:00:00.000Z',
+      });
+      logSpy.mockRestore();
+    });
+
+    it('should throw error when Firestore query fails', async () => {
+      const error = new Error('Firestore error');
+      mockWhere.mockReturnValue({
+        get: jest.fn().mockRejectedValue(error),
+      });
+
+      await expect(repository.removeSermonFromAllSeries('sermon-1')).rejects.toThrow('Firestore error');
+    });
+  });
+
   describe('fetchSeriesById', () => {
     it('should fetch series by id successfully', async () => {
       const result = await repository.fetchSeriesById('series-1');

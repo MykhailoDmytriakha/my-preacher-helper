@@ -183,6 +183,46 @@ export class SeriesRepository {
       throw error;
     }
   }
+
+  /**
+   * Removes a sermon ID from all series that contain it
+   * This is called when a sermon is deleted to maintain referential integrity
+   */
+  async removeSermonFromAllSeries(sermonId: string): Promise<void> {
+    console.log(`Firestore: removing sermon ${sermonId} from all series`);
+
+    try {
+      // Find all series that contain this sermon
+      const seriesSnapshot = await adminDb.collection(this.collection)
+        .where('sermonIds', 'array-contains', sermonId)
+        .get();
+
+      if (seriesSnapshot.empty) {
+        console.log(`No series found containing sermon ${sermonId}`);
+        return;
+      }
+
+      // Update each series to remove the sermon ID
+      const updatePromises = seriesSnapshot.docs.map(async (doc) => {
+        const series = doc.data() as Series;
+        const updatedSermonIds = (series.sermonIds || []).filter(id => id !== sermonId);
+
+        await doc.ref.update({
+          sermonIds: updatedSermonIds,
+          updatedAt: new Date().toISOString()
+        });
+
+        console.log(`Removed sermon ${sermonId} from series ${doc.id}`);
+      });
+
+      await Promise.all(updatePromises);
+      console.log(`Successfully removed sermon ${sermonId} from ${seriesSnapshot.docs.length} series`);
+
+    } catch (error) {
+      console.error(`Error removing sermon ${sermonId} from series:`, error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

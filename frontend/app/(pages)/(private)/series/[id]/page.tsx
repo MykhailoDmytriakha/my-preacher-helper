@@ -9,11 +9,13 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { SparklesIcon, ClockIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import AddSermonModal from '@/components/AddSermonModal';
 import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import EditSeriesModal from '@/components/series/EditSeriesModal';
 import SermonInSeriesCard from '@/components/series/SermonInSeriesCard';
@@ -24,6 +26,12 @@ import { useAuth } from '@/providers/AuthProvider';
 
 
 import '@locales/i18n';
+
+// Modal state constants
+const MODAL_STATES = {
+  ADD_TO_SERIES: 'add-to-series',
+  CREATE_NEW: 'create-new',
+} as const;
 
 // Translation keys constants
 const TRANSLATION_KEYS = {
@@ -50,11 +58,34 @@ export default function SeriesDetailPage() {
 
   const { user } = useAuth();
   const { deleteExistingSeries } = useSeries(user?.uid || null);
+  const queryClient = useQueryClient();
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showAddSermonModal, setShowAddSermonModal] = useState(false);
+  const [modalState, setModalState] = useState<'add-to-series' | 'create-new' | null>(null);
   const [sermonToRemove, setSermonToRemove] = useState<string | null>(null);
+
+  // Computed modal states
+  const showAddSermonModal = modalState === MODAL_STATES.ADD_TO_SERIES;
+  const showCreateSermonModal = modalState === MODAL_STATES.CREATE_NEW;
+
+  // Modal state management functions
+  const openAddSermonModal = () => {
+    console.log('Opening add sermon modal');
+    setModalState(MODAL_STATES.ADD_TO_SERIES);
+  };
+  const openCreateSermonModal = () => {
+    console.log('Opening create sermon modal');
+    setModalState(MODAL_STATES.CREATE_NEW);
+  };
+  const closeModals = () => {
+    console.log('Closing all modals');
+    setModalState(null);
+  };
+  const cancelCreateSermon = () => {
+    console.log('Cancelling create sermon, returning to add sermon modal');
+    setModalState(MODAL_STATES.ADD_TO_SERIES);
+  }; // return to add sermon modal
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination || !series) return;
@@ -188,7 +219,7 @@ export default function SeriesDetailPage() {
 
           <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => setShowAddSermonModal(true)}
+              onClick={openAddSermonModal}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -259,7 +290,7 @@ export default function SeriesDetailPage() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowAddSermonModal(true)}
+              onClick={openAddSermonModal}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -280,7 +311,7 @@ export default function SeriesDetailPage() {
             <p className="text-gray-600 dark:text-gray-300">{t('workspaces.series.detail.noSermons')}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{t('workspaces.series.detail.addSermons')}</p>
             <button
-              onClick={() => setShowAddSermonModal(true)}
+              onClick={openAddSermonModal}
               className="mt-2 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -411,10 +442,37 @@ export default function SeriesDetailPage() {
       {/* Add Sermon Modal */}
       {showAddSermonModal && series && (
         <AddSermonToSeriesModal
-          onClose={() => setShowAddSermonModal(false)}
+          onClose={closeModals}
+          onCreateNewSermon={openCreateSermonModal}
           onAddSermons={handleAddSermonsToSeries}
           currentSeriesSermonIds={sermons.map((s) => s.id)}
           seriesId={seriesId}
+        />
+      )}
+
+      {/* Create New Sermon Modal */}
+      {showCreateSermonModal && (
+        <AddSermonModal
+          showTriggerButton={false}
+          isOpen={true}
+          onCancel={cancelCreateSermon}
+          preSelectedSeriesId={seriesId}
+          onNewSermonCreated={async (newSermon) => {
+            console.log('New sermon created, starting to add to series:', newSermon.id);
+            // Add the new sermon to the series and close all modals
+            try {
+              await handleAddSermonsToSeries([newSermon.id]);
+              console.log('Sermon added to series successfully, closing modals and invalidating cache');
+              closeModals();
+              // Invalidate the series cache to refresh the data
+              setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ["series-detail", seriesId] });
+              }, 100);
+            } catch (error) {
+              console.error('Error adding new sermon to series:', error);
+              // Keep modals open on error so user can retry
+            }
+          }}
         />
       )}
     </div>

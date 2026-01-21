@@ -47,9 +47,19 @@ export function useSeriesDetail(seriesId: string) {
       }
 
       const sermonsData = await Promise.all(seriesData.sermonIds.map((id) => getSermonById(id)));
+
+      // Filter out sermons that couldn't be found (were deleted)
+      // This handles the case where sermons were deleted but their IDs still exist in series
       const validSermons = sermonsData
         .filter((sermon): sermon is Sermon => sermon !== undefined)
         .sort((a, b) => (a.seriesPosition || 0) - (b.seriesPosition || 0));
+
+      // Log if there were invalid sermon IDs for debugging
+      const validSermonIds = validSermons.map(s => s.id);
+      const invalidCount = seriesData.sermonIds.length - validSermonIds.length;
+      if (invalidCount > 0) {
+        console.log(`Series ${seriesId} contains ${invalidCount} invalid sermon IDs that were filtered out`);
+      }
 
       return { series: seriesData, sermons: validSermons };
     },

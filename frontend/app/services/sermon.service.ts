@@ -31,6 +31,10 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
     }
     const response = await fetch(`${API_BASE}/api/sermons/${id}`);
     if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`getSermonById: Sermon ${id} not found (404)`);
+        return undefined; // Return undefined for 404 - sermon was deleted
+      }
       console.error(`getSermonById: Response not ok for id ${id}, status: ${response.status}`);
       throw new Error('Failed to fetch sermon');
     }

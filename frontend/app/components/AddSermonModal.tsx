@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -11,11 +10,11 @@ import { Sermon } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PlusIcon } from "@components/Icons";
 import { auth } from '@services/firebaseAuth.service';
-import { addSermonToSeries } from '@services/series.service';
 import { createSermon } from '@services/sermon.service';
 
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => void;
+  onCancel?: () => void;
   preSelectedSeriesId?: string;
   isOpen?: boolean;
   onClose?: () => void;
@@ -24,6 +23,7 @@ interface AddSermonModalProps {
 
 export default function AddSermonModal({
   onNewSermonCreated,
+  onCancel,
   preSelectedSeriesId,
   isOpen,
   onClose,
@@ -39,7 +39,6 @@ export default function AddSermonModal({
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,11 +47,13 @@ export default function AddSermonModal({
       console.error("User is not authenticated");
       return;
     }
+    const currentDate = new Date().toISOString();
+    console.log('Creating sermon with date:', currentDate);
     const newSermon: Sermon = {
       id: '',
       title,
       verse,
-      date: new Date().toISOString(),
+      date: currentDate,
       thoughts: [],
       userId: user.uid,
       seriesId: selectedSeriesId || undefined
@@ -60,21 +61,15 @@ export default function AddSermonModal({
 
     try {
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
+      console.log('Created sermon returned from server:', createdSermon);
 
-      // If a series was selected, add the sermon to the series
-      if (selectedSeriesId) {
-        try {
-          await addSermonToSeries(selectedSeriesId, createdSermon.id);
-        } catch (seriesError) {
-          console.error('Error adding sermon to series:', seriesError);
-          // Don't fail the entire operation if series assignment fails
-        }
-      }
+      // Note: Series assignment is now handled by the parent component
+      // to avoid duplicate operations in the sequential modal flow
 
       if (onNewSermonCreated) {
         onNewSermonCreated(createdSermon);
       }
-      router.refresh();
+      // Note: router.refresh() moved to parent component to avoid modal flickering
     } catch (error) {
       console.error('Error creating sermon:', error);
     }
@@ -150,7 +145,13 @@ export default function AddSermonModal({
           <div className="flex justify-end gap-3 mt-auto">
             <button
               type="button"
-              onClick={handleClose}
+              onClick={() => {
+                if (onCancel) {
+                  onCancel(); // Signal cancellation to parent
+                } else {
+                  handleClose(); // Default close behavior
+                }
+              }}
               className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500"
             >
               {t('addSermon.cancel')}

@@ -2,10 +2,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { auth } from '@/services/firebaseAuth.service';
 import { createSermon } from '@/services/sermon.service';
 
 import { TestProviders } from '../../test-utils/test-providers';
 import '@testing-library/jest-dom';
+
+const mockUseAuth = jest.fn<{ user: { uid: string } | null }, []>(() => ({ user: { uid: 'test-user-id' } }));
+const mockUseSeries = jest.fn((_userId: string | null) => ({ series: [] }));
 
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
@@ -25,6 +29,14 @@ jest.mock('@/services/firebaseAuth.service', () => ({
       uid: 'test-user-id'
     }
   }
+}));
+
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
+jest.mock('@/hooks/useSeries', () => ({
+  useSeries: (userId: string | null) => mockUseSeries(userId),
 }));
 
 jest.mock('next/navigation', () => ({
@@ -60,6 +72,9 @@ describe('AddSermonModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
+    mockUseSeries.mockReturnValue({ series: [] });
+    (auth as any).currentUser = { uid: 'test-user-id' };
   });
   
   test('renders add button but not modal initially', () => {
@@ -107,6 +122,55 @@ describe('AddSermonModal Component', () => {
     // Modal should be closed
     expect(screen.queryByRole('heading', { name: 'New Sermon' })).not.toBeInTheDocument();
   });
+
+  test('calls onClose when provided and cancel is clicked', () => {
+    const onClose = jest.fn();
+
+    render(
+      <TestProviders>
+        <AddSermonModal onClose={onClose} />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('New Sermon'));
+    fireEvent.click(screen.getByText('Cancel'));
+
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test('calls onCancel when provided', () => {
+    const onCancel = jest.fn();
+    const onClose = jest.fn();
+
+    render(
+      <TestProviders>
+        <AddSermonModal onCancel={onCancel} onClose={onClose} />
+      </TestProviders>
+    );
+
+    // Open the modal
+    fireEvent.click(screen.getByText('New Sermon'));
+    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
+
+    // Click cancel
+    fireEvent.click(screen.getByText('Cancel'));
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // Modal remains open because parent controls close when onCancel is used
+    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
+  });
+
+  test('renders modal when isOpen is true and trigger button is hidden', () => {
+    render(
+      <TestProviders>
+        <AddSermonModal isOpen={true} showTriggerButton={false} />
+      </TestProviders>
+    );
+
+    expect(screen.queryByRole('button', { name: 'New Sermon' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
+  });
   
   test('calls createSermon with correct data when form is submitted', async () => {
     render(
@@ -143,8 +207,34 @@ describe('AddSermonModal Component', () => {
       );
     });
   });
-  
+
+  test('calls onNewSermonCreated when provided', async () => {
+    const onNewSermonCreated = jest.fn();
+    render(
+      <TestProviders>
+        <AddSermonModal onNewSermonCreated={onNewSermonCreated} />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('New Sermon'));
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
+      target: { value: 'Test Sermon Title' }
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'Test 1:1-2' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(onNewSermonCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'mocked-sermon-id' })
+      );
+    });
+  });
+
   test('handles authentication errors gracefully', async () => {
+    (auth as any).currentUser = null;
     // Mock console.error
     jest.spyOn(console, 'error').mockImplementation();
 
@@ -178,6 +268,18 @@ describe('AddSermonModal Component', () => {
 
     // Restore mocks
     (console.error as jest.Mock).mockRestore();
+  });
+
+  test('uses null user id for series when user is missing', () => {
+    mockUseAuth.mockReturnValue({ user: null });
+
+    render(
+      <TestProviders>
+        <AddSermonModal />
+      </TestProviders>
+    );
+
+    expect(mockUseSeries).toHaveBeenCalledWith(null);
   });
 
   test('handles API errors gracefully', async () => {

@@ -5,13 +5,13 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import AddSermonModal from '@/components/AddSermonModal';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { formatDate } from '@utils/dateFormatter';
 
 interface AddSermonToSeriesModalProps {
   onClose: () => void;
+  onCreateNewSermon: () => void;
   onAddSermons: (sermonIds: string[]) => void;
   currentSeriesSermonIds: string[];
   seriesId: string;
@@ -19,16 +19,16 @@ interface AddSermonToSeriesModalProps {
 
 export default function AddSermonToSeriesModal({
   onClose,
+  onCreateNewSermon,
   onAddSermons,
   currentSeriesSermonIds,
-  seriesId
+  seriesId: _seriesId
 }: AddSermonToSeriesModalProps) {
   const { t } = useTranslation();
   const { sermons, loading: sermonsLoading } = useDashboardSermons();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
-  const [showCreateSermonModal, setShowCreateSermonModal] = useState(false);
 
   const availableSermons = useMemo(
     () => sermons.filter((sermon) => !currentSeriesSermonIds.includes(sermon.id)),
@@ -170,7 +170,7 @@ export default function AddSermonToSeriesModal({
                           )}
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                             <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-800">
-                              {formatDate(sermon.date)}
+                              {formatDate(sermon.date) || 'No date'}
                             </span>
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
                               {sermon.thoughts?.length || 0} {t('dashboard.thoughts')}
@@ -197,7 +197,7 @@ export default function AddSermonToSeriesModal({
                 {t('common.cancel') || 'Cancel'}
               </button>
               <button
-                onClick={() => setShowCreateSermonModal(true)}
+                onClick={onCreateNewSermon}
                 className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
               >
                 <PlusIcon className="h-4 w-4" />
@@ -225,18 +225,6 @@ export default function AddSermonToSeriesModal({
         </div>
       </div>
 
-      {/* Create New Sermon Modal */}
-      <AddSermonModal
-        showTriggerButton={false}
-        isOpen={showCreateSermonModal}
-        onClose={() => setShowCreateSermonModal(false)}
-        preSelectedSeriesId={seriesId}
-        onNewSermonCreated={(newSermon) => {
-          // Add the new sermon to the series
-          onAddSermons([newSermon.id]);
-          setShowCreateSermonModal(false);
-        }}
-      />
     </div>
   );
 
