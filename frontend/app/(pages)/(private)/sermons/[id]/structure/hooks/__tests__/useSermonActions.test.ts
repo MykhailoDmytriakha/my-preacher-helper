@@ -45,6 +45,16 @@ describe('useSermonActions', () => {
         outlinePointId: 'point-1'
     };
 
+    const pendingActions = {
+        createPendingThought: jest.fn().mockReturnValue({ localId: 'local-1' }),
+        updatePendingThought: jest.fn(),
+        markPendingStatus: jest.fn(),
+        removePendingThought: jest.fn(),
+        replacePendingThought: jest.fn(),
+        updateItemSyncStatus: jest.fn(),
+        getPendingById: jest.fn(),
+    };
+
     const defaultProps = {
         sermon: mockSermon,
         setSermon: jest.fn(),
@@ -55,10 +65,12 @@ describe('useSermonActions', () => {
             ambiguous: []
         },
         setContainers: jest.fn(),
+        containersRef: { current: { introduction: [mockItem], main: [], conclusion: [], ambiguous: [] } },
         allowedTags: [{ name: 'intro', color: '#ff0000' }],
         columnTitles: { introduction: 'Introduction', main: 'Main', conclusion: 'Conclusion' },
         debouncedSaveThought: jest.fn(),
         debouncedSaveStructure: jest.fn(),
+        pendingActions,
     };
 
     beforeEach(() => {
@@ -108,7 +120,8 @@ describe('useSermonActions', () => {
 
             expect(mockCreateManualThought).toHaveBeenCalled();
             expect(defaultProps.setSermon).toHaveBeenCalled();
-            expect(defaultProps.setContainers).toHaveBeenCalled();
+            expect(pendingActions.replacePendingThought).toHaveBeenCalled();
+            expect(pendingActions.removePendingThought).toHaveBeenCalled();
             expect(mockUpdateStructure).toHaveBeenCalled();
             expect(result.current.editingItem).toBeNull();
         });
@@ -126,6 +139,7 @@ describe('useSermonActions', () => {
             });
 
             expect(mockToast.error).toHaveBeenCalledWith('errors.failedToAddThought');
+            expect(pendingActions.markPendingStatus).toHaveBeenCalled();
             expect(result.current.editingItem).toBeNull();
         });
 

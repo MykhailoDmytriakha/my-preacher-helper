@@ -213,7 +213,7 @@ Use together: **Clarity** on what to do → **Think** deeply about how → **Exe
 
 ## Session Log Entry (MANDATORY)
 
-After completing this skill, write to `.sessions/SESSION_[name].md`:
+After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
 ### [HH:MM] Understand-Goal 150 Complete

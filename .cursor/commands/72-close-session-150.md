@@ -49,7 +49,7 @@ Before saving, collect data from all sources:
 
 | Source | What to Read | Purpose |
 |--------|--------------|---------|
-| `.sessions/SESSION_[session_name].md` | Progress Log / Findings / Decisions | Raw data for lessons |
+| `.sessions/SESSION_[date]-[name].md` | Progress Log / Findings / Decisions | Raw data for lessons |
 | Chat history | Current conversation context | What was discussed, tried, decided |
 | `MEMORY.md` | Lessons Inbox | Existing lessons |
 | Files touched | Recent changes | What was modified |
@@ -187,7 +187,7 @@ Session Flow:
 ```
 
 **Close-session responsibility:**
-1. Read accumulated Progress Logs from `.sessions/SESSION_[session_name].md`
+1. Read accumulated Progress Logs from `.sessions/SESSION_[date]-[name].md`
 2. Extract patterns → formulate lessons
 3. Write lessons to `MEMORY.md` Lessons (Inbox)
 4. Create final handoff with full context
@@ -197,7 +197,7 @@ Session Flow:
 ```
 📁 SAVE LOCATIONS
 ├── MEMORY.md              # Project memory file + extracted lessons
-├── .sessions/SESSION_[session_name].md    # Session-specific log (read & update)
+├── .sessions/SESSION_[date]-[name].md    # Session-specific log (read & update)
 ├── Project README         # For major milestones
 └── Git commit message     # For code changes
 ```
@@ -206,7 +206,7 @@ Session Flow:
 
 | Location | READ | WRITE |
 |----------|------|-------|
-| `.sessions/SESSION_[session_name].md` | Progress Log, checkpoints, findings | Final handoff state |
+| `.sessions/SESSION_[date]-[name].md` | Progress Log, checkpoints, findings | Final handoff state |
 | `MEMORY.md` | Lessons Inbox | New lessons |
 | Chat history | Full conversation context | — |
 | Files touched | What was modified | — |
@@ -226,7 +226,7 @@ Session Flow:
 
 ### Example: Extracting Lessons from Progress Log
 
-**Input: Progress Log from `.sessions/SESSION_[session_name].md`**
+**Input: Progress Log from `.sessions/SESSION_[date]-[name].md`**
 ```
 ### Checkpoint #1
 ❌ Didn't Work: Direct state update in useEffect — infinite loop

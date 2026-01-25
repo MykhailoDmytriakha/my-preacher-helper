@@ -11,16 +11,16 @@ import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { Item, Sermon, SermonPoint, Thought } from "@/models/models";
+import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
 
 
 import {
   isStructureChanged,
-  dedupeIds,
   ensureUniqueItems,
   removeIdFromOtherSections,
-  calculateGroupPosition
+  calculateGroupPosition,
+  buildStructureFromContainers
 } from "../utils/structure";
 
 // Constants for drag target prefixes
@@ -339,13 +339,17 @@ const persistThoughtChange = (
 // Helper: Handle structure update
 const handleStructureUpdate = async (
   sermon: Sermon,
-  newStructure: { introduction: string[]; main: string[]; conclusion: string[]; ambiguous: string[] },
+  newStructure: ThoughtsBySection,
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>
 ): Promise<void> => {
-  const changesDetected = isStructureChanged(sermon.structure || {}, newStructure);
+  const normalizedStructure: ThoughtsBySection = {
+    ...newStructure,
+    ambiguous: newStructure.ambiguous ?? [],
+  };
+  const changesDetected = isStructureChanged(sermon.structure || {}, normalizedStructure);
   if (changesDetected) {
-    await updateStructure(sermon.id, newStructure);
-    setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: newStructure } : prev));
+    await updateStructure(sermon.id, normalizedStructure);
+    setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: normalizedStructure } : prev));
   }
 };
 
@@ -550,12 +554,7 @@ export const useStructureDnd = ({
     setIsDragEnding(false);
 
     // Build newStructure for API update
-    const newStructure = {
-      introduction: dedupeIds(updatedContainers.introduction.map((item) => item.id)),
-      main: dedupeIds(updatedContainers.main.map((item) => item.id)),
-      conclusion: dedupeIds(updatedContainers.conclusion.map((item) => item.id)),
-      ambiguous: dedupeIds(updatedContainers.ambiguous.map((item) => item.id)),
-    };
+    const newStructure = buildStructureFromContainers(updatedContainers);
 
     // Make API calls in background with rollback on error
     try {

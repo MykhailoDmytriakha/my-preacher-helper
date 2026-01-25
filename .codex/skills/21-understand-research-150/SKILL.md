@@ -127,9 +127,9 @@ For any investigation, design decision, or multi-step research:
 
 Create or reuse the active session log:
 
-`.sessions/SESSION_[session_name].md`
+`.sessions/SESSION_[date]-[name].md`
 
-If `.sessions/` does not exist, create it. If no session log exists yet, create one now using the user-defined `session_name` (or propose a short descriptive name + date). The session log is the **single working memory** for investigations, progress, and decisions.
+If `.sessions/` does not exist, create it. If no session log exists yet, create one now using the user-defined `session_name` (or propose date + short descriptive name). The session log is the **single working memory** for investigations, progress, and decisions.
 
 ### Investigation structure (inside the session log)
 

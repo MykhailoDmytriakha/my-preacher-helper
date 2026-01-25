@@ -158,7 +158,7 @@ This Skill is **universal** and applies to any situation requiring quality think
 
 ## Session Log Entry (MANDATORY)
 
-After completing this skill, write to `.sessions/SESSION_[name].md`:
+After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
 ### [HH:MM] Analyze-Think 150 Complete

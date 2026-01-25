@@ -1,4 +1,5 @@
 import { ThoughtsBySection, Item, Sermon, SermonPoint } from "@/models/models";
+import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 
 /**
  * Check if structure has changed between two states
@@ -40,6 +41,8 @@ export const dedupeIds = (ids: string[]): string[] => {
   return Array.from(new Set(ids));
 };
 
+export const isLocalThoughtId = (id: string): boolean => id.startsWith(LOCAL_THOUGHT_PREFIX);
+
 /**
  * Ensure unique items by ID within a container
  */
@@ -52,6 +55,17 @@ export const ensureUniqueItems = (items: Item[]): Item[] => {
     result.push(it);
   }
   return result;
+};
+
+export const buildStructureFromContainers = (containers: Record<string, Item[]>): ThoughtsBySection => {
+  const synced = (items: Item[]) => items.filter((item) => !isLocalThoughtId(item.id));
+
+  return {
+    introduction: dedupeIds(synced(containers.introduction || []).map((item) => item.id)),
+    main: dedupeIds(synced(containers.main || []).map((item) => item.id)),
+    conclusion: dedupeIds(synced(containers.conclusion || []).map((item) => item.id)),
+    ambiguous: dedupeIds(synced(containers.ambiguous || []).map((item) => item.id)),
+  };
 };
 
 /**

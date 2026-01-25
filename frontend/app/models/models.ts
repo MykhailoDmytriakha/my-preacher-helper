@@ -216,6 +216,10 @@ export interface ThoughtInStructure {
   outlinePoint?: { text: string; section: string };
   outlinePointId?: string | null;
   position?: number;
+  syncStatus?: 'pending' | 'error' | 'success';
+  syncExpiresAt?: string;
+  syncLastError?: string;
+  syncSuccessAt?: string;
 }
 
 export interface UserSettings {

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -277,6 +277,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const isOnlineResolved = typeof isOnline === 'boolean' ? isOnline : true;
   const queryClient = useQueryClient();
   const [sermon, setSermonState] = useState<Sermon | null>(null);
+  const lastSermonIdRef = useRef<string | null>(null);
+  const hasLoadedRef = useRef(false);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
@@ -332,7 +334,11 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         return;
       }
 
-      setLoading(true);
+      const isNewSermon = lastSermonIdRef.current !== sermonId;
+      const isInitialLoad = !hasLoadedRef.current || isNewSermon;
+      if (isInitialLoad) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
@@ -414,6 +420,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
         setContainers(finalContainers);
         setIsAmbiguousVisible(ambiguous.length > 0);
+        hasLoadedRef.current = true;
+        lastSermonIdRef.current = sermonId;
 
       } catch (err) {
         console.error("Error initializing sermon data:", err);

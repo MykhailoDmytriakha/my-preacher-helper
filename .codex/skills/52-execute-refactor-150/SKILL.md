@@ -14,7 +14,7 @@ Run in three stages:
 
 ## Stage 1 — Research refactor options (iterative)
 
-1. **Create or reuse the session log** at `.sessions/SESSION_[session_name].md`.
+1. **Create or reuse the session log** at `.sessions/SESSION_[date]-[name].md`.
    - If the file does not exist, create it and add the investigation template below.
    - Keep all research notes inside the session log only (no scattered notes in chat).
 

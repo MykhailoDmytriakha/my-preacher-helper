@@ -368,7 +368,7 @@ Continue? (Yes / Pause / Reroute / Stop)
 
 ## Session Log Entry (MANDATORY)
 
-After completing the chain, write to `.sessions/SESSION_[name].md`:
+After completing the chain, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
 ### [HH:MM] Chain-of-Skills 150 Complete

@@ -18,10 +18,10 @@ description: "[10] NEW. Start a NEW session for this project. Use when beginning
    - `README.md` for project overview and commands.
 
 4. Define the **new** `session_name`.
-   - Use user-provided name; if not provided, propose a short descriptive name + date.
+   - Use user-provided name; if not provided, propose date + short descriptive name.
    - If a log with the same name exists, ask whether to continue it (switch to `11-continue-session-150`) or create a new unique name.
 
-5. Create a NEW session log at `.sessions/SESSION_[session_name].md` **when the task is defined** and you are about to start research/work.
+5. Create a NEW session log at `.sessions/SESSION_[date]-[name].md` **when the task is defined** and you are about to start research/work.
    - Insert minimal structure: `## Meta`, `## Progress Log`, `## Investigations`, `## Decisions`, `## Next Steps`.
 
 6. Summarize in 5-8 bullets:

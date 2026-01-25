@@ -14,6 +14,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonOutline, SermonPoint, Thought } from "@/models/models";
 import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from "@/services/outline.service";
+import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 
 // Translation key constants to avoid duplicate strings
@@ -64,6 +65,7 @@ interface ColumnProps {
   onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void; // Toggle reviewed status for outline point
   onSwitchPage?: (sectionId?: string) => void; // Callback to switch to plan view
   onNavigateToSection?: (sectionId: string) => void; // Callback for navigating between sections in Focus Mode
+  onRetryPendingThought?: (itemId: string) => void; // Retry pending thought sync
 }
 
 // Define SectionType based on Column ID mapping
@@ -78,6 +80,8 @@ const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
     default: return null; // Handle cases like 'ambiguous' or others
   }
 };
+
+const isPendingItem = (item: Item) => item.id.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
 
 // Component for rendering outline point placeholder with thoughts
 const SermonPointPlaceholder: React.FC<{
@@ -100,6 +104,7 @@ const SermonPointPlaceholder: React.FC<{
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
   sectionTitle?: string;
   setAudioError: (error: string | null) => void;
+  onRetryPendingThought?: (itemId: string) => void;
 }> = ({
   point,
   items,
@@ -120,6 +125,7 @@ const SermonPointPlaceholder: React.FC<{
   onAddThought,
   sectionTitle,
   setAudioError,
+  onRetryPendingThought,
 }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: `outline-point-${point.id}`,
@@ -312,21 +318,22 @@ const SermonPointPlaceholder: React.FC<{
           ) : (
             <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
-                {pointItems.map((item) => (
-                  <SortableItem
-                    key={item.id}
-                    item={item}
-                    containerId={containerId}
-                    onEdit={onEdit}
-                    isHighlighted={isHighlighted(item.id)}
-                    highlightType={getHighlightType(item.id)}
-                    onKeep={onKeepItem}
-                    onRevert={onRevertItem}
-                    activeId={activeId}
-                    onMoveToAmbiguous={onMoveToAmbiguous}
-                    disabled={point.isReviewed}
-                  />
-                ))}
+              {pointItems.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  containerId={containerId}
+                  onEdit={onEdit}
+                  isHighlighted={isHighlighted(item.id)}
+                  highlightType={getHighlightType(item.id)}
+                  onKeep={onKeepItem}
+                  onRevert={onRevertItem}
+                  activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
+                  onRetrySync={onRetryPendingThought}
+                  disabled={point.isReviewed || isPendingItem(item)}
+                />
+              ))}
 
                 {/* Additional drop area at the end */}
                 <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
@@ -353,6 +360,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
   t: (key: string, options?: Record<string, unknown>) => string;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
+  onRetryPendingThought?: (itemId: string) => void;
 }> = ({
   items,
   containerId,
@@ -363,7 +371,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
   onRevertItem,
   t,
   activeId,
-  onMoveToAmbiguous
+  onMoveToAmbiguous,
+  onRetryPendingThought
 }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: `unassigned-${containerId}`,
@@ -395,7 +404,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
-                  disabled={false}
+                  onRetrySync={onRetryPendingThought}
+                  disabled={isPendingItem(item)}
                 />
               ))}
 
@@ -441,7 +451,8 @@ export default function Column({
   onAudioThoughtCreated,
   onToggleReviewed,
   onSwitchPage,
-  onNavigateToSection
+  onNavigateToSection,
+  onRetryPendingThought
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -742,6 +753,7 @@ export default function Column({
           t={t}
           activeId={activeId}
           onMoveToAmbiguous={onMoveToAmbiguous}
+          onRetryPendingThought={onRetryPendingThought}
         />
       </div>
     </div>
@@ -1115,6 +1127,7 @@ export default function Column({
                   onAddThought={onAddThought}
                   sectionTitle={title}
                   setAudioError={setAudioError}
+                  onRetryPendingThought={onRetryPendingThought}
                 />
               ))}
               {/* Always show unassigned thoughts section in focus mode */}
@@ -1140,7 +1153,8 @@ export default function Column({
                     onRevert={onRevertItem}
                     activeId={activeId}
                     onMoveToAmbiguous={onMoveToAmbiguous}
-                    disabled={false}
+                    onRetrySync={onRetryPendingThought}
+                    disabled={isPendingItem(item)}
                   />
                 ))}
               </div>
@@ -1366,6 +1380,7 @@ export default function Column({
                 onAddThought={onAddThought}
                 sectionTitle={title}
                 setAudioError={setAudioError}
+                onRetryPendingThought={onRetryPendingThought}
               />
             ))}
 
@@ -1391,7 +1406,8 @@ export default function Column({
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
-                  disabled={false}
+                  onRetrySync={onRetryPendingThought}
+                  disabled={isPendingItem(item)}
                 />
               ))}
             </div>

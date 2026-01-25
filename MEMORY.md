@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-25 Session logs: One chat → one session file
+**Problem:** Multiple session logs were created for a single chat, splitting progress and decisions across files.
+**Attempts:** Continued logging in parallel files, then had to reconcile entries manually.
+**Solution:** Merged all entries into a single session log and added an explicit rule in `AGENTS.md` to enforce “one chat = one session log”.
+**Why it worked:** A single log becomes the source of truth, avoiding fragmented context and duplicated work.
+**Principle:** For each chat, maintain exactly one session log; if duplicates appear, merge them immediately and tighten the protocol.
+
 ### 2026-01-21 React Query: Server-first mask must handle shared observers
 **Problem:** Series badge disappeared on Dashboard even though `/api/series` returned data; debug logs showed count flipping from 7 to 0.
 **Attempts:** Enabled server-first reads with `useServerFirstQuery`, added uid resolution to run the series query.
@@ -475,19 +482,19 @@
 
 ### Session Logs
 
-- **Single source:** Весь прогресс/исследования/решения идут в `.sessions/SESSION_[session_name].md`
+- **Single source:** Весь прогресс/исследования/решения идут в `.sessions/SESSION_[date]-[name].md`
 - **Session State:** Не используется в MEMORY.md
 
 ### Session Start Checklist
 
 - [ ] **Review Protocols:** Прочитать Long-Term Memory (инструкции к проекту)
 - [ ] **Check Inbox:** Есть ли необработанные уроки?
-- [ ] **Load Session Log:** Открыть актуальный `.sessions/SESSION_[session_name].md`
+- [ ] **Load Session Log:** Открыть актуальный `.sessions/SESSION_[date]-[name].md`
 
 ### Session End Checklist
 
 - [ ] **Capture Lessons:** Были ли решены неочевидные проблемы? → Inbox
-- [ ] **Update Session Log:** Записать текущий прогресс и решения в `.sessions/SESSION_[session_name].md`
+- [ ] **Update Session Log:** Записать текущий прогресс и решения в `.sessions/SESSION_[date]-[name].md`
 - [ ] **Commit:** Сохранить изменения MEMORY.md
 
 ---

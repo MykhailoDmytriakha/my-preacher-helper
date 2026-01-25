@@ -22,10 +22,11 @@ import { FocusNav } from "./components/FocusNav";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
+import { usePendingThoughts } from "./hooks/usePendingThoughts";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
-import { isStructureChanged, findOutlinePoint } from "./utils/structure";
+import { isLocalThoughtId, isStructureChanged, findOutlinePoint } from "./utils/structure";
 
 // Translation key constants
 const TRANSLATION_KEYS = {
@@ -103,15 +104,25 @@ function StructurePageContent() {
     containersRef.current = containers;
   }, [containers]);
 
-  // Persistence hook
-  const { debouncedSaveThought, debouncedSaveStructure } = usePersistence({ setSermon });
-
   const columnTitles = useMemo((): Record<string, string> => ({
     introduction: getSectionLabel(t, 'introduction'),
     main: getSectionLabel(t, 'main'),
     conclusion: getSectionLabel(t, 'conclusion'),
     ambiguous: getSectionLabel(t, 'ambiguous'),
   }), [t]);
+
+  // Persistence hook
+  const { debouncedSaveThought, debouncedSaveStructure } = usePersistence({ setSermon });
+
+  const pendingActions = usePendingThoughts({
+    sermonId,
+    sermon,
+    allowedTags,
+    columnTitles,
+    setContainers,
+    containersRef,
+    containers,
+  });
 
   // Sermon actions hook
   const {
@@ -122,15 +133,18 @@ function StructurePageContent() {
     handleAddThoughtToSection,
     handleSaveEdit,
     handleMoveToAmbiguous,
+    handleRetryPendingThought,
   } = useSermonActions({
     sermon,
     setSermon,
     containers,
     setContainers,
+    containersRef,
     allowedTags,
     columnTitles,
     debouncedSaveThought,
     debouncedSaveStructure,
+    pendingActions,
   });
 
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
@@ -511,6 +525,7 @@ function StructurePageContent() {
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
+                onRetryPendingThought={handleRetryPendingThought}
               />
             )}
 
@@ -546,6 +561,7 @@ function StructurePageContent() {
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
+                onRetryPendingThought={handleRetryPendingThought}
               />
             )}
 
@@ -581,6 +597,7 @@ function StructurePageContent() {
                 onToggleReviewed={handleToggleReviewed}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
+                onRetryPendingThought={handleRetryPendingThought}
               />
             )}
           </div>
@@ -627,6 +644,7 @@ function StructurePageContent() {
             )}
             onSave={handleSaveEdit}
             onClose={handleCloseEdit}
+            allowOffline={editingItem.id.startsWith('temp-') || isLocalThoughtId(editingItem.id)}
           />
         )}
       </div>

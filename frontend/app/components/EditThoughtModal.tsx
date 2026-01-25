@@ -21,6 +21,7 @@ interface EditThoughtModalProps {
   containerSection?: string;
   onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
   onClose: () => void;
+  allowOffline?: boolean;
 }
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
@@ -261,10 +262,12 @@ export default function EditThoughtModal({
   sermonOutline,
   containerSection,
   onSave, 
-  onClose 
+  onClose,
+  allowOffline = false,
 }: EditThoughtModalProps) {
   const isOnline = useOnlineStatus();
-  const isReadOnly = !isOnline;
+  const isReadOnly = !isOnline && !allowOffline;
+  const isDictationDisabled = !isOnline || isReadOnly;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
@@ -415,7 +418,7 @@ export default function EditThoughtModal({
                   onRecordingComplete={handleDictationComplete}
                   isProcessing={isDictating}
                   maxDuration={90}
-                  disabled={isSubmitting || isReadOnly}
+                  disabled={isSubmitting || isDictationDisabled}
                   onError={(errorMessage) => {
                     toast.error(errorMessage);
                     setIsDictating(false);

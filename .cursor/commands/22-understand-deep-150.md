@@ -311,7 +311,7 @@ Confidence: 95%
 
 ## Session Log Entry (MANDATORY)
 
-After completing this skill, write to `.sessions/SESSION_[name].md`:
+After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
 ### [HH:MM] Understand-Deep 150 Complete

@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { sortItemsWithAI } from "@/services/sortAI.service";
 
+import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
+
 interface UseAiSortingDiffProps {
   containers: Record<string, Item[]>;
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
@@ -64,12 +66,7 @@ const processThoughtUpdates = (
 
 // Helper function to create new structure from containers
 const createStructureFromContainers = (containers: Record<string, Item[]>): ThoughtsBySection => {
-  return {
-    introduction: containers.introduction.map((item) => item.id),
-    main: containers.main.map((item) => item.id),
-    conclusion: containers.conclusion.map((item) => item.id),
-    ambiguous: containers.ambiguous.map((item) => item.id),
-  };
+  return buildStructureFromContainers(containers);
 };
 
 export const useAiSortingDiff = ({
@@ -92,7 +89,7 @@ export const useAiSortingDiff = ({
   const handleAiSort = useCallback(async (columnId: string) => {
     if (isSorting || !sermon || !sermonId) return;
     
-    const currentColumnItems: Item[] = containers[columnId] || [];
+    const currentColumnItems: Item[] = (containers[columnId] || []).filter((item) => !isLocalThoughtId(item.id));
     if (currentColumnItems.length === 0) {
       toast.info(t('structure.noItemsToSort', {
         defaultValue: 'No items to sort in this column.'

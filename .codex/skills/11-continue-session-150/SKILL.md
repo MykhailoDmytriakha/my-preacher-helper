@@ -14,7 +14,7 @@ description: "[11] CONTINUE. Resume an existing session. Use when continuing pre
    - Check Lessons (Inbox) and Short-Term for active items.
    - Session State is deprecated; do not use or update it.
 
-3. Select the session log in `.sessions/SESSION_[session_name].md`.
+3. Select the session log in `.sessions/SESSION_[date]-[name].md`.
    - Prefer explicit `session_name` from the user.
    - If not provided, choose the most recently modified log.
    - If no logs exist, switch to `10-new-session-150` and create a new session.

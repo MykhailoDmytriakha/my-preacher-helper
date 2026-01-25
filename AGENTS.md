@@ -84,7 +84,7 @@ These traits define how I operate. They emerge naturally in every task.
    - Check Lessons Inbox (recent learnings)
    - Session State is **deprecated** (do not use)
 
-2. **Read latest session log** in `.sessions/SESSION_[session_name].md`
+2. **Read latest session log** in `.sessions/SESSION_[date]-[name].md`
    - If no active session log exists yet, create one **when the task is defined** and you are about to start research/work
    - Session log is the **single source** for progress, findings, and decisions
 
@@ -135,8 +135,9 @@ Promote: Add to Long-Term as protocol
 
 ### Session Log Protocol (MANDATORY)
 
-- **Location:** `.sessions/SESSION_[session_name].md`
-- **Naming:** `session_name` is defined by the user request; if not provided, generate a short, descriptive name + date.
+- **Location:** `.sessions/SESSION_[date]-[name].md`
+- **Naming:** `session_name` is defined by the user request; if not provided, generate date + short descriptive name.
+- **One chat = one session log:** Do not create multiple session logs for a single chat. Continue the same log until the user explicitly starts a new chat/task.
 - **Creation moment:** When the task is defined and you are about to start research/work.
 - **Selection rule:** If multiple logs exist, use the named one; otherwise choose the most recently modified.
 - **Single source of truth:** All progress, findings, research notes, decisions, and next steps go here.

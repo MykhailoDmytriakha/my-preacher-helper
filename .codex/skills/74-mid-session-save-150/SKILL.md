@@ -59,7 +59,7 @@ Track the journey, not just the destination:
 - 🔄 **What was tried** — experiments, approaches tested, hypotheses
 - 💡 **Why it worked/failed** — root cause understanding (if known)
 
-**Write to:** `.sessions/SESSION_[session_name].md` in `## Progress Log` section
+**Write to:** `.sessions/SESSION_[date]-[name].md` in `## Progress Log` section
 **Purpose:** Raw material for extracting lessons later
 
 ### Step 3: CAPTURE LESSONS (if ready)
@@ -74,7 +74,7 @@ Current state in the session log:
 - Keep it brief and current
 
 ### Step 5: QUICK CONTEXT SAVE
-Final state in `.sessions/SESSION_[session_name].md`:
+Final state in `.sessions/SESSION_[date]-[name].md`:
 - Current focus + next action
 - Ready for immediate continuation
 
@@ -134,7 +134,7 @@ Next: [Immediate action]
 
 | Location | What | When |
 |----------|------|------|
-| `.sessions/SESSION_[session_name].md` | Quick state + **Progress Log** | Every checkpoint |
+| `.sessions/SESSION_[date]-[name].md` | Quick state + **Progress Log** | Every checkpoint |
 | `MEMORY.md` Lessons (Inbox) | New learnings | Only if lessons are clear |
 
 ## Progress Log → Lessons Pipeline

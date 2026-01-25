@@ -2,21 +2,36 @@ import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
 
-import { findOutlinePoint, buildItemForUI } from "../utils/structure";
+import { buildStructureFromContainers, buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
+
+import type { PendingThoughtInput } from "./usePendingThoughts";
+
+const FAILED_TO_ADD_THOUGHT_KEY = 'errors.failedToAddThought';
 
 interface UseSermonActionsProps {
     sermon: Sermon | null;
     setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
     containers: Record<string, Item[]>;
     setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
+    containersRef: React.MutableRefObject<Record<string, Item[]>>;
     allowedTags: { name: string; color: string }[];
     columnTitles: Record<string, string>;
     debouncedSaveThought: (sermonId: string, thought: Thought) => void;
     debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
+    pendingActions: {
+        createPendingThought: (input: PendingThoughtInput) => { localId: string } | null;
+        updatePendingThought: (localId: string, input: Partial<PendingThoughtInput>) => void;
+        markPendingStatus: (localId: string, status: 'pending' | 'error' | 'sending', options?: { error?: string; resetExpiry?: boolean }) => void;
+        removePendingThought: (localId: string, options?: { removeFromContainers?: boolean }) => void;
+        replacePendingThought: (localId: string, newItem: Item) => void;
+        updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string }) => void;
+        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string } | undefined;
+    };
 }
 
 export function useSermonActions({
@@ -24,12 +39,15 @@ export function useSermonActions({
     setSermon,
     containers,
     setContainers,
+    containersRef,
     allowedTags,
     columnTitles,
     debouncedSaveThought,
     debouncedSaveStructure,
+    pendingActions,
 }: UseSermonActionsProps) {
     const { t } = useTranslation();
+    const isOnline = useOnlineStatus();
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
 
@@ -54,6 +72,78 @@ export function useSermonActions({
         setAddingThoughtToSection(sectionId);
     }, []);
 
+    const submitPendingThought = useCallback(async (payload: {
+        localId: string;
+        sectionId: 'introduction' | 'main' | 'conclusion';
+        text: string;
+        tags: string[];
+        outlinePointId?: string;
+    }) => {
+        if (!sermon) return;
+        const { localId, sectionId, text, tags, outlinePointId } = payload;
+
+        pendingActions.markPendingStatus(localId, 'sending', { resetExpiry: true });
+
+        if (isOnline === false) {
+            pendingActions.markPendingStatus(localId, 'error', {
+                error: t('manualThought.offlineWarning', { defaultValue: 'You are currently offline.' })
+            });
+            return;
+        }
+
+        try {
+            const thoughtService = await import('@/services/thought.service');
+            const addedThought = await thoughtService.createManualThought(sermon.id, {
+                id: localId,
+                text,
+                tags: [...tags, columnTitles[sectionId]],
+                outlinePointId,
+                date: new Date().toISOString(),
+            });
+
+            const outlinePoint = findOutlinePoint(outlinePointId, sermon);
+            const newItem = buildItemForUI({
+                id: addedThought.id,
+                text,
+                tags,
+                allowedTags,
+                sectionTag: columnTitles[sectionId],
+                outlinePointId,
+                outlinePoint,
+            });
+
+            const successAt = new Date().toISOString();
+            pendingActions.replacePendingThought(localId, {
+                ...newItem,
+                syncStatus: 'success',
+                syncSuccessAt: successAt,
+            });
+            pendingActions.removePendingThought(localId, { removeFromContainers: false });
+
+            setSermon((prev) => {
+                if (!prev) return null;
+                return { ...prev, thoughts: [...prev.thoughts, addedThought] };
+            });
+
+            const updatedStructure = buildStructureFromContainers(containersRef.current);
+            try {
+                await updateStructure(sermon.id, updatedStructure);
+            } catch (structureError) {
+                console.error("Error updating structure after add:", structureError);
+                toast.error(t('errors.failedToSaveStructure'));
+            }
+
+            pendingActions.updateItemSyncStatus(addedThought.id, 'success', { successAt });
+            setTimeout(() => {
+                pendingActions.updateItemSyncStatus(addedThought.id);
+            }, 3500);
+        } catch (error) {
+            console.error("Error adding thought:", error);
+            pendingActions.markPendingStatus(localId, 'error', { error: t(FAILED_TO_ADD_THOUGHT_KEY) });
+            toast.error(t(FAILED_TO_ADD_THOUGHT_KEY));
+        }
+    }, [allowedTags, columnTitles, containersRef, isOnline, pendingActions, sermon, setSermon, t]);
+
     const handleCreateNewThought = async (
         updatedText: string,
         updatedTags: string[],
@@ -62,56 +152,29 @@ export function useSermonActions({
         if (!sermon) return;
         const section = addingThoughtToSection;
 
-        const newThought = {
-            id: Date.now().toString(),
-            text: updatedText,
-            tags: [
-                ...updatedTags,
-                ...(section ? [columnTitles[section]] : [])
-            ],
-            outlinePointId: outlinePointId,
-            date: new Date().toISOString()
-        };
+        if (!section || !['introduction', 'main', 'conclusion'].includes(section)) {
+            return;
+        }
 
         try {
-            const thoughtService = await import('@/services/thought.service');
-            const addedThought = await thoughtService.createManualThought(sermon.id, newThought);
-            const outlinePoint = findOutlinePoint(outlinePointId, sermon);
-
-            const newItem = buildItemForUI({
-                id: addedThought.id,
+            const pending = pendingActions.createPendingThought({
+                sectionId: section as 'introduction' | 'main' | 'conclusion',
                 text: updatedText,
                 tags: updatedTags,
-                allowedTags,
-                sectionTag: section ? columnTitles[section] || '' : undefined,
                 outlinePointId,
-                outlinePoint,
             });
-
-            setSermon((prev) => {
-                if (!prev) return null;
-                return { ...prev, thoughts: [...prev.thoughts, addedThought] };
-            });
-
-            if (section) {
-                setContainers(prev => ({
-                    ...prev,
-                    [section]: [...(prev[section] || []), newItem]
-                }));
-
-                const currentStructure = sermon.structure || {};
-                const newStructure = typeof currentStructure === 'string'
-                    ? JSON.parse(currentStructure)
-                    : { ...currentStructure };
-
-                if (!newStructure[section]) newStructure[section] = [];
-                newStructure[section] = [...newStructure[section], newItem.id];
-
-                await updateStructure(sermon.id, newStructure);
+            if (pending) {
+                await submitPendingThought({
+                    localId: pending.localId,
+                    sectionId: section as 'introduction' | 'main' | 'conclusion',
+                    text: updatedText,
+                    tags: updatedTags,
+                    outlinePointId,
+                });
             }
         } catch (error) {
             console.error("Error adding thought:", error);
-            toast.error(t('errors.failedToAddThought'));
+            toast.error(t(FAILED_TO_ADD_THOUGHT_KEY));
         } finally {
             handleCloseEdit();
         }
@@ -123,6 +186,7 @@ export function useSermonActions({
         outlinePointId: string | undefined,
     ) => {
         if (!sermon || !editingItem) return;
+        if (isLocalThoughtId(editingItem.id)) return;
 
         const updatedItem: Thought = {
             ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
@@ -170,10 +234,39 @@ export function useSermonActions({
         if (!sermon) return;
         if (editingItem?.id.startsWith('temp-')) {
             await handleCreateNewThought(updatedText, updatedTags, outlinePointId);
+        } else if (editingItem && isLocalThoughtId(editingItem.id)) {
+            pendingActions.updatePendingThought(editingItem.id, {
+                text: updatedText,
+                tags: updatedTags,
+                outlinePointId,
+            });
+            const pending = pendingActions.getPendingById(editingItem.id);
+            if (pending) {
+                await submitPendingThought({
+                    localId: editingItem.id,
+                    sectionId: pending.sectionId,
+                    text: updatedText,
+                    tags: updatedTags,
+                    outlinePointId,
+                });
+            }
+            handleCloseEdit();
         } else {
             await handleUpdateExistingThought(updatedText, updatedTags, outlinePointId);
         }
     };
+
+    const handleRetryPendingThought = useCallback(async (localId: string) => {
+        const pending = pendingActions.getPendingById(localId);
+        if (!pending) return;
+        await submitPendingThought({
+            localId,
+            sectionId: pending.sectionId,
+            text: pending.text,
+            tags: pending.tags,
+            outlinePointId: pending.outlinePointId,
+        });
+    }, [pendingActions, submitPendingThought]);
 
     const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
         if (!sermon) return;
@@ -228,5 +321,6 @@ export function useSermonActions({
         handleAddThoughtToSection,
         handleSaveEdit,
         handleMoveToAmbiguous,
+        handleRetryPendingThought,
     };
 }

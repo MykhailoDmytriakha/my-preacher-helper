@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
+import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 
 interface DummyDropZoneProps {
   container: string;
@@ -122,18 +123,24 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
                 <DummyDropZone container="ambiguous" />
               ) : (
                 <>
-                  {safeItems.map((item) => (
-                    <SortableItem 
-                      key={item.id} 
-                      item={item} 
-                      containerId="ambiguous" 
-                      onEdit={onEdit} 
-                      showDeleteIcon={true}
-                      onDelete={onDelete}
-                      isDeleting={item.id === deletingItemId}
-                      activeId={activeId}
-                    />
-                  ))}
+                  {safeItems.map((item, index) => {
+                    const itemId = typeof item.id === 'string' ? item.id : `ambiguous-${index}`;
+                    const safeItem = item.id === itemId ? item : { ...item, id: itemId };
+                    const isPendingItem = itemId.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
+                    return (
+                      <SortableItem
+                        key={itemId}
+                        item={safeItem}
+                        containerId="ambiguous"
+                        onEdit={onEdit}
+                        showDeleteIcon={true}
+                        onDelete={onDelete}
+                        isDeleting={itemId === deletingItemId}
+                        activeId={activeId}
+                        disabled={isPendingItem}
+                      />
+                    );
+                  })}
                   
                   {/* Additional drop area at the end for consistency */}
                   <div className={`col-span-full ${focusedColumn ? '' : 'md:col-span-3'}`}>

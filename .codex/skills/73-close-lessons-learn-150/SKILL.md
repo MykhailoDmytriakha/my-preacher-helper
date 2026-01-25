@@ -19,7 +19,7 @@ Use this skill when:
 
 ## Workflow
 
-1. **Read the active session log** in `.sessions/SESSION_[session_name].md` for evidence and context.
+1. **Read the active session log** in `.sessions/SESSION_[date]-[name].md` for evidence and context.
 2. **Open `MEMORY.md`** (repo root).
 3. **Append a new Lesson** to `## 🆕 Lessons (Inbox)` using this template:
 
@@ -53,7 +53,7 @@ Use this skill when:
 
 ## Session Log Entry (MANDATORY)
 
-After completing this skill, write to `.sessions/SESSION_[name].md`:
+After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
 ### [HH:MM] Close-Lessons-Learn 150 Complete
