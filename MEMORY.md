@@ -9,6 +9,27 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-26 Architectural Fix: Canonical structural tags for language independence
+**Problem:** Features like "missing tag" warnings, search, and statistics broke when switching languages because they relied on hardcoded localized strings (e.g., "Основная часть"). Additionally, a race condition in Focus Mode caused new thoughts to lose their structural context during save.
+**Attempts:** Initially tried adding more localized aliases, but realized it was a losing battle against language scale.
+**Solution:** (1) Introduced canonical IDs (`intro`, `main`, `conclusion`) in Firestore and logic. (2) Updated `ThoughtCard`, `StructureStats`, and `OutlinePointSelector` to use `normalizeStructureTag` bridge. (3) Unified export logic to use current user's translation for header matching. (4) Resolved race condition in `useSermonActions.ts` by deriving the next state structure during the mutation payload construction.
+**Why it worked:** Decoupling business logic from UI labels ensures consistent behavior regardless of the user's interface language. Explicitly passing IDs instead of UI strings eliminates ambiguity.
+**Principle:** Always use canonical technical IDs for logical operations (validation, search, mapping) and keep localized strings strictly for the display layer.
+
+### 2026-01-26 Data Consistency: Respecting structure-driven order over individual positions
+**Problem:** Thoughts in Focus Mode sidebar appeared in a different sequence than on the main sermon page because `useSermonStructureData` was re-sorting items by their `position` field, overriding the order defined in the `structure` object.
+**Attempts:** Unified the layout and badge positions, then identified the sorting mismatch in the data hook.
+**Solution:** Removed redundant `sortByPosition` calls in `useSermonStructureData.ts`. The `structure` object (the array of IDs from DnD) is now the absolute source of truth for the sequence.
+**Why it worked:** DnD operations update the array of IDs representing the order; re-sorting by individual fields can revert or break this manual sequence if positions are out of sync.
+**Principle:** When an explicit order is provided via a container mapping (e.g., `structure`), treat that mapping as the primary source of truth for sequence instead of individual item fields.
+
+### 2026-01-26 UI Consistency: Aligning Sidebar elements across modes
+**Problem:** Focus Mode sidebar had a layout discrepancy (badge before icons) and different badge behavior (hover-only) compared to the main page.
+**Attempts:** Rearranged elements and Unified styles with the main page.
+**Solution:** Swapped badge and icon positions in `Column.tsx` to match `SermonOutline.tsx`. Moved the badge outside the hover-only container to ensure constant visibility while preserving Focus Mode color themes per user preference.
+**Why it worked:** Standardizing the functional order of actions and info (icons → badge) creates a predictable UX across different views of the same data.
+**Principle:** Maintain consistent functional ordering of interactive elements (e.g., actions always before/after metadata) across different view modes.
+
 ### 2026-01-25 Session logs: One chat → one session file
 **Problem:** Multiple session logs were created for a single chat, splitting progress and decisions across files.
 **Attempts:** Continued logging in parallel files, then had to reconcile entries manually.
@@ -224,6 +245,14 @@
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
+
+### Focus Mode & Sermon Structure Integrity (3 lessons)
+**Common Pattern:** Desynchronization between Focus Mode UI and sermon data models, often due to locale-specific logic or sorting overrides.
+- Canonical structural tags (2026-01-26)
+- Respecting structure-driven order (2026-01-26)
+- Aligning Sidebar elements (2026-01-26)
+
+**Emerging Principle:** Focus mode is a specialized view of core sermon data; it must consume the same canonical IDs and sequence ordering as the main workspace to prevent phantom bugs.
 
 ### UI/UX Consistency & Refactoring (3 lessons)
 **Common Pattern:** UI changes that affect layout, alignment, and component structure
@@ -530,4 +559,5 @@
 - Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
+- Structural Logic: Use `tagUtils.ts` (canonical IDs) for any conditional logic involving Introduction/Main/Conclusion sections.
 - Comments: English only in code

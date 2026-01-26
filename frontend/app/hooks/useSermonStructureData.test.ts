@@ -33,8 +33,8 @@ const mockTranslations: Record<string, string> = {
   'errors.fetchOutlineError': 'Failed to fetch outline',
 };
 const mockT = (key: string | string[]) => {
-    const lookupKey = Array.isArray(key) ? key[0] : key;
-    return mockTranslations[lookupKey] || lookupKey;
+  const lookupKey = Array.isArray(key) ? key[0] : key;
+  return mockTranslations[lookupKey] || lookupKey;
 };
 
 // Type for the mock translation function
@@ -54,16 +54,16 @@ const mockThoughts: Thought[] = [
 ];
 
 const mockStructure: ThoughtsBySection = {
-    introduction: ['t7'],
-    main: [],
-    conclusion: [],
-    ambiguous: [],
+  introduction: ['t7'],
+  main: [],
+  conclusion: [],
+  ambiguous: [],
 };
 
 const mockOutline: SermonOutline = {
-    introduction: [{ id: 'op1', text: 'Opening point' }],
-    main: [{ id: 'op2', text: 'Main point A' }],
-    conclusion: [],
+  introduction: [{ id: 'op1', text: 'Opening point' }],
+  main: [{ id: 'op2', text: 'Main point A' }],
+  conclusion: [],
 };
 
 const mockSermon: Sermon = {
@@ -174,18 +174,18 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.containers.ambiguous.find(item => item.id === 't6')).toBeDefined();
     expect(result.current.containers.ambiguous.length).toBe(2);
 
-     // Check tags are correctly assigned to items in sections
-     const t1Item = result.current.containers.introduction.find(item => item.id === 't1');
-     expect(t1Item?.requiredTags).toEqual(['intro']);
-     expect(t1Item?.customTagNames).toEqual([]); // No custom tags matched
+    // Check tags are correctly assigned to items in sections
+    const t1Item = result.current.containers.introduction.find(item => item.id === 't1');
+    expect(t1Item?.requiredTags).toEqual(['intro']);
+    expect(t1Item?.customTagNames).toEqual([]); // No custom tags matched
 
-     const t2Item = result.current.containers.main.find(item => item.id === 't2');
-     expect(t2Item?.requiredTags).toEqual(['main']);
-     expect(t2Item?.customTagNames).toEqual([{ name: 'Grace', color: '#ffff00' }]);
+    const t2Item = result.current.containers.main.find(item => item.id === 't2');
+    expect(t2Item?.requiredTags).toEqual(['main']);
+    expect(t2Item?.customTagNames).toEqual([{ name: 'Grace', color: '#ffff00' }]);
 
-     const t3Item = result.current.containers.main.find(item => item.id === 't3');
-     expect(t3Item?.requiredTags).toEqual(['main']);
-     expect(t3Item?.customTagNames).toEqual([{ name: 'Faith', color: '#ff00ff' }]);
+    const t3Item = result.current.containers.main.find(item => item.id === 't3');
+    expect(t3Item?.requiredTags).toEqual(['main']);
+    expect(t3Item?.customTagNames).toEqual([{ name: 'Faith', color: '#ff00ff' }]);
 
     // Verify outline points
     expect(result.current.outlinePoints.introduction).toEqual(mockOutlineData.introduction);
@@ -426,7 +426,7 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.containers.ambiguous.some(i => i.id === 't7' || i.id === 't1')).toBe(false);
   });
 
-  it('seeds positions when missing (ambiguous) and sorts by position when present (structure-driven)', async () => {
+  it('seeds positions when missing (ambiguous) and respects structure order when present', async () => {
     const sermonNoPositions: Sermon = {
       ...mockSermon,
       // clear structure so most go to ambiguous and get seeded
@@ -455,7 +455,7 @@ describe('useSermonStructureData Hook', () => {
     expect(amb.length).toBe(1);
     expect(typeof amb[0].position).toBe('number');
 
-    // Now test sorting by explicit positions
+    // Now test respecting structure order even if positions are different
     const sermonWithPositions: Sermon = {
       ...mockSermon,
       structure: { introduction: ['x1', 'x2', 'x3'], main: [], conclusion: [], ambiguous: [] },
@@ -473,7 +473,7 @@ describe('useSermonStructureData Hook', () => {
     await waitFor(() => expect(result2.current.loading).toBe(false));
 
     const order = result2.current.containers.introduction.map(i => i.id);
-    expect(order).toEqual(['x2', 'x3', 'x1']);
+    expect(order).toEqual(['x1', 'x2', 'x3']);
   });
 
   it('uses structure to prevent duplicates even if tags would place items elsewhere', async () => {
@@ -498,32 +498,32 @@ describe('useSermonStructureData Hook', () => {
     expect(mainHas).toBe(false);
     expect(ambHas).toBe(false);
   });
-    it('should correctly process sermon with empty thoughts, structure, or outline', async () => {
-        const emptySermon: Sermon = {
-            id: 'sermonEmpty',
-            userId: 'user1',
-            title: 'Empty Sermon',
-            verse: '-',
-            date: '2023-01-02',
-            thoughts: [],
-            structure: undefined,
-            outline: undefined,
-        };
-        mockedGetSermonById.mockResolvedValue(emptySermon);
-        mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
-        mockedGetSermonOutline.mockResolvedValue(null); // No outline
+  it('should correctly process sermon with empty thoughts, structure, or outline', async () => {
+    const emptySermon: Sermon = {
+      id: 'sermonEmpty',
+      userId: 'user1',
+      title: 'Empty Sermon',
+      verse: '-',
+      date: '2023-01-02',
+      thoughts: [],
+      structure: undefined,
+      outline: undefined,
+    };
+    mockedGetSermonById.mockResolvedValue(emptySermon);
+    mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
+    mockedGetSermonOutline.mockResolvedValue(null); // No outline
 
-        const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction), {
-          wrapper: createWrapper(),
-        });
-        await waitFor(() => expect(result.current.loading).toBe(false));
-
-        expect(result.current.loading).toBe(false);
-        expect(result.current.sermon).toEqual(emptySermon);
-        expect(result.current.error).toBeNull();
-        expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-        expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
-        expect(result.current.allowedTags).toEqual([]);
+    const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction), {
+      wrapper: createWrapper(),
     });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.sermon).toEqual(emptySermon);
+    expect(result.current.error).toBeNull();
+    expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] });
+    expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
+    expect(result.current.allowedTags).toEqual([]);
+  });
 
 }); 

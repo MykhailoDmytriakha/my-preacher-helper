@@ -711,7 +711,9 @@ describe('Column Component', () => {
               const textNode = within(pointLabel).getByText('Introduction Point 1');
               expect(badgeContainer).toHaveClass('flex');
               expect(badgeContainer).toHaveClass('items-center');
-              expect(textNode.parentElement).toBe(badgeContainer);
+              // Badge and text container are both descendants of the li (badgeContainer)
+              expect(pointLabel).toBe(badgeContainer);
+              expect(badgeContainer).toContainElement(textNode);
               expect(textNode).not.toContainElement(badge);
             }
           },

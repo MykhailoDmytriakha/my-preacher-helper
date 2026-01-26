@@ -173,11 +173,7 @@ function distributeItemsToSections(
               : [...(it.requiredTags || []), sectionTag]
           }));
 
-          const allPos = withSectionTag.length > 0 && withSectionTag.every(i => typeof i.position === 'number');
-          const sorted = allPos
-            ? [...withSectionTag].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY))
-            : withSectionTag;
-          for (const item of sorted) {
+          for (const item of withSectionTag) {
             target.push(item);
             usedIds.add(item.id);
           }
@@ -259,12 +255,6 @@ function seedPositions(items: Item[]): Item[] {
   });
 }
 
-// Helper: Sort by position
-function sortByPosition(items: Item[]): Item[] {
-  const anyPos = items.some(i => typeof i.position === 'number');
-  if (!anyPos) return items;
-  return [...items].sort((a, b) => (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY));
-}
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction) {
   const isOnline = useOnlineStatus();
@@ -395,12 +385,11 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           setSermonPoints({ introduction: [], main: [], conclusion: [] });
         }
 
-        // Set final container state with positions
         const finalContainers = {
-          introduction: sortByPosition(seedPositions(intro)),
-          main: sortByPosition(seedPositions(main)),
-          conclusion: sortByPosition(seedPositions(concl)),
-          ambiguous: sortByPosition(seedPositions(ambiguous)),
+          introduction: seedPositions(intro),
+          main: seedPositions(main),
+          conclusion: seedPositions(concl),
+          ambiguous: seedPositions(ambiguous),
         };
 
         setContainers(finalContainers);

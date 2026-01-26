@@ -1028,20 +1028,15 @@ export default function Column({
                         </div>
                       ) : (
                         <>
-                          <div className="flex flex-1 min-w-0 items-center gap-2 pr-8 mr-2">
+                          <div className="flex flex-1 min-w-0 items-center gap-2 mr-2">
                             <span
                               className="text-sm text-white dark:text-gray-100 flex-1 min-w-0"
                               onDoubleClick={() => handleStartEdit(point)}
                             >
                               {point.text}
                             </span>
-                            {thoughtsPerSermonPoint[point.id] > 0 && (
-                              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700">
-                                {thoughtsPerSermonPoint[point.id]}
-                              </span>
-                            )}
                           </div>
-                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
+                          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
                             {/* Quick help for outline point */}
                             <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                               <PencilIcon className="h-4 w-4" />
@@ -1050,6 +1045,11 @@ export default function Column({
                               <TrashIcon className="h-4 w-4" />
                             </button>
                           </div>
+                          {thoughtsPerSermonPoint[point.id] > 0 && (
+                            <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700 flex-shrink-0">
+                              {thoughtsPerSermonPoint[point.id]}
+                            </span>
+                          )}
                         </>
                       )}
                     </li>
