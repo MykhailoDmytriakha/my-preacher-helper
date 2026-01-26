@@ -100,7 +100,7 @@ const eslintConfig = [
     files: ["tailwind.config.ts", "jest.config.ts", "jest.setup.js", "next.config.js"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
-      "@typescript-eslint/no-var-requires": "off",
+      "@typescript-eslint/no-require-imports": "off",
       "import/order": "off",
     },
   },
