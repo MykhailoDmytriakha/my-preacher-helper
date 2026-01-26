@@ -67,7 +67,6 @@ describe('useSermonActions', () => {
         setContainers: jest.fn(),
         containersRef: { current: { introduction: [mockItem], main: [], conclusion: [], ambiguous: [] } },
         allowedTags: [{ name: 'intro', color: '#ff0000' }],
-        columnTitles: { introduction: 'Introduction', main: 'Main', conclusion: 'Conclusion' },
         debouncedSaveThought: jest.fn(),
         debouncedSaveStructure: jest.fn(),
         pendingActions,

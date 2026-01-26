@@ -6,12 +6,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Thought, SermonOutline, SermonPoint } from '@/models/models';
-
-const STRUCTURE_SECTIONS: Record<string, string> = {
-  'introduction': 'Вступление',
-  'main': 'Основная часть',
-  'conclusion': 'Заключение'
-} as const;
+import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@utils/tagUtils";
 
 interface SermonPointSelectorProps {
   thought: Thought;
@@ -43,42 +38,46 @@ export default function SermonPointSelector({
 
   const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
-    
+
     const introPoint = sermonOutline.introduction?.find(p => p.id === thought.outlinePointId);
     if (introPoint) return { text: introPoint.text, section: 'introduction' };
-    
+
     const mainPoint = sermonOutline.main?.find(p => p.id === thought.outlinePointId);
     if (mainPoint) return { text: mainPoint.text, section: 'main' };
-    
+
     const conclPoint = sermonOutline.conclusion?.find(p => p.id === thought.outlinePointId);
     if (conclPoint) return { text: conclPoint.text, section: 'conclusion' };
-    
+
     return undefined;
   }, [thought.outlinePointId, sermonOutline]);
 
   const getThoughtSection = useCallback((): string | undefined => {
-    const structureTags = Object.values(STRUCTURE_SECTIONS);
-    const sectionTag = thought.tags.find(tag => structureTags.includes(tag));
-    
-    if (!sectionTag) return undefined;
-    
-    const sectionEntry = Object.entries(STRUCTURE_SECTIONS).find(([, value]) => value === sectionTag);
-    return sectionEntry?.[0];
+    // Current approach: detect the first structure-related tag
+    const foundTag = thought.tags.find(tag => isStructureTag(tag));
+    if (!foundTag) return undefined;
+
+    const canonical = normalizeStructureTag(foundTag);
+    if (!canonical) return undefined;
+
+    return CANONICAL_TO_SECTION[canonical];
   }, [thought.tags]);
 
   const filteredSermonPoints = useMemo(() => {
     if (!sermonOutline) return {};
-    
+
     const thoughtSection = getThoughtSection();
-    
-    if (!thoughtSection || thought.tags.filter(tag => Object.values(STRUCTURE_SECTIONS).includes(tag)).length > 1) {
+
+    // Check if there are multiple structure tags (ambiguous case)
+    const structureTagsCount = thought.tags.filter(tag => isStructureTag(tag)).length;
+
+    if (!thoughtSection || structureTagsCount > 1) {
       return {
         introduction: sermonOutline.introduction || [],
         main: sermonOutline.main || [],
         conclusion: sermonOutline.conclusion || []
       };
     }
-    
+
     return {
       [thoughtSection]: sermonOutline[thoughtSection as keyof SermonOutline] || []
     };
@@ -88,7 +87,7 @@ export default function SermonPointSelector({
 
   const handleSermonPointSelect = async (outlinePointId: string) => {
     if (isUpdating || disabled) return;
-    
+
     setIsUpdating(true);
     try {
       await onSermonPointChange(outlinePointId === '' ? undefined : outlinePointId);
@@ -119,7 +118,7 @@ export default function SermonPointSelector({
   if (!sermonOutline) return null;
 
   const hasSermonPoints = Object.values(filteredSermonPoints).some(points => points.length > 0);
-  
+
   if (!hasSermonPoints) return null;
 
   if (outlinePoint) {
@@ -152,8 +151,8 @@ export default function SermonPointSelector({
               >
                 {t('editThought.noSermonPoint')}
               </button>
-              
-              {Object.entries(filteredSermonPoints).map(([section, points]) => 
+
+              {Object.entries(filteredSermonPoints).map(([section, points]) =>
                 points.length > 0 ? (
                   <div key={section}>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
@@ -164,11 +163,10 @@ export default function SermonPointSelector({
                         key={point.id}
                         onClick={() => handleSermonPointSelect(point.id)}
                         disabled={isUpdating}
-                        className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${
-                          thought.outlinePointId === point.id
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id
                             ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
                             : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
+                          }`}
                       >
                         {point.text}
                       </button>
@@ -208,8 +206,8 @@ export default function SermonPointSelector({
             <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
               {t('editThought.selectSermonPoint')}
             </div>
-            
-            {Object.entries(filteredSermonPoints).map(([section, points]) => 
+
+            {Object.entries(filteredSermonPoints).map(([section, points]) =>
               points.length > 0 ? (
                 <div key={section}>
                   <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">

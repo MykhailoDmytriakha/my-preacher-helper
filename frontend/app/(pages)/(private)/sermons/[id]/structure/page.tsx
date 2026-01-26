@@ -15,6 +15,7 @@ import { updateStructure } from "@/services/structure.service";
 import { deleteThought } from "@/services/thought.service";
 import "@locales/i18n";
 import { getExportContent } from "@/utils/exportContent";
+import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
@@ -118,7 +119,6 @@ function StructurePageContent() {
     sermonId,
     sermon,
     allowedTags,
-    columnTitles,
     setContainers,
     containersRef,
     containers,
@@ -141,7 +141,6 @@ function StructurePageContent() {
     setContainers,
     containersRef,
     allowedTags,
-    columnTitles,
     debouncedSaveThought,
     debouncedSaveStructure,
     pendingActions,
@@ -197,7 +196,6 @@ function StructurePageContent() {
     containersRef,
     sermon,
     setSermon,
-    columnTitles,
     debouncedSaveThought,
   });
 
@@ -219,16 +217,10 @@ function StructurePageContent() {
     if (!sermon) return;
 
     try {
-      // Determine localized structural tag for the section
-      const sectionTag = columnTitles[sectionId];
+      const sectionTag = getCanonicalTagForSection(sectionId);
 
       // Compute custom tags (exclude structural tag), preserving original order
-      const customTags = (thought.tags || []).filter((tag) => {
-        const norm = (tag || '').trim().toLowerCase();
-        return norm !== sectionTag.trim().toLowerCase() &&
-          norm !== 'introduction' && norm !== 'main part' && norm !== 'conclusion' &&
-          norm !== 'вступление' && norm !== 'основная часть' && norm !== 'заключение';
-      });
+      const customTags = (thought.tags || []).filter((tag) => normalizeStructureTag(tag) === null);
 
       // Build UI item - find outline point if available
       const outlinePoint = findOutlinePoint(thought.outlinePointId ?? undefined, sermon);
@@ -276,7 +268,7 @@ function StructurePageContent() {
       console.error('Error handling audio thought creation:', e);
       toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
     }
-  }, [allowedTags, columnTitles, debouncedSaveStructure, sermon, t, setContainers, setSermon]);
+  }, [allowedTags, debouncedSaveStructure, sermon, t, setContainers, setSermon]);
 
   const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !sermon) {

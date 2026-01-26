@@ -1053,14 +1053,14 @@ describe('Column Component', () => {
         id: '1',
         content: 'Thought for point 1',
         outlinePointId: 'op1',
-        requiredTags: ['Introduction'],
+        requiredTags: ['intro'],
         customTagNames: [],
       },
       {
         id: '2',
         content: 'Thought for point 2',
         outlinePointId: 'op2',
-        requiredTags: ['Introduction'],
+        requiredTags: ['intro'],
         customTagNames: [],
       },
     ];

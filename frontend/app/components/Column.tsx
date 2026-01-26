@@ -14,7 +14,9 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonOutline, SermonPoint, Thought } from "@/models/models";
 import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from "@/services/outline.service";
+import { debugLog } from "@/utils/debugMode";
 import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
+import { getCanonicalTagForSection } from "@/utils/tagUtils";
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 
 // Translation key constants to avoid duplicate strings
@@ -248,7 +250,15 @@ const SermonPointPlaceholder: React.FC<{
               {/* Focus Recorder Button (per outline point) */}
               {isFocusMode && onAddThought && (
                 <button
-                  onClick={() => onAddThought(containerId, point.id)}
+                  onClick={() => {
+                    debugLog('Structure: focus outline add clicked', {
+                      sectionId: containerId,
+                      outlinePointId: point.id,
+                      isFocusMode,
+                      sermonId,
+                    });
+                    onAddThought(containerId, point.id);
+                  }}
                   className="w-[39px] h-[39px] rounded-full bg-gray-400 hover:bg-green-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center"
                   title={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                   aria-label={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
@@ -266,9 +276,9 @@ const SermonPointPlaceholder: React.FC<{
                         setIsRecordingAudio(true);
                         setAudioError(null);
                         const forceTag =
-                          containerId === 'introduction' ? getSectionLabel(t, 'introduction') :
-                            containerId === 'main' ? getSectionLabel(t, 'main') :
-                              containerId === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                          containerId === 'introduction' ? getCanonicalTagForSection('introduction') :
+                            containerId === 'main' ? getCanonicalTagForSection('main') :
+                              containerId === 'conclusion' ? getCanonicalTagForSection('conclusion') :
                                 undefined;
                         const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
                         const newThought = await createAudioThoughtWithForceTag(
@@ -318,22 +328,22 @@ const SermonPointPlaceholder: React.FC<{
           ) : (
             <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
-              {pointItems.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  containerId={containerId}
-                  onEdit={onEdit}
-                  isHighlighted={isHighlighted(item.id)}
-                  highlightType={getHighlightType(item.id)}
-                  onKeep={onKeepItem}
-                  onRevert={onRevertItem}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  onRetrySync={onRetryPendingThought}
-                  disabled={point.isReviewed || isPendingItem(item)}
-                />
-              ))}
+                {pointItems.map((item) => (
+                  <SortableItem
+                    key={item.id}
+                    item={item}
+                    containerId={containerId}
+                    onEdit={onEdit}
+                    isHighlighted={isHighlighted(item.id)}
+                    highlightType={getHighlightType(item.id)}
+                    onKeep={onKeepItem}
+                    onRevert={onRevertItem}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    onRetrySync={onRetryPendingThought}
+                    disabled={point.isReviewed || isPendingItem(item)}
+                  />
+                ))}
 
                 {/* Additional drop area at the end */}
                 <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
@@ -833,10 +843,15 @@ export default function Column({
                 setAudioError(null);
 
                 // Determine the force tag based on column ID
-                const forceTag =
+                const sectionLabel =
                   id === 'introduction' ? getSectionLabel(t, 'introduction') :
                     id === 'main' ? getSectionLabel(t, 'main') :
                       id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                        undefined;
+                const forceTag =
+                  id === 'introduction' ? getCanonicalTagForSection('introduction') :
+                    id === 'main' ? getCanonicalTagForSection('main') :
+                      id === 'conclusion' ? getCanonicalTagForSection('conclusion') :
                         undefined;
 
                 // Import the service function dynamically to avoid circular dependencies
@@ -845,7 +860,7 @@ export default function Column({
                 // Append newly created thought into the current section (UI + structure)
                 onAudioThoughtCreated?.(newThought, id as 'introduction' | 'main' | 'conclusion');
 
-                toast.success(`Запись добавлена в раздел "${forceTag}"`);
+                toast.success(`Запись добавлена в раздел "${sectionLabel}"`);
               } catch (error) {
                 console.error('Error recording audio thought:', error);
                 const errorMessage = error instanceof Error ? error.message : 'Ошибка при записи аудио';
@@ -1233,9 +1248,9 @@ export default function Column({
                           setIsRecordingAudio(true);
                           setAudioError(null);
                           const forceTag =
-                            id === 'introduction' ? getSectionLabel(t, 'introduction') :
-                              id === 'main' ? getSectionLabel(t, 'main') :
-                                id === 'conclusion' ? getSectionLabel(t, 'conclusion') :
+                            id === 'introduction' ? getCanonicalTagForSection('introduction') :
+                              id === 'main' ? getCanonicalTagForSection('main') :
+                                id === 'conclusion' ? getCanonicalTagForSection('conclusion') :
                                   undefined;
                           const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
                           const newThought = await createAudioThoughtWithForceTag(audioBlob, sermonId!, forceTag || null);
@@ -1267,7 +1282,10 @@ export default function Column({
           )}
           {onAddThought && (
             <button
-              onClick={() => onAddThought(id)}
+              onClick={() => {
+                debugLog('Structure: add thought clicked', { sectionId: id, isFocusMode, sermonId });
+                onAddThought(id);
+              }}
               className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
               title={t('structure.addThoughtToSection', { section: title })}
             >

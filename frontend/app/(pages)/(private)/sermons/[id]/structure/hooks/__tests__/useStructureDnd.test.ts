@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
-import { Item, Sermon, SermonPoint, Thought } from '@/models/models';
+import { Item, Sermon, Thought } from '@/models/models';
 import { updateStructure } from '@/services/structure.service';
 
 import { useStructureDnd } from '../useStructureDnd';
@@ -31,7 +31,7 @@ describe('useStructureDnd', () => {
     date: BASE_DATE,
     userId: 'user-1',
     thoughts: [
-      { id: THOUGHT_ONE, text: 'Test thought 1', tags: ['introduction'], date: BASE_DATE },
+      { id: THOUGHT_ONE, text: 'Test thought 1', tags: ['intro'], date: BASE_DATE },
       { id: THOUGHT_TWO, text: 'Test thought 2', tags: ['main'], date: BASE_DATE },
     ],
     structure: {
@@ -52,7 +52,7 @@ describe('useStructureDnd', () => {
       {
         id: THOUGHT_ONE,
         content: 'Test thought 1',
-        requiredTags: ['introduction'],
+        requiredTags: ['intro'],
         customTagNames: [],
         outlinePointId: OUTLINE_INTRO
       }
@@ -70,19 +70,6 @@ describe('useStructureDnd', () => {
     ambiguous: []
   };
 
-  const mockSermonPoints = {
-    introduction: [{ id: OUTLINE_INTRO, text: 'Introduction point' }] as SermonPoint[],
-    main: [{ id: OUTLINE_MAIN, text: 'Main point' }] as SermonPoint[],
-    conclusion: [{ id: OUTLINE_CONCLUSION, text: 'Conclusion point' }] as SermonPoint[]
-  };
-
-  const mockColumnTitles = {
-    introduction: 'Introduction',
-    main: 'Main Part',
-    conclusion: 'Conclusion',
-    ambiguous: 'Unassigned'
-  };
-
   const mockSetContainers = jest.fn();
   const mockSetSermon = jest.fn();
   const mockDebouncedSaveThought = jest.fn();
@@ -93,8 +80,6 @@ describe('useStructureDnd', () => {
     containersRef: { current: mockContainers },
     sermon: mockSermon,
     setSermon: mockSetSermon,
-    outlinePoints: mockSermonPoints,
-    columnTitles: mockColumnTitles,
     debouncedSaveThought: mockDebouncedSaveThought,
   };
 
@@ -117,14 +102,14 @@ describe('useStructureDnd', () => {
   const buildContainers = (overrides: Partial<Record<string, Item[]>> = {}) => ({
     introduction: [
       buildItem(THOUGHT_ONE, {
-        requiredTags: [mockColumnTitles.introduction],
+        requiredTags: ['intro'],
         outlinePointId: OUTLINE_INTRO,
         position: 1000,
       }),
     ],
     main: [
       buildItem(THOUGHT_TWO, {
-        requiredTags: [mockColumnTitles.main],
+        requiredTags: ['main'],
         outlinePointId: OUTLINE_MAIN,
         position: 2000,
       }),
@@ -142,7 +127,7 @@ describe('useStructureDnd', () => {
     userId: mockSermon.userId,
     thoughts: [
       buildThought(THOUGHT_ONE, {
-        tags: ['introduction'],
+        tags: ['intro'],
         outlinePointId: OUTLINE_INTRO,
         position: 1000,
       }),
@@ -918,8 +903,8 @@ describe('useStructureDnd', () => {
       });
       const sermon = buildSermon({
         thoughts: [
-          buildThought(THOUGHT_ONE, { tags: ['introduction'] }),
-          buildThought(THOUGHT_TWO, { tags: ['introduction'] }),
+          buildThought(THOUGHT_ONE, { tags: ['intro'] }),
+          buildThought(THOUGHT_TWO, { tags: ['intro'] }),
         ],
         structure: {
           introduction: [THOUGHT_ONE, THOUGHT_TWO],
@@ -958,7 +943,7 @@ describe('useStructureDnd', () => {
       const containers = buildContainers({
         introduction: [
           buildItem(THOUGHT_ONE, {
-            requiredTags: [mockColumnTitles.introduction],
+            requiredTags: ['intro'],
             customTagNames: [CUSTOM_TAG],
             outlinePointId: null,
           }),
@@ -1004,7 +989,7 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_INTRO,
-          tags: expect.arrayContaining([mockColumnTitles.introduction, CUSTOM_TAG.name]),
+          tags: expect.arrayContaining(['intro', CUSTOM_TAG.name]),
         })
       );
       expect(mockUpdateStructure).not.toHaveBeenCalled();
@@ -1014,13 +999,13 @@ describe('useStructureDnd', () => {
       const containers = buildContainers({
         introduction: [
           buildItem(THOUGHT_ONE, {
-            requiredTags: [mockColumnTitles.introduction],
+            requiredTags: ['intro'],
             outlinePointId: OUTLINE_INTRO,
           }),
         ],
         main: [
           buildItem(THOUGHT_TWO, {
-            requiredTags: [mockColumnTitles.main],
+            requiredTags: ['main'],
             outlinePointId: OUTLINE_MAIN,
           }),
         ],
@@ -1055,7 +1040,7 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_MAIN,
-          tags: expect.arrayContaining([mockColumnTitles.main]),
+          tags: expect.arrayContaining(['main']),
         })
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
@@ -1071,7 +1056,7 @@ describe('useStructureDnd', () => {
       const containers = buildContainers({
         introduction: [
           buildItem(THOUGHT_ONE, {
-            requiredTags: [mockColumnTitles.introduction],
+            requiredTags: ['intro'],
             customTagNames: [CUSTOM_TAG],
             outlinePointId: OUTLINE_INTRO,
           }),
@@ -1081,7 +1066,7 @@ describe('useStructureDnd', () => {
       const sermon = buildSermon({
         thoughts: [
           buildThought(THOUGHT_ONE, {
-            tags: ['introduction'],
+            tags: ['intro'],
             outlinePointId: OUTLINE_INTRO,
           }),
         ],

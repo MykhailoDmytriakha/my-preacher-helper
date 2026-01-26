@@ -41,7 +41,7 @@ import { STRUCTURE_TAGS } from '@lib/constants';
 import "@locales/i18n";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import { getContrastColor } from "@utils/color";
-import { normalizeStructureTag } from '@utils/tagUtils';
+import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
@@ -764,20 +764,12 @@ export default function SermonPage() {
   const checkForInconsistentThoughts = (): boolean => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return false;
 
-    // Section-tag mapping
-    const sectionTagMapping: Record<string, string> = {
-      'introduction': STRUCTURE_TAGS.INTRODUCTION,
-      'main': STRUCTURE_TAGS.MAIN_BODY,
-      'conclusion': STRUCTURE_TAGS.CONCLUSION
-    };
-
-    // List of required tags to check
-    const requiredTags = Object.values(sectionTagMapping);
-
     // Check each thought
     return sermon.thoughts.some(thought => {
       // 1. Check for multiple required tags on one thought
-      const usedRequiredTags = thought.tags.filter(tag => requiredTags.includes(tag));
+      const usedRequiredTags = thought.tags
+        .map((tag) => normalizeStructureTag(tag))
+        .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
       if (usedRequiredTags.length > 1) {
         return true; // Inconsistency: multiple required tags
       }
@@ -799,16 +791,15 @@ export default function SermonPage() {
       if (!outlinePointSection) return false; // If section not found, consider it consistent
 
       // Get the expected tag for the current section
-      const expectedTag = sectionTagMapping[outlinePointSection];
-      if (!expectedTag) return false; // If unknown section, consider it consistent
+      const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
 
       // Check if the thought has the expected tag for the current section
-      const hasExpectedTag = thought.tags.includes(expectedTag);
+      const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
 
       // Check if the thought has tags from other sections
-      const hasOtherSectionTags = Object.values(sectionTagMapping)
+      const hasOtherSectionTags = ['intro', 'main', 'conclusion']
         .filter(tag => tag !== expectedTag)
-        .some(tag => thought.tags.includes(tag));
+        .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
 
       // Inconsistency if no expected tag or other section tags present
       return !(!hasOtherSectionTags || hasExpectedTag);
@@ -872,19 +863,14 @@ export default function SermonPage() {
     sermon.thoughts = [];
   }
   const totalThoughts = sermon.thoughts.length;
+  const countByCanonical = (canonical: string) => sermon.thoughts.reduce(
+    (count, thought) => count + (thought.tags.some(tag => normalizeStructureTag(tag) === canonical) ? 1 : 0),
+    0
+  );
   const tagCounts = {
-    [STRUCTURE_TAGS.INTRODUCTION]: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes(STRUCTURE_TAGS.INTRODUCTION) ? 1 : 0),
-      0
-    ),
-    [STRUCTURE_TAGS.MAIN_BODY]: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes(STRUCTURE_TAGS.MAIN_BODY) ? 1 : 0),
-      0
-    ),
-    [STRUCTURE_TAGS.CONCLUSION]: sermon.thoughts.reduce(
-      (count, thought) => count + (thought.tags.includes(STRUCTURE_TAGS.CONCLUSION) ? 1 : 0),
-      0
-    ),
+    [STRUCTURE_TAGS.INTRODUCTION]: countByCanonical('intro'),
+    [STRUCTURE_TAGS.MAIN_BODY]: countByCanonical('main'),
+    [STRUCTURE_TAGS.CONCLUSION]: countByCanonical('conclusion'),
   };
 
   const handleNewRecording = async (audioBlob: Blob) => {

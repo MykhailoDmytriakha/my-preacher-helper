@@ -1,23 +1,16 @@
 import { Sermon } from '@/models/models';
+import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
 
 // Изолированная функция для тестирования
 const checkForInconsistentThoughts = (sermon: Sermon): boolean => {
   if (!sermon || !sermon.thoughts || !sermon.outline) return false;
   
-  // Соответствие между секциями и тегами
-  const sectionTagMapping: Record<string, string> = {
-    'introduction': 'Вступление',
-    'main': 'Основная часть',
-    'conclusion': 'Заключение'
-  };
-  
-  // Список обязательных тегов для проверки
-  const requiredTags = Object.values(sectionTagMapping);
-  
   // Проверяем каждую мысль
   return sermon.thoughts.some(thought => {
     // 1. Проверка на несколько обязательных тегов у одной мысли
-    const usedRequiredTags = thought.tags.filter(tag => requiredTags.includes(tag));
+    const usedRequiredTags = thought.tags
+      .map((tag) => normalizeStructureTag(tag))
+      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
     if (usedRequiredTags.length > 1) {
       return true; // Несогласованность: несколько обязательных тегов
     }
@@ -39,16 +32,15 @@ const checkForInconsistentThoughts = (sermon: Sermon): boolean => {
     if (!outlinePointSection) return false; // Если не нашли секцию, считаем что проблемы нет
     
     // Получаем ожидаемый тег для текущей секции
-    const expectedTag = sectionTagMapping[outlinePointSection];
-    if (!expectedTag) return false; // Если неизвестная секция, считаем что все в порядке
+    const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
     
     // Проверяем, имеет ли мысль тег соответствующей секции
-    const hasExpectedTag = thought.tags.includes(expectedTag);
+    const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
     
     // Проверяем, имеет ли мысль теги других секций
-    const hasOtherSectionTags = Object.values(sectionTagMapping)
+    const hasOtherSectionTags = ['intro', 'main', 'conclusion']
       .filter(tag => tag !== expectedTag)
-      .some(tag => thought.tags.includes(tag));
+      .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
     
     // Несогласованность, если нет ожидаемого тега или есть теги других секций
     return !(!hasOtherSectionTags || hasExpectedTag);

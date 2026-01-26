@@ -161,28 +161,30 @@ describe('useSermonStructureData Hook', () => {
 
     // Verify container assignment logic
     expect(result.current.containers.introduction.find(item => item.id === 't7')).toBeDefined();
-    expect(result.current.containers.introduction[0].requiredTags).toEqual(['Introduction']);
+    expect(result.current.containers.introduction[0].requiredTags).toEqual(['intro']);
+    expect(result.current.containers.introduction.find(item => item.id === 't1')).toBeDefined();
 
-    // t1, t2, t3, t4, t5, t6 were not in structure, should go to ambiguous
-    expect(result.current.containers.ambiguous.find(item => item.id === 't1')).toBeDefined();
-    expect(result.current.containers.ambiguous.find(item => item.id === 't2')).toBeDefined();
-    expect(result.current.containers.ambiguous.find(item => item.id === 't3')).toBeDefined();
-    expect(result.current.containers.ambiguous.find(item => item.id === 't4')).toBeDefined();
+    expect(result.current.containers.main.find(item => item.id === 't2')).toBeDefined();
+    expect(result.current.containers.main.find(item => item.id === 't3')).toBeDefined();
+
+    expect(result.current.containers.conclusion.find(item => item.id === 't4')).toBeDefined();
+
+    // t5, t6 have no structure tags, should go to ambiguous
     expect(result.current.containers.ambiguous.find(item => item.id === 't5')).toBeDefined();
     expect(result.current.containers.ambiguous.find(item => item.id === 't6')).toBeDefined();
-    expect(result.current.containers.ambiguous.length).toBe(6);
+    expect(result.current.containers.ambiguous.length).toBe(2);
 
-     // Check tags are correctly assigned to items in ambiguous
-     const t1Item = result.current.containers.ambiguous.find(item => item.id === 't1');
-     expect(t1Item?.requiredTags).toEqual([]); // Moved to ambiguous, required tags cleared
+     // Check tags are correctly assigned to items in sections
+     const t1Item = result.current.containers.introduction.find(item => item.id === 't1');
+     expect(t1Item?.requiredTags).toEqual(['intro']);
      expect(t1Item?.customTagNames).toEqual([]); // No custom tags matched
 
-     const t2Item = result.current.containers.ambiguous.find(item => item.id === 't2');
-     expect(t2Item?.requiredTags).toEqual([]); // Moved to ambiguous
+     const t2Item = result.current.containers.main.find(item => item.id === 't2');
+     expect(t2Item?.requiredTags).toEqual(['main']);
      expect(t2Item?.customTagNames).toEqual([{ name: 'Grace', color: '#ffff00' }]);
 
-     const t3Item = result.current.containers.ambiguous.find(item => item.id === 't3');
-     expect(t3Item?.requiredTags).toEqual([]); // Moved to ambiguous
+     const t3Item = result.current.containers.main.find(item => item.id === 't3');
+     expect(t3Item?.requiredTags).toEqual(['main']);
      expect(t3Item?.customTagNames).toEqual([{ name: 'Faith', color: '#ff00ff' }]);
 
     // Verify outline points
@@ -260,7 +262,7 @@ describe('useSermonStructureData Hook', () => {
 
     // Items should be processed without tag enrichment from fetched tags,
     // but might get default enrichment based on the thought's own tag strings.
-    const t2Item = result.current.containers.ambiguous.find(item => item.id === 't2');
+    const t2Item = result.current.containers.main.find(item => item.id === 't2');
     // Check for default enrichment: 'grace' tag exists on thought, but not in fetched tags,
     // so it gets the default color.
     expect(t2Item?.customTagNames).toEqual([{ name: 'grace', color: '#4c51bf' }]);
@@ -442,13 +444,16 @@ describe('useSermonStructureData Hook', () => {
     });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // Items without clear section tag go to ambiguous; positions should be seeded for stable ordering
+    // Items with structure tags go to their sections; positions should be seeded for stable ordering
+    const introItems = result.current.containers.introduction;
+    expect(introItems.length).toBe(2);
+    expect(typeof introItems[0].position).toBe('number');
+    expect(typeof introItems[1].position).toBe('number');
+    expect((introItems[0].position as number) < (introItems[1].position as number)).toBe(true);
+
     const amb = result.current.containers.ambiguous;
-    expect(amb.length).toBe(3);
+    expect(amb.length).toBe(1);
     expect(typeof amb[0].position).toBe('number');
-    expect(typeof amb[1].position).toBe('number');
-    expect(typeof amb[2].position).toBe('number');
-    expect((amb[0].position as number) < (amb[1].position as number)).toBe(true);
 
     // Now test sorting by explicit positions
     const sermonWithPositions: Sermon = {

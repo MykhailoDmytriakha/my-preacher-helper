@@ -39,11 +39,12 @@ jest.mock('@/utils/themeColors', () => ({
     success: { bg: 'bg-green-600', darkBg: 'bg-green-700', text: 'text-white', darkText: 'text-white' },
   },
   getFocusModeButtonColors: jest.fn(() => ({
-    bg: 'bg-gray-100',
-    hover: 'hover:bg-gray-200',
-    text: 'text-gray-800',
     darkBg: 'dark:bg-gray-800',
     darkText: 'dark:text-gray-200',
+  })),
+  getTagStyling: jest.fn(() => ({
+    bg: 'bg-blue-50',
+    text: 'text-blue-800',
   })),
 }));
 
@@ -91,8 +92,8 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
     it('should display drag and drop areas', async () => {
       const mockSermon = createMockSermon({
         thoughts: [
-          createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'] }),
-          createMockThought({ id: 't2', text: 'Thought 2', tags: ['Main Part'] }),
+          createMockThought({ id: 't1', text: 'Thought 1', tags: ['intro'] }),
+          createMockThought({ id: 't2', text: 'Thought 2', tags: ['main'] }),
         ],
         structure: { introduction: ['t1'], main: ['t2'], conclusion: [], ambiguous: [] },
         outline: {
@@ -128,8 +129,8 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
     it('should handle AI sorting', async () => {
       const mockSermon = createMockSermon({
         thoughts: [
-          createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'] }),
-          createMockThought({ id: 't2', text: 'Thought 2', tags: ['Introduction'] }),
+          createMockThought({ id: 't1', text: 'Thought 1', tags: ['intro'] }),
+          createMockThought({ id: 't2', text: 'Thought 2', tags: ['intro'] }),
         ],
         structure: { introduction: ['t1', 't2'], main: [], conclusion: [], ambiguous: [] },
         outline: {
@@ -170,7 +171,7 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
     it('should display thoughts grouped by outline points', async () => {
       const mockSermon = createMockSermon({
         thoughts: [
-          createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'], outlinePointId: 'op1' }),
+          createMockThought({ id: 't1', text: 'Thought 1', tags: ['intro'], outlinePointId: 'op1' }),
         ],
         structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
         outline: {
@@ -246,7 +247,7 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
           createMockThought({
             id: 'main-thought',
             text: 'Main thought',
-            tags: ['Main Part'],
+            tags: ['main'],
             outlinePointId: 'op-main',
           }),
         ],
@@ -265,7 +266,7 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
             id: 'main-thought',
             content: 'Main thought',
             outlinePointId: 'op-main',
-            requiredTags: ['Main Part'],
+            requiredTags: ['main'],
           }),
         ],
         conclusion: [],

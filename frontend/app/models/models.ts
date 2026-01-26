@@ -6,7 +6,7 @@ export interface Thought {
   outlinePointId?: string | null;
   position?: number;
   keyFragments?: string[]; // Store important text fragments for AI generation
-  forceTag?: string; // Force tag for transcription (introduction, main, conclusion)
+  forceTag?: string; // Force tag for transcription (intro, main, conclusion)
 }
 
 /**

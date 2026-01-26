@@ -50,9 +50,9 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { sermons, loading } = useDashboardSermons();
   const { deleteSermonFromCache, updateSermonCache, addSermonToCache } = useSermonMutations();
-  
+
   const { series: allSeries } = useSeries(user?.uid || null);
-  
+
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInThoughts, setSearchInThoughts] = useState(true);
@@ -105,7 +105,7 @@ export default function DashboardPage() {
     // Search filter
     if (searchTokens.length) {
       filtered = filtered.filter((sermon) =>
-        matchesSermonQuery(sermon, searchTokens, searchOptions)
+        matchesSermonQuery(sermon, searchTokens, searchOptions, t)
       );
     }
 
@@ -125,7 +125,7 @@ export default function DashboardPage() {
     const snippets: Record<string, ThoughtSnippet[] | undefined> = {};
     if (searchTokens.length) {
       sorted.forEach((sermon) => {
-        const thoughtSnippets = getThoughtSnippets(sermon, searchQuery);
+        const thoughtSnippets = getThoughtSnippets(sermon, searchQuery, Infinity, 90, undefined, t);
         if (thoughtSnippets.length > 0) {
           snippets[sermon.id] = thoughtSnippets;
         }
@@ -133,7 +133,7 @@ export default function DashboardPage() {
     }
 
     return { processedSermons: sorted, searchSnippetsById: snippets };
-  }, [sermons, searchTokens, searchOptions, sortOption, seriesFilter, activeTab, searchQuery]);
+  }, [sermons, searchTokens, searchOptions, sortOption, seriesFilter, activeTab, searchQuery, t]);
 
   return (
     <div className="space-y-6">
@@ -144,12 +144,12 @@ export default function DashboardPage() {
             {t('dashboard.mySermons')}
           </h1>
         </div>
-        
+
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <AddSermonModal onNewSermonCreated={handleNewSermon} />
         </div>
       </div>
-      
+
       {/* Stats Section */}
       <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
         <div className="px-4 sm:px-0">
@@ -175,11 +175,10 @@ export default function DashboardPage() {
             `}
           >
             {t('dashboard.activeSermons')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
-              activeTab === "active"
-                ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
-                : BADGE_INACTIVE_CLASSES
-            }`}>
+            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "active"
+              ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
+              : BADGE_INACTIVE_CLASSES
+              }`}>
               {loading ? "-" : sermons.filter(s => !s.isPreached).length}
             </span>
           </button>
@@ -194,11 +193,10 @@ export default function DashboardPage() {
             `}
           >
             {t('dashboard.preached')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
-              activeTab === "preached"
-                ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
-                : BADGE_INACTIVE_CLASSES
-            }`}>
+            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "preached"
+              ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
+              : BADGE_INACTIVE_CLASSES
+              }`}>
               {loading ? "-" : sermons.filter(s => s.isPreached).length}
             </span>
           </button>
@@ -213,17 +211,16 @@ export default function DashboardPage() {
             `}
           >
             {t('dashboard.all')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
-              activeTab === "all"
-                ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
-                : BADGE_INACTIVE_CLASSES
-            }`}>
+            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "all"
+              ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
+              : BADGE_INACTIVE_CLASSES
+              }`}>
               {loading ? "-" : sermons.length}
             </span>
           </button>
         </nav>
       </div>
-      
+
       {/* Search & Filters Toolbar */}
       <div className="flex flex-col gap-3 bg-white dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
@@ -242,7 +239,7 @@ export default function DashboardPage() {
                         dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
             />
             {searchQuery && (
-              <button 
+              <button
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
               >
@@ -310,7 +307,7 @@ export default function DashboardPage() {
           </label>
         </div>
       </div>
-      
+
       {/* Content Area */}
       {loading ? (
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -345,7 +342,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             {t('dashboard.tryDifferentSearch')}
           </p>
-          <button 
+          <button
             onClick={() => setSearchQuery("")}
             className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-500"
           >

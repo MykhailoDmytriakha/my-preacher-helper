@@ -22,7 +22,7 @@ describe('useAiSortingDiff', () => {
     date: new Date().toISOString(),
     userId: 'user-1',
     thoughts: [
-      { id: 'thought-1', text: 'Test thought 1', tags: ['introduction'], date: new Date().toISOString() },
+      { id: 'thought-1', text: 'Test thought 1', tags: ['intro'], date: new Date().toISOString() },
       { id: 'thought-2', text: 'Test thought 2', tags: ['main'], date: new Date().toISOString() },
       { id: 'thought-3', text: 'Test thought 3', tags: ['conclusion'], date: new Date().toISOString() },
     ],
@@ -36,7 +36,7 @@ describe('useAiSortingDiff', () => {
 
   const mockContainers: Record<string, Item[]> = {
     introduction: [
-      { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [] }
+      { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [] }
     ],
     main: [
       { id: 'thought-2', content: 'Test thought 2', requiredTags: ['main'], customTagNames: [] }
@@ -149,7 +149,7 @@ describe('useAiSortingDiff', () => {
             const manyItems = Array.from({ length: 51 }, (_, i) => ({
               id: `thought-${i}`,
               content: `Test thought ${i}`,
-              requiredTags: ['introduction'],
+              requiredTags: ['intro'],
               customTagNames: [],
             }));
             const hook = renderHook(() =>
@@ -276,7 +276,7 @@ describe('useAiSortingDiff', () => {
       const largeItems = Array.from({ length: 25 }, (_, i) => ({
         id: `thought-${i}`,
         content: `Test thought ${i}`,
-        requiredTags: ['introduction'],
+        requiredTags: ['intro'],
         customTagNames: [],
       }));
       const largeHook = renderHook(() =>
@@ -295,7 +295,7 @@ describe('useAiSortingDiff', () => {
       const overflowItems = Array.from({ length: 30 }, (_, i) => ({
         id: `thought-${i}`,
         content: `Overflow thought ${i}`,
-        requiredTags: ['introduction'],
+        requiredTags: ['intro'],
         customTagNames: [],
       }));
       const overflowHook = renderHook(() =>

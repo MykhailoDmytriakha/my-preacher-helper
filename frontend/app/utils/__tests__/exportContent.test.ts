@@ -3,14 +3,18 @@ import { getExportContent } from '@/utils/exportContent';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 // Mock the tagUtils module
-jest.mock('../tagUtils', () => ({
-  normalizeStructureTag: jest.fn((tag: string) => {
+jest.mock('../tagUtils', () => {
+  const normalizeStructureTag = jest.fn((tag: string) => {
     if (tag === 'intro' || tag === 'introduction') return 'intro';
     if (tag === 'main' || tag === 'mainPart') return 'main';
     if (tag === 'conclusion') return 'conclusion';
     return null;
-  })
-}));
+  });
+  return {
+    normalizeStructureTag,
+    isStructureTag: jest.fn((tag: string) => normalizeStructureTag(tag) !== null)
+  };
+});
 
 // Mock the sections module
 jest.mock('@/lib/sections', () => ({

@@ -33,8 +33,8 @@ describe('useOutlineStats', () => {
 
   const mockContainers: Record<string, Item[]> = {
     introduction: [
-      { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-      { id: 'thought-4', content: 'Test thought 4', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-2' }
+      { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+      { id: 'thought-4', content: 'Test thought 4', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-2' }
     ],
     main: [
       { id: 'thought-2', content: 'Test thought 2', requiredTags: ['main'], customTagNames: [], outlinePointId: 'main-1' },
@@ -93,9 +93,9 @@ describe('useOutlineStats', () => {
       const containersWithMultipleThoughts = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-4', content: 'Test thought 4', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' }, // Same outline point
-          { id: 'thought-6', content: 'Test thought 6', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-2' }
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-4', content: 'Test thought 4', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' }, // Same outline point
+          { id: 'thought-6', content: 'Test thought 6', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-2' }
         ]
       };
 
@@ -184,8 +184,8 @@ describe('useOutlineStats', () => {
       const containersWithUnassignedThoughts = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-7', content: 'Test thought 7', requiredTags: ['introduction'], customTagNames: [] } // No outlinePointId
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-7', content: 'Test thought 7', requiredTags: ['intro'], customTagNames: [] } // No outlinePointId
         ]
       };
 
@@ -202,8 +202,8 @@ describe('useOutlineStats', () => {
       const containersWithUndefinedSermonPoints = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-8', content: 'Test thought 8', requiredTags: ['introduction'], customTagNames: [], outlinePointId: undefined }
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-8', content: 'Test thought 8', requiredTags: ['intro'], customTagNames: [], outlinePointId: undefined }
         ]
       };
 
@@ -250,7 +250,7 @@ describe('useOutlineStats', () => {
       const newContainers = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' }
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' }
         ]
       };
 
@@ -302,9 +302,9 @@ describe('useOutlineStats', () => {
       const containersWithMultipleAssignments = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-9', content: 'Test thought 9', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-10', content: 'Test thought 10', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' }
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-9', content: 'Test thought 9', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-10', content: 'Test thought 10', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' }
         ]
       };
 
@@ -343,8 +343,8 @@ describe('useOutlineStats', () => {
       const containersWithMissingSermonPoints = {
         ...mockContainers,
         introduction: [
-          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'intro-1' },
-          { id: 'thought-11', content: 'Test thought 11', requiredTags: ['introduction'], customTagNames: [], outlinePointId: 'non-existent-point' }
+          { id: 'thought-1', content: 'Test thought 1', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-11', content: 'Test thought 11', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'non-existent-point' }
         ]
       };
 

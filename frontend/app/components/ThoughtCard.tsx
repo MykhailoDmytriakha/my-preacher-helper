@@ -8,7 +8,7 @@ import "@locales/i18n";
 // Utils imports
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { formatDate } from "@utils/dateFormatter";
-import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, CanonicalStructureId } from "@utils/tagUtils";
 
 // Components
 import SermonPointSelector from './SermonPointSelector';
@@ -101,29 +101,40 @@ const ThoughtCard = ({
   const checkSectionTagAndOutlineConsistency = useCallback((tags: string[], outlinePointSection?: string): boolean => {
     if (!outlinePointSection) return true;
 
-    const expectedTag = STRUCTURE_SECTIONS[outlinePointSection];
-    if (!expectedTag) return true;
+    // Get canonical ID for the section the outline point belongs to
+    // section values: 'introduction' | 'main' | 'conclusion'
+    let expectedCanonical: CanonicalStructureId | null = null;
+    if (outlinePointSection === 'introduction') expectedCanonical = 'intro';
+    else if (outlinePointSection === 'main') expectedCanonical = 'main';
+    else if (outlinePointSection === 'conclusion') expectedCanonical = 'conclusion';
 
-    const hasExpectedTag = tags.includes(expectedTag);
-    const hasOtherSectionTags = Object.values(STRUCTURE_SECTIONS)
-      .filter(tag => tag !== expectedTag)
-      .some(tag => tags.includes(tag));
+    if (!expectedCanonical) return true;
+
+    const normalizedTags = tags
+      .map(t => normalizeStructureTag(t))
+      .filter((t): t is CanonicalStructureId => t !== null);
+
+    const hasExpectedTag = normalizedTags.includes(expectedCanonical);
+    const hasOtherSectionTags = normalizedTags.some(tag => tag !== expectedCanonical);
 
     return !hasOtherSectionTags || hasExpectedTag;
   }, []);
 
   // Memoize computed values
   const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
-  const structureTags = useMemo(() => Object.values(STRUCTURE_SECTIONS), []);
-  const hasRequiredTag = useMemo(() => thought.tags.some(tag => structureTags.includes(tag)), [thought.tags, structureTags]);
+  const hasRequiredTag = useMemo(() => thought.tags.some(tag => isStructureTag(tag)), [thought.tags]);
   const hasInconsistentSection = useMemo(() =>
     !checkSectionTagAndOutlineConsistency(thought.tags, outlinePoint?.section),
     [thought.tags, outlinePoint, checkSectionTagAndOutlineConsistency]
   );
-  const hasMultipleStructureTags = useMemo(() =>
-    thought.tags.filter(tag => structureTags.includes(tag)).length > 1,
-    [thought.tags, structureTags]
-  );
+  const hasMultipleStructureTags = useMemo(() => {
+    const structuralCanonicalTags = new Set(
+      thought.tags
+        .map(tag => normalizeStructureTag(tag))
+        .filter((t): t is CanonicalStructureId => t !== null)
+    );
+    return structuralCanonicalTags.size > 1;
+  }, [thought.tags]);
   const needsSectionTag = useMemo(() => !hasRequiredTag, [hasRequiredTag]);
 
   // Determine card style based on status with improved visual hierarchy

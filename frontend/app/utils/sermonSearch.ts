@@ -1,6 +1,7 @@
 import { Sermon } from '@/models/models';
 
 import { extractSearchSnippets } from './searchUtils';
+import { getTranslationKeyForTag } from './tagUtils';
 
 interface SermonSearchOptions {
   searchInTitleVerse?: boolean;
@@ -32,6 +33,23 @@ function textMatchesAllTokens(text: string, tokens: string[]): boolean {
   return tokens.every((token) => haystack.includes(token));
 }
 
+/**
+ * Checks if a tag (id or literal) matches search tokens, 
+ * including matching against its localized names if it's structural.
+ */
+function tagMatchesTokens(tag: string, tokens: string[], t?: (key: string) => string): boolean {
+  if (textMatchesAllTokens(tag, tokens)) return true;
+
+  // Also check localized names for structural tags
+  const translationKey = getTranslationKeyForTag(tag);
+  if (translationKey && t) {
+    const localizedName = t(translationKey);
+    if (textMatchesAllTokens(localizedName, tokens)) return true;
+  }
+
+  return false;
+}
+
 function anyTextMatchesAllTokens(texts: string[], tokens: string[]): boolean {
   return texts.some((text) => textMatchesAllTokens(text, tokens));
 }
@@ -39,7 +57,8 @@ function anyTextMatchesAllTokens(texts: string[], tokens: string[]): boolean {
 export function matchesSermonQuery(
   sermon: Sermon,
   tokens: string[],
-  options?: SermonSearchOptions
+  options?: SermonSearchOptions,
+  t?: (key: string) => string
 ): boolean {
   if (tokens.length === 0) return true;
 
@@ -56,10 +75,10 @@ export function matchesSermonQuery(
       : false;
 
   const thoughtTags =
-    sermon.thoughts?.flatMap((t) => t.tags || []).filter(Boolean) || [];
+    sermon.thoughts?.flatMap((th) => th.tags || []).filter(Boolean) || [];
   const tagsMatch =
     opts.searchInTags && thoughtTags.length > 0
-      ? anyTextMatchesAllTokens(thoughtTags, tokens)
+      ? thoughtTags.some((tag) => tagMatchesTokens(tag, tokens, t))
       : false;
 
   return titleVerseMatches || thoughtsMatch || tagsMatch;
@@ -70,7 +89,8 @@ export function getThoughtSnippets(
   query: string,
   maxSnippets: number = Infinity,
   contextChars: number = 90,
-  tokensOverride?: string[]
+  tokensOverride?: string[],
+  t?: (key: string) => string
 ): ThoughtSnippet[] {
   if (!query.trim()) return [];
   const thoughts = sermon.thoughts || [];
@@ -84,7 +104,7 @@ export function getThoughtSnippets(
     let matchedText = snippets[0];
 
     const tags = (thought.tags || []).filter(Boolean);
-    const matchedTags = tags.filter((tag) => textMatchesAllTokens(tag, tokens));
+    const matchedTags = tags.filter((tag) => tagMatchesTokens(tag, tokens, t));
 
     // If match is only in tags, still show a text snippet so the thought is visible
     if (!matchedText && matchedTags.length > 0) {

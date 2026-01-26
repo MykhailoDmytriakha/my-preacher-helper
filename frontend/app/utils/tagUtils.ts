@@ -7,7 +7,24 @@ const ICON_CLASS_NAME = "w-3.5 h-3.5 mr-1";
 /**
  * Canonical structure tag ids used across the app for logic
  */
-type CanonicalStructureId = 'intro' | 'main' | 'conclusion';
+export type CanonicalStructureId = 'intro' | 'main' | 'conclusion';
+
+/**
+ * Section ids used by the structure page
+ */
+export type StructureSectionId = 'introduction' | 'main' | 'conclusion';
+
+export const SECTION_TO_CANONICAL: Record<StructureSectionId, CanonicalStructureId> = {
+  introduction: 'intro',
+  main: 'main',
+  conclusion: 'conclusion',
+};
+
+export const CANONICAL_TO_SECTION: Record<CanonicalStructureId, StructureSectionId> = {
+  intro: 'introduction',
+  main: 'main',
+  conclusion: 'conclusion',
+};
 
 /**
  * Map of aliases (in different languages/cases) to canonical ids
@@ -21,10 +38,7 @@ const STRUCTURE_ALIAS_TO_CANONICAL: Record<string, CanonicalStructureId> = {
   'main': 'main',
   'conclusion': 'conclusion',
 
-  // English capitalized variations
-  'introduction ': 'intro',
-  'main part ': 'main',
-  'conclusion ': 'conclusion',
+  // No duplicates needed after resolving spaces
 
   // Russian
   'вступление': 'intro',
@@ -44,6 +58,28 @@ export function normalizeStructureTag(tag: string | undefined | null): Canonical
   if (!tag) return null;
   const key = String(tag).trim().toLowerCase();
   return STRUCTURE_ALIAS_TO_CANONICAL[key] ?? null;
+}
+
+export function getCanonicalTagForSection(sectionId: StructureSectionId): CanonicalStructureId {
+  return SECTION_TO_CANONICAL[sectionId];
+}
+
+/**
+ * Mapping of canonical IDs to translation keys
+ */
+export const CANONICAL_TO_TRANSLATION_KEY: Record<CanonicalStructureId, string> = {
+  intro: 'tags.introduction',
+  main: 'tags.mainPart',
+  conclusion: 'tags.conclusion',
+};
+
+/**
+ * Get translation key for a tag (canonical ID or structural identifier)
+ */
+export function getTranslationKeyForTag(tag: string): string | null {
+  const canonical = normalizeStructureTag(tag);
+  if (canonical) return CANONICAL_TO_TRANSLATION_KEY[canonical];
+  return null;
 }
 
 /**
@@ -97,15 +133,15 @@ export const getStructureIcon = (tag: string) => {
  */
 export const getTagStyle = (tag: string, color?: string) => {
   const structureTagStatus = isStructureTag(tag);
-  
+
   // Base class for all tags
   let className = "px-2 py-0.5 rounded-full flex items-center";
-  
+
   // Enhanced styling for structure tags
   if (structureTagStatus) {
     className += " font-medium shadow-sm pl-1.5";
   }
-  
+
   // Always compute default class-based styling first to stabilize class tokens
   const defaultStyle = getDefaultTagStyling(tag);
   className += ` ${defaultStyle.bg} ${defaultStyle.text}`;
@@ -123,6 +159,6 @@ export const getTagStyle = (tag: string, color?: string) => {
   if (structureTagStatus) {
     className += " border border-current border-opacity-20 shadow";
   }
-  
+
   return { className, style };
 }; 

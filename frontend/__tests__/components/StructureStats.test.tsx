@@ -106,9 +106,9 @@ describe('StructureStats Component', () => {
   }
 
   const mockTagCounts = {
-    'Вступление': 1,
-    'Основная часть': 1,
-    'Заключение': 1,
+    'intro': 1,
+    'main': 1,
+    'conclusion': 1,
   }
 
   const totalThoughts = 3
@@ -174,13 +174,13 @@ describe('StructureStats Component', () => {
     const structureButton = screen.getByText('Work on ThoughtsBySection') as HTMLButtonElement
     const planButton = screen.getByText('Plan') as HTMLButtonElement
 
-    ;[structureButton, planButton].forEach((button) => {
-      expect(button).toHaveClass('relative', 'z-10', 'px-4', 'py-2', 'text-sm', 'font-medium')
-      expect(button).toHaveClass('transition-all', 'duration-200', 'ease-in-out')
-      if (!button.disabled) {
-        expect(button).toHaveClass('hover:scale-105', 'hover:shadow-lg', 'active:scale-95')
-      }
-    })
+      ;[structureButton, planButton].forEach((button) => {
+        expect(button).toHaveClass('relative', 'z-10', 'px-4', 'py-2', 'text-sm', 'font-medium')
+        expect(button).toHaveClass('transition-all', 'duration-200', 'ease-in-out')
+        if (!button.disabled) {
+          expect(button).toHaveClass('hover:scale-105', 'hover:shadow-lg', 'active:scale-95')
+        }
+      })
 
     expect(structureButton).toBeDisabled()
     expect(structureButton).toHaveClass('text-gray-400', 'cursor-not-allowed')

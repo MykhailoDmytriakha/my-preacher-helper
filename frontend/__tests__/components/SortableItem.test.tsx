@@ -55,7 +55,7 @@ describe('SortableItem Component', () => {
       { name: 'Tag1', color: '#ff0000' },
       { name: 'Tag2', color: '#00ff00' },
     ],
-    requiredTags: ['Introduction'],
+    requiredTags: ['intro'],
   };
 
   const mockContainerId = 'introduction';

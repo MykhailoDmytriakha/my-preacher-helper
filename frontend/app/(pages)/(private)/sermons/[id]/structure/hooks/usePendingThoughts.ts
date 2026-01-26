@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 
 import { Item, Sermon } from '@/models/models';
 import { buildLocalThoughtId, loadPendingThoughts, savePendingThoughts } from '@/utils/pendingThoughtsStore';
+import { getCanonicalTagForSection } from '@/utils/tagUtils';
 
 import { buildItemForUI, findOutlinePoint, isLocalThoughtId } from '../utils/structure';
 
@@ -22,7 +23,6 @@ interface UsePendingThoughtsParams {
   sermonId: string | null;
   sermon: Sermon | null;
   allowedTags: { name: string; color: string }[];
-  columnTitles: Record<string, string>;
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   containers: Record<string, Item[]>;
@@ -32,7 +32,6 @@ export const usePendingThoughts = ({
   sermonId,
   sermon,
   allowedTags,
-  columnTitles,
   setContainers,
   containersRef,
   containers,
@@ -60,7 +59,7 @@ export const usePendingThoughts = ({
 
   const buildPendingItem = useCallback((pending: PendingThoughtRecord): Item => {
     const outlinePoint = findOutlinePoint(pending.outlinePointId, sermon);
-    const sectionTag = columnTitles[pending.sectionId] || '';
+    const sectionTag = getCanonicalTagForSection(pending.sectionId);
     const item = buildItemForUI({
       id: pending.localId,
       text: pending.text,
@@ -77,7 +76,7 @@ export const usePendingThoughts = ({
       syncExpiresAt: pending.expiresAt,
       syncLastError: pending.lastError,
     };
-  }, [allowedTags, columnTitles, sermon]);
+  }, [allowedTags, sermon]);
 
   const upsertPendingInContainers = useCallback((pending: PendingThoughtRecord) => {
     setContainers((prev) => {

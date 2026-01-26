@@ -99,7 +99,7 @@ function ExportButtonsLayout({
   const layoutClass = LAYOUT_CLASS_BY_ORIENTATION[orientation];
   const pdfTooltipPositionClass = TOOLTIP_POSITION_BY_ORIENTATION[orientation];
   const pdfAriaLabel = getPdfAriaLabel(isPdfAvailable);
-  
+
   if (variant === 'icon') {
     const txtIconButtonClassName = getTxtIconButtonClassName(isPreached);
     const pdfIconButtonClassName = getPdfIconButtonClassName(isPdfAvailable, isPreached);
@@ -111,9 +111,8 @@ function ExportButtonsLayout({
         <div className="tooltip">
           <button
             onClick={onTxtClick}
-            className={`p-1.5 rounded-md transition-colors ${
-              txtIconButtonClassName
-            }`}
+            className={`p-1.5 rounded-md transition-colors ${txtIconButtonClassName
+              }`}
             aria-label={t('export.txtTitle')}
           >
             <FileText className="w-4 h-4" />
@@ -125,9 +124,8 @@ function ExportButtonsLayout({
           <button
             onClick={onPdfClick}
             disabled={!isPdfAvailable}
-            className={`p-1.5 rounded-md transition-colors ${
-              pdfIconButtonClassName
-            }`}
+            className={`p-1.5 rounded-md transition-colors ${pdfIconButtonClassName
+              }`}
             aria-label={pdfAriaLabel}
           >
             <File className="w-4 h-4" />
@@ -138,9 +136,8 @@ function ExportButtonsLayout({
         <div className="tooltip">
           <button
             onClick={onWordClick}
-            className={`p-1.5 rounded-md transition-colors ${
-              wordIconButtonClassName
-            }`}
+            className={`p-1.5 rounded-md transition-colors ${wordIconButtonClassName
+              }`}
             aria-label={WORD_EXPORT_LABEL}
           >
             <FileType className="w-4 h-4" />
@@ -159,13 +156,12 @@ function ExportButtonsLayout({
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       <button
         onClick={onTxtClick}
-        className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${
-          txtTextButtonClassName
-        }`}
+        className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${txtTextButtonClassName
+          }`}
       >
         TXT
       </button>
-      
+
       <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onPdfClick}
@@ -181,14 +177,13 @@ function ExportButtonsLayout({
           </span>
         )}
       </div>
-      
+
       <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onWordClick}
           disabled={false}
-          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${
-            wordTextButtonClassName
-          }`}
+          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${wordTextButtonClassName
+            }`}
           aria-label={WORD_EXPORT_LABEL}
         >
           Word
@@ -221,7 +216,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
   const [error, setError] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState(false);
   const modalId = useRef(`export-modal-${Math.random().toString(36).substring(2, 9)}`);
-  
+
   // Add cleanup effect
   useEffect(() => {
     return () => {
@@ -237,7 +232,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
     if (isOpen) {
       setIsLoading(true);
       setError(false);
-      
+
       if (content) {
         setExportContent(content);
         setIsLoading(false);
@@ -256,7 +251,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
       }
     }
   }, [isOpen, content, getContent, activeFormat, showTags]);
-  
+
   // No longer need to fetch content in these handlers since the useEffect will handle it
   const handleFormatChange = (newFormat: 'plain' | 'markdown') => {
     setActiveFormat(newFormat);
@@ -266,7 +261,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
     const newShowTags = !showTags;
     setShowTags(newShowTags);
   };
-  
+
   // Handle copy to clipboard with feedback
   const handleCopy = () => {
     if (isCopied) return;
@@ -278,23 +273,23 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
       console.error('Failed to copy text:', err);
     });
   };
-  
+
   // Handle download
   const handleDownload = () => {
     const element = document.createElement('a');
-    const file = new Blob([exportContent], {type: 'text/plain'});
+    const file = new Blob([exportContent], { type: 'text/plain' });
     element.href = URL.createObjectURL(file);
     element.download = `export.${activeFormat}`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
   };
-  
+
   if (!isOpen) return null;
-  
+
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" data-testid="portal-content">
-      <div 
+      <div
         className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-2xl flex flex-col"
         style={{ minHeight: "300px", maxHeight: "90vh" }}
         role="dialog"
@@ -308,15 +303,15 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
           <h3 id="export-modal-title" className="text-lg sm:text-xl font-semibold">
             {t('export.txtTitle')}
           </h3>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
-        
+
         {/* Options row - Format selection and Tags toggle */}
         <div className="flex flex-wrap items-center mb-4 text-sm flex-shrink-0 gap-4">
           {/* Format selection */}
@@ -324,22 +319,20 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
             <span className="mr-2">{t('export.format')}:</span>
             <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
               <button
-                className={`px-3 py-1 rounded ${
-                  activeFormat === 'plain'
-                    ? 'bg-blue-500 text-white shadow-sm'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                className={`px-3 py-1 rounded ${activeFormat === 'plain'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 onClick={() => handleFormatChange('plain')}
                 disabled={isLoading}
               >
                 {t('export.formatPlain')}
               </button>
               <button
-                className={`px-3 py-1 rounded ${
-                  activeFormat === 'markdown'
-                    ? 'bg-blue-500 text-white shadow-sm'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                className={`px-3 py-1 rounded ${activeFormat === 'markdown'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
                 onClick={() => handleFormatChange('markdown')}
                 disabled={isLoading}
               >
@@ -347,30 +340,29 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
               </button>
             </div>
           </div>
-          
+
           {/* Tags toggle switch */}
           <div className="flex items-center ml-auto">
             <span className="mr-2">{t('export.includeTags')}:</span>
-            <button 
+            <button
               onClick={handleTagsToggle}
               className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               role="switch"
               aria-checked={showTags}
               aria-label={showTags ? t('export.hideTags') : t('export.showTags')}
-              style={{ 
+              style={{
                 backgroundColor: showTags ? '#3b82f6' : '#e5e7eb',
               }}
               disabled={isLoading}
             >
-              <span 
-                className={`${
-                  showTags ? 'translate-x-6' : 'translate-x-1'
-                } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+              <span
+                className={`${showTags ? 'translate-x-6' : 'translate-x-1'
+                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
               />
             </button>
           </div>
         </div>
-        
+
         {/* Content area */}
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-4 flex-grow overflow-y-auto relative">
           {isLoading && (
@@ -392,7 +384,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
             )}
           </div>
         </div>
-        
+
         {/* Action buttons */}
         <div className="flex gap-2 sm:gap-3 justify-end flex-shrink-0">
           <button
@@ -414,8 +406,8 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
             disabled={isLoading || !exportContent || error}
             className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            {activeFormat === 'plain' 
-              ? t('export.downloadTxt') 
+            {activeFormat === 'plain'
+              ? t('export.downloadTxt')
               : t('export.downloadMarkdown', 'Download MD')}
           </button>
         </div>
@@ -444,12 +436,12 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   const [content, setContent] = useState<React.ReactNode | null>(null);
   const modalId = useRef(`export-pdf-modal-${Math.random().toString(36).substring(2, 9)}`);
   const contentRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     if (isOpen) {
       setIsLoading(true);
       setError(false);
-      
+
       getContent()
         .then((content) => {
           setContent(content);
@@ -462,20 +454,20 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
         });
     }
   }, [isOpen, getContent]);
-  
+
   const handleExportPdf = async () => {
     if (!contentRef.current) return;
-    
+
     try {
       setIsLoading(true);
-      
+
       const canvas = await html2canvas(contentRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -485,10 +477,10 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
       const imgX = (pdfWidth - imgWidth * ratio) / 2;
       const imgY = 30;
-      
+
       pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
       pdf.save(`${title || 'export'}.pdf`);
-      
+
       setIsLoading(false);
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -496,12 +488,12 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
       setIsLoading(false);
     }
   };
-  
+
   if (!isOpen) return null;
-  
+
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" data-testid="portal-content">
-      <div 
+      <div
         className="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl flex flex-col"
         style={{ minHeight: "300px", maxHeight: "90vh" }}
         role="dialog"
@@ -515,15 +507,15 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
           <h3 id="export-pdf-modal-title" className="text-lg sm:text-xl font-semibold">
             {t('export.pdfTitle', 'Export to PDF')}
           </h3>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
-        
+
         {/* Content area */}
         <div className="bg-white rounded-lg p-3 sm:p-4 mb-4 flex-grow overflow-y-auto relative">
           {isLoading && (
@@ -531,12 +523,12 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
             </div>
           )}
-          
+
           {error ? (
             <div className="text-red-500">{t('export.errorPreparingPdf', 'Error preparing PDF content')}</div>
           ) : (
-            <div 
-              ref={contentRef} 
+            <div
+              ref={contentRef}
               className="transition-opacity duration-200"
               style={{ backgroundColor: 'white', color: 'black' }}
             >
@@ -544,7 +536,7 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
             </div>
           )}
         </div>
-        
+
         {/* Action buttons */}
         <div className="flex gap-2 sm:gap-3 justify-end flex-shrink-0">
           <button
@@ -664,6 +656,7 @@ export default function ExportButtons({
   isPreached = false,
   variant = 'default',
 }: ExportButtonsContainerProps) {
+  const { t } = useTranslation();
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
 
@@ -703,13 +696,13 @@ export default function ExportButtons({
     setShowPdfModal(false);
   };
 
-  const handleWordClick = async () => { 
+  const handleWordClick = async () => {
     if (isWordDisabled) return;
-    
+
     try {
       // Get the plan content in markdown format
       const content = await getExportContent('markdown', { includeTags: false });
-      
+
       // Parse the content to extract sections - keep markdown formatting intact
       const lines = content.split('\n');
       let sermonTitle = title || 'План проповеди';
@@ -718,34 +711,34 @@ export default function ExportButtons({
       let main = '';
       let conclusion = '';
       let currentSection = '';
-      
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        
+
         // Extract title if it's at the beginning - remove markdown formatting for title
         if (i === 0 && line.startsWith('# ')) {
           sermonTitle = line.replace('# ', '').trim();
           continue;
         }
-        
+
         // Extract verse if it follows title - remove markdown formatting for verse
         if (line.startsWith('> ')) {
           sermonVerse = line.replace('> ', '').trim();
           continue;
         }
-        
+
         // Check for section headers
-        if (line.includes('Вступление') || line.includes('Introduction')) {
+        if (line.includes(t('tags.introduction')) || line.includes('Introduction')) {
           currentSection = 'introduction';
           continue;
-        } else if (line.includes('Основная часть') || line.includes('Main Part')) {
+        } else if (line.includes(t('tags.mainPart')) || line.includes('Main Part') || line.includes('Основная часть')) {
           currentSection = 'main';
           continue;
-        } else if (line.includes('Заключение') || line.includes('Conclusion')) {
+        } else if (line.includes(t('tags.conclusion')) || line.includes('Conclusion')) {
           currentSection = 'conclusion';
           continue;
         }
-        
+
         // Add content to appropriate section - KEEP markdown formatting
         if (currentSection && line.trim()) {
           if (currentSection === 'introduction') {
@@ -757,7 +750,7 @@ export default function ExportButtons({
           }
         }
       }
-      
+
       const planData: PlanData = {
         sermonTitle: sermonTitle,
         sermonVerse: sermonVerse || undefined,
@@ -765,9 +758,9 @@ export default function ExportButtons({
         main: main.trim() || PLACEHOLDER_CONTENT,
         conclusion: conclusion.trim() || PLACEHOLDER_CONTENT,
       };
-      
+
       await exportToWord({ data: planData });
-      
+
     } catch (error) {
       console.error('Error exporting to Word:', error);
       // You can add a toast notification here if needed
@@ -793,7 +786,7 @@ export default function ExportButtons({
         getContent={getExportContent}
         format="plain"
       />
-      
+
       {getPdfContent && (
         <ExportPdfModal
           isOpen={showPdfModal}

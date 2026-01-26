@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -8,11 +8,8 @@ import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySecti
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
+import { CANONICAL_TO_SECTION, getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
 import { getSectionBaseColor } from '@lib/sections';
-
-// Constants for repeated strings
-const DEFAULT_SECTION_NAMES = ["introduction", "main part", "conclusion"];
-const RUSSIAN_SECTION_NAMES = ["вступление", "основная часть", "заключение"];
 
 // Helper: Fetch sermon data
 async function fetchSermonData(
@@ -81,18 +78,13 @@ function processThoughtsIntoItems(
 
   (fetchedSermon.thoughts || []).forEach((thought: Thought) => {
     const stableId = thought.id;
-    const normalizedTags = Array.isArray(thought.tags)
-      ? thought.tags.map((tag: string) => tag.trim().toLowerCase())
-      : [];
+    const rawTags = Array.isArray(thought.tags) ? thought.tags.filter(Boolean) : [];
 
-    const customTagNames = normalizedTags.filter(
-      (tag: string) =>
-        !RUSSIAN_SECTION_NAMES.includes(tag) &&
-        !DEFAULT_SECTION_NAMES.includes(tag)
-    );
+    const customTagNames = rawTags.filter((tag: string) => normalizeStructureTag(tag) === null);
 
     const enrichedCustomTags = customTagNames.map((tagName: string) => {
-      const tagInfo = allTags[tagName];
+      const normalizedName = tagName.trim().toLowerCase();
+      const tagInfo = allTags[normalizedName];
       const color = tagInfo?.color || "#4c51bf";
       return {
         name: tagInfo?.name || tagName,
@@ -100,10 +92,10 @@ function processThoughtsIntoItems(
       };
     });
 
-    const relevantTags = normalizedTags.filter((tag: string) =>
-      RUSSIAN_SECTION_NAMES.includes(tag) ||
-      DEFAULT_SECTION_NAMES.includes(tag)
-    );
+    const relevantTags = rawTags
+      .map((tag) => normalizeStructureTag(tag))
+      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
+    const uniqueRequiredTags = Array.from(new Set(relevantTags));
 
     let outlinePointData;
     if (thought.outlinePointId && fetchedSermon.outline) {
@@ -124,7 +116,7 @@ function processThoughtsIntoItems(
       id: stableId,
       content: thought.text,
       customTagNames: enrichedCustomTags,
-      requiredTags: relevantTags.map((tag: string) => allTags[tag]?.name || tag),
+      requiredTags: uniqueRequiredTags,
       outlinePoint: outlinePointData,
       outlinePointId: thought.outlinePointId,
       position: (thought as { position?: number }).position
@@ -139,8 +131,7 @@ function processThoughtsIntoItems(
 // Helper: Distribute items to sections
 function distributeItemsToSections(
   allThoughtItems: Record<string, Item>,
-  structure: ThoughtsBySection | string | undefined,
-  columnTitles: Record<string, string>
+  structure: ThoughtsBySection | string | undefined
 ): {
   intro: Item[];
   main: Item[];
@@ -163,7 +154,7 @@ function distributeItemsToSections(
       ["introduction", "main", "conclusion"].forEach((section) => {
         if (Array.isArray(structureObj[section])) {
           const target = section === "introduction" ? intro : section === "main" ? main : concl;
-          const sectionTagName = columnTitles[section];
+          const sectionTag = getCanonicalTagForSection(section as 'introduction' | 'main' | 'conclusion');
           const seen = new Set<string>();
           const orderedUniqueIds = structureObj[section].filter((id: string) => {
             if (seen.has(id)) return false;
@@ -177,9 +168,9 @@ function distributeItemsToSections(
 
           const withSectionTag = itemsForSection.map((it) => ({
             ...it,
-            requiredTags: it.requiredTags?.includes(sectionTagName)
+            requiredTags: it.requiredTags?.includes(sectionTag)
               ? it.requiredTags
-              : [...(it.requiredTags || []), sectionTagName]
+              : [...(it.requiredTags || []), sectionTag]
           }));
 
           const allPos = withSectionTag.length > 0 && withSectionTag.every(i => typeof i.position === 'number');
@@ -201,16 +192,19 @@ function distributeItemsToSections(
       const itemRequiredTags = item.requiredTags || [];
       let placed = false;
       if (itemRequiredTags.length === 1) {
-        const tagName = itemRequiredTags[0];
-        if (tagName === columnTitles.introduction) {
-          intro.push(item);
-          placed = true;
-        } else if (tagName === columnTitles.main) {
-          main.push(item);
-          placed = true;
-        } else if (tagName === columnTitles.conclusion) {
-          concl.push(item);
-          placed = true;
+        const canonical = normalizeStructureTag(itemRequiredTags[0]);
+        if (canonical) {
+          const section = CANONICAL_TO_SECTION[canonical];
+          if (section === 'introduction') {
+            intro.push(item);
+            placed = true;
+          } else if (section === 'main') {
+            main.push(item);
+            placed = true;
+          } else if (section === 'conclusion') {
+            concl.push(item);
+            placed = true;
+          }
         }
       }
 
@@ -304,13 +298,6 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true); // Added state from component
 
-  const columnTitles = useMemo(() => ({
-    introduction: t('structure.introduction'),
-    main: t('structure.mainPart'),
-    conclusion: t('structure.conclusion'),
-    ambiguous: t('structure.underConsideration'),
-  } as Record<string, string>), [t]);
-
   const setSermon = useCallback((updater: React.SetStateAction<Sermon | null>) => {
     setSermonState((prev) => {
       const next = updater instanceof Function ? updater(prev) : updater;
@@ -372,8 +359,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         const filteredAllowedTags = Object.values(allTags)
           .filter(
             (tag) =>
-              !RUSSIAN_SECTION_NAMES.includes(tag.name.toLowerCase()) &&
-              !DEFAULT_SECTION_NAMES.includes(tag.name.toLowerCase())
+              normalizeStructureTag(tag.name) === null
           )
           .map(tag => ({
             name: tag.name,
@@ -387,8 +373,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         // Distribute items to sections
         const { intro, main, concl, ambiguous } = distributeItemsToSections(
           allThoughtItems,
-          fetchedSermon.structure,
-          columnTitles
+          fetchedSermon.structure
         );
 
         // Fetch outline
@@ -440,8 +425,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     }
 
     initializeSermon();
-    // Ensure dependencies are correct. 't' is included as columnTitles depends on it.
-  }, [sermonId, t, columnTitles, isOnlineResolved, queryClient, setSermon]);
+  }, [sermonId, t, isOnlineResolved, queryClient, setSermon]);
 
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {

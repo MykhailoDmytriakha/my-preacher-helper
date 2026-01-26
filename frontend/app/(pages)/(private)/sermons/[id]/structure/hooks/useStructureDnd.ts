@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
+import { getCanonicalTagForSection } from "@/utils/tagUtils";
 
 
 import {
@@ -288,14 +289,13 @@ const buildUpdatedItem = (
   movedItem: Item,
   overContainer: string,
   finalSermonPointId: string | null | undefined,
-  columnTitles: Record<string, string>,
   updatedContainers: Record<string, Item[]>,
   movedIndex: number
 ): Item => {
   // Determine the correct required tag for the destination container
   let updatedRequiredTags: string[] = [];
   if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
-    updatedRequiredTags = [columnTitles[overContainer as keyof typeof columnTitles]];
+    updatedRequiredTags = [getCanonicalTagForSection(overContainer as 'introduction' | 'main' | 'conclusion')];
   }
 
   // Compute new positional rank within the destination group
@@ -359,7 +359,6 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  columnTitles: Record<string, string>;
   debouncedSaveThought: (sermonId: string, thought: Thought) => void;
 }
 
@@ -369,7 +368,6 @@ export const useStructureDnd = ({
   containersRef,
   sermon,
   setSermon,
-  columnTitles,
   debouncedSaveThought,
 }: UseStructureDndProps) => {
   const { t } = useTranslation();
@@ -566,7 +564,6 @@ export const useStructureDnd = ({
           updatedMoved,
           overContainer,
           finalSermonPointId,
-          columnTitles,
           updatedContainers,
           movedIndex
         );
@@ -634,7 +631,6 @@ export const useStructureDnd = ({
     setActiveId,
     setOriginalContainer,
     setIsDragEnding,
-    columnTitles,
     debouncedSaveThought,
     setSermon,
     t

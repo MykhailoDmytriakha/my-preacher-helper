@@ -29,22 +29,27 @@ jest.mock('@heroicons/react/24/outline', () => ({
 
 // Mock the tagUtils module
 jest.mock('@utils/tagUtils', () => ({
-  isStructureTag: jest.fn().mockImplementation(tag => 
-    ['Вступление', 'Основная часть', 'Заключение', 'Introduction', 'Main Part', 'Conclusion'].includes(tag)
+  isStructureTag: jest.fn().mockImplementation(tag =>
+    ['Вступление', 'Основная часть', 'Заключение', 'Introduction', 'Main Part', 'Conclusion', 'intro', 'main', 'conclusion'].includes(tag)
   ),
   getDefaultTagStyling: jest.fn().mockReturnValue({ bg: 'bg-blue-50', text: 'text-blue-800' }),
   getStructureIcon: jest.fn().mockReturnValue(null),
   getTagStyle: jest.fn().mockReturnValue({ className: 'px-2 py-0.5 rounded-full', style: { backgroundColor: '#333333', color: '#ffffff' } }),
   normalizeStructureTag: jest.fn((tag: string) => {
-    if (['Вступление','Introduction','intro'].includes(tag)) return 'intro';
-    if (['Основная часть','Main Part','main'].includes(tag)) return 'main';
-    if (['Заключение','Conclusion','conclusion'].includes(tag)) return 'conclusion';
+    if (['Вступление', 'Introduction', 'intro'].includes(tag)) return 'intro';
+    if (['Основная часть', 'Main Part', 'main'].includes(tag)) return 'main';
+    if (['Заключение', 'Conclusion', 'conclusion'].includes(tag)) return 'conclusion';
     return null;
-  })
+  }),
+  CANONICAL_TO_SECTION: {
+    intro: 'introduction',
+    main: 'main',
+    conclusion: 'conclusion'
+  }
 }));
 
 // Mock the entire i18n module
-jest.mock('@locales/i18n', () => {}, { virtual: true });
+jest.mock('@locales/i18n', () => { }, { virtual: true });
 
 // Mock useClipboard hook
 const mockCopyToClipboard = jest.fn();
@@ -83,19 +88,19 @@ jest.mock('react-i18next', () => ({
         'tags.conclusion': 'Conclusion',
         'settings.title': 'Settings',
       };
-      
+
       // Handle specific interpolations
       if (key === 'thought.missingRequiredTag' && options) {
         return `Please add one of these tags: ${options.intro || 'intro'}, ${options.main || 'main'}, or ${options.conclusion || 'conclusion'}`;
       }
-      
+
       if (key === 'thought.inconsistentSection' && options && options.actualTag && options.expectedSection) {
         return `Inconsistency: thought has tag "${options.actualTag}" but assigned to ${options.expectedSection} outline point`;
-      } 
-      else if (key === 'thought.inconsistentSection') {
-         return `Inconsistency: thought has tag "undefined" but assigned to undefined outline point`; // Keep fallback based on previous observations
       }
-      
+      else if (key === 'thought.inconsistentSection') {
+        return `Inconsistency: thought has tag "undefined" but assigned to undefined outline point`; // Keep fallback based on previous observations
+      }
+
       // Return standard translation or the key itself
       return translations[key] || key;
     },
@@ -110,7 +115,7 @@ describe('ThoughtCard Component', () => {
     tags: ['Tag1', 'Tag2'],
     date: '2023-01-01',
   };
-  
+
   const mockAllowedTags = [
     { name: 'Tag1', color: '#ff0000' },
     { name: 'Tag2', color: '#00ff00' },
@@ -118,11 +123,11 @@ describe('ThoughtCard Component', () => {
     { name: 'Основная часть', color: '#ff00ff' },
     { name: 'Заключение', color: '#00ffff' },
     // Add back English variants if they were used elsewhere
-    { name: 'Introduction', color: '#0000ff' }, 
+    { name: 'Introduction', color: '#0000ff' },
     { name: 'Main Part', color: '#ff00ff' },
     { name: 'Conclusion', color: '#00ffff' },
   ];
-  
+
   const defaultProps = {
     thought: mockThought,
     index: 0,
@@ -130,33 +135,33 @@ describe('ThoughtCard Component', () => {
     onDelete: jest.fn(),
     onEditStart: jest.fn(),
   };
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockCopyToClipboard.mockClear();
     mockReset.mockClear();
   });
-  
+
   it('does not show warning when thought has required tag', () => {
     const thoughtWithStructureTag = {
       ...mockThought,
-      tags: ['Tag1', 'Вступление'] 
+      tags: ['Tag1', 'Вступление']
     };
     render(<ThoughtCard {...defaultProps} thought={thoughtWithStructureTag} />);
     expect(screen.queryByText(/Please add one of these tags/)).not.toBeInTheDocument();
   });
-  
+
   it('shows warning when thought has no required tag', () => {
-    render(<ThoughtCard {...defaultProps} />); 
+    render(<ThoughtCard {...defaultProps} />);
     expect(screen.getByText(/Please add one of these tags/)).toBeInTheDocument();
   });
-  
+
   // --- Options Menu Tests --- 
 
   it('opens options menu when ellipsis button is clicked', () => {
     render(<ThoughtCard {...defaultProps} />);
     const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
-    
+
     expect(screen.queryByRole('menu')).not.toBeInTheDocument(); // Menu initially hidden
     fireEvent.click(optionsButton!);
     expect(screen.getByRole('menu')).toBeInTheDocument(); // Menu visible
@@ -168,10 +173,10 @@ describe('ThoughtCard Component', () => {
     render(<ThoughtCard {...defaultProps} />);
     const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
     fireEvent.click(optionsButton!);
-    
+
     const editOption = screen.getByText('Edit');
     fireEvent.click(editOption);
-    
+
     expect(defaultProps.onEditStart).toHaveBeenCalledTimes(1);
     expect(defaultProps.onEditStart).toHaveBeenCalledWith(mockThought, 0);
 
@@ -185,10 +190,10 @@ describe('ThoughtCard Component', () => {
     render(<ThoughtCard {...defaultProps} />);
     const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
     fireEvent.click(optionsButton!);
-    
+
     const deleteOption = screen.getByText('Delete');
     fireEvent.click(deleteOption);
-    
+
     expect(defaultProps.onDelete).toHaveBeenCalledTimes(1);
     expect(defaultProps.onDelete).toHaveBeenCalledWith(0, 'thought-1');
 
@@ -204,10 +209,10 @@ describe('ThoughtCard Component', () => {
     render(<ThoughtCard {...defaultProps} />);
     const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
     fireEvent.click(optionsButton!);
-    
+
     const copyOption = screen.getByText('Copy');
     fireEvent.click(copyOption);
-    
+
     expect(mockCopyToClipboard).toHaveBeenCalledTimes(1);
     expect(mockCopyToClipboard).toHaveBeenCalledWith('This is a test thought');
   });
@@ -221,26 +226,26 @@ describe('ThoughtCard Component', () => {
     );
     const optionsButton = screen.getByTestId('ellipsis-icon').closest('button');
     fireEvent.click(optionsButton!); // Open menu
-    
+
     expect(screen.getByRole('menu')).toBeInTheDocument(); // Menu is open
-    
+
     const outsideElement = screen.getByTestId('outside');
     fireEvent.mouseDown(outsideElement); // Simulate click outside
-    
+
     expect(screen.queryByRole('menu')).not.toBeInTheDocument(); // Menu should be closed
   });
 
   // --- End Options Menu Tests ---
-  
+
   it('renders default tag styles when custom tag not found', () => {
     const thoughtWithUnknownTag = {
       ...mockThought,
-      tags: ['UnknownTag'] 
+      tags: ['UnknownTag']
     };
     render(<ThoughtCard {...defaultProps} thought={thoughtWithUnknownTag} />);
     expect(screen.getByText('UnknownTag')).toBeInTheDocument();
   });
-  
+
   it('displays outline point when thought has outlinePointId and sermon outline is provided', () => {
     const outlinePoint = {
       id: 'point-1',
@@ -259,15 +264,15 @@ describe('ThoughtCard Component', () => {
       outlinePointId: 'point-1'
     };
     render(
-      <ThoughtCard 
-        {...defaultProps} 
-        thought={thoughtWithSermonPoint} 
-        sermonOutline={sermonOutline} 
+      <ThoughtCard
+        {...defaultProps}
+        thought={thoughtWithSermonPoint}
+        sermonOutline={sermonOutline}
       />
     );
     expect(screen.getByText(/Introduction: Test outline point/)).toBeInTheDocument();
   });
-  
+
   it('does not display outline point when thought has no outlinePointId', () => {
     const sermonOutline = {
       id: 'outline-1',
@@ -281,14 +286,14 @@ describe('ThoughtCard Component', () => {
       conclusion: []
     };
     render(
-      <ThoughtCard 
-        {...defaultProps} 
-        sermonOutline={sermonOutline} 
+      <ThoughtCard
+        {...defaultProps}
+        sermonOutline={sermonOutline}
       />
     );
     expect(screen.queryByText(/Test outline point/)).not.toBeInTheDocument();
   });
-  
+
   it('displays inconsistency warning when thought has tag inconsistent with outline point section', () => {
     const outlinePoint = {
       id: 'point-1',
@@ -308,10 +313,10 @@ describe('ThoughtCard Component', () => {
       tags: ['Заключение'] // Inconsistent with introduction
     };
     render(
-      <ThoughtCard 
-        {...defaultProps} 
-        thought={thoughtWithInconsistentTag} 
-        sermonOutline={sermonOutline} 
+      <ThoughtCard
+        {...defaultProps}
+        thought={thoughtWithInconsistentTag}
+        sermonOutline={sermonOutline}
       />
     );
 
@@ -352,7 +357,7 @@ describe('ThoughtCard Component', () => {
     };
 
     const { rerender } = render(
-      <ThoughtCard 
+      <ThoughtCard
         {...defaultProps}
         thought={thoughtWithStructureOnly}
         allowedTags={[]}
@@ -363,7 +368,7 @@ describe('ThoughtCard Component', () => {
     const classBefore = (chipBefore as HTMLElement).className;
 
     rerender(
-      <ThoughtCard 
+      <ThoughtCard
         {...defaultProps}
         thought={thoughtWithStructureOnly}
         allowedTags={[{ name: 'Вступление', color: '#123456' }]}

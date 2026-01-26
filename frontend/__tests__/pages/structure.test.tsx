@@ -11,10 +11,12 @@ import { createMockSermon, createMockThought, createMockSermonPoint, mockTransla
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
-  useSearchParams: () => ({ get: jest.fn((param: string) => {
-    if (param === 'sermonId') return 'sermon-123';
-    return null;
-  }) }),
+  useSearchParams: () => ({
+    get: jest.fn((param: string) => {
+      if (param === 'sermonId') return 'sermon-123';
+      return null;
+    })
+  }),
   usePathname: jest.fn().mockReturnValue('/sermons/sermon-123/structure'),
   useParams: jest.fn(() => ({ id: 'sermon-123' })),
 }));
@@ -54,11 +56,12 @@ jest.mock('@/utils/themeColors', () => ({
     success: { bg: 'bg-green-600', darkBg: 'bg-green-700', text: 'text-white', darkText: 'text-white' },
   },
   getFocusModeButtonColors: jest.fn(() => ({
-    bg: 'bg-gray-100',
-    hover: 'hover:bg-gray-200',
-    text: 'text-gray-800',
     darkBg: 'dark:bg-gray-800',
     darkText: 'dark:text-gray-200',
+  })),
+  getTagStyling: jest.fn(() => ({
+    bg: 'bg-blue-50',
+    text: 'text-blue-800',
   })),
 }));
 
@@ -137,15 +140,15 @@ describe('ThoughtsBySection Page', () => {
       const mockSermon = createMockSermon({
         title: 'Test Sermon',
         thoughts: [
-          createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'] }),
-          createMockThought({ id: 't2', text: 'Thought 2', tags: ['Main Part'] }),
+          createMockThought({ id: 't1', text: 'Thought 1', tags: ['intro'] }),
+          createMockThought({ id: 't2', text: 'Thought 2', tags: ['main'] }),
         ],
         structure: { introduction: ['t1'], main: ['t2'], conclusion: [], ambiguous: [] },
       });
 
       const containers = {
-        introduction: [createMockItem({ id: 't1', content: 'Thought 1', requiredTags: ['Introduction'] })],
-        main: [createMockItem({ id: 't2', content: 'Thought 2', requiredTags: ['Main Part'] })],
+        introduction: [createMockItem({ id: 't1', content: 'Thought 1', requiredTags: ['intro'] })],
+        main: [createMockItem({ id: 't2', content: 'Thought 2', requiredTags: ['main'] })],
         conclusion: [],
         ambiguous: [],
       };
@@ -171,7 +174,7 @@ describe('ThoughtsBySection Page', () => {
   describe('Drop Zones', () => {
     it('should display drop zones', async () => {
       const mockSermon = createMockSermon({
-        thoughts: [createMockThought({ id: 't1', text: 'Thought 1', tags: ['Introduction'], outlinePointId: 'op1' })],
+        thoughts: [createMockThought({ id: 't1', text: 'Thought 1', tags: ['intro'], outlinePointId: 'op1' })],
         structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
         outline: { introduction: [createMockSermonPoint({ id: 'op1', text: 'Point 1' })], main: [], conclusion: [] },
       });

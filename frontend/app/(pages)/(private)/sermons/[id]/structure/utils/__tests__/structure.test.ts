@@ -130,7 +130,7 @@ describe('ThoughtsBySection Utilities', () => {
 
   describe('ensureUniqueItems', () => {
     const baseItems: Item[] = [
-      { id: 'thought-1', content: 'Test 1', requiredTags: ['introduction'], customTagNames: [] },
+      { id: 'thought-1', content: 'Test 1', requiredTags: ['intro'], customTagNames: [] },
       { id: 'thought-2', content: 'Test 2', requiredTags: ['main'], customTagNames: [] },
       { id: 'thought-3', content: 'Test 3', requiredTags: ['conclusion'], customTagNames: [] },
     ];
@@ -142,7 +142,7 @@ describe('ThoughtsBySection Utilities', () => {
           run: () => {
             const duplicateItems: Item[] = [
               ...baseItems,
-              { id: 'thought-1', content: 'Duplicate 1', requiredTags: ['introduction'], customTagNames: [] },
+              { id: 'thought-1', content: 'Duplicate 1', requiredTags: ['intro'], customTagNames: [] },
               { id: 'thought-2', content: 'Duplicate 2', requiredTags: ['main'], customTagNames: [] },
             ];
             const result = ensureUniqueItems(duplicateItems);
@@ -162,14 +162,14 @@ describe('ThoughtsBySection Utilities', () => {
           name: 'all duplicates collapse to single entry',
           run: () => {
             const duplicates: Item[] = [
-              { id: 'thought-1', content: 'Test 1', requiredTags: ['introduction'], customTagNames: [] },
-              { id: 'thought-1', content: 'Copy', requiredTags: ['introduction'], customTagNames: [] },
-              { id: 'thought-1', content: 'Another Copy', requiredTags: ['introduction'], customTagNames: [] },
+              { id: 'thought-1', content: 'Test 1', requiredTags: ['intro'], customTagNames: [] },
+              { id: 'thought-1', content: 'Copy', requiredTags: ['intro'], customTagNames: [] },
+              { id: 'thought-1', content: 'Another Copy', requiredTags: ['intro'], customTagNames: [] },
             ];
             const result = ensureUniqueItems(duplicates);
             expect(result).toHaveLength(1);
             expect(result[0].content).toBe('Test 1');
-            expect(result[0].requiredTags).toEqual(['introduction']);
+            expect(result[0].requiredTags).toEqual(['intro']);
           },
         },
       ]);
@@ -179,8 +179,8 @@ describe('ThoughtsBySection Utilities', () => {
   describe('removeIdFromOtherSections', () => {
     const baseContainers: Record<string, Item[]> = {
       introduction: [
-        { id: 'thought-1', content: 'Test 1', requiredTags: ['introduction'], customTagNames: [] },
-        { id: 'thought-2', content: 'Test 2', requiredTags: ['introduction'], customTagNames: [] }
+        { id: 'thought-1', content: 'Test 1', requiredTags: ['intro'], customTagNames: [] },
+        { id: 'thought-2', content: 'Test 2', requiredTags: ['intro'], customTagNames: [] }
       ],
       main: [
         { id: 'thought-3', content: 'Test 3', requiredTags: ['main'], customTagNames: [] },
@@ -289,7 +289,7 @@ describe('ThoughtsBySection Utilities', () => {
   describe('integration scenarios', () => {
     it('walks through combined flows once', () => {
       const containersWithDuplicates: Record<string, Item[]> = {
-        introduction: [{ id: 'thought-1', content: 'Test 1', requiredTags: ['introduction'], customTagNames: [] }],
+        introduction: [{ id: 'thought-1', content: 'Test 1', requiredTags: ['intro'], customTagNames: [] }],
         main: [
           { id: 'thought-1', content: 'Test 1', requiredTags: ['main'], customTagNames: [] },
           { id: 'thought-2', content: 'Test 2', requiredTags: ['main'], customTagNames: [] },
@@ -327,8 +327,8 @@ describe('ThoughtsBySection Utilities', () => {
 
       const complexContainers: Record<string, Item[]> = {
         introduction: [
-          { id: 'thought-1', content: 'Test 1', requiredTags: ['introduction'], customTagNames: [] },
-          { id: 'thought-2', content: 'Test 2', requiredTags: ['introduction'], customTagNames: [] },
+          { id: 'thought-1', content: 'Test 1', requiredTags: ['intro'], customTagNames: [] },
+          { id: 'thought-2', content: 'Test 2', requiredTags: ['intro'], customTagNames: [] },
         ],
         main: [
           { id: 'thought-1', content: 'Test 1 Copy', requiredTags: ['main'], customTagNames: [] },
@@ -404,7 +404,7 @@ describe('ThoughtsBySection Utilities', () => {
         text: 'Content',
         tags: ['Tag A', 'Unknown Tag'],
         allowedTags,
-        sectionTag: 'Introduction',
+        sectionTag: 'intro',
         outlinePointId: 'point-1',
         outlinePoint: { text: 'Point 1', section: '' }
       });
@@ -416,7 +416,7 @@ describe('ThoughtsBySection Utilities', () => {
           { name: 'Tag A', color: '#ff0000' },
           { name: 'Unknown Tag', color: '#4c51bf' }, // Fallback color
         ],
-        requiredTags: ['Introduction'],
+        requiredTags: ['intro'],
         outlinePointId: 'point-1',
         outlinePoint: { text: 'Point 1', section: '' }
       });

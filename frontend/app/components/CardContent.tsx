@@ -20,9 +20,32 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
     <div className={`dark:text-gray-200 ${className}`}>
       <MarkdownDisplay content={item.content} />
 
-      {item.customTagNames && item.customTagNames.length > 0 && (
+      {(item.customTagNames && item.customTagNames.length > 0) || (item.requiredTags && item.requiredTags.length > 0) && (
         <div className="flex flex-wrap gap-1 justify-end mt-2">
-          {item.customTagNames.map((tag) => {
+          {/* Structural Tags */}
+          {item.requiredTags?.map((tag) => {
+            const canonical = normalizeStructureTag(tag);
+            if (!canonical) return null;
+
+            let displayName = tag;
+            if (canonical === 'intro') displayName = t('tags.introduction');
+            else if (canonical === 'main') displayName = t('tags.mainPart');
+            else if (canonical === 'conclusion') displayName = t('tags.conclusion');
+
+            const { className, style } = getTagStyle(tag);
+            return (
+              <span
+                key={`required-${tag}`}
+                style={style}
+                className={`text-xs ${className}`}
+              >
+                {displayName}
+              </span>
+            );
+          })}
+
+          {/* Custom Tags */}
+          {item.customTagNames?.map((tag) => {
             // Get display name (translated if available)
             let displayName = tag.name;
             if (tag.translationKey) {
@@ -37,7 +60,7 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
             const { className, style } = getTagStyle(tag.name, tag.color);
             return (
               <span
-                key={tag.name}
+                key={`custom-${tag.name}`}
                 style={style}
                 className={`text-xs ${className}`}
               >

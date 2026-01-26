@@ -34,9 +34,9 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   const structureRecommendedTranslationKey = 'structure.recommended';
   const structureFocusModeTranslationKey = 'structure.focusMode';
 
-  const intro = tagCounts["Вступление"] || 0;
-  const main = tagCounts["Основная часть"] || 0;
-  const conclusion = tagCounts["Заключение"] || 0;
+  const intro = tagCounts["intro"] || 0;
+  const main = tagCounts["main"] || 0;
+  const conclusion = tagCounts["conclusion"] || 0;
 
   const introPercentage = totalThoughts
     ? Math.round((intro / totalThoughts) * 100)
@@ -131,7 +131,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
         </div>
       </div>
       <div className="mt-4 sm:mt-6">
-        <StructurePlanToggle 
+        <StructurePlanToggle
           sermonId={sermon.id}
           hasInconsistentThoughts={hasInconsistentThoughts}
           t={t}
@@ -148,7 +148,7 @@ const StructurePlanToggle: React.FC<{
   t: (key: string, options?: Record<string, unknown>) => string;
 }> = ({ sermonId, hasInconsistentThoughts, t }) => {
   const router = useRouter();
-  
+
   return (
     <div className="relative inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden w-full shadow-sm hover:shadow-md transition-shadow duration-200">
       {/* Gradient background that spans both buttons */}
@@ -159,25 +159,24 @@ const StructurePlanToggle: React.FC<{
           opacity: hasInconsistentThoughts ? 0.3 : 1,
         }}
       />
-      
+
       {/* ThoughtsBySection button */}
       <button
         type="button"
         onClick={() => !hasInconsistentThoughts && router.push(`/sermons/${sermonId}/structure`)}
         disabled={hasInconsistentThoughts}
-        className={`relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-l-full flex-1 ${
-          hasInconsistentThoughts 
-            ? 'text-gray-400 cursor-not-allowed' 
+        className={`relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-l-full flex-1 ${hasInconsistentThoughts
+            ? 'text-gray-400 cursor-not-allowed'
             : 'text-white hover:scale-105 hover:shadow-lg active:scale-95'
-        }`}
+          }`}
         title={hasInconsistentThoughts ? t('structure.inconsistentTagsWarning') : ''}
       >
         {t('structure.workButton')}
       </button>
-      
+
       {/* White separator line */}
       <div className="relative z-20 w-0.5 h-6 bg-white/90 dark:bg-white/70 mx-1 rounded-full shadow-sm" />
-      
+
       {/* Plan button */}
       <button
         type="button"

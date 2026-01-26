@@ -182,7 +182,7 @@ describe('useThoughtFiltering Hook', () => {
   });
 
   it('should sort by date when sortOrder is "structure" but no thoughts have structure tags', () => {
-    const structureStrings = ['Вступление','Основная часть','Заключение','Вступ','Основна частина','Висновок','Introduction','Main Part','Conclusion'];
+    const structureStrings = ['Вступление','Основная часть','Заключение','Вступ','Основна частина','Висновок','Introduction','Main Part','Conclusion','intro','main','conclusion'];
     const thoughtsWithoutStructureTags = mockThoughts.filter(t =>
       !(t.tags || []).some(tag => structureStrings.includes(tag))
     );
