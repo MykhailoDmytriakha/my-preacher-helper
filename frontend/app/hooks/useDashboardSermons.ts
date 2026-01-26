@@ -90,31 +90,34 @@ export function useSermonMutations() {
   const queryClient = useQueryClient();
   const uid = resolveUid();
 
-  const updateSermonCache = (updatedSermon: Sermon) => {
+  const updateSermonCache = async (updatedSermon: Sermon) => {
+    await queryClient.cancelQueries({ queryKey: ['sermons', uid] });
     queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
       if (!old) return [updatedSermon];
       return old.map((s) => (s.id === updatedSermon.id ? updatedSermon : s));
     });
-    // Invalidate to ensure persisted cache syncs
-    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
+    // Invalidate to ensure persisted cache syncs without immediate refetch
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid], refetchType: 'none' });
   };
 
-  const deleteSermonFromCache = (id: string) => {
+  const deleteSermonFromCache = async (id: string) => {
+    await queryClient.cancelQueries({ queryKey: ['sermons', uid] });
     queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
       if (!old) return [];
       return old.filter((s) => s.id !== id);
     });
-    // Invalidate to ensure persisted cache syncs
-    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
+    // Invalidate to ensure persisted cache syncs without immediate refetch
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid], refetchType: 'none' });
   };
 
-  const addSermonToCache = (newSermon: Sermon) => {
+  const addSermonToCache = async (newSermon: Sermon) => {
+    await queryClient.cancelQueries({ queryKey: ['sermons', uid] });
     queryClient.setQueryData(['sermons', uid], (old: Sermon[] | undefined) => {
       if (!old) return [newSermon];
       return [newSermon, ...old];
     });
-    // Invalidate to ensure persisted cache syncs
-    queryClient.invalidateQueries({ queryKey: ['sermons', uid] });
+    // Invalidate to ensure persisted cache syncs without immediate refetch
+    queryClient.invalidateQueries({ queryKey: ['sermons', uid], refetchType: 'none' });
   };
 
   return { updateSermonCache, deleteSermonFromCache, addSermonToCache };

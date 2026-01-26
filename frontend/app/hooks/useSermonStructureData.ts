@@ -288,17 +288,23 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
   const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true); // Added state from component
 
-  const setSermon = useCallback((updater: React.SetStateAction<Sermon | null>) => {
-    setSermonState((prev) => {
-      const next = updater instanceof Function ? updater(prev) : updater;
-      if (sermonId) {
-        // Update in-memory cache for immediate UI feedback
-        queryClient.setQueryData(["sermon", sermonId], next ?? undefined);
-        // Invalidate to ensure persisted cache syncs with fresh server data
-        queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
-      }
-      return next;
+  const setSermon = useCallback(async (updater: React.SetStateAction<Sermon | null>) => {
+    if (!sermonId) return;
+
+    await queryClient.cancelQueries({ queryKey: ["sermon", sermonId] });
+
+    let nextSermon: Sermon | null = null;
+    queryClient.setQueryData(["sermon", sermonId], (prev: Sermon | undefined) => {
+      const next = updater instanceof Function ? updater(prev || null) : updater;
+      nextSermon = next;
+      return next ?? undefined;
     });
+
+    // Sync local state
+    setSermonState(nextSermon);
+
+    // Invalidate to ensure persisted cache syncs without immediate refetch
+    queryClient.invalidateQueries({ queryKey: ["sermon", sermonId], refetchType: 'none' });
   }, [queryClient, sermonId]);
 
   useEffect(() => {

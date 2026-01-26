@@ -71,13 +71,14 @@ function useSermon(sermonId: string) {
   const sermon = data ?? (isOnline ? null : cachedSermonFromList) ?? null;
 
   const setSermon = useCallback(
-    (updater: SermonUpdater) => {
+    async (updater: SermonUpdater) => {
+      await queryClient.cancelQueries({ queryKey: ["sermon", sermonId] });
       queryClient.setQueryData(["sermon", sermonId], (previous?: Sermon) => {
         const resolved = updater instanceof Function ? updater(previous ?? null) : updater;
         return resolved ?? undefined;
       });
-      // Invalidate to ensure persisted cache syncs with fresh server data
-      queryClient.invalidateQueries({ queryKey: ["sermon", sermonId] });
+      // Invalidate to ensure persisted cache syncs without immediate refetch
+      queryClient.invalidateQueries({ queryKey: ["sermon", sermonId], refetchType: 'none' });
     },
     [queryClient, sermonId]
   );

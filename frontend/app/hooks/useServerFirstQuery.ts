@@ -85,19 +85,16 @@ export function useServerFirstQuery<
     queryResult.isFetching,
   ]);
 
-  const fetchSettled =
-    isOnline &&
-    Boolean(enabled) &&
-    !queryResult.isFetching &&
-    (queryResult.isSuccess || queryResult.isError);
 
-  const shouldReveal = !isOnline || serverFetchedRef.current || fetchSettled;
+  const shouldReveal = isOnline
+    ? (serverFetchedRef.current || queryResult.isError)
+    : (queryResult.isSuccess || queryResult.isError || !enabled);
 
   const data = shouldReveal ? queryResult.data : undefined;
 
   const isLoading = isOnline
-    ? Boolean(enabled) && !shouldReveal && queryResult.isFetching
-    : false;
+    ? Boolean(enabled) && !serverFetchedRef.current && !queryResult.isError
+    : queryResult.isLoading;
 
   return {
     ...queryResult,

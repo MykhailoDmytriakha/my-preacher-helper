@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-26 React Query: Solving "Disappear-Reappear" Flicker with Strict Online-First logic
+**Problem:** Marking a sermon as preached caused it to flicker (disappear then reappear). This was a race condition: `invalidateQueries` triggered a background refetch that returned stale data (Firestore eventual consistency) before the server update Propagated, overwriting the local optimistic update.
+**Attempts:** Initially used `setQueryData` + `invalidateQueries` (previous project standard) to ensure IndexedDB sync.
+**Solution:** (1) Implemented strict Online-First logic in `useServerFirstQuery`: never show cached data when online until fresh fetch completes. (2) Replaced immediate invalidation with `cancelQueries` (stops stale refetches) followed by `invalidateQueries({ refetchType: 'none' })`. (3) Removed redundant component-layer invalidations.
+**Why it worked:** `refetchType: 'none'` marks the query as stale (ensuring IndexedDB sync) without triggering the immediate "stale" refetch that caused the flicker. `cancelQueries` protects the local state from overwrites.
+**Principle:** When performing optimistic updates in an eventually consistent environment, use `cancelQueries` and `invalidateQueries({ refetchType: 'none' })` to maintain local UI integrity while ensuring background persistence.
+
 ### 2026-01-26 Architectural Fix: Canonical structural tags for language independence
 **Problem:** Features like "missing tag" warnings, search, and statistics broke when switching languages because they relied on hardcoded localized strings (e.g., "Основная часть"). Additionally, a race condition in Focus Mode caused new thoughts to lose their structural context during save.
 **Attempts:** Initially tried adding more localized aliases, but realized it was a losing battle against language scale.
@@ -245,6 +252,25 @@
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
+
+### Reliable Cache & Persistent Sync (11 lessons)
+**Common Pattern:** Persistent desynchronization and race conditions between React Query memory, IndexedDB (via persist plugin), and eventually consistent Firestore data. The previous pattern of `setQueryData` + `invalidateQueries` was reliable for persistence but caused UI flickers/jumps.
+- Solving "Disappear-Reappear" Flicker (2026-01-26)
+- Server-first mask shared observers (2026-01-21)
+- Fixed Dashboard Preached Status Sync (2026-01-18)
+- Fixed All 6 Cache Desync Issues (2026-01-18)
+- Found 3 More Cache Desync Pattern (2026-01-18)
+- IndexedDB Cache Sync Fix Applied (2026-01-18)
+- Simple Solution for IndexedDB Sync (2026-01-18)
+- Cache Desync Breaking Persistence (2026-01-18)
+- Position Loss Race Conditions (2026-01-18)
+- Focus Mode Thoughts Jumping (2026-01-18)
+- Offline Structure Cache Alignment (2026-01-15)
+
+**Emerging Principle (The New Standard):** For reliable persistence without flickering:
+1. Use `useServerFirstQuery` to hide stale cache when online.
+2. In mutations/manual updates: `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })`.
+3. This marks data as stale (success state for IndexedDB) but prevents immediate stale refetches from overwriting memory.
 
 ### Focus Mode & Sermon Structure Integrity (3 lessons)
 **Common Pattern:** Desynchronization between Focus Mode UI and sermon data models, often due to locale-specific logic or sorting overrides.
@@ -560,4 +586,5 @@
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) for any conditional logic involving Introduction/Main/Conclusion sections.
+- Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering in eventually consistent environments.
 - Comments: English only in code

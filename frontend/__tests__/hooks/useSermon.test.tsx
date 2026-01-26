@@ -32,7 +32,7 @@ const mutableAuth = auth as { currentUser: unknown };
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+    defaultOptions: { queries: { retry: false, gcTime: 1000 * 60 * 5, staleTime: 0 } },
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -122,7 +122,7 @@ describe('useSermon', () => {
     expect(debugLog).toHaveBeenCalled();
   });
 
-  it('handles setSermon updater functions that return null', () => {
+  it('handles setSermon updater functions that return null', async () => {
     const { wrapper, queryClient } = createWrapper();
 
     mockUseOnlineStatus.mockReturnValue(true);
@@ -135,14 +135,14 @@ describe('useSermon', () => {
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
-    act(() => {
-      result.current.setSermon(() => null);
+    await act(async () => {
+      await result.current.setSermon(() => null);
     });
 
     expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toBeUndefined();
   });
 
-  it('sets sermon when updater is a direct value', () => {
+  it('sets sermon when updater is a direct value', async () => {
     const { wrapper, queryClient } = createWrapper();
     const updated = { ...baseSermon, title: 'Updated' };
 
@@ -156,11 +156,13 @@ describe('useSermon', () => {
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
-    act(() => {
-      result.current.setSermon(updated);
+    await act(async () => {
+      await result.current.setSermon(updated);
     });
 
-    expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toEqual(updated);
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toEqual(updated);
+    });
   });
 
   it('skips offline hydration when data already exists', async () => {
