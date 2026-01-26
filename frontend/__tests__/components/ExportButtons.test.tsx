@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import ExportButtons from '../../app/components/ExportButtons';
@@ -40,8 +41,9 @@ jest.mock('html2canvas', () => ({
   })
 }));
 
+const mockExportToWord = jest.fn();
 jest.mock('../../utils/wordExport', () => ({
-  exportToWord: jest.fn(),
+  exportToWord: (args: any) => mockExportToWord(args),
   PlanData: {}
 }));
 
@@ -50,6 +52,10 @@ describe('ExportButtons Component', () => {
   const mockSermonId = 'test-sermon-id';
   const mockGetPdfContent = jest.fn(() => Promise.resolve('<div>PDF</div>'));
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('renders without crashing', () => {
     render(
       <ExportButtons
@@ -57,7 +63,7 @@ describe('ExportButtons Component', () => {
         sermonId={mockSermonId}
       />
     );
-    
+
     expect(screen.getByText('TXT')).toBeInTheDocument();
     expect(screen.getByText('PDF')).toBeInTheDocument();
     expect(screen.getByText('Word')).toBeInTheDocument();
@@ -184,4 +190,47 @@ describe('ExportButtons Component', () => {
     expect(pdfButton).toHaveClass('bg-purple-100', 'dark:bg-purple-900', 'text-purple-600', 'dark:text-purple-300');
     expect(wordButton).toHaveClass('bg-green-100', 'dark:bg-green-900', 'text-green-600', 'dark:text-green-300');
   });
-}); 
+
+  it('calls getExportContent with markdown and exports to word on Word click', async () => {
+    const user = userEvent.setup();
+
+    // Custom content with multiple verses and section headers
+    // Using ## headers as expected by the fixed parser
+    const markdownContent = `# Sermon Title
+> Verse line 1
+> Verse line 2
+
+## Introduction
+Intro content
+
+## Main Part
+Main content
+
+## Conclusion
+Conclusion content`;
+
+    mockGetExportContent.mockResolvedValueOnce(markdownContent);
+
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        title="Custom Title"
+      />
+    );
+
+    const wordButton = screen.getByText('Word');
+    await user.click(wordButton);
+
+    expect(mockGetExportContent).toHaveBeenCalledWith('markdown', { includeTags: false });
+    expect(mockExportToWord).toHaveBeenCalledWith({
+      data: {
+        sermonTitle: 'Sermon Title',
+        sermonVerse: 'Verse line 1\nVerse line 2',
+        introduction: 'Intro content',
+        main: 'Main content',
+        conclusion: 'Conclusion content'
+      }
+    });
+  });
+});

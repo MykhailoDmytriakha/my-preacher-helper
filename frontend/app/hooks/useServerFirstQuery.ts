@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { debugLog } from '@/utils/debugMode';
 
 import type {
   QueryFunction,
@@ -28,16 +29,26 @@ export function useServerFirstQuery<
   isOnline: boolean;
 } {
   const isOnline = useOnlineStatus();
-  const serverFetchedRef = useRef(false);
-  const initialDataUpdatedAtRef = useRef<number | null>(null);
   const enabled = options.enabled ?? true;
-
   const keyHash = useMemo(() => JSON.stringify(options.queryKey), [options.queryKey]);
 
-  useEffect(() => {
+  // Internal state tracking
+  const serverFetchedRef = useRef(false);
+  const initialDataUpdatedAtRef = useRef<number | null>(null);
+
+  // We use this to trigger re-render when the ref changes outside of a normal render cycle
+  const [, setRenderTrigger] = useState(0);
+  const forceUpdate = useCallback(() => setRenderTrigger(n => n + 1), []);
+
+  // Synchronously reset state when key or online status changes
+  const lastKeyHashRef = useRef(keyHash);
+  const lastOnlineRef = useRef(isOnline);
+  if (lastKeyHashRef.current !== keyHash || lastOnlineRef.current !== isOnline) {
+    lastKeyHashRef.current = keyHash;
+    lastOnlineRef.current = isOnline;
     serverFetchedRef.current = false;
     initialDataUpdatedAtRef.current = null;
-  }, [keyHash, isOnline]);
+  }
 
   if (!options.queryFn) {
     throw new Error('useServerFirstQuery requires a queryFn.');
@@ -46,9 +57,10 @@ export function useServerFirstQuery<
   const queryResult = useQuery({
     ...options,
     queryFn: async (context) => {
-      const data = await options.queryFn!(context);
+      const result = await options.queryFn!(context);
+      // Update ref immediately so it's available in the same render cycle
       serverFetchedRef.current = true;
-      return data;
+      return result;
     },
     enabled: Boolean(enabled) && isOnline,
     staleTime: 0,
@@ -58,23 +70,38 @@ export function useServerFirstQuery<
     networkMode: 'online',
   });
 
+  // Capture initial dataUpdatedAt (cached data) to detect subsequent updates
+  if (initialDataUpdatedAtRef.current === null && queryResult.dataUpdatedAt !== 0) {
+    initialDataUpdatedAtRef.current = queryResult.dataUpdatedAt;
+  }
+
   useEffect(() => {
     if (!isOnline || !enabled) return;
 
-    if (initialDataUpdatedAtRef.current === null) {
-      initialDataUpdatedAtRef.current = queryResult.dataUpdatedAt;
-      return;
+    let changed = false;
+
+    // Detect if data was updated manually (via setQueryData)
+    if (
+      queryResult.dataUpdatedAt !== 0 &&
+      initialDataUpdatedAtRef.current !== null &&
+      queryResult.dataUpdatedAt > initialDataUpdatedAtRef.current
+    ) {
+      if (!serverFetchedRef.current) {
+        serverFetchedRef.current = true;
+        changed = true;
+      }
     }
 
-    if (
-      queryResult.isSuccess &&
-      queryResult.dataUpdatedAt &&
-      queryResult.dataUpdatedAt !== initialDataUpdatedAtRef.current
-    ) {
-      serverFetchedRef.current = true;
-    }
+    // Also reveal if fetch finished normally
     if (!queryResult.isFetching && (queryResult.isSuccess || queryResult.isError)) {
-      serverFetchedRef.current = true;
+      if (!serverFetchedRef.current) {
+        serverFetchedRef.current = true;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      forceUpdate();
     }
   }, [
     isOnline,
@@ -83,8 +110,8 @@ export function useServerFirstQuery<
     queryResult.isSuccess,
     queryResult.isError,
     queryResult.isFetching,
+    forceUpdate
   ]);
-
 
   const shouldReveal = isOnline
     ? (serverFetchedRef.current || queryResult.isError)
@@ -95,6 +122,14 @@ export function useServerFirstQuery<
   const isLoading = isOnline
     ? Boolean(enabled) && !serverFetchedRef.current && !queryResult.isError
     : queryResult.isLoading;
+
+  debugLog(`useServerFirstQuery [${options.queryKey?.[0]}]: evaluation`, {
+    isOnline,
+    serverFetched: serverFetchedRef.current,
+    shouldReveal,
+    isLoading,
+    dataPresent: !!data
+  });
 
   return {
     ...queryResult,

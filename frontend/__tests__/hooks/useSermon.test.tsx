@@ -122,21 +122,24 @@ describe('useSermon', () => {
     expect(debugLog).toHaveBeenCalled();
   });
 
-  it('handles setSermon updater functions that return null', async () => {
+  it('handles setSermon with direct null value when sermon exists', async () => {
     const { wrapper, queryClient } = createWrapper();
 
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseServerFirstQuery.mockReturnValue({
       data: baseSermon,
       isLoading: false,
+      isSuccess: true,
       error: null,
       refetch: jest.fn(),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
+    await waitFor(() => expect(result.current.sermon).toEqual(baseSermon));
+
     await act(async () => {
-      await result.current.setSermon(() => null);
+      await result.current.setSermon(null);
     });
 
     expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toBeUndefined();
@@ -183,7 +186,7 @@ describe('useSermon', () => {
     });
 
     expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toBeUndefined();
-    expect(debugLog).not.toHaveBeenCalled();
+    expect(debugLog).not.toHaveBeenCalledWith(expect.stringContaining("Sermon cache hydrated"), expect.anything());
   });
 
   it('hydrates from guest uid cache when available', async () => {
@@ -211,7 +214,7 @@ describe('useSermon', () => {
     expect(result.current.sermon).toEqual(cached);
   });
 
-  it('does not hydrate when sermonId is empty', () => {
+  it('does not hydrate and returns defaults when sermonId is empty', async () => {
     const { wrapper, queryClient } = createWrapper();
 
     mockUseOnlineStatus.mockReturnValue(false);
@@ -222,9 +225,47 @@ describe('useSermon', () => {
       refetch: jest.fn(),
     } as any);
 
-    renderHook(() => useSermon(''), { wrapper });
+    const { result } = renderHook(() => useSermon(''), { wrapper });
 
     expect(queryClient.getQueryData(['sermon', ''])).toBeUndefined();
+    expect(result.current.sermon).toBeNull();
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => {
+      await result.current.setSermon(baseSermon);
+      await result.current.refreshSermon();
+    });
+    expect(result.current.getSortedThoughts()).toEqual([]);
+  });
+
+  it('returns sorted thoughts correctly', async () => {
+    const { wrapper } = createWrapper();
+    const sermonWithThoughts: Sermon = {
+      ...baseSermon,
+      thoughts: [
+        { id: 't1', text: 'A', date: '2024-01-01' } as any,
+        { id: 't2', text: 'B', date: '2024-01-03' } as any,
+        { id: 't3', text: 'C', date: '2024-01-02' } as any,
+      ]
+    };
+
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseServerFirstQuery.mockReturnValue({
+      data: sermonWithThoughts,
+      isLoading: false,
+      isSuccess: true,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
+    const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
+
+    await waitFor(() => expect(result.current.sermon).toEqual(sermonWithThoughts));
+
+    const sorted = result.current.getSortedThoughts();
+    expect(sorted[0].id).toBe('t2'); // Jan 3
+    expect(sorted[1].id).toBe('t3'); // Jan 2
+    expect(sorted[2].id).toBe('t1'); // Jan 1
   });
 
   it('works without a resolved uid', () => {

@@ -2018,7 +2018,7 @@ const PlanOverlayPortal = ({
                     ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
                     : overlayCopyStatus === 'copying'
                       ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                    : ''}
+                      : ''}
               </span>
               <button
                 onClick={onOpenPlanImmersive}
@@ -2791,37 +2791,41 @@ export default function PlanPage() {
     if (!sermon) return;
 
     try {
-      // First fetch the latest sermon plan from server to avoid overwriting recent changes
-      const latestSermonResponse = await fetch(`/api/sermons/${sermon.id}`);
-      if (!latestSermonResponse.ok) {
-        throw new Error(`Failed to fetch latest sermon data: ${latestSermonResponse.status}`);
-      }
-
-      const latestSermon = await latestSermonResponse.json();
-
-      // Create plan object if it doesn't exist
-      const currentPlan = latestSermon.plan || {
+      // Use existing sermon plan or create empty structure
+      const currentPlan: Plan = sermon.plan || {
         introduction: { outline: "" },
         main: { outline: "" },
         conclusion: { outline: "" }
       };
 
-      // Preserve existing outline points and add/update the new one
-      const existingSermonPoints = currentPlan[section]?.outlinePoints || {};
+      // 1. Update the specific outline point content
+      const sectionData = currentPlan[section] || { outline: "" };
+      const outlinePoints = sectionData.outlinePoints || {};
+      const updatedOutlinePoints = {
+        ...outlinePoints,
+        [outlinePointId]: content
+      };
 
-      // Update the outline point in the plan
+      // 2. Recalculate the combined section outline text
+      // We need to maintain the order of points from the sermon structure
+      const allPointsInSection = sermon.outline?.[section] || [];
+      const sectionTexts = allPointsInSection.map(point => {
+        const pointContent = point.id === outlinePointId ? content : updatedOutlinePoints[point.id] || "";
+        return `## ${point.text}\n\n${pointContent}`;
+      });
+      const combinedText = sectionTexts.join("\n\n");
+
+      // 3. Construct the updated full plan
       const updatedPlan: Plan = {
         ...currentPlan,
         [section]: {
-          ...currentPlan[section],
-          outlinePoints: {
-            ...existingSermonPoints,
-            [outlinePointId]: content
-          }
+          ...sectionData,
+          outline: combinedText,
+          outlinePoints: updatedOutlinePoints
         }
       };
 
-      // Send the updated plan to the server
+      // 4. Send to server
       const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
         method: "PUT",
         headers: {
@@ -2831,71 +2835,29 @@ export default function PlanPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to save outline point: ${response.status}`);
+        throw new Error(`Failed to save plan: ${response.status}`);
       }
 
-      // Mark this point as saved
+      // 5. Update local state and cache immediately
+      // Mark this point as saved (local UI state)
       setSavedSermonPoints(prev => ({ ...prev, [outlinePointId]: true }));
-
-      // Mark content as unmodified since it's now saved
+      // Mark content as unmodified (local UI state)
       setModifiedContent(prev => ({ ...prev, [outlinePointId]: false }));
+
+      // Update the local combined plan state for the UI
+      setCombinedPlan(prev => ({
+        ...prev,
+        [section]: combinedText
+      }));
+
+      // Update React Query cache (this triggers persistence to IndexedDB)
+      await setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: updatedPlan } : null);
 
       toast.success(t("plan.pointSaved"));
 
-      // Check if all points in this section are saved
-      const allPointsInSection = sermon.outline?.[section] || [];
-      const allSaved = allPointsInSection.every(point =>
-        savedSermonPoints[point.id] || point.id === outlinePointId
-      );
-
-      // If all points are saved, update the combined section text
-      if (allSaved && allPointsInSection.length > 0) {
-        // Collect all content for this section
-        const sectionTexts = allPointsInSection.map(point => {
-          const pointContent = point.id === outlinePointId ?
-            content :
-            updatedPlan[section]?.outlinePoints?.[point.id] || "";
-
-          return `## ${point.text}\n\n${pointContent}`;
-        });
-
-        const combinedText = sectionTexts.join("\n\n");
-
-        // Update the section outline with the combined text
-        const finalPlan: Plan = {
-          ...updatedPlan,
-          [section]: {
-            ...updatedPlan[section],
-            outline: combinedText
-          }
-        };
-
-        // Save the final combined plan
-        const finalResponse = await fetch(`/api/sermons/${sermon.id}/plan`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(finalPlan),
-        });
-
-        if (finalResponse.ok) {
-          // Update the local sermon data with the latest plan
-          setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: finalPlan } : null);
-
-          // Update the local combined plan state
-          setCombinedPlan(prev => ({
-            ...prev,
-            [section]: combinedText
-          }));
-
-          toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
-        } else {
-          throw new Error(`Failed to save section: ${finalResponse.status}`);
-        }
-      } else {
-        // Update local sermon data with the latest plan even if we don't save the combined text
-        setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: updatedPlan } : null);
+      // If we have other points in the section, show a specific success message
+      if (allPointsInSection.length > 1) {
+        toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
       }
     } catch (err) {
       console.error(err);
@@ -3058,6 +3020,7 @@ export default function PlanPage() {
     const verseSection = sermon.verse ? `> ${sermon.verse}\n\n` : '';
 
     // Format the outline points and their content
+    // Use combinedPlan which reflects the current UI state (both saved and edited)
     const introSection = `## ${t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}\n\n${combinedPlan.introduction || noContentText}\n\n`;
     const mainSection = `## ${t(TRANSLATION_SECTIONS_MAIN)}\n\n${combinedPlan.main || noContentText}\n\n`;
     const conclusionSection = `## ${t(TRANSLATION_SECTIONS_CONCLUSION)}\n\n${combinedPlan.conclusion || noContentText}\n\n`;

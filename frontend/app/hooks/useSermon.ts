@@ -94,6 +94,15 @@ function useSermon(sermonId: string) {
     );
   };
 
+  debugLog("useSermon state", {
+    sermonId,
+    hasSermon: !!sermon,
+    loading,
+    isOnline,
+    hasData: !!data,
+    hasCachedFromList: !!cachedSermonFromList
+  });
+
   return { sermon, setSermon, loading, error: error as Error | null, refreshSermon, getSortedThoughts };
 }
 

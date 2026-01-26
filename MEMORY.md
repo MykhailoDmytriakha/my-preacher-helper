@@ -9,6 +9,13 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-26 React Query: Hybrid Ref/State for Synchronous Data Availability and Async Re-renders
+**Problem:** In `useServerFirstQuery`, a pure `useState` for `serverFetched` status caused a one-render-cycle delay. This broke tests that checked the state immediately after `act()` and caused UI desynchronization when data was updated via `setQueryData` (which doesn't trigger the `queryFn` where the state was normally set).
+**Attempts:** Initially used only `useRef` (fixed tests but broke re-renders on manual cache updates) and then only `useState` (fixed re-renders but broke tests).
+**Solution:** Implemented a hybrid approach: (1) Use `useRef` for immediate "serverFetched" status during the `queryFn` execution. (2) Use a `renderTrigger` (state) and `useEffect` to force a re-render when the cache is updated externally (monitored via `dataUpdatedAt`). (3) Added synchronous state reset on key changes to prevent showing stale data from previous keys.
+**Why it worked:** The `ref` provides the "truth" immediately for logic and tests, while the `state` ensures the UI actually reacts to that truth when it changes outside of the hook's own query lifecycle.
+**Principle:** When wrapping shared queries that must hide stale cache, use a hybrid Ref/State pattern to provide immediate state access for logic while maintaining React's declarative re-render guarantees.
+
 ### 2026-01-26 React Query: Solving "Disappear-Reappear" Flicker with Strict Online-First logic
 **Problem:** Marking a sermon as preached caused it to flicker (disappear then reappear). This was a race condition: `invalidateQueries` triggered a background refetch that returned stale data (Firestore eventual consistency) before the server update Propagated, overwriting the local optimistic update.
 **Attempts:** Initially used `setQueryData` + `invalidateQueries` (previous project standard) to ensure IndexedDB sync.
@@ -253,25 +260,6 @@
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
 
-### Reliable Cache & Persistent Sync (11 lessons)
-**Common Pattern:** Persistent desynchronization and race conditions between React Query memory, IndexedDB (via persist plugin), and eventually consistent Firestore data. The previous pattern of `setQueryData` + `invalidateQueries` was reliable for persistence but caused UI flickers/jumps.
-- Solving "Disappear-Reappear" Flicker (2026-01-26)
-- Server-first mask shared observers (2026-01-21)
-- Fixed Dashboard Preached Status Sync (2026-01-18)
-- Fixed All 6 Cache Desync Issues (2026-01-18)
-- Found 3 More Cache Desync Pattern (2026-01-18)
-- IndexedDB Cache Sync Fix Applied (2026-01-18)
-- Simple Solution for IndexedDB Sync (2026-01-18)
-- Cache Desync Breaking Persistence (2026-01-18)
-- Position Loss Race Conditions (2026-01-18)
-- Focus Mode Thoughts Jumping (2026-01-18)
-- Offline Structure Cache Alignment (2026-01-15)
-
-**Emerging Principle (The New Standard):** For reliable persistence without flickering:
-1. Use `useServerFirstQuery` to hide stale cache when online.
-2. In mutations/manual updates: `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })`.
-3. This marks data as stale (success state for IndexedDB) but prevents immediate stale refetches from overwriting memory.
-
 ### Focus Mode & Sermon Structure Integrity (3 lessons)
 **Common Pattern:** Desynchronization between Focus Mode UI and sermon data models, often due to locale-specific logic or sorting overrides.
 - Canonical structural tags (2026-01-26)
@@ -406,6 +394,15 @@
 *   **Context:** Добавление `useMemo`/`useCallback`.
 *   **Protocol:** После добавления хука — **ЯВНО** проверить секцию импортов.
 *   **Reasoning:** Runtime crash (`React.useMemo is not a function`) — частая ошибка при рефакторинге.
+
+**Protocol 151: Online-First, Offline-Cache Strategy**
+*   **Context:** Shared queries with persistent local cache (IndexedDB) and eventually consistent backend (Firestore).
+*   **Concept:** Приоритет актуальности данных при наличии сети над скоростью первоначальной отрисовки из кэша. Система не доверяет локальному кэшу в онлайн-режиме до подтверждения от сервера, предотвращая отображение устаревших (stale) состояний, но мгновенно переключается на кэш при потере связи, обеспечивая непрерывность работы.
+*   **Protocol:** 
+    1.  **Fetching:** Use `useServerFirstQuery` wrapper to hide cached data when online until fresh server data arrives. Reveal internal cache only when offline or if a fetch fails.
+    2.  **Implementation:** Use a **Hybrid Ref/State** pattern in wrappers. Use `useRef` for immediate "serverFetched" status (needed for tests and synchronous logic) and `useState` (render trigger) for declarative UI reactivity to external cache updates (`dataUpdatedAt`).
+    3.  **Mutations/Updates:** Always use: `await cancelQueries(key)` → `setQueryData(key, updater)` → `invalidateQueries({ queryKey: key, refetchType: 'none' })`.
+*   **Reasoning:** Background refetches in eventually consistent systems often return stale data before a server update propagates, causing "disappear-reappear" flickers. This protocol ensures local UI integrity during the consistency window while maintaining durable offline support via marking queries as "success" for IndexedDB persistence without triggering an immediate destructive refetch.
 
 ### 🎨 UI/UX Design System Standards
 
@@ -586,5 +583,5 @@
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) for any conditional logic involving Introduction/Main/Conclusion sections.
-- Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering in eventually consistent environments.
+- Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
 - Comments: English only in code

@@ -85,4 +85,47 @@ describe('useServerFirstQuery', () => {
       )
     ).toThrow('useServerFirstQuery requires a queryFn.');
   });
+
+  it('reveals error data when online and fetch fails', async () => {
+    mockUseOnlineStatus.mockReturnValue(true);
+    const { wrapper } = createWrapper();
+    const queryFn = jest.fn().mockRejectedValue(new Error('fetch failed'));
+
+    const { result } = renderHook(
+      () =>
+        useServerFirstQuery({
+          queryKey: ['server-first', 'error'],
+          queryFn,
+          retry: false,
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('handles disabled state correctly', () => {
+    mockUseOnlineStatus.mockReturnValue(true);
+    const { wrapper } = createWrapper();
+    const queryFn = jest.fn();
+
+    const { result } = renderHook(
+      () =>
+        useServerFirstQuery({
+          queryKey: ['server-first', 'disabled'],
+          queryFn,
+          enabled: false,
+        }),
+      { wrapper }
+    );
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+    expect(queryFn).not.toHaveBeenCalled();
+  });
 });

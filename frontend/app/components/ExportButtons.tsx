@@ -696,6 +696,57 @@ export default function ExportButtons({
     setShowPdfModal(false);
   };
 
+  const parseMarkdownPlan = (content: string, defaultTitle: string): PlanData => {
+    const lines = content.split('\n');
+    const result = {
+      sermonTitle: defaultTitle,
+      sermonVerse: '',
+      introduction: '',
+      main: '',
+      conclusion: '',
+    };
+    let currentSection: 'introduction' | 'main' | 'conclusion' | '' = '';
+
+    const getSectionFromHeader = (line: string) => {
+      if (!line.startsWith('## ')) return null;
+      if (line.includes(t('tags.introduction')) || line.includes('Introduction')) return 'introduction';
+      if (line.includes(t('tags.mainPart')) || line.includes('Main Part') || line.includes('Основная часть')) return 'main';
+      if (line.includes(t('tags.conclusion')) || line.includes('Conclusion')) return 'conclusion';
+      return null;
+    };
+
+    lines.forEach((line, i) => {
+      if (i === 0 && line.startsWith('# ')) {
+        result.sermonTitle = line.replace('# ', '').trim();
+        return;
+      }
+
+      if (line.startsWith('>')) {
+        const versePart = line.startsWith('> ') ? line.substring(2).trim() : line.substring(1).trim();
+        result.sermonVerse = result.sermonVerse ? `${result.sermonVerse}\n${versePart}` : versePart;
+        return;
+      }
+
+      const nextSection = getSectionFromHeader(line);
+      if (nextSection) {
+        currentSection = nextSection;
+        return;
+      }
+
+      if (currentSection && line.trim()) {
+        result[currentSection] += line + '\n';
+      }
+    });
+
+    return {
+      sermonTitle: result.sermonTitle,
+      sermonVerse: result.sermonVerse || undefined,
+      introduction: result.introduction.trim() || PLACEHOLDER_CONTENT,
+      main: result.main.trim() || PLACEHOLDER_CONTENT,
+      conclusion: result.conclusion.trim() || PLACEHOLDER_CONTENT,
+    };
+  };
+
   const handleWordClick = async () => {
     if (isWordDisabled) return;
 
@@ -704,66 +755,12 @@ export default function ExportButtons({
       const content = await getExportContent('markdown', { includeTags: false });
 
       // Parse the content to extract sections - keep markdown formatting intact
-      const lines = content.split('\n');
-      let sermonTitle = title || 'План проповеди';
-      let sermonVerse = '';
-      let introduction = '';
-      let main = '';
-      let conclusion = '';
-      let currentSection = '';
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // Extract title if it's at the beginning - remove markdown formatting for title
-        if (i === 0 && line.startsWith('# ')) {
-          sermonTitle = line.replace('# ', '').trim();
-          continue;
-        }
-
-        // Extract verse if it follows title - remove markdown formatting for verse
-        if (line.startsWith('> ')) {
-          sermonVerse = line.replace('> ', '').trim();
-          continue;
-        }
-
-        // Check for section headers
-        if (line.includes(t('tags.introduction')) || line.includes('Introduction')) {
-          currentSection = 'introduction';
-          continue;
-        } else if (line.includes(t('tags.mainPart')) || line.includes('Main Part') || line.includes('Основная часть')) {
-          currentSection = 'main';
-          continue;
-        } else if (line.includes(t('tags.conclusion')) || line.includes('Conclusion')) {
-          currentSection = 'conclusion';
-          continue;
-        }
-
-        // Add content to appropriate section - KEEP markdown formatting
-        if (currentSection && line.trim()) {
-          if (currentSection === 'introduction') {
-            introduction += line + '\n';
-          } else if (currentSection === 'main') {
-            main += line + '\n';
-          } else if (currentSection === 'conclusion') {
-            conclusion += line + '\n';
-          }
-        }
-      }
-
-      const planData: PlanData = {
-        sermonTitle: sermonTitle,
-        sermonVerse: sermonVerse || undefined,
-        introduction: introduction.trim() || PLACEHOLDER_CONTENT,
-        main: main.trim() || PLACEHOLDER_CONTENT,
-        conclusion: conclusion.trim() || PLACEHOLDER_CONTENT,
-      };
+      const planData = parseMarkdownPlan(content, title || 'План проповеди');
 
       await exportToWord({ data: planData });
 
     } catch (error) {
       console.error('Error exporting to Word:', error);
-      // You can add a toast notification here if needed
     }
   };
 
