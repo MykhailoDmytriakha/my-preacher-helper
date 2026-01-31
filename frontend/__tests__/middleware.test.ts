@@ -35,9 +35,19 @@ jest.mock('next/server', () => {
 
 describe('Middleware', () => {
     let req: NextRequest;
+    let savedCorsEnv: string | undefined;
 
     beforeEach(() => {
         jest.clearAllMocks();
+        savedCorsEnv = process.env.CORS_ALLOWED_ORIGINS;
+    });
+
+    afterEach(() => {
+        if (savedCorsEnv !== undefined) {
+            process.env.CORS_ALLOWED_ORIGINS = savedCorsEnv;
+        } else {
+            delete process.env.CORS_ALLOWED_ORIGINS;
+        }
     });
 
     const createRequest = (url: string, origin?: string, method = 'GET') => {
@@ -55,6 +65,7 @@ describe('Middleware', () => {
     });
 
     it('should set CORS headers for allowed origin on API routes', () => {
+        delete process.env.CORS_ALLOWED_ORIGINS;
         req = createRequest('/api/sermons', 'http://localhost:3000');
         const res = middleware(req);
 
@@ -63,6 +74,7 @@ describe('Middleware', () => {
     });
 
     it('should NOT set allow-origin if origin is not allowed', () => {
+        delete process.env.CORS_ALLOWED_ORIGINS;
         req = createRequest('/api/sermons', 'http://evil.com');
         const res = middleware(req);
 
@@ -70,6 +82,7 @@ describe('Middleware', () => {
     });
 
     it('should handle OPTIONS preflight request', () => {
+        delete process.env.CORS_ALLOWED_ORIGINS;
         req = createRequest('/api/sermons', 'http://localhost:3000', 'OPTIONS');
 
         // For OPTIONS, middleware returns a new Response (not next())

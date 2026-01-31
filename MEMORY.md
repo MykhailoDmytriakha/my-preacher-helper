@@ -8,6 +8,13 @@
 ## 🆕 Lessons (Inbox) — Только что выучено
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
+### 2026-01-31 Middleware CORS tests failing on Vercel (CI)
+**Problem:** Middleware tests passed locally but failed on Vercel build: `Access-Control-Allow-Origin` was expected `http://localhost:3000` but received `null`.
+**Cause:** On Vercel, `process.env.CORS_ALLOWED_ORIGINS` is set (e.g. to production domain only). The tests assumed default env (unset), so the middleware used DEFAULT_ALLOWED_ORIGINS (which includes localhost). In CI, the env was set, so localhost was not in the allowed list.
+**Solution:** In tests that assert behavior for a specific origin (e.g. localhost), explicitly `delete process.env.CORS_ALLOWED_ORIGINS` so the middleware falls back to DEFAULT_ALLOWED_ORIGINS. Save/restore env in beforeEach/afterEach so tests are isolated and don't leak state.
+**Why it worked:** Tests no longer depend on the runner's environment; they control the env for each case.
+**Principle:** Tests that rely on `process.env` for behavior (e.g. CORS allowed list) must set or clear the relevant env inside the test (or beforeEach) and restore in afterEach so they pass in any CI/CD environment (Vercel, GitHub Actions, etc.).
+
 ### 2026-01-31 Skeleton Loader vs Empty State Logic
 **Problem:** Skeleton loader persisted even when data fetching was complete (but empty/null), preventing the "Sermon not found" state from showing and failing tests.
 **Attempts:** Initial logic was too broad: `if (loading || (!sermon && !error))`, showing skeleton for both loading and missing data.
