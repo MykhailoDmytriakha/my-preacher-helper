@@ -23,9 +23,8 @@ import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleto
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import { useAuth } from '@/providers/AuthProvider';
-
-
 import '@locales/i18n';
+import { debugLog } from '@/utils/debugMode';
 
 // Modal state constants
 const MODAL_STATES = {
@@ -71,19 +70,19 @@ export default function SeriesDetailPage() {
 
   // Modal state management functions
   const openAddSermonModal = () => {
-    console.log('Opening add sermon modal');
+    debugLog('Opening add sermon modal');
     setModalState(MODAL_STATES.ADD_TO_SERIES);
   };
   const openCreateSermonModal = () => {
-    console.log('Opening create sermon modal');
+    debugLog('Opening create sermon modal');
     setModalState(MODAL_STATES.CREATE_NEW);
   };
   const closeModals = () => {
-    console.log('Closing all modals');
+    debugLog('Closing all modals');
     setModalState(null);
   };
   const cancelCreateSermon = () => {
-    console.log('Cancelling create sermon, returning to add sermon modal');
+    debugLog('Cancelling create sermon, returning to add sermon modal');
     setModalState(MODAL_STATES.ADD_TO_SERIES);
   }; // return to add sermon modal
 
@@ -326,9 +325,8 @@ export default function SeriesDetailPage() {
                   <div
                     {...provided.droppableProps}
                     ref={provided.innerRef}
-                    className={`space-y-3 rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700 ${
-                      snapshot.isDraggingOver ? 'bg-blue-50/80 dark:bg-blue-900/20' : 'bg-white/40 dark:bg-gray-900/40'
-                    }`}
+                    className={`space-y-3 rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700 ${snapshot.isDraggingOver ? 'bg-blue-50/80 dark:bg-blue-900/20' : 'bg-white/40 dark:bg-gray-900/40'
+                      }`}
                   >
                     {sermons.map((sermon, index) => (
                       <Draggable key={sermon.id} draggableId={sermon.id} index={index}>
@@ -458,11 +456,11 @@ export default function SeriesDetailPage() {
           onCancel={cancelCreateSermon}
           preSelectedSeriesId={seriesId}
           onNewSermonCreated={async (newSermon) => {
-            console.log('New sermon created, starting to add to series:', newSermon.id);
+            debugLog('New sermon created, starting to add to series:', newSermon.id);
             // Add the new sermon to the series and close all modals
             try {
               await handleAddSermonsToSeries([newSermon.id]);
-              console.log('Sermon added to series successfully, closing modals and invalidating cache');
+              debugLog('Sermon added to series successfully, closing modals and invalidating cache');
               closeModals();
               // Invalidate the series cache to refresh the data
               setTimeout(() => {

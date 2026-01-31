@@ -380,6 +380,13 @@ describe('SermonHeader Component', () => {
       expect(screen.getByTestId('menu')).toBeInTheDocument();
     });
 
+    it('renders series management menu when sermon has no series (standalone)', () => {
+      render(<SermonHeader sermon={mockSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
+
+      // Menu should be available even for standalone sermons (Add to series option)
+      expect(screen.getByTestId('menu')).toBeInTheDocument();
+    });
+
     it('shows series management dropdown when sermon belongs to series', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
       render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);

@@ -204,7 +204,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
 
-          {/* Series Badge */}
+          {/* Series Badge - only when sermon is in a series */}
           {sermonSeries && (
             <div className="flex items-center gap-1">
               <Link
@@ -233,77 +233,77 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                 </svg>
                 <span>{sermonSeries.title}</span>
               </Link>
-
-              {/* Series Management Dropdown - moved next to badge */}
-              <Menu as="div" className="relative">
-                <Menu.Button
-                  className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  disabled={isReadOnly}
-                >
-                  <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                </Menu.Button>
-                <Transition
-                  enter="transition ease-out duration-100"
-                  enterFrom="transform opacity-0 scale-95"
-                  enterTo="transform opacity-100 scale-100"
-                  leave="transition ease-in duration-75"
-                  leaveFrom="transform opacity-100 scale-100"
-                  leaveTo="transform opacity-0 scale-95"
-                >
-                  <Menu.Items className="absolute left-0 z-10 mt-1 w-56 origin-top-left rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-gray-700">
-                    {sermon.seriesId ? (
-                      <>
-                        <Menu.Item>
-                          {({ active }) => (
-                            <button
-                              onClick={handleChangeSeries}
-                              disabled={isProcessing || isReadOnly}
-                              title={t('workspaces.series.actions.moveToDifferentSeries')}
-                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                                } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                            >
-                              <ArrowPathIcon className="h-4 w-4" />
-                              {t('workspaces.series.actions.moveToDifferentSeries')}
-                            </button>
-                          )}
-                        </Menu.Item>
-                        <Menu.Item>
-                          {({ active }) => (
-                            <button
-                              onClick={handleRemoveFromSeries}
-                              disabled={isProcessing || isReadOnly}
-                              title={t(removeFromSeriesTranslationKey)}
-                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${active ? 'bg-red-50 dark:bg-red-950' : ''
-                                } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                            >
-                              <XMarkIcon className="h-4 w-4" />
-                              {t(removeFromSeriesTranslationKey)}
-                            </button>
-                          )}
-                        </Menu.Item>
-                      </>
-                    ) : (
-                      <Menu.Item>
-                        {({ active }) => (
-                          <button
-                            onClick={handleAddToSeries}
-                            disabled={isProcessing || isReadOnly}
-                            title={t('workspaces.series.actions.addToSeries')}
-                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                          >
-                            <PlusIcon className="h-4 w-4" />
-                            {t('workspaces.series.actions.addToSeries')}
-                          </button>
-                        )}
-                      </Menu.Item>
-                    )}
-                  </Menu.Items>
-                </Transition>
-              </Menu>
             </div>
           )}
+
+          {/* Series options menu - always available (Add to series when standalone, Move/Remove when in series) */}
+          <Menu as="div" className="relative">
+            <Menu.Button
+              className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              disabled={isReadOnly}
+            >
+              <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            </Menu.Button>
+            <Transition
+              enter="transition ease-out duration-100"
+              enterFrom="transform opacity-0 scale-95"
+              enterTo="transform opacity-100 scale-100"
+              leave="transition ease-in duration-75"
+              leaveFrom="transform opacity-100 scale-100"
+              leaveTo="transform opacity-0 scale-95"
+            >
+              <Menu.Items className="absolute left-0 z-10 mt-1 w-56 origin-top-left rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-gray-700">
+                {sermon.seriesId ? (
+                  <>
+                    <Menu.Item>
+                      {({ active }) => (
+                        <button
+                          onClick={handleChangeSeries}
+                          disabled={isProcessing || isReadOnly}
+                          title={t('workspaces.series.actions.moveToDifferentSeries')}
+                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                        >
+                          <ArrowPathIcon className="h-4 w-4" />
+                          {t('workspaces.series.actions.moveToDifferentSeries')}
+                        </button>
+                      )}
+                    </Menu.Item>
+                    <Menu.Item>
+                      {({ active }) => (
+                        <button
+                          onClick={handleRemoveFromSeries}
+                          disabled={isProcessing || isReadOnly}
+                          title={t(removeFromSeriesTranslationKey)}
+                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${active ? 'bg-red-50 dark:bg-red-950' : ''
+                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                          {t(removeFromSeriesTranslationKey)}
+                        </button>
+                      )}
+                    </Menu.Item>
+                  </>
+                ) : (
+                  <Menu.Item>
+                    {({ active }) => (
+                      <button
+                        onClick={handleAddToSeries}
+                        disabled={isProcessing || isReadOnly}
+                        title={t('workspaces.series.actions.addToSeries')}
+                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                          } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        {t('workspaces.series.actions.addToSeries')}
+                      </button>
+                    )}
+                  </Menu.Item>
+                )}
+              </Menu.Items>
+            </Transition>
+          </Menu>
         </div>
         <div className="mt-2">
           <EditableVerse

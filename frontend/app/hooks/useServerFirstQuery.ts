@@ -113,14 +113,19 @@ export function useServerFirstQuery<
     forceUpdate
   ]);
 
+  // Reveal data when:
+  // 1. serverFetchedRef marked fetch complete, OR
+  // 2. React Query has successful data (covers cases where ref was reset but data exists), OR
+  // 3. There's an error
   const shouldReveal = isOnline
-    ? (serverFetchedRef.current || queryResult.isError)
+    ? (serverFetchedRef.current || (queryResult.isSuccess && queryResult.data !== undefined) || queryResult.isError)
     : (queryResult.isSuccess || queryResult.isError || !enabled);
 
   const data = shouldReveal ? queryResult.data : undefined;
 
+  // Loading when online: only if we haven't revealed data yet and no error
   const isLoading = isOnline
-    ? Boolean(enabled) && !serverFetchedRef.current && !queryResult.isError
+    ? Boolean(enabled) && !shouldReveal
     : queryResult.isLoading;
 
   debugLog(`useServerFirstQuery [${options.queryKey?.[0]}]: evaluation`, {
@@ -130,6 +135,8 @@ export function useServerFirstQuery<
     isLoading,
     dataPresent: !!data
   });
+
+
 
   return {
     ...queryResult,

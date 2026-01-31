@@ -59,8 +59,16 @@ jest.mock('@heroicons/react/24/outline', () => ({
   ExclamationTriangleIcon: () => <div data-testid="exclamation-icon" />,
 }));
 
+// Mock debugMode
+jest.mock('@/utils/debugMode', () => ({
+  __esModule: true,
+  debugLog: jest.fn(),
+  isDebugModeEnabled: jest.fn(() => false),
+  setDebugModeEnabled: jest.fn(),
+}));
+
 // Mock i18n
-jest.mock('@locales/i18n', () => {}, { virtual: true });
+jest.mock('@locales/i18n', () => { }, { virtual: true });
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,

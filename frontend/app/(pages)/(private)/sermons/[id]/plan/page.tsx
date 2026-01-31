@@ -25,9 +25,11 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
+import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
+
 
 // Translation keys constants to avoid duplicate strings
 const TRANSLATION_SECTIONS_MAIN = "sections.main";
@@ -2272,7 +2274,7 @@ export default function PlanPage() {
     const conclusionProgress = getPhaseProgressPercent('conclusion');
 
     // Consolidated log showing all phases progress and current timer time
-    console.log(`[TIMER] Phase:${timerState.currentPhase} | Intro:${introProgress.toFixed(1)}% | Main:${mainProgress.toFixed(1)}% | Conclusion:${conclusionProgress.toFixed(1)}% | Time:${formatTime(timerState.timeRemaining)} | Total:${(totalProgress * 100).toFixed(1)}%`);
+    debugLog(`[TIMER] Phase:${timerState.currentPhase} | Intro:${introProgress.toFixed(1)}% | Main:${mainProgress.toFixed(1)}% | Conclusion:${conclusionProgress.toFixed(1)}% | Time:${formatTime(timerState.timeRemaining)} | Total:${(totalProgress * 100).toFixed(1)}%`);
 
     // Only update state if values actually changed to prevent infinite re-renders
     setPreachingTimerState(prevState => {
@@ -3198,7 +3200,7 @@ export default function PlanPage() {
         onExitPreaching={() => updatePlanViewMode(null)}
         onTimerStateChange={handleTimerStateChange}
         onTimerFinished={() => {
-          console.log('Timer finished naturally, showing negative countdown');
+          debugLog('Timer finished naturally, showing negative countdown');
         }}
         onSetDuration={handleSetTimerDuration}
       />

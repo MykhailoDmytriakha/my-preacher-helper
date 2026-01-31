@@ -9,6 +9,27 @@
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
 
+### 2026-01-30 React Query: Server-First Race Condition Fix
+**Problem:** `useServerFirstQuery` logic caused infinite loading because `serverFetchedRef` was resetting to false on re-renders, while `shouldReveal` didn't account for `queryResult.isSuccess` independently.
+**Attempts:** Added debug logging to trace state; discovered `serverFetchedRef` flip-flopping.
+**Solution:** Updated `shouldReveal` to check `(serverFetchedRef.current || (queryResult.isSuccess && queryResult.data !== undefined))`. Updated `isLoading` to respect `shouldReveal`.
+**Why it worked:** Explicitly checking `isSuccess` + `data` ensures that once data is available, we show it, even if the "first fetch" ref flag was lost or reset during a render cycle.
+**Principle:** Reliability > Flags. For loading states, always prefer derived truth (`isSuccess && data`) over mutable imperative flags (`useRef`), or combine them defensively.
+
+### 2026-01-30 Testing: Mocking Local Modules and ReferenceErrors
+**Problem:** Tests failing with `ReferenceError: debugLog is not defined` after adding it to source code, because the mock in `series-detail.test.tsx` was incomplete or using `requireActual` incorrectly for a module with named exports.
+**Attempts:** Tried mocking with `requireActual`, resulted in element not found errors implying the mock wasn't working as expected.
+**Solution:** Simplified the mock to a plain object returning `jest.fn()` for all exports, removing `requireActual`.
+**Why it worked:** Jest's module resolution can be tricky with partial mocks. A clean, explicit mock object ensures the test environment has exactly what it needs without side effects from the actual module.
+**Principle:** When mocking simple utility modules causes ReferenceErrors, prefer a full explicit mock object over `requireActual` to eliminate module resolution complexity.
+
+### 2026-01-30 Jest Mocks: Parallel Requests Consumption
+**Problem:** `StepByStepWizard` test failed because "Generate Audio" button never appeared. The test mocked sequential steps (Optimize -> Save -> Generate), but the component fired 3 parallel optimization requests (Intro/Main/Conclusion).
+**Attempts:** Added standard sequential mocks; test failed as the "Save" mock was consumed by the 2nd parallel optimization request, breaking the flow.
+**Solution:** Updated the mock chain to provide 3 discrete `mockResolvedValueOnce` responses for the parallel optimization step *before* adding the mock for the subsequent "Save" step.
+**Why it worked:** `fetch` mocks are consumed FIFO. Parallel requests consume N mocks immediately. If the chain is too short, subsequent logical steps receive the wrong response or undefined.
+**Principle:** When a component executes parallel requests (e.g. `Promise.all`), explicitly mock N responses for that batch before mocking the next sequential step.
+
 ### 2026-01-26 React Query: Hybrid Ref/State for Synchronous Data Availability and Async Re-renders
 **Problem:** In `useServerFirstQuery`, a pure `useState` for `serverFetched` status caused a one-render-cycle delay. This broke tests that checked the state immediately after `act()` and caused UI desynchronization when data was updated via `setQueryData` (which doesn't trigger the `queryFn` where the state was normally set).
 **Attempts:** Initially used only `useRef` (fixed tests but broke re-renders on manual cache updates) and then only `useState` (fixed re-renders but broke tests).
@@ -324,6 +345,13 @@
 ## 💎 Long-Term Memory (Operating Protocols) — Интернализированные правила
 
 > Инструкции по взаимодействию с проектом. Формат: "Контекст → Протокол → Причина"
+
+### 📝 Debugging Protocols
+
+**Debug Logging**
+*   **Context:** Debug logging is used to track the flow of data and the state of the application.
+*   **Protocol:** Use `debugLog` for logging debug messages.
+*   **Reasoning:** Debug logging is used to track the flow of data and the state of the application.
 
 ### 🔧 Code Quality & Linting Protocols
 
