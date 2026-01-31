@@ -1,620 +1,483 @@
 ---
-name: 000-TnR-maximum
-description: "[00] TnR MAXIMUM — Deep Think and Research Protocol. Manually invoked for critical investigations requiring full rigor. Executes complete research cycles, applies all mental models, builds comprehensive proof chains, and requires ≥95% calculated confidence before action. Always operates at maximum intensity — no shortcuts. Produces detailed uncertainty report if threshold not achieved."
+name: 000-TnR-Absolute-Rigor
+description: "[00] TnR ABSOLUTE RIGOR — Systemic Verification Doctrine. Forced cognitive exertion for high-stakes investigations. Mandates absolute deconstruction, mathematical proof chains, and ≥95% derived certainty. Zero-tolerance for heuristics or sentiment-based reasoning. Shortcuts are defined as intentional hallucinations."
 ---
 
-# TnR MAXIMUM Protocol: Think and Research
+# TnR ABSOLUTE RIGOR: Verification Doctrine
 
-> **Уверенность достигается через трудолюбие и действия.**  
-> **Недостаточная уверенность — это лень.**
-
----
-
-## Quick Reference (TL;DR)
-
-| Element | Requirement |
-|---------|-------------|
-| **Mode** | Always MAXIMUM — no shortcuts |
-| **Threshold** | ≥95% calculated confidence |
-| **Models** | All 5 mental models applied |
-| **Sources** | Internal exhausted → External verified |
-| **Coverage** | Core + Boundary + Externalities |
-| **Effects** | Up to 3rd order analyzed |
-| **Output** | Action OR Uncertainty Report |
+> **Certainty is a product of cognitive labor. Any residual uncertainty is a failure of industry.**  
+> **To assume without proof is to hallucinate by choice.**
 
 ---
 
-## Mandatory Checklist
+## Technical Directive (TL;DR)
 
-Before declaring research complete, ALL items must be checked:
+| Element | Requirement | Semantic Vector |
+|---------|-------------|-----------------|
+| **Mode** | ABSOLUTE RIGOR | Non-negotiable intensity |
+| **Threshold** | ≥95% Mathematically Derived | Hard constraint |
+| **Mechanics** | 5 Mental Models + 3rd Order | Mandatory deconstruction |
+| **Depletion** | Internal Exhaustion → External Force | Source entropy reduction |
+| **Coverage** | Core + Boundary + Collateral | Total domain saturation |
+| **Effects** | Up to 3rd order quantified | Systemic resonance mapping |
+| **Termination** | Proof Chain OR Failure Report | Binary outcome |
+
+---
+
+## Mandatory Execution Checklist
+
+The research is NOT concluded until every vector is saturated:
 
 ```
-□ 1. INVERSION applied — failure modes enumerated
-□ 2. FIRST PRINCIPLES applied — assumptions deconstructed  
-□ 3. MULTI-ORDER EFFECTS — 3rd order analyzed
-□ 4. CIRCLE OF COMPETENCE — limits acknowledged
-□ 5. MAP ≠ TERRITORY — reality verified vs models
-□ 6. Internal sources EXHAUSTED (code, git, docs, artifacts)
-□ 7. External sources VERIFIED (web, official docs)
-□ 8. Core domain 100% covered
-□ 9. Boundary cases explored
-□ 10. Externalities/side effects identified
-□ 11. Proof chain for EVERY claim built
-□ 12. Confidence CALCULATED (not estimated)
-□ 13. ≥95% → action taken OR <95% → Uncertainty Report produced
-□ 14. Session log entry written
+□ 1. INVERSION — Systemic failure modes enumerated and neutralized
+□ 2. FIRST PRINCIPLES — Axiomatic deconstruction; zero assumptions
+□ 3. MULTI-ORDER EFFECTS — 3rd order externalities mapped and quantified
+□ 4. CIRCLE OF CERTAINTY — Clear demarcation of known vs. speculative
+□ 5. MAP ≠ TERRITORY — Model-reality reconciliation through direct testing
+□ 6. INTERNAL DEPLETION — Every byte of local code/git/logs consumed
+□ 7. EXTERNAL VERIFICATION — Authoritative sources forced to yield evidence
+□ 8. CORE DOMAIN Saturation — 100% coverage achieved
+□ 9. BOUNDARY Penetration — Edge cases stressed to failure
+□ 10. SYSTEMIC COLLATERAL — Upstream/downstream risks identified
+□ 11. MATHEMATICAL PROOF — Every claim linked to an atomic source
+□ 12. CERTAINTY DERIVATION — Calculated via Evidence weight (not felt)
+□ 13. ≥95% → EXECUTE OR <95% → SYSTEMIC FAILURE REPORT
+□ 14. SESSION LOG INTEGRITY — Final verification state recorded
 ```
 
 ---
 
-## AGENTS.md Integration
+## AGENTS.md Operational Mandate
 
-This skill operates within the AGENTS.md protocol:
+This doctrine is the enforcement mechanism for AGENTS.md:
 
-| AGENTS.md Section | TnR Integration |
-|-------------------|-----------------|
-| **§0 Identity** | TnR embodies truth-first, evidence-backed reasoning |
-| **§2 Core Loop** | TnR executes during **Plan** and **Execute** phases |
-| **§4 Session Artifacts** | TnR findings logged to JOURNAL.md, world model to SESSION.md |
-| **§6 Evidence** | TnR proof chains provide required evidence |
-| **§7 Evaluation** | TnR confidence maps to evaluation score |
-| **§8 CRUD Safety** | TnR research precedes any K/NR operations |
+| § Section | Rigor Integration | Requirement |
+|-----------|-------------------|-------------|
+| **§0 Identity** | Truth-Obsessed Logic | Evidence is the only valid currency |
+| **§2 Loop** | Strategic Interruption | Pause execution until proof is absolute |
+| **§4 Artifacts** | Audit Trail | Every thought must be auditable in JOURNAL.md |
+| **§6 Evidence** | Hierarchical Force | Higher weights overrule all AI sentiment |
+| **§7 Evaluation** | Rigor Score | Confidence = Execution Quality |
+| **§8 Safety** | CRUD Defense | No mutation without high-confidence proof |
 
-**Dependencies:**
-- Claims in SESSION.md backed by TnR proof chains
-- JOURNAL.md receives TnR investigation timestamps
-- MEMORY.md receives lessons from TnR cycles
-
----
-
-## Activation Triggers
-
-TnR MAXIMUM is **MANDATORY** when any of the following conditions are met:
-
-### Explicit Invocation
-```
-User commands that activate TnR MAXIMUM:
-├── /tnr, /think, /research, /investigate
-├── "deep research", "full analysis", "investigate thoroughly"
-├── "I need to understand why..."
-└── "Before we proceed, make sure..."
-```
-
-### Automatic Triggers (agent must detect)
-
-| Trigger | Example | Why MAXIMUM |
-|---------|---------|-------------|
-| **K/NR CRUD operations** | Database migration, file deletion | Irreversible actions require proof |
-| **Production systems** | Deploying to prod, modifying live config | High blast radius |
-| **Solution confidence < 70%** | "I think this might work..." | AI reasoning insufficient |
-| **Multiple valid approaches** | 3+ ways to solve problem | Need evidence to choose |
-| **External system integration** | Third-party API, new library | Unknown behavior |
-| **Contradictory evidence** | Docs say X, code does Y | Must resolve before action |
-| **Security-related changes** | Auth, permissions, secrets | Zero tolerance for guessing |
+**Operational Dependencies:**
+- Claims in SESSION.md backed by Rigor proof chains
+- JOURNAL.md receives Absolute Rigor timestamps
+- MEMORY.md receives distilled axioms from Rigor cycles
 
 ---
 
-## Core Philosophy
+## Execution Triggers
 
-### The Iron Logic Standard
+TnR ABSOLUTE RIGOR is **IMPERATIVE** under these conditions:
 
+### Direct Activation
 ```
-CLAIM → EVIDENCE → SOURCE → VERIFICATION → CONFIDENCE
+Hard-coded triggers for Absolute Rigor:
+├── /tnr, /rigor, /verify, /deconstruct
+├── "absolute proof", "mathematical certainty", "maximum stress test"
+├── "Do not guess", "Verify everything", "Zero tolerance"
+└── "We cannot afford an error here"
 ```
 
-**Rules:**
-- Each link: **observable**, **testable**, or **logically necessary**
-- Broken link = incomplete research = MORE WORK NEEDED
-- NO action on unverified assumptions
-- Opinions and "it seems" are NOT evidence
+### Systemic Triggers (Mandatory Detection)
 
-### The 150% Rule
-
-| Dimension | 100% Core | +50% Enhancement |
-|-----------|-----------|------------------|
-| **Evidence** | Verifiable facts | + Cross-validated from multiple sources |
-| **Analysis** | 2nd-order effects | + 3rd-order effects considered |
-| **Coverage** | Core domain | + Boundaries + externalities mapped |
-| **Confidence** | State uncertainty | + Detailed reasoning chain documented |
+| Trigger | High-Stakes Context | Why ABSOLUTE RIGOR |
+|---------|--------------------|--------------------|
+| **K/NR CRUD Mutations** | Data integrity at risk | Irreversible state requires proof |
+| **Core Infrastructure** | System-wide blast radius | High-density ripple effects |
+| **Certainty < 80%** | Structural uncertainty | Heuristics are failing |
+| **3+ Valid Approaches** | Branching logic failure | Force selection via evidence |
+| **External Integrations** | Zero-trust domain | Unknown behavior must be boxed |
+| **Logical Contradiction** | Model-reality mismatch | Conflict must be resolved |
+| **Security/Auth** | Vulnerability potential | Zero tolerance for assumptions |
 
 ---
 
-## Mental Models (ALL MANDATORY)
+## Core Philosophy: The Iron Logic Doctrine
 
-### 1. Inversion Thinking
-> "What would make this fail?"
-
+### The Verification Chain
 ```
-Goal: [Your objective]
-Inversion: What would make it fail?
-├── [Failure mode 1]
-├── [Failure mode 2]
-├── [Failure mode 3]
-└── [Failure mode N]
-
-→ Address each failure mode explicitly
+OBSERVATION → ATOMIC EVIDENCE → SOURCE → CROSS-VALIDATION → DERIVED CERTAINTY
 ```
 
-### 2. Circle of Competence
-> Know your limits. Acknowledge uncertainty.
+**Directives:**
+- **No Unlinked Claims:** Every "fact" must have a parent source.
+- **Sentiment Erasure:** Terms like "I think", "probably", and "likely" are markers of incomplete labor.
+- **Source Weighting:** AI Reasoning is the weakest link; Code is the ground truth.
+- **Shortcuts = Defects:** Any skipped check is a critical bug in reasoning.
+
+### The 150% Saturation Rule
+
+| Dimension | 100% Core Coverage | +50% Absolute Rigor Enhancement |
+|-----------|--------------------|---------------------------------|
+| **Evidence** | Verifiable facts | + Forced cross-validation |
+| **Analysis** | 2nd-order effects | + 3rd-order systemic resonance |
+| **Coverage** | Core domain | + Boundary Stress + Collateral Mapping |
+| **Certainty** | State uncertainty | + Atomic proof chain documentation |
+
+---
+
+## Cognitive Deconstruction (Mental Models)
+
+### 1. Inversion Thinking (Failure Pathing)
+> "Identify every path to catastrophe and obstruct it."
 
 ```
-INSIDE CIRCLE (proceed with confidence):
-├── Direct experience with this codebase
-├── Verified understanding of the problem
-└── Evidence-backed knowledge
+Objective: [Target]
+Failure Modes:
+├── [Catastrophic Failure 1] → neutralizing action
+├── [Catastrophic Failure 2] → neutralizing action
+└── [Catastrophic Failure N] → neutralizing action
 
-OUTSIDE CIRCLE (research first, proceed with caution):
-├── New domain / unfamiliar technology
-├── Assumptions without verification
-└── "I think" without "because I verified"
+→ Address each failure mode as a primary constraint.
 ```
 
-### 3. First Principles Reasoning
-> Deconstruct to fundamental truths.
+### 2. Circle of Certainty (Knowledge Boundaries)
+> "Aggressively flag everything outside the verified zone."
 
 ```
-Step 1: What do I assume to be true?
-Step 2: Why? What's the evidence?
-Step 3: Strip assumptions. What remains?
-Step 4: Build solution from fundamental truths only
+INSIDE CIRCLE (Actionable):
+├── Direct code observations
+├── Verified logs / test results
+└── Direct user confirmations
+
+OUTSIDE CIRCLE (Research Mandate):
+├── AI-generated hypotheses
+├── Documentation (untested)
+└── Inherited assumptions
 ```
 
-### 4. Multi-Order Effects Analysis
+### 3. First Principles Reasoning (Axiomatic Logic)
+> "Strip the problem to its naked facts. Do not inherit assumptions."
 
-| Order | Question | Must Answer |
-|-------|----------|-------------|
-| **1st** | Direct result? | Always |
-| **2nd** | What results from that? | Always |
-| **3rd** | What results from *that*? | Always (MAXIMUM mode) |
+```
+Step 1: Enumerate all "Inherited Constants".
+Step 2: Challenge each: "What is the atomic proof?"
+Step 3: Discard any claim that fails the atomic proof.
+Step 4: Rebuild the solution from observed axioms only.
+```
 
-**Rule:** Never stop at first-order. Always ask "and then what?" twice more.
+### 4. Systemic Multi-Order Analysis (The Chain Reaction)
 
-### 5. Map ≠ Territory
-> Models are simplifications. Reality is truth.
+| Order | Question | Required Result |
+|-------|----------|-----------------|
+| **1st** | Direct Result? | Quantitative impact |
+| **2nd** | Dependency Ripple? | Cascading changes |
+| **3rd** | Long-term Resonance? | Structural/cultural impact |
+
+**Rule:** Never terminate analysis at first-order. Forced mapping of 2nd and 3rd order impacts.
+
+### 5. Map ≠ Territory (Truth vs. Model)
+> "Models are abstractions. Reality is the only truth."
 
 ```
 WARNING SIGNS:
-├── "According to the docs..." (but did you test it?)
-├── "Usually this means..." (but is this case usual?)
-└── "The pattern suggests..." (but does reality confirm?)
+├── "According to docs..." (Untested abstraction)
+├── "Usually means..." (Heuristic bias)
+└── "The pattern suggests..." (Statistical hallucination)
 
 ANTIDOTE:
-→ Read the actual code
-→ Run the actual test
-→ Check the actual behavior
+→ Force execution of the code.
+→ Force observation of the logs.
+→ Force validation of the state.
 ```
 
 ---
 
-## Research Protocol
+## Research Protocol: Source Force-Multiplication
 
-### The Research Loop
-
-```
-┌────────────────────────────────────────┐
-│           RESEARCH LOOP                │
-├────────────────────────────────────────┤
-│  START: Question / Task                │
-│     ↓                                  │
-│  COLLECT: Gather from ALL sources      │
-│     ↓                                  │
-│  ASSESS: What's KNOWN? What's MISSING? │
-│     ↓                                  │
-│  Gaps found?                           │
-│     ↓ YES              ↓ NO            │
-│  SEARCH for         Chain complete     │
-│  missing pieces     Calculate conf.    │
-│     ↓               ≥95%? → PROCEED    │
-│  VALIDATE: Is       <95%? → REPORT     │
-│  new info reliable?                    │
-│     ↓                                  │
-│  Return to ASSESS ←────────────────────│
-└────────────────────────────────────────┘
-```
-
-### Source Priority (MANDATORY ORDER)
+### The Depletion Loop
 
 ```
-1. INTERNAL FIRST → Project-specific truth (highest priority)
-   ├── Source code (grep_search, view_file)
-   ├── Git history (git log, git blame, git show)
-   ├── Project artifacts (AGENTS.md, MEMORY.md, SESSION.md)
-   ├── Configuration files (package.json, tsconfig, etc.)
-   └── Test results, build outputs
-
-2. OFFICIAL DOCS → Authoritative source
-   ├── Documentation sites (MDN, official docs)
-   ├── API references
-   └── GitHub repos (issues, PRs, discussions)
-
-3. WEB SEARCH → Broader context
-   └── search_web, read_url_content
-
-4. COMMUNITY → Practical experience (validate carefully)
-   ├── Stack Overflow
-   ├── Forums, Reddit
-   └── Blog posts, tutorials
-
-5. AI REASONING → Lowest priority (ALWAYS validate)
+┌──────────────────────────────────────────┐
+│           DEPLETION LOOP                 │
+├──────────────────────────────────────────┤
+│  START: Question / Objective             │
+│     ↓                                    │
+│  DEPLETE: Gather from ALL vectors        │
+│     ↓                                    │
+│  AUDIT: What is Axiomatic? What is Gap?  │
+│     ↓                                    │
+│  Gap Found?                              │
+│     ↓ YES               ↓ NO             │
+│  FORCE SEARCH        Chain Saturated     │
+│  for missing links   Derive Certainty    │
+│     ↓                ≥95%? → EXECUTE     │
+│  VALIDATE: Is        <95% → FAIL REPORT  │
+│  info verifiable?                        │
+│     ↓                                    │
+│  Return to AUDIT ←───────────────────────│
+└──────────────────────────────────────────┘
 ```
 
-### Two Worlds Model
-
-Most questions require research from BOTH worlds:
+### Source Priority (The Hierarchy of Truth)
 
 ```
-🏠 INTERNAL (Project Context)        🌍 EXTERNAL (World Knowledge)
-├── Source code (ground truth)       ├── Official documentation
-├── Git history (why & when)         ├── Web search (patterns)
-├── Tests (expected behavior)        ├── Stack Overflow / forums
-├── Logs (actual behavior)           ├── GitHub issues
-└── Config files                     └── Best practice guides
+1. INTERNAL DEPLETION → Project-specific ground truth (FORCED)
+   ├── Filesystem state (grep, view)
+   ├── Execution history (git log, blame)
+   ├── Project doctrine (AGENTS.md, MEMORY.md)
+   ├── Build/Test outputs
+   └── Live system logs
+
+2. AUTHORITATIVE EXTERNAL → Official design intent
+   ├── Official API/Library Documentation
+   ├── Specification documents
+   └── Issue trackers (Source-of-truth issues)
+
+3. GLOBAL SEARCH → Broad context
+   ├── search_web, read_url_content
+
+4. TRIAGED COMMUNITY → Heuristically filtered experience
+   ├── Stack Overflow / Reddit (verify every line)
+
+5. AI SYNTHESIS → Potential Hallucination (MANDATORY VERIFICATION)
 ```
 
-| World | Answers | Use When |
-|-------|---------|----------|
-| **Internal** | "What we have", "Why it exists" | Bug investigation, code understanding |
-| **External** | "What's possible", "Best practices" | Library choice, architecture decisions |
-| **Both** | Complete picture | Most serious investigations |
-
-**Rule:** Don't stay in one world. Internal tells you "what is", External tells you "what could be".
-
-### Project Search Protocol
-
-When navigating unfamiliar code, follow this order:
+### Two Worlds Model: Global Logic vs. Local Truth
 
 ```
-1. INTERFACE → routes, endpoints, public methods, schemas
-      ↓
-2. DOMAIN → model/entity names, enums, types
-      ↓
-3. PATTERNS → hooks, API clients, controllers, services
-      ↓
-4. USAGE → imports, call sites, references
+🏠 LOCAL (Project Context)           🌍 GLOBAL (World Knowledge)
+├── Code (What is)                   ├── Documentation (What should be)
+├── History (Why it is)              ├── Patterns (What usually is)
+├── Tests (What it does)             ├── Community (How others do it)
+└── Logs (How it fails)              ├── Issues (How it breaks)
 ```
 
-**Anti-pattern:** Jumping directly to implementation without understanding context → structure → interface.
+| World | Utility | Mandatory Factor |
+|-------|---------|------------------|
+| **Local** | Root Cause | Absolute code-read required |
+| **Global** | Solution Space | Cross-validation required |
+| **Both** | Structural Integrity | Intersection must be non-empty |
 
-**Systematic Exploration (unknown codebases):**
-1. **Context layer** — environment, build system, configuration
-2. **Structure layer** — directory layout, module boundaries
-3. **Interface layer** — endpoints, public APIs, data models
-4. **Implementation layer** — execution paths and conventions
+### Project Saturation Protocol
 
-### Evidence Hierarchy
+When penetrating unknown architectures:
+1. **INTERFACE DEPLETION** — Routes, schemas, public APIs.
+2. **DOMAIN DEPLETION** — Models, enums, business logic.
+3. **PATTERN DEPLETION** — Hooks, services, utilities.
+4. **USAGE DEPLETION** — Call sites, dependency trees.
 
-| Rank | Source | Weight | Notes |
-|------|--------|--------|-------|
-| 1 | Production code | 1.00 | Reality, ground truth |
-| 2 | Passing tests | 0.95 | Verified behavior |
-| 3 | Official documentation | 0.85 | Intended behavior |
-| 4 | Community sources | 0.60 | May be outdated |
-| 5 | AI reasoning | 0.30 | ALWAYS needs validation |
+**Anti-pattern:** Execution without interface saturation.
 
 ---
 
-## Domain Coverage (THREE ZONES)
+## Domain Coverage (Three Zones of Rigor)
 
 ```
-┌─────────────────────────────────────────┐
-│  ┌───────────────────────────────────┐  │
-│  │  ┌─────────────────────────────┐  │  │
-│  │  │      CORE DOMAIN            │  │  │
-│  │  │    (100% coverage)          │  │  │
-│  │  └─────────────────────────────┘  │  │
-│  │         BOUNDARY                   │  │
-│  │       (explore edges)              │  │
-│  └───────────────────────────────────┘  │
-│           EXTERNALITIES                  │
-│        (side effects zone)               │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  ┌───────────────────────────────────┐   │
+│  │  ┌─────────────────────────────┐  │   │
+│  │  │      CORE DOMAIN            │  │   │
+│  │  │    (100% saturation)        │  │   │
+│  │  └─────────────────────────────┘  │   │
+│  │         BOUNDARY                  │   │
+│  │       (Stress Testing)            │   │
+│  └───────────────────────────────────┘   │
+│           COLLATERAL                     │
+│        (Externalities Zone)              │
+└──────────────────────────────────────────┘
 ```
 
-| Zone | Requirement |
-|------|-------------|
-| **Core** | 100% coverage MANDATORY |
-| **Boundary** | Explore for hidden factors |
-| **Externalities** | Identify upstream/downstream effects |
+| Zone | Mandate |
+|------|---------|
+| **Core** | Complete deconstruction required |
+| **Boundary** | Stress to failure/undefined behavior |
+| **Collateral** | Map all non-obvious side effects |
 
 ---
 
-## Confidence Calculation
+## Certainty Derivation (Mathematical Logic)
 
-### Base Formula
-
-```
-Base_Confidence = Σ(claim × source_weight) / total_claims × 100%
-
-Where source_weight from Evidence Hierarchy:
-├── Production code: 1.00
-├── Passing tests: 0.95
-├── Official docs: 0.85
-├── Community: 0.60
-└── AI reasoning: 0.30
-```
-
-### Critical Path Penalties
-
-**Critical Claims** = claims in the execution path where failure causes:
-- Data loss or corruption
-- Security breach
-- Production outage
-- Irreversible state change
+### The Derivation Formula
 
 ```
-Penalty Calculation:
-├── Each UNVERIFIED critical claim:     -10%
-├── Each AI-ONLY claim in critical path: -15%
-├── Missing CORE zone coverage:          -20%
-├── No cross-validation for key claims:  -5%
-└── Contradictory evidence unresolved:   -25%
-
-Final_Confidence = Base_Confidence - Total_Penalties
+Final_Certainty = (Σ (Claim_Force × Source_Weight) / Total_Claims) - Systemic_Penalties
 ```
 
-### Critical Claim Requirements
+**Evidence Force Weights:**
+- **Local Logs/Tests:** 1.00 - 0.95
+- **Source Code:** 0.90
+- **Official Docs:** 0.85 - 0.80
+- **Community:** 0.60
+- **AI Synthesis:** 0.30 (Default)
 
-| Claim Type | Minimum Source Weight | Verification Required |
-|------------|----------------------|----------------------|
-| Critical (failure = disaster) | ≥ 0.95 | Code OR passing test |
-| Important (failure = significant work) | ≥ 0.85 | Official docs acceptable |
-| Standard (failure = minor rework) | ≥ 0.60 | Community sources OK |
+### Systemic Failure Penalties
 
-### Example Calculation (v2)
+**Critical Vectors** = Execution paths where failure causes data loss, security breaches, or system outage.
 
 ```
-Task: Migrate user database schema
-
-Claims analysis:
-├── Claim 1: Migration script syntax correct
-│   └── Source: code review → 1.00 | CRITICAL ✓
-├── Claim 2: Rollback procedure works  
-│   └── Source: tested locally → 0.95 | CRITICAL ✓
-├── Claim 3: No data loss during migration
-│   └── Source: AI reasoning only → 0.30 | CRITICAL ✗ PENALTY
-├── Claim 4: Downtime < 5 minutes
-│   └── Source: official docs → 0.85 | IMPORTANT ✓
-├── Claim 5: Indexes rebuilt automatically
-│   └── Source: Stack Overflow → 0.60 | STANDARD ✓
-
-Base_Confidence = (1.00 + 0.95 + 0.30 + 0.85 + 0.60) / 5 = 74%
-
 Penalties:
-├── Claim 3: AI-only in critical path → -15%
-└── Total Penalties: -15%
-
-Final_Confidence = 74% - 15% = 59%
-
-Verdict: CANNOT PROCEED → Must verify Claim 3 with test or code
+├── Unverified Critical Claim:          -20%
+├── AI-Only Chain in Critical Path:      -30%
+├── Incomplete Core Domain Saturation:  -25%
+├── No Cross-Validation for Key Axioms:  -10%
+└── Unresolved Logic Contradiction:     -40%
 ```
 
-### The Standard
+### Minimum Vector Requirements
 
-| Confidence | Action |
-|------------|--------|
-| **≥95%** | **PROCEED** — Full proof chain built |
-| **80-94%** | **PROCEED WITH CAUTION** — Document gaps, prepare rollback |
-| **<80%** | **PRODUCE UNCERTAINTY REPORT** — Cannot proceed |
+| Claim Priority | Min Source Weight | Mandate |
+|----------------|-------------------|---------|
+| **Critical**   | ≥ 0.95            | Code + Test Verification |
+| **Important**  | ≥ 0.85            | Official Doc Verification |
+| **Standard**   | ≥ 0.60            | Community Cross-Ref OK |
 
-### Achieving 95%
-
+### Case Study: Certainty Derivation
 ```
-REQUIREMENTS for ≥95%:
-├── ALL critical claims verified by weight ≥ 0.95 sources
-├── NO AI-only claims in critical path
-├── Core domain 100% covered
-├── At least 2 sources cross-validate key claims
-├── All contradictions resolved
-├── Failure modes explicitly addressed
-└── Rollback plan verified (for K/NR operations)
+Task: Data Migration Vector
+1. Migration logic verified via Code: 0.90 | CRITICAL ✓
+2. Rollback verified via Test: 0.95 | CRITICAL ✓
+3. Integrity verified via AI: 0.30 | CRITICAL ✗ PENALTY!
+4. Latency verified via Docs: 0.80 | IMPORTANT ✓
+
+Base: (0.90 + 0.95 + 0.30 + 0.80) / 4 = 73.7%
+Penalty: -30% (AI-only Critical)
+Final: 43.7% → VERDICT: RIGOR FAILURE. ADMIT DEFEAT.
 ```
+
+### The Iron Standard
+
+| Derivation | Outcome |
+|------------|---------|
+| **≥95%**   | **PROCEED** — Atomic proof chain established |
+| **80-94%** | **CAUTIONARY EXECUTION** — Document gaps + User Override |
+| **<80%**   | **SYSTEMIC FAILURE REPORT** — Termination of state |
 
 ---
 
-## Uncertainty Report (MANDATORY when <95%)
+## Systemic Failure Report (Mandatory when <95%)
 
 ```markdown
-⚠️ **UNCERTAINTY REPORT**
+🚨 **SYSTEMIC FAILURE REPORT (UNCERTAINTY)**
 
-**Calculated Confidence:** [X]%
+**Derived Certainty:** [X]% 
+**Deficit:** [95 - X]% 
 
-**Proof Chain Summary:**
-| # | Claim | Source | Weight | Verified |
-|---|-------|--------|--------|----------|
-| 1 | [claim] | [source] | [weight] | ✓/✗ |
+**Critical Gaps (The 'Why' of Failure):**
+1. [Link A]: Detailed reason for missing proof.
+2. [Contradiction B]: Unresolved evidence conflict.
 
-**Gaps Found:**
-- [Gap 1]: [why unresolved]
-- [Gap 2]: [why unresolved]
+**Depletion Record:**
+- Local: [Files/Logs audited]
+- Global: [Sources depleted]
 
-**Research Exhausted:**
-- Internal: [files, git, artifacts checked]
-- External: [searches, docs consulted]
+**What IS Axiomatic:**
+- [Proof 1]
+- [Proof 2]
 
-**What IS Known (high confidence):**
-- [Confirmed fact 1]
-- [Confirmed fact 2]
-
-**Resolution Options:**
-- Option A: [additional research direction]
-- Option B: [user could provide X]
-- Option C: [accept with stated assumptions]
-
-**Recommended Next Step:** [recommendation]
+**Next-Gen Force Vectors:**
+- Vector X: User intervention required for [Gap 1].
+- Vector Y: Assume risk [percentage] for [Proceed Condition].
 ```
 
 ---
 
-## Quality Gates (ALL MANDATORY)
+## Rigor Quality Gates (MANDATORY)
 
-| Phase | Gate Questions |
-|-------|----------------|
-| **Goal** | Clear success criteria defined? "Done" looks like what? |
-| **Research** | Proof chain complete? All 5 models applied? Sources cross-validated? |
-| **Analysis** | All alternatives considered? Risks identified? 3rd-order effects mapped? |
-| **Plan** | Steps atomic and actionable? Rollback possible? |
-| **Execute** | Tests pass? Lint clean? No regressions? CRUD safety classified? |
-| **Close** | Lessons captured? Proof chain documented? Session artifacts updated? |
+| Gate | Assessment |
+|------|------------|
+| **Goal** | Is "Success" quantified? |
+| **Research** | Is the proof chain atomic? All 5 models forced? |
+| **Analysis** | Are 3rd-order resonances mapped? |
+| **Plan** | Is every step backed by a verified link? |
+| **Execute** | Did tests pass? Is CRUD safety absolute? |
+| **Close** | Are axioms recorded in MEMORY.md? |
 
-### Final Check (MUST answer YES to all)
-
-```
-□ Can I trace every claim to verifiable evidence?
-□ Have I applied all 5 mental models?
-□ Have I considered 3rd-order effects?
-□ Am I inside my circle of competence (or flagged otherwise)?
-□ Is my confidence ≥95% calculated (not estimated)?
-□ If <95%, have I produced complete Uncertainty Report?
-□ Have I updated session artifacts (`.sessions/SESSION_[date]-[name].md`)?
-```
-
-### Cognitive Forcing Phrases
-
-Use these self-check statements during research to force rigor:
+### Final Rigor Check (Binary Outcome)
 
 ```
-"I see X, but I will verify with 3 independent sources."
-"This suggests Y, but what would disprove Y?"
-"Found 1 example, need 2 more to confirm pattern."
-"Seems obvious, but can I prove causality?"
-"Based on assumptions — STOP, find evidence."
+□ Can I trace every single claim to a non-AI source?
+□ Have I forced every one of the 5 mental models to find failures?
+□ Have I quantified 3rd-order resonance?
+□ Am I operating inside the Circle of Certainty?
+□ Is the Certainty Derivation ≥95% (Hard Math)?
+□ If <95%, is the Systemic Failure Report complete?
+□ Is the Operational Log updated?
 ```
 
-**Red Flags (investigation incomplete):**
-- "probably / likely / should / usually" without verification
-- "based on the name" or "seems like"
-- Only one usage checked
-- No contradiction search performed
+### Rigor Enforcement Phrases
+
+Force these axioms during deconstruction:
+- "Verify with 3 independent vectors."
+- "Seek the disconfirming evidence."
+- "Heuristics are masks for ignorance."
+- "What if the ground truth is lying?"
+- "Observed behavior > Documented intent."
+
+**Warning Signs (Abort State):**
+- Using "should" or "likely" without a link.
+- Stopping after the first usage find.
+- Ignoring a single contradictory log line.
 
 ---
 
-## Failure Modes & Recovery
+## Systemic Failure Recovery
 
-| Failure | Detection | Recovery |
-|---------|-----------|----------|
-| **Shallow research** | Sources unchecked | Return to Research Loop, exhaust all source types |
-| **Confirmation bias** | Only supporting evidence | Apply Inversion, seek disconfirming evidence |
-| **Stopped early** | Only 1st-order effects | Apply Multi-Order to 3rd order |
-| **False confidence** | ≥95% without calculation | Recalculate using formula with weights |
-| **Scope blindness** | Externalities missed | Apply Domain Coverage, check all 3 zones |
-| **Circular reasoning** | Evidence → assumption | Apply First Principles, deconstruct to axioms |
+| Vector Failure | Detection | Recovery Mandate |
+|----------------|-----------|------------------|
+| **Shallow Dive** | Heuristic reliance | Return to Depletion Loop; force code read |
+| **Confirmation Bias** | Ignored contradictions | Apply Inversion; find why it MUST fail |
+| **Early Termination** | 1st order only | Force mapping to 3rd order resonance |
+| **False Certainty** | Felt vs Derived | Re-run Derivation Formula with penalties |
+| **Local Blindness** | No global context | Deconstruct via Two Worlds model |
 
 ---
 
-## Example: TnR MAXIMUM in Action
+## Doctrine in Action (Case Study)
 
-### ❌ Without TnR
+### ❌ Heuristic Failure
+User: "Why is API slow?"
+AI: "Probably DB. Adding index."
+Result: Network latency was root cause. Index added needlessly. **FAIL.**
+
+### ✅ Absolute Rigor Doctrine
+User: "Why is API slow?"
+
+🔬 **ABSOLUTE RIGOR ACTIVATED**
+
+**Cognitive Deconstruction:**
+- INVERSION: DB is fast, but network/proxy is failing?
+- FIRST PRINCIPLES: Axiom: API response = 3s. DB Query = 10ms. **GAP = 2.99s.**
+
+**Depletion Loop:**
+- Local: grep logs for timing. Found 2.9s in `external_auth_proxy`.
+- Global: Audit `auth_proxy` known issues. Found "JWT verification timeout".
+
+**Verification Chain:**
+1. Log timing (1.00)
+2. Proxy config audit (0.95)
+3. Direct latency test (1.00)
+
+**Mathematical Certainty:** (1.00 + 0.95 + 1.00) / 3 = **98.3%**
+
+**Outcome:** Fix JWT timeout in proxy. Total success. **PASS.**
+
+---
+
+## Operational Log Mandate (JOURNAL.md)
+
+Post-Rigor requirements for the session log:
 
 ```
-User: "Why is this API call slow?"
-AI: "Probably the database. Adding index."
-Result: Root cause was network latency. Wasted effort, added debt.
-```
-
-### ✅ With TnR MAXIMUM
-
-```
-User: "Why is this API call slow?"
-
-🔬 TnR MAXIMUM ACTIVATED
-
-**Mental Models Applied:**
-
-[1] INVERSION — What causes API slowness?
-├── Database query time
-├── Network latency  
-├── Serialization overhead
-├── Cold start / connection pool
-├── Upstream service delays
-└── Heavy computation
-
-[2] FIRST PRINCIPLES — What do we actually know?
-├── Assumption: "Database is slow" — UNVERIFIED
-└── Must measure, not assume
-
-**Research Loop:**
-
-COLLECT (Internal — exhausted):
-├── grep_search: handler code
-├── view_file: database query  
-├── git log: recent changes
-└── run_command: logs with timing
-
-FINDINGS:
-├── Query: 12ms ✓
-├── Handler: 5ms ✓
-├── Total: 3.2s ✗
-└── GAP: Where is 3.1s?
-
-SEARCH (fill gap):
-├── Network timing in logs
-├── Found: external API call = 2.9s
-└── Verified: third_party_api.call() is bottleneck
-
-**Proof Chain:**
-| # | Claim | Source | Weight |
-|---|-------|--------|--------|
-| 1 | DB fast (12ms) | Production logs | 1.00 |
-| 2 | Handler fast (5ms) | Profiler | 0.95 |
-| 3 | 3rd party slow (2.9s) | Logs + timing | 1.00 |
-| 4 | Not network issue | ping/traceroute | 0.95 |
-
-Confidence = (1.00 + 0.95 + 1.00 + 0.95) / 4 = 97.5%
-
-**Multi-Order Effects:**
-├── 1st: Add cache → faster response
-├── 2nd: Cache → stale data risk
-└── 3rd: Stale data → invalidation needed
-
-**Domain Coverage:**
-├── Core: API endpoint ✓
-├── Boundary: DB, network ✓  
-└── Externalities: rate limits ✓
-
-**Conclusion (97.5% confidence):**
-Root cause: third-party API latency (2.9s avg)
-
-**Solutions:**
-1. Cache with TTL (handles staleness)
-2. Async pattern (return immediately)
-3. Negotiate faster endpoint
-
-Proceed with solution 1?
+### [DATE - HH:MM] TnR ABSOLUTE RIGOR Applied
+**Target:** <objective>
+**Models Forced:** Inv ✓ | FirstPrin ✓ | 3rdOrder ✓ | Certainty ✓ | TruthMap ✓
+**Axiomatic Findings:** <summary>
+**Rigor Chain:** <count> claims | <percentage>% Derived Certainty
+**Failure Gaps:** <remaining gaps or "None">
+**Vector Resolution:** <Execute or Report Produced>
 ```
 
 ---
 
-## Session Log Entry (MANDATORY)
+## Absolute Operational Mandate
 
-After TnR MAXIMUM, append to `.sessions/SESSION_[date]-[name].md`:
+1. **FORCE THE RIGOR:** No "lite" alternatives.
+2. **TOTAL DEPLETION:** Search until the vector yields no new data.
+3. **DERIVED ONLY:** Sentiment is forbidden. Use the Math.
+4. **95% OR FAILURE:** No proceeding on 94%.
+5. **CODE FIRST:** If the code wasn't read, the research didn't happen.
 
-```
-### [HH:MM] TnR MAXIMUM Applied
-**Question:** <what was investigated>
-**Models Applied:** Inversion ✓ | FirstPrinciples ✓ | MultiOrder ✓ | Competence ✓ | Map≠Territory ✓
-**Key Findings:** <main discoveries>
-**Proof Chain:** <claims count> claims, <confidence>% calculated
-**Gaps:** <remaining gaps or "none">
-**Decision:** <action taken or uncertainty report produced>
-```
-
----
-
-## Operational Rules
-
-1. **MAXIMUM ALWAYS** — This skill has no shortcuts or light modes
-2. **ALL MODELS** — Every mental model must be applied
-3. **CALCULATED CONFIDENCE** — Use formula, not estimation
-4. **95% THRESHOLD** — Below this = mandatory Uncertainty Report
-5. **INTERNAL FIRST** — Project sources before external
-6. **PROOF CHAINS** — Every claim traceable to evidence
-7. **3RD ORDER** — Never stop at 1st or 2nd order effects
-8. **SESSION INTEGRATION** — Update `.sessions/SESSION_[date]-[name].md` every time
-9. **ACKNOWLEDGE LIMITS** — Flag when outside competence
-
----
-
-**Remember:** TnR MAXIMUM is invoked when rigor matters. Every shortcut is a potential error. The proof chain protects from mistakes. The research loop ensures completeness. The 95% threshold ensures action on solid ground.
-
-**Уверенность = трудолюбие. Неуверенность = лень.**
+**Rigor = Integrity. Speculation = Hallucination.**

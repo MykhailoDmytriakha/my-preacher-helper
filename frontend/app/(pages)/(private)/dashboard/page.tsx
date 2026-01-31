@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -53,13 +54,25 @@ export default function DashboardPage() {
 
   const { series: allSeries } = useSeries(user?.uid || null);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = (searchParams.get("tab") as "active" | "preached" | "all") || "active";
+
+  const handleTabChange = (tab: "active" | "preached" | "all") => {
+    // Basic validation to keep URL clean, though logic handles fallback
+    if (tab === "active") {
+      router.push("/dashboard");
+    } else {
+      router.push(`/dashboard?tab=${tab}`);
+    }
+  };
+
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInThoughts, setSearchInThoughts] = useState(true);
   const [searchInTags, setSearchInTags] = useState(true);
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "inSeries" | "standalone">("all");
-  const [activeTab, setActiveTab] = useState<"active" | "preached" | "all">("active");
 
   const handleDeleteSermon = (id: string) => {
     deleteSermonFromCache(id);
@@ -165,7 +178,7 @@ export default function DashboardPage() {
       <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
-            onClick={() => setActiveTab("active")}
+            onClick={() => handleTabChange("active")}
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "active"
@@ -183,7 +196,7 @@ export default function DashboardPage() {
             </span>
           </button>
           <button
-            onClick={() => setActiveTab("preached")}
+            onClick={() => handleTabChange("preached")}
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "preached"
@@ -201,7 +214,7 @@ export default function DashboardPage() {
             </span>
           </button>
           <button
-            onClick={() => setActiveTab("all")}
+            onClick={() => handleTabChange("all")}
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "all"

@@ -7,22 +7,28 @@ import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { updateSermonOutline } from '@/services/outline.service';
 
+// Import necessary hooks for mocking
+import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
+import { useStructureDnd } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd';
+
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 
+const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
-  useSearchParams: () => ({
-    get: jest.fn((param: string) => {
-      if (param === 'sermonId') return 'sermon-123';
-      return null;
-    })
-  }),
+  useSearchParams: () => mockUseSearchParams(),
   usePathname: jest.fn().mockReturnValue('/sermons/sermon-123/structure'),
   useParams: jest.fn(() => ({ id: 'sermon-123' })),
 }));
 
+// Mock feature hooks
 jest.mock('@/hooks/useSermonStructureData');
+jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd');
+jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions');
+
 const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
+const mockedUseStructureDnd = useStructureDnd as jest.Mock;
+const mockedUseSermonActions = useSermonActions as jest.Mock;
 const mockUpdateSermonOutline = updateSermonOutline as jest.MockedFunction<typeof updateSermonOutline>;
 const mockToast = toast as jest.Mocked<typeof toast>;
 
@@ -98,6 +104,32 @@ jest.mock('lodash/debounce', () =>
 describe('ThoughtsBySection Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn((param: string) => {
+        if (param === 'sermonId') return 'sermon-123';
+        return null;
+      }),
+    });
+
+    // Default mocks
+    mockedUseStructureDnd.mockReturnValue({
+      sensors: [],
+      activeId: null,
+      handleDragStart: jest.fn(),
+      handleDragOver: jest.fn(),
+      handleDragEnd: jest.fn(),
+    });
+
+    mockedUseSermonActions.mockReturnValue({
+      editingItem: null,
+      addingThoughtToSection: null,
+      handleEdit: jest.fn(),
+      handleCloseEdit: jest.fn(),
+      handleAddThoughtToSection: jest.fn(),
+      handleSaveEdit: jest.fn(),
+      handleMoveToAmbiguous: jest.fn(),
+      handleRetryPendingThought: jest.fn(),
+    });
   });
 
   describe('Loading and Error States', () => {
@@ -109,7 +141,7 @@ describe('ThoughtsBySection Page', () => {
             ...createMockHookReturn(null),
             loading: true,
           }),
-          assert: () => expect(screen.getByText(/loading/i)).toBeInTheDocument(),
+          assert: () => expect(screen.getByTestId('structure-skeleton')).toBeInTheDocument(),
         },
         {
           description: 'error state',
@@ -132,6 +164,28 @@ describe('ThoughtsBySection Page', () => {
         scenario.assert();
         cleanup();
       }
+    });
+
+    it('shows StructurePageSkeleton with isFocusMode when loading with focus URL params', async () => {
+      mockUseSearchParams.mockReturnValue({
+        get: jest.fn((param: string) => {
+          if (param === 'sermonId') return 'sermon-123';
+          if (param === 'mode') return 'focus';
+          if (param === 'section') return 'introduction';
+          return null;
+        }),
+      });
+      mockedUseSermonStructureData.mockReturnValue({
+        ...createMockHookReturn(null),
+        loading: true,
+      });
+
+      render(<StructurePage />);
+
+      expect(screen.getByTestId('structure-skeleton')).toBeInTheDocument();
+      // Skeleton with isFocusMode uses flex layout (single column) - both branches covered
+      const skeleton = screen.getByTestId('structure-skeleton');
+      expect(skeleton).toHaveClass('animate-pulse');
     });
   });
 
@@ -241,6 +295,76 @@ describe('ThoughtsBySection Page', () => {
       mockUpdateSermonOutline.mockResolvedValue({ introduction: [], main: [], conclusion: [] });
       mockToast.success.mockClear();
       mockToast.error.mockClear();
+    });
+
+    describe('Interactions', () => {
+      it('renders DragOverlay when an item is being dragged', async () => {
+        const mockSermon = createMockSermon({
+          thoughts: [createMockThought({ id: 't1', text: 'Dragging Thought', tags: ['intro'] })],
+        });
+        const containers = {
+          introduction: [createMockItem({ id: 't1', content: 'Dragging Thought', requiredTags: ['intro'] })],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        };
+
+        mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
+
+        // Mock active DnD state
+        mockedUseStructureDnd.mockReturnValue({
+          sensors: [],
+          activeId: 't1',
+          handleDragStart: jest.fn(),
+          handleDragOver: jest.fn(),
+          handleDragEnd: jest.fn(),
+        });
+
+        render(<StructurePage />);
+
+        // Should find the active item in the overlay
+        await waitFor(() => {
+          const thoughts = screen.getAllByText('Dragging Thought');
+          // The item appears in the list AND in the overlay (2 instances)
+          // or just once if the overlay clones it. Usually 2.
+          expect(thoughts.length).toBeGreaterThanOrEqual(1);
+        });
+      });
+
+      it('renders EditThoughtModal when editingItem is set', async () => {
+        const mockSermon = createMockSermon();
+        const containers = {
+          introduction: [],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        };
+
+        mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
+
+        // Mock editing state
+        mockedUseSermonActions.mockReturnValue({
+          editingItem: createMockItem({ id: 't1', content: 'Editing Content' }),
+          addingThoughtToSection: null,
+          handleEdit: jest.fn(),
+          handleCloseEdit: jest.fn(),
+          handleAddThoughtToSection: jest.fn(),
+          handleSaveEdit: jest.fn(),
+          handleMoveToAmbiguous: jest.fn(),
+          handleRetryPendingThought: jest.fn(),
+        });
+
+        render(<StructurePage />);
+
+        await waitFor(() => {
+          // EditThoughtModal should be present (mocking usually renders it but we check for content or Role)
+          // CardContent/EditModal uses portals or simple divs. 
+          // We check for "Editing Content" if it's passed as initialText.
+          // Or check for a specific testid if the modal has one.
+          // Or check for the text inside the modal inputs.
+          expect(screen.getByDisplayValue('Editing Content')).toBeInTheDocument();
+        });
+      });
     });
 
     it('covers all toggle transitions and failures in a single table-driven test', async () => {

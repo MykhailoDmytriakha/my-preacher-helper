@@ -8,13 +8,21 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 // Mock child components for structural testing
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="dashboard-nav">Mocked Nav</div>);
 jest.mock('@/components/dashboard/DashboardStats', () => ({ sermons }: { sermons: any[] }) => <div data-testid="dashboard-stats">Mocked Stats ({sermons.length})</div>);
-jest.mock('@/components/AddSermonModal', () => ({}: { onNewSermonCreated: any }) => <button data-testid="add-sermon-modal-trigger">Mocked Add Sermon</button>);
+jest.mock('@/components/AddSermonModal', () => ({ onNewSermonCreated }: { onNewSermonCreated: any }) => (
+  <button data-testid="add-sermon-modal-trigger" onClick={() => onNewSermonCreated({ id: 'new', title: 'New' })}>
+    Mocked Add Sermon
+  </button>
+));
 jest.mock('@/components/dashboard/SermonCard', () => ({
   sermon,
   searchSnippets,
-}: { sermon: any; searchSnippets?: { type: string; value: string }[] }) => (
+  onDelete,
+  onUpdate,
+}: { sermon: any; searchSnippets?: { type: string; value: string }[]; onDelete: any; onUpdate: any }) => (
   <div data-testid={`sermon-card-${sermon.id}`}>
     <span>{sermon.title}</span>
+    <button data-testid={`delete-sermon-${sermon.id}`} onClick={() => onDelete(sermon.id)}>Delete</button>
+    <button data-testid={`update-sermon-${sermon.id}`} onClick={() => onUpdate({ ...sermon, title: 'Updated' })}>Update</button>
     {searchSnippets?.map((snippet: any, idx: number) => (
       <div key={idx} data-testid={`sermon-snippet-${sermon.id}-${idx}`}>
         {[snippet.text, ...(snippet.tags || [])].filter(Boolean).join(' ')}
@@ -37,49 +45,66 @@ jest.mock('@/services/firebaseAuth.service', () => ({
   },
 }));
 
+// Mock next/navigation
+const mockPush = jest.fn();
+const mockUseSearchParams = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+  useSearchParams: () => mockUseSearchParams(),
+  usePathname: () => '/dashboard',
+}));
+
 // Define mock sermons
 const mockSermons = [
-  { 
-    id: '1', 
-    title: 'Sermon 1', 
-    date: '2023-01-01', 
-    verse: 'John 3:16', 
+  {
+    id: '1',
+    title: 'Sermon 1',
+    date: '2023-01-01',
+    verse: 'John 3:16',
     thoughts: [
       { id: 't1', text: 'Love and faith', tags: ['agape'], date: '2023-01-01' }
     ],
     isPreached: false,
-    seriesId: 'series-1' 
+    seriesId: 'series-1'
   },
-  { 
-    id: '2', 
-    title: 'Sermon 2', 
-    date: '2023-01-08', 
-    verse: 'Romans 8:28', 
+  {
+    id: '2',
+    title: 'Sermon 2',
+    date: '2023-01-08',
+    verse: 'Romans 8:28',
     thoughts: [
       { id: 't2', text: 'Hope in suffering', tags: ['пример'], date: '2023-01-08' }
     ],
-    isPreached: true 
+    isPreached: true
   },
-  { 
-    id: '3', 
-    title: 'Sermon 3', 
-    date: '2023-01-15', 
-    verse: 'Matthew 28:19', 
+  {
+    id: '3',
+    title: 'Sermon 3',
+    date: '2023-01-15',
+    verse: 'Matthew 28:19',
     thoughts: [],
-    isPreached: false 
+    isPreached: false
   },
 ];
 
 // Mock hooks - expose mock function to control return value
+// Mock hooks - expose mock function to control return value
 const mockUseDashboardSermons = jest.fn();
 const mockUseSeries = jest.fn();
+const mockDeleteSermonFromCache = jest.fn();
+const mockUpdateSermonCache = jest.fn();
+const mockAddSermonToCache = jest.fn();
 
 jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => mockUseDashboardSermons(),
   useSermonMutations: () => ({
-    deleteSermonFromCache: jest.fn(),
-    updateSermonCache: jest.fn(),
-    addSermonToCache: jest.fn(),
+    deleteSermonFromCache: mockDeleteSermonFromCache,
+    updateSermonCache: mockUpdateSermonCache,
+    addSermonToCache: mockAddSermonToCache,
   }),
 }));
 
@@ -132,6 +157,10 @@ describe('Dashboard Page', () => {
       series: [{ id: 'series-1', title: 'Series 1' }],
       createNewSeries: jest.fn(),
     });
+    mockUseSearchParams.mockReturnValue({
+      get: (_key: string) => null, // Default: no query params = 'active'
+    });
+    mockPush.mockClear();
   });
 
   describe('Basic Rendering', () => {
@@ -170,7 +199,9 @@ describe('Dashboard Page', () => {
 
   describe('Tabs Functionality', () => {
     it('switches between Active, All, and Preached tabs', async () => {
-      render(<DashboardPage />);
+      // Setup initial state: tab=null -> active
+      mockUseSearchParams.mockReturnValue({ get: () => null });
+      const { rerender } = render(<DashboardPage />);
 
       // Initially Active tab - should show active sermons only
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -179,6 +210,11 @@ describe('Dashboard Page', () => {
 
       // Click All tab
       fireEvent.click(screen.getByText('All'));
+      expect(mockPush).toHaveBeenCalledWith('/dashboard?tab=all');
+
+      // Simulate router update
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      rerender(<DashboardPage />);
 
       // Should show all sermons
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -187,6 +223,11 @@ describe('Dashboard Page', () => {
 
       // Click Preached tab
       fireEvent.click(screen.getByText('Preached'));
+      expect(mockPush).toHaveBeenCalledWith('/dashboard?tab=preached');
+
+      // Simulate router update
+      mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
+      rerender(<DashboardPage />);
 
       // Should show Preached sermon only
       expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
@@ -241,7 +282,15 @@ describe('Dashboard Page', () => {
 
       render(<DashboardPage />);
 
-      fireEvent.click(screen.getByText('Preached'));
+      // Simulate switching to preached tab directly via props or mock, 
+      // but since we rely on URL, we just mock the return value for this test scenario:
+      mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
+
+      // Re-render to pick up new mock value
+      render(<DashboardPage />);
+
+      // We don't need to click anymore since we forced the state via mock
+      // fireEvent.click(screen.getByText('Preached')); 
 
       const cards = screen.getAllByTestId(/sermon-card-/);
       expect(cards[0]).toHaveTextContent('Newer Preached Date');
@@ -252,7 +301,7 @@ describe('Dashboard Page', () => {
   describe('Search Functionality', () => {
     it('filters sermons', async () => {
       render(<DashboardPage />);
-      
+
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'Sermon 1' } });
 
@@ -261,9 +310,10 @@ describe('Dashboard Page', () => {
     });
 
     it('matches by thought text', async () => {
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
       render(<DashboardPage />);
 
-      fireEvent.click(screen.getByText('All'));
+      // fireEvent.click(screen.getByText('All'));
 
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'Hope' } });
@@ -273,9 +323,10 @@ describe('Dashboard Page', () => {
     });
 
     it('matches by thought tags', async () => {
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
       render(<DashboardPage />);
 
-      fireEvent.click(screen.getByText('All'));
+      // fireEvent.click(screen.getByText('All'));
 
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'пример' } });
@@ -286,9 +337,10 @@ describe('Dashboard Page', () => {
     });
 
     it('shows snippet for thought match', async () => {
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
       render(<DashboardPage />);
 
-      fireEvent.click(screen.getByText('All'));
+      // fireEvent.click(screen.getByText('All'));
 
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'Hope' } });
@@ -297,9 +349,10 @@ describe('Dashboard Page', () => {
     });
 
     it('shows snippet for tag match', async () => {
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
       render(<DashboardPage />);
 
-      fireEvent.click(screen.getByText('All'));
+      // fireEvent.click(screen.getByText('All'));
 
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'agape' } });
@@ -334,6 +387,34 @@ describe('Dashboard Page', () => {
 
       render(<DashboardPage />);
       expect(screen.getByText('No sermons yet')).toBeInTheDocument();
+    });
+  });
+
+  describe('Interactions', () => {
+    it('handles tab change to active explicitly', async () => {
+      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByText('Active Sermons'));
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+
+    it('handles sermon actions', async () => {
+      const { deleteSermonFromCache, updateSermonCache, addSermonToCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
+
+      render(<DashboardPage />);
+
+      // Delete
+      fireEvent.click(screen.getByTestId('delete-sermon-1'));
+      expect(deleteSermonFromCache).toHaveBeenCalledWith('1');
+
+      // Update
+      fireEvent.click(screen.getByTestId('update-sermon-1'));
+      expect(updateSermonCache).toHaveBeenCalledWith(expect.objectContaining({ title: 'Updated' }));
+
+      // Add
+      fireEvent.click(screen.getByTestId('add-sermon-modal-trigger'));
+      expect(addSermonToCache).toHaveBeenCalledWith(expect.objectContaining({ id: 'new' }));
     });
   });
 });

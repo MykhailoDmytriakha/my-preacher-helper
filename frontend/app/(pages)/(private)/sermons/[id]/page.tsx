@@ -27,6 +27,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
 import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
+import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
@@ -56,7 +57,6 @@ function AutoHeight({ children, duration = 0.25, delay = 0, className = '' }: { 
   useEffect(() => {
     if (!containerRef.current || typeof window === 'undefined') return;
     const ResizeObserverCtor = window.ResizeObserver;
-    if (!ResizeObserverCtor) return; // Fallback: no animation in environments without ResizeObserver
     const observer = new ResizeObserverCtor((entries) => {
       const cr = entries[0]?.contentRect;
       if (cr && typeof cr.height === 'number') setHeight(cr.height);
@@ -130,9 +130,10 @@ export default function SermonPage() {
     }
   }, [modeParam, id]);
 
-  const { sermon, setSermon, loading } = useSermon(id);
+  const { sermon, setSermon, loading, error } = useSermon(id);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
+
 
   useEffect(() => {
     if (sermon?.preparation) setPrepDraft(sermon.preparation);
@@ -157,7 +158,6 @@ export default function SermonPage() {
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
   const { t } = useTranslation();
-  const [isMounted, setIsMounted] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false); // Keep this state for dropdown visibility
   // Prep steps expand/collapse management
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
@@ -696,10 +696,6 @@ export default function SermonPage() {
   // Ref for the filter toggle button (passed to controls)
   const filterButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   // Calculate the number of thoughts for each outline point
   const calculateThoughtsPerSermonPoint = () => {
     if (!sermon || !sermon.thoughts || !sermon.outline) return {};
@@ -717,6 +713,9 @@ export default function SermonPage() {
   };
 
   const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint();
+
+
+
   // Completion status helpers
   const isTextContextDone = Boolean(
     prepDraft?.textContext?.readWholeBookOnceConfirmed &&
@@ -837,23 +836,20 @@ export default function SermonPage() {
     });
   }, [setSermon]);
 
-  if (loading || !sermon) {
+  // Show skeleton while loading OR if we have no data and no error yet (initial fetch)
+  if (loading || (!sermon && !error)) {
+    return <SermonDetailSkeleton />;
+  }
+
+  // If we have an error or still no sermon (checked above, so this implies done loading + no data), show Not Found
+  if (!sermon) {
     return (
       <div className="py-8">
-        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-          {isMounted ? (
-            <>
-              <h2 className="text-xl font-semibold">{t('settings.loading')}</h2>
-              <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline mt-4 inline-block">
-                {t('sermon.backToList')}
-              </Link>
-            </>
-          ) : (
-            <div className="animate-pulse">
-              <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded w-1/3 mb-4"></div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
-            </div>
-          )}
+        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
+          <h2 className="text-xl font-semibold mb-2">{t('sermon.notFound')}</h2>
+          <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline">
+            {t('sermon.backToList')}
+          </Link>
         </div>
       </div>
     );

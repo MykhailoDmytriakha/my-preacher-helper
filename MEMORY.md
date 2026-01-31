@@ -8,6 +8,39 @@
 ## 🆕 Lessons (Inbox) — Только что выучено
 
 > Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
+### 2026-01-31 Skeleton Loader vs Empty State Logic
+**Problem:** Skeleton loader persisted even when data fetching was complete (but empty/null), preventing the "Sermon not found" state from showing and failing tests.
+**Attempts:** Initial logic was too broad: `if (loading || (!sermon && !error))`, showing skeleton for both loading and missing data.
+**Solution:** Strict separation: Only show Skeleton if `loading` is true. Handle `!sermon` explicitly as a separate "Not Found" state.
+**Why it worked:** "Loading" implies an active process; "Not Found" is a terminal state. Conflating them prevents the UI from settling into the terminal state.
+**Principle:** Do not use "Skeleton" for "Empty/Missing" states. Skeleton is for *waiting*; Empty State is for *result*.
+
+### 2026-01-31 React Hooks: Conditional Return Placement
+**Problem:** A "Rendered more hooks than during the previous render" error occurred when a conditional return for a skeleton state was placed before `useCallback` hook definitions.
+**Attempts:** Initially moved the return logic to handle the visibility glitch, but forgot about the Rules of Hooks.
+**Solution:** Moved the conditional `if (loading || ...)` return statement to the very end of the hook block, after all `useState`, `useEffect`, and `useCallback` declarations.
+**Why it worked:** React requires all hooks to be called in the same order on every render. Placing conditional returns after all hooks ensures that the set of hooks called is consistent for that render.
+**Principle:** Always place conditional "early returns" (skeletons, loading, error screens) *after* all hook definitions in a component.
+
+### 2026-01-31 UI State: Persistence via URL Query Parameters
+**Problem:** Dashboard tab state (Active/Preached/All) was lost when navigating to a sermon detail page and back because it was managed by local `useState`.
+**Attempts:** Proposed and implemented a switch to URL-driven state.
+**Solution:** Replaced `useState` with `useSearchParams()` to read the state and `useRouter().push()` to update it.
+**Why it worked:** The URL is part of the browser's history and persists across navigation, unlike component state which is destroyed when unmounting.
+**Principle:** For UI filters/tabs that should persist across navigation or be bookmarkable, prefer URL query parameters over local component state.
+
+### 2026-01-31 Testing: Mocking Next.js 15 Navigation Hooks
+**Problem:** Dashboard tests failed after switching to `useSearchParams` and `useRouter` because the `next/navigation` hooks were not mocked.
+**Attempts:** Initially forgot to add mocks; later added basic `jest.mock`.
+**Solution:** Implemented explicit mocks for `useRouter` (returning `push`, `replace`, etc.) and `useSearchParams` (returning an object with a `get` method). Tests use `mockUseSearchParams.mockReturnValue({ get: () => 'tab-id' })` to control the simulated URL state.
+**Why it worked:** Providing a controlled mock allows tests to simulate different URL parameters and verify that the component responds correctly without requiring a real browser navigation environment.
+**Principle:** When component logic depends on URL parameters via `useSearchParams`, explicitly mock the hook to return a controllable object with a `get` method in tests.
+
+### 2026-01-31 React Hooks: Destructuring missing data from useSermon
+**Problem:** TypeScript error when trying to use `error` from `useSermon` because it wasn't being destructured in `page.tsx`, even though the hook returned it.
+**Solution:** Added `error` to the destructuring list of `useSermon(id)`.
+**Principle:** Always destructure all necessary state/flags from custom hooks to ensure type safety and handle error branches correctly.
+
 
 ### 2026-01-30 React Query: Server-First Race Condition Fix
 **Problem:** `useServerFirstQuery` logic caused infinite loading because `serverFetchedRef` was resetting to false on re-renders, while `shouldReveal` didn't account for `queryResult.isSuccess` independently.
@@ -583,6 +616,7 @@
 
 **Key Directories:**
 - `app/components/navigation/` - DashboardNav, Breadcrumbs, navConfig
+- `app/components/skeletons/` - Loading UI placeholders (Grid/Focus modes)
 - `locales/{en,ru,uk}/translation.json` - All UI strings
 - `config/schemas/zod/` - AI structured output schemas
 - `api/clients/` - AI integration clients

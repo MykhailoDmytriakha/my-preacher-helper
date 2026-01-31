@@ -1,20 +1,16 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
-import { getSermonById } from '@/services/sermon.service';
 import { TestProviders } from '@test-utils/test-providers';
 import '@testing-library/jest-dom';
 
-// Mock next/navigation
+// Mock next/navigation - useSearchParams overridable per test
+const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'sermon-123' }),
-  useSearchParams: () => ({
-    get: jest.fn().mockImplementation((param) => {
-      if (param === 'mode') return null;
-      return null;
-    }),
-  }),
+  useSearchParams: () => mockUseSearchParams(),
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),
@@ -23,6 +19,8 @@ jest.mock('next/navigation', () => ({
 }));
 
 // Mock child components with simpler implementations
+
+
 jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeChange }: any) => (
   <div data-testid="sermon-header">
     <h1>{sermon?.title || 'No Title'}</h1>
@@ -53,6 +51,58 @@ jest.mock('@/components/sermon/KnowledgeSection', () => ({ uiMode }: any) => (
   </div>
 ));
 
+jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: any) => (
+  <div data-testid="prep-step-card" title={title}>
+    <h3>{title}</h3>
+    {children}
+  </div>
+));
+
+jest.mock('@/hooks/useSermon', () => ({
+  __esModule: true,
+  default: jest.fn().mockReturnValue({
+    sermon: {
+      id: 'sermon-123',
+      title: 'Test Sermon',
+      verse: 'John 3:16',
+      date: '2023-01-01',
+      thoughts: [],
+      isPreached: false,
+      preparation: {},
+      structure: { introduction: [], main: [], conclusion: [] },
+      outline: { introduction: [], main: [], conclusion: [] }, // detailed outline structure might be needed
+    },
+    loading: false,
+    setSermon: jest.fn(),
+    refreshSermon: jest.fn(),
+    getSortedThoughts: jest.fn().mockReturnValue([]),
+    error: null,
+  }),
+}));
+
+// Mock services
+// Mock prep components to test callbacks
+jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ onSavePassageSummary }: any) => (
+  <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
+));
+jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ onSave }: any) => (
+  <button data-testid="save-exegetical" onClick={() => onSave([])}>Save Exegetical</button>
+));
+jest.mock('@/components/sermon/prep/MainIdeaStepContent', () => ({ onSaveTextIdea }: any) => (
+  <button data-testid="save-main-idea" onClick={() => onSaveTextIdea('idea')}>Save Main Idea</button>
+));
+jest.mock('@/components/sermon/prep/GoalsStepContent', () => ({ onSaveGoalStatement }: any) => (
+  <button data-testid="save-goals" onClick={() => onSaveGoalStatement('goal')}>Save Goal</button>
+));
+jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ onSaveHomiletical }: any) => (
+  <button data-testid="save-thesis" onClick={() => onSaveHomiletical('thesis')}>Save Thesis</button>
+));
+jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({ onSaveModernTranslation }: any) => (
+  <button data-testid="save-homiletic" onClick={() => onSaveModernTranslation('translation')}>Save Homiletic</button>
+));
+jest.mock('@/components/sermon/prep/SpiritualStepContent', () => () => <div data-testid="spiritual-step">Spiritual Step</div>);
+
+
 // Mock services
 jest.mock('@/services/sermon.service', () => ({
   getSermonById: jest.fn().mockResolvedValue({
@@ -63,6 +113,7 @@ jest.mock('@/services/sermon.service', () => ({
     thoughts: [],
     isPreached: false,
   }),
+  updateSermonPreparation: jest.fn().mockResolvedValue({}),
 }));
 
 // Mock i18n
@@ -73,6 +124,10 @@ jest.mock('react-i18next', () => ({
         'sermon.loading': 'Loading sermon...',
         'sermon.error': 'Error loading sermon',
         'sermon.notFound': 'Sermon not found',
+        'sermon.backToList': 'Back to list',
+        'filters.filter': 'Filter',
+        'filters.activeFilters': 'Active filters',
+        'filters.clear': 'Clear',
       };
       return translations[key] || key;
     },
@@ -89,12 +144,31 @@ Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
 });
 
-describe('Sermon Detail Page', () => {
-  const sermonId = 'sermon-123';
+const defaultUseSermonReturn = {
+  sermon: {
+    id: 'sermon-123',
+    title: 'Test Sermon',
+    verse: 'John 3:16',
+    date: '2023-01-01',
+    thoughts: [],
+    isPreached: false,
+    preparation: {},
+    structure: { introduction: [], main: [], conclusion: [] },
+    outline: { introduction: [], main: [], conclusion: [] },
+  },
+  loading: false,
+  setSermon: jest.fn(),
+  refreshSermon: jest.fn(),
+  getSortedThoughts: jest.fn().mockReturnValue([]),
+  error: null,
+};
 
+describe('Sermon Detail Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue(null);
+    require('@/hooks/useSermon').default.mockReturnValue(defaultUseSermonReturn);
+    mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? null : null) });
   });
 
   describe('Basic Rendering', () => {
@@ -127,12 +201,27 @@ describe('Sermon Detail Page', () => {
       });
     });
 
+    it('shows BrainstormModule when brainstorm button is clicked', async () => {
+      const user = userEvent.setup();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('brainstorm.title')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByLabelText('brainstorm.title'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('brainstorm-module')).toBeInTheDocument();
+      });
+    });
+
     it('renders the knowledge section', async () => {
       await waitFor(() => {
         expect(screen.getByTestId('knowledge-section')).toBeInTheDocument();
         expect(screen.getByText('Knowledge Section')).toBeInTheDocument();
       });
     });
+
   });
 
   describe('UI Mode Management', () => {
@@ -148,7 +237,7 @@ describe('Sermon Detail Page', () => {
       await waitFor(() => {
         const outline = screen.getByTestId('sermon-outline');
         const knowledge = screen.getByTestId('knowledge-section');
-        
+
         // BrainstormModule button is visible in classic mode
         const brainstormButton = screen.getByLabelText('brainstorm.title');
 
@@ -191,15 +280,80 @@ describe('Sermon Detail Page', () => {
   });
 
   describe('Data Loading', () => {
-    it('loads sermon data on mount', async () => {
+    it('shows skeleton while loading', async () => {
+      // Override mock for this test
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        sermon: null,
+        loading: true,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: null,
+      });
+
       render(
         <TestProviders>
           <SermonDetailPage />
         </TestProviders>
       );
 
+      expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
+    });
+
+    it('shows skeleton when no sermon and no error yet (initial fetch)', async () => {
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        sermon: null,
+        loading: false,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: null,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
+    });
+
+    it('loads sermon data on mount', async () => {
+      // Ensure mock returns data (default behavior, but good to be explicit or just rely on beforeEach reset)
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        sermon: {
+          id: 'sermon-123',
+          title: 'Test Sermon',
+          verse: 'John 3:16',
+          date: '2023-01-01',
+          thoughts: [],
+          isPreached: false,
+          preparation: {},
+          structure: { introduction: [], main: [], conclusion: [] },
+          outline: { introduction: [], main: [], conclusion: [] }
+        },
+        loading: false,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: null,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      // Since we mocked the hook, we can checks if it was called
+      expect(useSermonMock).toHaveBeenCalledWith('sermon-123');
+
       await waitFor(() => {
-        expect(getSermonById).toHaveBeenCalledWith(sermonId);
+        expect(screen.getByText('Test Sermon')).toBeInTheDocument();
       });
     });
 
@@ -213,6 +367,81 @@ describe('Sermon Detail Page', () => {
       await waitFor(() => {
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
       });
+    });
+
+    it('renders prep content when URL has mode=prep', async () => {
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      // In prep mode, the first PrepStepCard shows "Meditation Before Preparation"
+      await waitFor(() => {
+        expect(screen.getByText(/Meditation Before Preparation|wizard\.steps\.spiritual\.title/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows Not Found when loading complete, no sermon, and error present', async () => {
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        sermon: null,
+        loading: false,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: new Error('Sermon not found'),
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Sermon not found')).toBeInTheDocument();
+        expect(screen.getByText('Back to list')).toBeInTheDocument();
+      });
+
+      const backLink = screen.getByRole('link', { name: 'Back to list' });
+      expect(backLink).toHaveAttribute('href', '/dashboard');
+    });
+
+    it('handles sermon with null thoughts array', async () => {
+      const useSermonMock = require('@/hooks/useSermon').default;
+      const sermonWithNullThoughts = {
+        id: 'sermon-123',
+        title: 'Test Sermon',
+        verse: 'John 3:16',
+        date: '2023-01-01',
+        thoughts: null as unknown as never[],
+        isPreached: false,
+        preparation: {},
+        structure: { introduction: [], main: [], conclusion: [] },
+        outline: { introduction: [], main: [], conclusion: [] },
+      };
+      useSermonMock.mockReturnValue({
+        sermon: sermonWithNullThoughts,
+        loading: false,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: null,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Sermon')).toBeInTheDocument();
+      });
+      expect(sermonWithNullThoughts.thoughts).toEqual([]);
     });
   });
 
@@ -242,4 +471,51 @@ describe('Sermon Detail Page', () => {
       });
     });
   });
-}); 
+  describe('Prep Mode Interactions', () => {
+    it('triggers save callbacks when steps are updated', async () => {
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+      const user = userEvent.setup();
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+
+
+      // Verify we have prep step cards
+      const cards = screen.getAllByTestId('prep-step-card');
+      expect(cards.length).toBeGreaterThan(0);
+
+      // Try to find known visible buttons
+      // If passing summary not found, we skip click but assert prep update called?
+      // No, we must click to call it.
+
+      // Attempt to click all known buttons if present
+      const knownButtons = [
+        'save-passage-summary',
+        'save-exegetical',
+        'save-main-idea',
+        'save-goals',
+        'save-thesis',
+        'save-homiletic'
+      ];
+
+      for (const btnId of knownButtons) {
+        if (screen.queryByTestId(btnId)) {
+          await user.click(screen.getByTestId(btnId));
+        }
+      }
+
+      // We might have called updateSermonPreparation if any button was clicked.
+      // If none clicked, this expect might fail unless initialized?
+      // But coverage runs lines inside 'onSave...' only if clicked.
+      // So failing test is better than passing with low coverage.
+
+
+      expect(require('@/services/sermon.service').updateSermonPreparation).toHaveBeenCalled();
+    });
+  });
+});
+

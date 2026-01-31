@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import CardContent from "@/components/CardContent";
 import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
+import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
@@ -435,17 +436,16 @@ function StructurePageContent() {
 
   // Add loading and error handling based on the hook's state
   if (loading) {
-    // Fix hydration error by using consistent rendering between server and client
-    return <div>{isClient ? t('common.loading') : "Loading"}...</div>;
+    return <StructurePageSkeleton isFocusMode={!!focusedColumn} />;
   }
 
   if (error) {
     // Display error message from hook, potentially already handled by toast in hook
-    return <div className="text-red-500">{isClient ? t('errors.fetchSermonStructureError') : "Error"}: {error}</div>;
+    return <div className="text-red-500 p-4">{isClient ? t('errors.fetchSermonStructureError') : "Error"}: {error}</div>;
   }
 
   if (!sermon) {
-    return <div>{isClient ? t('structure.sermonNotFound') : "Sermon not found"}</div>; // Or handle case where sermonId is missing/invalid
+    return <div className="p-4">{isClient ? t('structure.sermonNotFound') : "Sermon not found"}</div>;
   }
 
   return (
