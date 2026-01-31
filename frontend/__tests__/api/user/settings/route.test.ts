@@ -99,7 +99,7 @@ describe('User Settings API Route', () => {
             run: async () => {
               mockGetByUserId.mockRejectedValue(new Error('Database error'));
 
-              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
               const request = new NextRequest('http://localhost/api/user/settings?userId=user1');
               const response = await GET(request);
@@ -147,7 +147,8 @@ describe('User Settings API Route', () => {
                 'ru',
                 'updated@example.com',
                 'Updated User',
-                true
+                true,
+                undefined
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -173,7 +174,8 @@ describe('User Settings API Route', () => {
                 undefined,
                 undefined,
                 undefined,
-                false
+                false,
+                undefined
               );
               expect(response.status).toBe(200);
             }
@@ -200,7 +202,8 @@ describe('User Settings API Route', () => {
                 'fr',
                 undefined,
                 undefined,
-                true
+                true,
+                undefined
               );
               expect(response.status).toBe(200);
             }
@@ -230,7 +233,7 @@ describe('User Settings API Route', () => {
             run: async () => {
               mockCreateOrUpdate.mockRejectedValue(new Error('Database error'));
 
-              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
               const request = new NextRequest('http://localhost/api/user/settings', {
                 method: 'PUT',
@@ -298,7 +301,8 @@ describe('User Settings API Route', () => {
                 'de',
                 'new@example.com',
                 'New User',
-                true
+                true,
+                undefined
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -325,7 +329,8 @@ describe('User Settings API Route', () => {
                 'en', // Default language
                 'test@example.com',
                 undefined,
-                false
+                false,
+                undefined
               );
               expect(response.status).toBe(200);
             }
@@ -347,6 +352,7 @@ describe('User Settings API Route', () => {
               expect(mockCreateOrUpdate).toHaveBeenCalledWith(
                 'minimal-user',
                 'en', // Default language
+                undefined,
                 undefined,
                 undefined,
                 undefined
@@ -378,7 +384,7 @@ describe('User Settings API Route', () => {
             run: async () => {
               mockCreateOrUpdate.mockRejectedValue(new Error('Creation failed'));
 
-              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
               const request = new NextRequest('http://localhost/api/user/settings', {
                 method: 'POST',

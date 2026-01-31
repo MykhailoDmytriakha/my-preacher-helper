@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
+import AudioGenerationToggle from "@/components/settings/AudioGenerationToggle";
 import DebugModeToggle from "@/components/settings/DebugModeToggle";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
@@ -45,6 +46,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UserSettingsSection user={user} />
             <PrepModeToggle />
+            <AudioGenerationToggle />
             <DebugModeToggle />
           </div>
         );
@@ -93,9 +95,25 @@ export default function SettingsPage() {
     <>
       <LanguageInitializer />
       <SettingsLayout title={pageTitle}>
-          {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
-          <div className="block md:hidden mb-4">
-            <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
+        {/* Mobile Navigation (horizontal, 2-column) - only visible on mobile */}
+        <div className="block md:hidden mb-4">
+          <div className="grid grid-cols-2 overflow-hidden shadow rounded-lg">
+            <SettingsNav
+              activeSection={activeSection}
+              onNavigate={(sectionId) => {
+                if (sectionId === 'user' || sectionId === 'tags') {
+                  handleSectionChange(sectionId);
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Desktop Layout (side-by-side) - only visible on desktop */}
+        <div className="hidden md:flex md:flex-row md:gap-8">
+          {/* Navigation sidebar for desktop */}
+          <div className="w-64 flex-shrink-0">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
               <SettingsNav
                 activeSection={activeSection}
                 onNavigate={(sectionId) => {
@@ -107,32 +125,16 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Desktop Layout (side-by-side) - only visible on desktop */}
-          <div className="hidden md:flex md:flex-row md:gap-8">
-            {/* Navigation sidebar for desktop */}
-            <div className="w-64 flex-shrink-0">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-                <SettingsNav
-                  activeSection={activeSection}
-                  onNavigate={(sectionId) => {
-                    if (sectionId === 'user' || sectionId === 'tags') {
-                      handleSectionChange(sectionId);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            
-            {/* Main content area for desktop */}
-            <div className="flex-1 transition-opacity duration-200 ease-in-out">
-              {renderActiveSection()}
-            </div>
-          </div>
-
-          {/* Mobile Content Area - only visible on mobile */}
-          <div className="block md:hidden transition-opacity duration-200 ease-in-out">
+          {/* Main content area for desktop */}
+          <div className="flex-1 transition-opacity duration-200 ease-in-out">
             {renderActiveSection()}
           </div>
+        </div>
+
+        {/* Mobile Content Area - only visible on mobile */}
+        <div className="block md:hidden transition-opacity duration-200 ease-in-out">
+          {renderActiveSection()}
+        </div>
       </SettingsLayout>
     </>
   );

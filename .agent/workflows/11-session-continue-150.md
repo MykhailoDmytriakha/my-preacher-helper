@@ -1,5 +1,5 @@
 ---
-name: 11-continue-session-150
+name: 11-session-continue-150
 description: "[11] CONTINUE. Resume an existing session. Use when continuing previous work to load AGENTS.md, MEMORY.md, and the chosen session log, then confirm readiness."
 ---
 
@@ -17,7 +17,7 @@ description: "[11] CONTINUE. Resume an existing session. Use when continuing pre
 3. Select the session log in `.sessions/SESSION_[date]-[name].md`.
    - Prefer explicit `session_name` from the user.
    - If not provided, choose the most recently modified log.
-   - If no logs exist, switch to `10-new-session-150` and create a new session.
+   - If no logs exist, switch to `10-session-new-150` and create a new session.
 
 4. Read the selected session log.
    - Identify current state, open questions, and next steps.

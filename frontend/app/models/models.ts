@@ -109,6 +109,22 @@ export interface Sermon {
   seriesPosition?: number;        // Order in series (1-indexed)
 
   preachDates?: PreachDate[];      // Array of preach dates
+
+  // Audio Generation (Beta)
+  /** Cached speech-optimized text chunks for TTS */
+  audioChunks?: {
+    text: string;
+    sectionId: string;
+    createdAt: string;
+    index: number;
+  }[];
+  /** Metadata about last audio generation */
+  audioMetadata?: {
+    voice: string;
+    model: string;
+    lastGenerated: string;
+    chunksCount: number;
+  };
 }
 
 export interface Preparation {
@@ -227,7 +243,8 @@ export interface UserSettings {
   userId: string;
   language: string;
   isAdmin: boolean;
-  enablePrepMode?: boolean;  // NEW: Per-user prep mode access
+  enablePrepMode?: boolean;  // Per-user prep mode access
+  enableAudioGeneration?: boolean; // Beta: audio generation feature
   email?: string;
   displayName?: string;
 }

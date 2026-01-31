@@ -147,7 +147,9 @@
     "saving": "Сохранение...",
     "back": "Назад",
     "backToSermon": "Назад к проповеди",
-    "copy": "Копировать"
+    "copy": "Копировать",
+    "next": "Далее",
+    "close": "Закрыть"
   },
   "export": {
     "soonAvailable": "Скоро добавим!",
@@ -185,7 +187,73 @@
     "hideTags": "Скрыть теги",
     "includeTags": "Включать теги",
     "soon": "Скоро",
-    "multipleTagsThoughts": "Мысли с несколькими тегами"
+    "multipleTagsThoughts": "Мысли с несколькими тегами",
+    "audioButton": "Аудио (Beta)"
+  },
+  "audioExport": {
+    "title": "Генерация аудио",
+    "voiceLabel": "Голос",
+    "voiceOnyx": "Onyx (Глубокий)",
+    "voiceEcho": "Echo (Натуральный)",
+    "qualityLabel": "Качество",
+    "qualityStandard": "Стандартное",
+    "qualityHd": "Высокое качество",
+    "sectionsLabel": "Разделы",
+    "sectionsAll": "Все разделы",
+    "sectionsIntro": "Вступление",
+    "sectionsMain": "Основная часть",
+    "sectionsConclusion": "Заключение",
+    "generate": "Сгенерировать",
+    "generating": "Генерация...",
+    "optimizing": "Подготовка...",
+    "stepOptimize": "Подготовить текст →",
+    "stepGenerate": "Сгенерировать →",
+    "next": "Далее",
+    "nextReview": "Далее: Просмотр контента",
+    "optimizeBtn": "Оптимизировать контент",
+    "readyDesc": "Мы проанализируем текст и разобьем его на удобные для озвучки фрагменты.",
+    "startOptimization": "Начать оптимизацию",
+    "originalText": "Исходный текст",
+    "readyToOptimize": "Преобразовать в аудио",
+    "regenerate": "Переоптимизировать",
+    "noChunks": "Нет сгенерированного текста",
+    "chunksLabel": "Фрагменты текста",
+    "generateAudioButton": "Сгенерировать аудио",
+    "chunksTitle": "Фрагменты текста",
+    "edit": "Редактировать",
+    "editChunk": "Редактирование фрагмента",
+    "inputLabel": "ВХОД",
+    "outputLabel": "ВЫХОД",
+    "rawSermonContent": "Исходный контент проповеди (мысли, тезисы)",
+    "optimizedChunks": "GPT-оптимизированный текст для озвучки",
+    "wavFileOutput": "WAV аудиофайл для скачивания",
+    "optimizationResults": "Результаты оптимизации",
+    "chunks": "фрагментов",
+    "mins": "мин аудио",
+    "optimized": "оптимизировано",
+    "generatingAudio": "Генерация аудио",
+    "minutesRemaining": "мин осталось",
+    "step1": "Настройки",
+    "step2": "Просмотр",
+    "step3": "Генерация",
+    "successTitle": "Аудио готово!",
+    "successDesc": "Ваш файл сгенерирован и скачан.",
+    "downloadAgain": "Скачать снова",
+    "closeWarning": "Этот файл сохранен локально. Закрытие этого окна удалит доступ к воспроизведению.",
+    "generatingDesc": "Синтезируем высококачественную речь...",
+    "sampleError": "Пример недоступен",
+    "progress": {
+      "optimizing": "Оптимизация текста...",
+      "generating": "Генерация аудио..."
+    },
+    "errors": {
+      "generateFailed": "Не удалось сгенерировать аудио"
+    },
+    "cancelGeneration": "Отменить генерацию",
+    "generationCancelled": "Генерация отменена",
+    "mergingAudio": "Объединение аудиофайлов...",
+    "addingSilence": "Добавление пауз между фрагментами...",
+    "generatingChunk": "Генерация фрагмента {{current}}/{{total}}..."
   },
   "tags": {
     "introduction": "Вступление",
@@ -199,6 +267,10 @@
     "prepMode": {
       "title": "Режим подготовки (Beta)",
       "description": "Включить доступ к новому рабочему процессу режима подготовки"
+    },
+    "audioGeneration": {
+      "title": "Генерация аудио проповеди (Beta)",
+      "description": "Включить экспериментальную генерацию аудио для проповедей"
     },
     "debugMode": {
       "title": "Режим отладки",
@@ -520,6 +592,7 @@
     "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
+    "warning": "Внимание",
     "next": "Далее",
     "previous": "Назад",
     "search": "Поиск",

@@ -25,11 +25,11 @@ jest.mock('@headlessui/react', () => {
     <div data-testid="menu">{children}</div>
   );
 
-  const MockMenuButton = ({ children, ...props }: { children: React.ReactNode; [key: string]: any }) => (
+  const MockMenuButton = ({ children, ...props }: { children: React.ReactNode;[key: string]: any }) => (
     <button {...props}>{children}</button>
   );
 
-  const MockMenuItems = ({ children, ...props }: { children: React.ReactNode; [key: string]: any }) => (
+  const MockMenuItems = ({ children, ...props }: { children: React.ReactNode;[key: string]: any }) => (
     <div {...props}>{children}</div>
   );
 
@@ -63,6 +63,18 @@ jest.mock('@/components/ExportButtons', () => ({
       <button type="button">Word</button>
     </div>
   ),
+}));
+
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: jest.fn(() => ({
+    settings: {
+      enablePrepMode: true,
+      enableAudioGeneration: true
+    },
+    loading: false,
+    error: null,
+    refresh: jest.fn()
+  }))
 }));
 
 // Mock translations
@@ -127,14 +139,14 @@ describe('SermonHeader Component', () => {
     it('renders without verse when verse is empty', () => {
       const sermonWithoutVerse = { ...mockSermon, verse: '' };
       render(<SermonHeader sermon={sermonWithoutVerse} onUpdate={mockOnUpdate} />);
-      
+
       expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
       expect(screen.queryByText('John 3:16 - For God so loved the world that he gave his one and only Son')).not.toBeInTheDocument();
     });
 
     it('renders export buttons', () => {
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       // Export buttons should be present (they're rendered by ExportButtons component)
       expect(screen.getByText('TXT')).toBeInTheDocument();
       expect(screen.getByText('PDF')).toBeInTheDocument();
@@ -146,20 +158,20 @@ describe('SermonHeader Component', () => {
     it('allows editing sermon title', async () => {
       const updatedSermon = { ...mockSermon, title: 'Updated Title' };
       mockUpdateSermon.mockResolvedValue(updatedSermon);
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       // Find and click the edit button for title
       const editButtons = screen.getAllByTitle('Edit');
       const titleEditButton = editButtons[0]; // First edit button should be for title
       fireEvent.click(titleEditButton);
-      
+
       const titleInput = screen.getByDisplayValue('Test Sermon Title');
       fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(mockUpdateSermon).toHaveBeenCalledWith({
           ...mockSermon,
@@ -171,23 +183,23 @@ describe('SermonHeader Component', () => {
 
     it('handles title save errors', async () => {
       mockUpdateSermon.mockRejectedValue(new Error('Save failed'));
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       const editButtons = screen.getAllByTitle('Edit');
       const titleEditButton = editButtons[0];
       fireEvent.click(titleEditButton);
-      
+
       const titleInput = screen.getByDisplayValue('Test Sermon Title');
       fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(screen.getByText('Failed to save title')).toBeInTheDocument();
       });
-      
+
       expect(mockOnUpdate).not.toHaveBeenCalled();
     });
   });
@@ -196,20 +208,20 @@ describe('SermonHeader Component', () => {
     it('allows editing sermon verse', async () => {
       const updatedSermon = { ...mockSermon, verse: 'Updated verse text' };
       mockUpdateSermon.mockResolvedValue(updatedSermon);
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       // Find and click the edit button for verse (should be the second edit button)
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1]; // Second edit button should be for verse
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(mockUpdateSermon).toHaveBeenCalledWith({
           ...mockSermon,
@@ -221,23 +233,23 @@ describe('SermonHeader Component', () => {
 
     it('handles verse save errors', async () => {
       mockUpdateSermon.mockRejectedValue(new Error('Save failed'));
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1];
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(screen.getByText('Failed to save verse')).toBeInTheDocument();
       });
-      
+
       expect(mockOnUpdate).not.toHaveBeenCalled();
     });
 
@@ -256,19 +268,19 @@ describe('SermonHeader Component', () => {
       const multiLineVerse = 'John 3:16\nFor God so loved the world\nthat he gave his one and only Son';
       const updatedSermon = { ...mockSermon, verse: multiLineVerse };
       mockUpdateSermon.mockResolvedValue(updatedSermon);
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1];
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: multiLineVerse } });
-      
+
       const saveButton = screen.getByTitle('Save');
       fireEvent.click(saveButton);
-      
+
       await waitFor(() => {
         expect(mockUpdateSermon).toHaveBeenCalledWith({
           ...mockSermon,
@@ -283,17 +295,17 @@ describe('SermonHeader Component', () => {
     it('supports Ctrl+Enter to save verse', async () => {
       const updatedSermon = { ...mockSermon, verse: 'Updated verse text' };
       mockUpdateSermon.mockResolvedValue(updatedSermon);
-      
+
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1];
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
       fireEvent.keyDown(verseTextarea, { key: 'Enter', ctrlKey: true });
-      
+
       await waitFor(() => {
         expect(mockUpdateSermon).toHaveBeenCalledWith({
           ...mockSermon,
@@ -305,15 +317,15 @@ describe('SermonHeader Component', () => {
 
     it('supports Escape to cancel verse editing', () => {
       render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-      
+
       const editButtons = screen.getAllByTitle('Edit');
       const verseEditButton = editButtons[1];
       fireEvent.click(verseEditButton);
-      
+
       const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
       fireEvent.keyDown(verseTextarea, { key: 'Escape' });
-      
+
       // Should return to display mode with original text
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
       expect(mockUpdateSermon).not.toHaveBeenCalled();

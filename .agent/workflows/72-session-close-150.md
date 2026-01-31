@@ -1,5 +1,5 @@
 ---
-name: 72-close-session-150
+name: 72-session-close-150
 description: "[72] CLOSE. Save and restore session context between conversations. Use when ending a session to preserve progress, or starting a new session to restore context. Triggers on \"save session\", \"end session\", \"preserve context\", \"handoff\", \"continue from last time\", or when context window is running low."
 ---
 

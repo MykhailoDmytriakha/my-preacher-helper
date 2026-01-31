@@ -1,5 +1,5 @@
 ---
-name: 10-new-session-150
+name: 10-session-new-150
 description: "[10] NEW. Start a NEW session for this project. Use when beginning a fresh task to load AGENTS.md, MEMORY.md, core project context (README), then create a NEW session log and confirm readiness."
 ---
 
@@ -19,7 +19,7 @@ description: "[10] NEW. Start a NEW session for this project. Use when beginning
 
 4. Define the **new** `session_name`.
    - Use user-provided name; if not provided, propose date + short descriptive name.
-   - If a log with the same name exists, ask whether to continue it (switch to `11-continue-session-150`) or create a new unique name.
+   - If a log with the same name exists, ask whether to continue it (switch to `11-session-continue-150`) or create a new unique name.
 
 5. Create a NEW session log at `.sessions/SESSION_[date]-[name].md` **when the task is defined** and you are about to start research/work.
    - Insert minimal structure: `## Meta`, `## Progress Log`, `## Investigations`, `## Decisions`, `## Next Steps`.

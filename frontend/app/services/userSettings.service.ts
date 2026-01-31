@@ -4,6 +4,7 @@ import { debugLog } from '@/utils/debugMode';
 
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
+const OFFLINE_ERROR = 'Offline: operation not available.';
 
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
@@ -23,36 +24,36 @@ export async function getUserLanguage(userId: string): Promise<string> {
     if (!userId) {
       return getCookieLanguage();
     }
-    
+
     // For authenticated users
     // 1. First check cookie for instant response
     const cookieLang = getCookieLanguage();
-    
+
     // 2. Then fetch from DB (source of truth)
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch user settings: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    
+
     // 3. If DB has a value, use it (and update cookie if different)
     if (data.settings?.language) {
       const dbLang = data.settings.language;
-      
+
       // Sync cookie with DB if they differ
       if (dbLang !== cookieLang) {
         setLanguageCookie(dbLang);
       }
-      
+
       return dbLang;
     }
-    
+
     // 4. If no DB setting but we have a cookie, persist cookie value to DB
     if (cookieLang !== DEFAULT_LANGUAGE) {
       await initializeUserSettings(userId, cookieLang);
     }
-    
+
     return cookieLang;
   } catch (error) {
     console.error('Error getting user language:', error);
@@ -70,7 +71,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
   try {
     // Always update cookie first for immediate effect
     setLanguageCookie(language);
-    
+
     // For guest users, we only use cookies
     if (!userId) {
       return;
@@ -79,7 +80,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
     if (isBrowserOffline()) {
       return;
     }
-    
+
     // For authenticated users, also update DB (source of truth)
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
@@ -88,7 +89,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
       },
       body: JSON.stringify({ userId, language }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to update user language: ${response.statusText}`);
     }
@@ -105,7 +106,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
  * @param displayName User display name
  */
 export async function updateUserProfile(
-  userId: string, 
+  userId: string,
   email?: string,
   displayName?: string
 ): Promise<void> {
@@ -115,15 +116,15 @@ export async function updateUserProfile(
     if (isBrowserOffline()) {
       return;
     }
-    
+
     // Only update provided fields
     const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email;
     if (displayName !== undefined) updates.displayName = displayName;
-    
+
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
-    
+
     // Update settings through API without specifying language
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
@@ -132,7 +133,7 @@ export async function updateUserProfile(
       },
       body: JSON.stringify({ userId, ...updates }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to update user profile: ${response.statusText}`);
     }
@@ -149,7 +150,7 @@ export async function updateUserProfile(
  * @param displayName User display name (optional)
  */
 export async function initializeUserSettings(
-  userId: string, 
+  userId: string,
   language?: string,
   email?: string,
   displayName?: string
@@ -163,13 +164,13 @@ export async function initializeUserSettings(
       }
       return;
     }
-    
+
     // Build request payload with only provided fields
     const payload: Record<string, unknown> = { userId };
     if (language !== undefined) payload.language = language;
-    if (email !== undefined) payload.email = email; 
+    if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
-    
+
     // Create settings through API
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'POST',
@@ -178,11 +179,11 @@ export async function initializeUserSettings(
       },
       body: JSON.stringify(payload),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to initialize user settings: ${response.statusText}`);
     }
-    
+
     // Only set language cookie if language was provided
     if (language) {
       setLanguageCookie(language);
@@ -227,7 +228,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     }
 
     if (isBrowserOffline()) {
-      throw new Error('Offline: operation not available.');
+      throw new Error(OFFLINE_ERROR);
     }
 
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
@@ -253,7 +254,7 @@ export async function updatePrepModeAccess(userId: string, enabled: boolean): Pr
     if (!userId) return;
 
     if (isBrowserOffline()) {
-      throw new Error('Offline: operation not available.');
+      throw new Error(OFFLINE_ERROR);
     }
 
     const response = await fetch(USER_SETTINGS_API_URL, {
@@ -302,4 +303,34 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
     // On error, default to false for authenticated users
     return false;
   }
-} 
+}
+
+/**
+ * Update user's audio generation feature flag
+ * @param userId The user ID
+ * @param enabled Whether audio generation should be enabled
+ */
+export async function updateAudioGenerationAccess(userId: string, enabled: boolean): Promise<void> {
+  try {
+    if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, enableAudioGeneration: enabled }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update audio generation access: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating audio generation access:', error);
+    throw error;
+  }
+}

@@ -2,7 +2,7 @@
 
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { Check, File, FileText, FileType } from "lucide-react";
+import { AudioLines, Check, File, FileText, FileType, Volume2, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -10,19 +10,25 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "@locales/i18n";
 
+import AudioExportModal from "@/components/AudioExportModal";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 // Placeholder text constant to avoid duplicate strings
 const PLACEHOLDER_CONTENT = 'Content will be added later';
+const AUDIO_BUTTON_LABEL = 'Audio (Beta)';
 
 import { PlanData, exportToWord } from "../../utils/wordExport";
+
+
 
 interface ExportButtonsLayoutProps {
   onTxtClick: (e: React.MouseEvent) => void;
   onPdfClick: () => void;
   onWordClick: () => void;
+  onAudioClick?: () => void;
   orientation?: "horizontal" | "vertical";
   isPdfAvailable?: boolean;
+  isAudioEnabled?: boolean;
   isPreached?: boolean;
   variant?: 'default' | 'icon';
 }
@@ -65,6 +71,11 @@ const getWordIconButtonClassName = (isPreached: boolean) =>
     ? "text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400"
     : "text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400";
 
+const getAudioIconButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "text-gray-500 hover:bg-gray-200 hover:text-orange-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-orange-400"
+    : "text-gray-400 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-500 dark:hover:bg-orange-900/30 dark:hover:text-orange-400";
+
 const getTxtTextButtonClassName = (isPreached: boolean) =>
   isPreached
     ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
@@ -86,12 +97,19 @@ const getWordTextButtonClassName = (isPreached: boolean) =>
     ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300"
     : "bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800";
 
+const getAudioTextButtonClassName = (isPreached: boolean) =>
+  isPreached
+    ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-orange-900 dark:hover:text-orange-300"
+    : "bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800";
+
 function ExportButtonsLayout({
   onTxtClick,
   onPdfClick,
   onWordClick,
+  onAudioClick,
   orientation = "horizontal",
   isPdfAvailable = false,
+  isAudioEnabled = false,
   isPreached = false,
   variant = 'default',
 }: ExportButtonsLayoutProps) {
@@ -99,6 +117,7 @@ function ExportButtonsLayout({
   const layoutClass = LAYOUT_CLASS_BY_ORIENTATION[orientation];
   const pdfTooltipPositionClass = TOOLTIP_POSITION_BY_ORIENTATION[orientation];
   const pdfAriaLabel = getPdfAriaLabel(isPdfAvailable);
+  const audioLabel = t('export.audioButton', { defaultValue: AUDIO_BUTTON_LABEL });
 
   if (variant === 'icon') {
     const txtIconButtonClassName = getTxtIconButtonClassName(isPreached);
@@ -144,6 +163,19 @@ function ExportButtonsLayout({
           </button>
           <span className="tooltiptext tooltiptext-top">Word</span>
         </div>
+
+        {isAudioEnabled && onAudioClick && (
+          <div className="tooltip">
+            <button
+              onClick={onAudioClick}
+              className={`p-1.5 rounded-md transition-colors ${getAudioIconButtonClassName(isPreached)}`}
+              aria-label={audioLabel}
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
+            <span className="tooltiptext tooltiptext-top">{audioLabel}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -189,6 +221,21 @@ function ExportButtonsLayout({
           Word
         </button>
       </div>
+
+      {isAudioEnabled && onAudioClick && (
+        <div className="tooltip flex-1 sm:flex-none">
+          <button
+            onClick={onAudioClick}
+            className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full flex items-center justify-center ${getAudioTextButtonClassName(isPreached)}`}
+            aria-label={audioLabel}
+          >
+            <AudioLines className="w-5 h-5" />
+          </button>
+          <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
+            {audioLabel}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -308,7 +355,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
             aria-label="Close"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -512,7 +559,7 @@ const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
             className="text-gray-500 hover:text-gray-700 dark:text-gray-300"
             aria-label="Close"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -571,6 +618,10 @@ interface ExportButtonsContainerProps {
   disabledFormats?: ('txt' | 'pdf' | 'word')[];
   isPreached?: boolean;
   variant?: 'default' | 'icon';
+  /** Enable audio export button (beta feature) */
+  enableAudio?: boolean;
+  /** Sermon title for audio filename - required if enableAudio is true */
+  sermonTitle?: string;
 }
 
 const TooltipStyles = () => (
@@ -645,6 +696,7 @@ const TooltipStyles = () => (
 );
 
 export default function ExportButtons({
+  sermonId,
   getExportContent,
   getPdfContent,
   orientation = "horizontal",
@@ -655,10 +707,13 @@ export default function ExportButtons({
   disabledFormats = [],
   isPreached = false,
   variant = 'default',
+  enableAudio = false,
+  sermonTitle = '',
 }: ExportButtonsContainerProps) {
   const { t } = useTranslation();
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [showAudioModal, setShowAudioModal] = useState(false);
 
   // Determine if PDF is available based on the disabledFormats prop
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes('pdf');
@@ -764,6 +819,16 @@ export default function ExportButtons({
     }
   };
 
+  const handleAudioClick = () => {
+    if (enableAudio) {
+      setShowAudioModal(true);
+    }
+  };
+
+  const handleCloseAudioModal = () => {
+    setShowAudioModal(false);
+  };
+
   return (
     <div className={className} data-testid="export-buttons-container">
       <TooltipStyles />
@@ -771,8 +836,10 @@ export default function ExportButtons({
         onTxtClick={handleTxtClick}
         onPdfClick={handlePdfClick}
         onWordClick={handleWordClick}
+        onAudioClick={enableAudio ? handleAudioClick : undefined}
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
+        isAudioEnabled={enableAudio}
         isPreached={isPreached}
         variant={variant}
       />
@@ -790,6 +857,15 @@ export default function ExportButtons({
           onClose={handleClosePdfModal}
           getContent={getPdfContent}
           title={title}
+        />
+      )}
+
+      {enableAudio && (
+        <AudioExportModal
+          isOpen={showAudioModal}
+          onClose={handleCloseAudioModal}
+          sermonId={sermonId}
+          sermonTitle={sermonTitle || title}
         />
       )}
     </div>

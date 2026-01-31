@@ -147,7 +147,9 @@
     "saving": "Saving...",
     "back": "Back",
     "backToSermon": "Back to Sermon",
-    "copy": "Copy"
+    "copy": "Copy",
+    "next": "Next",
+    "close": "Close"
   },
   "export": {
     "soonAvailable": "Coming soon!",
@@ -185,7 +187,73 @@
     "hideTags": "Hide tags",
     "includeTags": "Include tags",
     "soon": "Soon",
-    "multipleTagsThoughts": "Thoughts with Multiple Tags"
+    "multipleTagsThoughts": "Thoughts with Multiple Tags",
+    "audioButton": "Audio (Beta)"
+  },
+  "audioExport": {
+    "title": "Audio Generation",
+    "voiceLabel": "Voice",
+    "voiceOnyx": "Onyx (Deep)",
+    "voiceEcho": "Echo (Natural)",
+    "qualityLabel": "Quality",
+    "qualityStandard": "Standard",
+    "qualityHd": "High Definition",
+    "sectionsLabel": "Sections",
+    "sectionsAll": "All sections",
+    "sectionsIntro": "Introduction",
+    "sectionsMain": "Main part",
+    "sectionsConclusion": "Conclusion",
+    "generate": "Generate",
+    "generating": "Generating...",
+    "optimizing": "Preparing...",
+    "stepOptimize": "Prepare Text →",
+    "stepGenerate": "Generate →",
+    "next": "Next",
+    "nextReview": "Next: Review Content",
+    "optimizeBtn": "Optimize Content",
+    "readyDesc": "We will analyze the text and break it into speech-friendly chunks.",
+    "startOptimization": "Start Optimization",
+    "originalText": "Original Text",
+    "readyToOptimize": "Transform to Audio",
+    "regenerate": "Re-optimize",
+    "noChunks": "No text generated yet",
+    "chunksLabel": "Text Chunks",
+    "generateAudioButton": "Generate Audio",
+    "chunksTitle": "Text Chunks",
+    "edit": "Edit",
+    "editChunk": "Edit Chunk",
+    "inputLabel": "INPUT",
+    "outputLabel": "OUTPUT",
+    "rawSermonContent": "Raw sermon content (thoughts, outline)",
+    "optimizedChunks": "GPT-optimized chunks for natural TTS",
+    "wavFileOutput": "WAV audio file for download",
+    "optimizationResults": "Optimization Results",
+    "chunks": "chunks",
+    "mins": "min audio",
+    "optimized": "optimized",
+    "generatingAudio": "Generating Audio",
+    "minutesRemaining": "min remaining",
+    "step1": "Settings",
+    "step2": "Review",
+    "step3": "Generate",
+    "successTitle": "Audio Ready!",
+    "successDesc": "Your file has been generated and downloaded.",
+    "downloadAgain": "Download Again",
+    "closeWarning": "This file is saved locally. Closing this window will remove access to the playback.",
+    "generatingDesc": "Synthesizing high-quality speech...",
+    "sampleError": "Sample not available",
+    "progress": {
+      "optimizing": "Optimizing text...",
+      "generating": "Generating audio..."
+    },
+    "errors": {
+      "generateFailed": "Failed to generate audio"
+    },
+    "cancelGeneration": "Cancel Generation",
+    "generationCancelled": "Generation cancelled",
+    "mergingAudio": "Merging audio files...",
+    "addingSilence": "Adding pauses between chunks...",
+    "generatingChunk": "Generating chunk {{current}}/{{total}}..."
   },
   "tags": {
     "introduction": "Introduction",
@@ -199,6 +267,10 @@
     "prepMode": {
       "title": "Preparation Mode (Beta)",
       "description": "Enable access to the new preparation mode workflow"
+    },
+    "audioGeneration": {
+      "title": "Sermon Audio Generation (Beta)",
+      "description": "Enable experimental audio generation for sermons"
     },
     "debugMode": {
       "title": "Debug Mode",
@@ -520,6 +592,7 @@
     "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
+    "warning": "Warning",
     "next": "Next",
     "previous": "Previous",
     "search": "Search",

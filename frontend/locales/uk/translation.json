@@ -147,7 +147,9 @@
     "saving": "Збереження...",
     "back": "Назад",
     "backToSermon": "Назад до проповіді",
-    "copy": "Копіювати"
+    "copy": "Копиювати",
+    "next": "Далі",
+    "close": "Закрити"
   },
   "export": {
     "soonAvailable": "Скоро додамо!",
@@ -185,7 +187,73 @@
     "hideTags": "Сховати теги",
     "includeTags": "Включати теги",
     "soon": "Скоро",
-    "multipleTagsThoughts": "Думки з кількома тегами"
+    "multipleTagsThoughts": "Думки з кількома тегами",
+    "audioButton": "Аудіо (Beta)"
+  },
+  "audioExport": {
+    "title": "Генерація аудіо",
+    "voiceLabel": "Голос",
+    "voiceOnyx": "Onyx (Глибокий)",
+    "voiceEcho": "Echo (Натуральний)",
+    "qualityLabel": "Якість",
+    "qualityStandard": "Стандартна",
+    "qualityHd": "Висока якість",
+    "sectionsLabel": "Розділи",
+    "sectionsAll": "Усі розділи",
+    "sectionsIntro": "Вступ",
+    "sectionsMain": "Основна частина",
+    "sectionsConclusion": "Висновок",
+    "generate": "Згенерувати",
+    "generating": "Генерація...",
+    "optimizing": "Підготовка...",
+    "stepOptimize": "Підготувати текст →",
+    "stepGenerate": "Згенерувати →",
+    "next": "Далі",
+    "nextReview": "Далі: Перегляд контенту",
+    "optimizeBtn": "Оптимізувати контент",
+    "readyDesc": "Ми проаналізуємо текст і розіб'ємо його на зручні для озвучки фрагменти.",
+    "startOptimization": "Почати оптимізацію",
+    "originalText": "Вихідний текст",
+    "readyToOptimize": "Перетворити на аудіо",
+    "regenerate": "Переоптимізувати",
+    "noChunks": "Немає згенерованого тексту",
+    "chunksLabel": "Фрагменти тексту",
+    "generateAudioButton": "Згенерувати аудіо",
+    "chunksTitle": "Фрагменти тексту",
+    "edit": "Редагувати",
+    "editChunk": "Редагування фрагмента",
+    "inputLabel": "ВХІД",
+    "outputLabel": "ВИХІД",
+    "rawSermonContent": "Вихідний контент проповіді (думки, тези)",
+    "optimizedChunks": "GPT-оптимізований текст для озвучування",
+    "wavFileOutput": "WAV аудіофайл для завантаження",
+    "optimizationResults": "Результати оптимізації",
+    "chunks": "фрагментів",
+    "mins": "хв аудіо",
+    "optimized": "оптимізовано",
+    "generatingAudio": "Генерація аудіо",
+    "minutesRemaining": "хв залишилось",
+    "step1": "Налаштування",
+    "step2": "Перегляд",
+    "step3": "Генерація",
+    "successTitle": "Аудіо готове!",
+    "successDesc": "Ваш файл згенерований і завантажений.",
+    "downloadAgain": "Завантажити знову",
+    "closeWarning": "Цей файл збережений локально. Закриття цього вікна видалить доступ до відтворення.",
+    "generatingDesc": "Синтезуємо високоякісну мову...",
+    "sampleError": "Приклад недоступний",
+    "progress": {
+      "optimizing": "Оптимізація тексту...",
+      "generating": "Генерація аудіо..."
+    },
+    "errors": {
+      "generateFailed": "Не вдалося згенерувати аудіо"
+    },
+    "cancelGeneration": "Скасувати генерацію",
+    "generationCancelled": "Генерація скасована",
+    "mergingAudio": "Об'єднання аудіофайлів...",
+    "addingSilence": "Додавання пауз між фрагментами...",
+    "generatingChunk": "Генерація фрагмента {{current}}/{{total}}..."
   },
   "tags": {
     "introduction": "Вступ",
@@ -199,6 +267,10 @@
     "prepMode": {
       "title": "Режим підготовки (Beta)",
       "description": "Увімкнути доступ до нового робочого процесу режиму підготовки"
+    },
+    "audioGeneration": {
+      "title": "Генерація аудіо проповіді (Beta)",
+      "description": "Увімкнути експериментальну генерацію аудіо для проповідей"
     },
     "debugMode": {
       "title": "Режим налагодження",
@@ -520,6 +592,7 @@
     "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із {{threshold}}"
   },
   "common": {
+    "warning": "Увага",
     "next": "Далі",
     "previous": "Назад",
     "search": "Пошук",

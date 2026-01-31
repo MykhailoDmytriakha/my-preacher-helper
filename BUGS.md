@@ -64,3 +64,7 @@ debugMode.ts:19 [debug] ReactQuery cache persisted {key: 'react-query-cache', qu
 ```
 
 ---
+
+I need to find all places where order of thoughts is used and incapsulate logic to use the same logic evrywhere. 
+
+---

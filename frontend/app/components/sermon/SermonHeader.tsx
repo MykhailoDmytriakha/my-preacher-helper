@@ -11,7 +11,9 @@ import { toast } from 'sonner';
 
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import SeriesSelector from '@/components/series/SeriesSelector';
+import { useAuth } from '@/hooks/useAuth';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useUserSettings } from '@/hooks/useUserSettings';
 import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
@@ -35,12 +37,16 @@ export interface SermonHeaderProps {
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
   const isOnline = useOnlineStatus();
   const isReadOnly = !isOnline;
+
+  const enableAudio = settings?.enableAudioGeneration || false;
 
   // Use direct translation calls to avoid duplicate string warnings
   const removeFromSeriesTranslationKey = 'workspaces.series.actions.removeFromSeries';
@@ -49,7 +55,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const handleStartPreaching = () => {
     window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
   };
-  
+
   const handleAddToSeries = () => {
     if (isReadOnly) return;
     setSeriesSelectorMode('add');
@@ -115,16 +121,16 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     }
   };
 
-  
+
   // Removed legacy mode switch (framework/content)
 
   const generateExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
-    return getExportContent(sermon, undefined, { 
-      format, 
-      includeTags: options?.includeTags 
+    return getExportContent(sermon, undefined, {
+      format,
+      includeTags: options?.includeTags
     });
   };
-  
+
   // Placeholder for PDF content generation (adjust as needed)
   const getPdfContent = async (): Promise<React.ReactNode> => {
     // This function should return the React node structure for PDF rendering
@@ -150,7 +156,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       }
     } catch (error) {
       console.error("Error saving sermon title:", error);
-      throw error; 
+      throw error;
     }
   };
 
@@ -165,7 +171,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       }
     } catch (error) {
       console.error("Error saving sermon verse:", error);
-      throw error; 
+      throw error;
     }
   };
 
@@ -190,7 +196,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
       {/* Left side: Title, Date, Series Badge, Verse */}
       <div className="flex-grow">
-        <EditableTitle 
+        <EditableTitle
           initialTitle={sermon.title}
           onSave={handleSaveSermonTitle}
           disabled={isReadOnly}
@@ -203,9 +209,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             <div className="flex items-center gap-1">
               <Link
                 href={`/series/${sermonSeries.id}`}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${
-                  sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                }`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                  }`}
                 style={sermonSeries.color ? {
                   backgroundColor: sermonSeries.color,
                   color: sermonSeriesTextColor,
@@ -231,12 +236,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
               {/* Series Management Dropdown - moved next to badge */}
               <Menu as="div" className="relative">
-              <Menu.Button
-                className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${
-                  isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-                disabled={isReadOnly}
-              >
+                <Menu.Button
+                  className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  disabled={isReadOnly}
+                >
                   <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 </Menu.Button>
                 <Transition
@@ -256,9 +260,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                               onClick={handleChangeSeries}
                               disabled={isProcessing || isReadOnly}
                               title={t('workspaces.series.actions.moveToDifferentSeries')}
-                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
-                                active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                                } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                             >
                               <ArrowPathIcon className="h-4 w-4" />
                               {t('workspaces.series.actions.moveToDifferentSeries')}
@@ -271,9 +274,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                               onClick={handleRemoveFromSeries}
                               disabled={isProcessing || isReadOnly}
                               title={t(removeFromSeriesTranslationKey)}
-                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${
-                                active ? 'bg-red-50 dark:bg-red-950' : ''
-                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                              className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${active ? 'bg-red-50 dark:bg-red-950' : ''
+                                } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                             >
                               <XMarkIcon className="h-4 w-4" />
                               {t(removeFromSeriesTranslationKey)}
@@ -288,9 +290,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
                             onClick={handleAddToSeries}
                             disabled={isProcessing || isReadOnly}
                             title={t('workspaces.series.actions.addToSeries')}
-                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${
-                              active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
+                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
+                              } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
                           >
                             <PlusIcon className="h-4 w-4" />
                             {t('workspaces.series.actions.addToSeries')}
@@ -305,7 +306,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           )}
         </div>
         <div className="mt-2">
-          <EditableVerse 
+          <EditableVerse
             initialVerse={sermon.verse || ''}
             onSave={handleSaveSermonVerse}
             disabled={isReadOnly}
@@ -325,11 +326,13 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         </button>
 
         <ExportButtons
-            sermonId={sermon.id}
-            getExportContent={generateExportContent}
-            getPdfContent={getPdfContent} // Pass the PDF content function
-            title={sermon.title || "Sermon Details"}
-            disabledFormats={['pdf']} // Disable PDF export here
+          sermonId={sermon.id}
+          getExportContent={generateExportContent}
+          getPdfContent={getPdfContent} // Pass the PDF content function
+          title={sermon.title || "Sermon Details"}
+          disabledFormats={['pdf']} // Disable PDF export here
+          enableAudio={enableAudio}
+          sermonTitle={sermon.title}
         />
         {/* Mode toggle moved to global DashboardNav */}
       </div>

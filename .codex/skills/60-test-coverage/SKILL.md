@@ -1,13 +1,14 @@
 ---
-name: 60-validate-tests-150
-description: "[60] VALIDATE. Ensure new (staged and unstaged) changes are covered by tests at >70% and the full test suite is green. Use when asked to validate coverage for recent changes, add tests for modified code, or verify nothing else broke."
+name: 60-test-coverage
+description: "[60-test-coverage] VALIDATE. Ensure new (staged and unstaged) changes are covered by tests at >70% and the full test suite is green. Use when asked to validate coverage for recent changes, add tests for modified code, or verify nothing else broke."
 ---
 
-# Validate-Tests 150 Protocol
+# Test Coverage Protocol
 
 ## Goal
 
 Cover current uncommitted changes with meaningful tests at >70% coverage (including **the changed lines**) and confirm the entire test suite is green.
+Use from root directory `npm run test:coverage && npm run lint:full`
 
 ## Workflow
 
