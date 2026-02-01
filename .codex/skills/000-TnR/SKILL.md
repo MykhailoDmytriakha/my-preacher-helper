@@ -64,6 +64,7 @@ This doctrine is the enforcement mechanism for AGENTS.md:
 - Claims in SESSION.md backed by Rigor proof chains
 - JOURNAL.md receives Absolute Rigor timestamps
 - MEMORY.md receives distilled axioms from Rigor cycles
+- **Current session file (session log):** TnR MUST write detailed reports into the active session file `.sessions/SESSION_[date]-[name].md`— every run appends a full report: objective, depletion record, proof chain, certainty derivation, gaps (if any), and resolution (execute or failure report). No summary-only; reports must be auditable and complete.
 
 ---
 
@@ -456,7 +457,9 @@ User: "Why is API slow?"
 
 ---
 
-## Operational Log Mandate (JOURNAL.md)
+## Operational Log Mandate (Current Session File + .sessions/SESSION_[date]-[name].md)
+
+**Session file requirement:** Write detailed reports to the **current session file** (the active session log). Every TnR run MUST append a full, auditable report to that file — not a one-line summary. The report must allow anyone to reconstruct what was done, what was proved, and what was left open.
 
 Post-Rigor requirements for the session log:
 
@@ -469,6 +472,8 @@ Post-Rigor requirements for the session log:
 **Failure Gaps:** <remaining gaps or "None">
 **Vector Resolution:** <Execute or Report Produced>
 ```
+
+(Expand as needed: depletion record, sources consulted, key evidence links, and full Systemic Failure Report if &lt;95%.)
 
 ---
 

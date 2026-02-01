@@ -5,9 +5,81 @@
 
 ---
 
+## 🧠 Principles (Context Engineering)
+
+> **Concept:** OpenAI "Context Engineering". Instead of reading all code, the agent reads these Principles.
+> **Goal:** High-level "Map", strict Conventions, and immutable Axioms. **Read this first.**
+
+### 🗺️ Architecture Map (The "Where")
+*   **Structure:** `app/` (Next.js 15 App Router) | `api/` (Server Actions/Routes) | `utils/` (Pure Logic).
+*   **State Hierarchy:** React Query (Server/Async) > URL Params (Nav/Bookmarks) > Zustand (Global Client) > Context (Dependency Injection).
+*   **Data Flow:** Firestore (Backend Truth) → IndexedDB (Offline Persistence) → React Query (Memory Cache) → UI.
+*   **AI Stack:** OpenAI (`gpt-4o`, `gpt-4o-mini`, `tts-1`) | Zod Schema Validation (Strict) | Client-side Streaming.
+
+### 📐 Coding Conventions (The "How")
+*   **Strict Boundaries:** Use `zod` for ALL external data limits (API, AI, Forms). Types must strictly match Zod schemas.
+*   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
+*   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors.
+*   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
+*   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
+
+### ⚖️ Domain Axioms (The "Why")
+*   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
+*   **Sermon Integrity:** The "Outline" (Structure) is the source of truth for ordering. Tags are metadata. Logic: Outline → Structure → Tags.
+*   **User Control:** "Heavy" AI actions require explicit triggers (Buttons), not auto-magic/implicit effects.
+*   **Session-Log:** One Chat = One Session Log. Single Source of Truth for Context.
+
+### ⛔ Anti-Patterns (The "Never")
+*   **Implicit AI Parsing:** Never parse AI text with Regex. Always use JSON Mode / Structured Output.
+*   **Conditional Hooks:** Never return early (`if (loading) return...`) before hook definitions.
+*   **Stale Cache:** Never rely on `setQueryData` alone for persistence; always pair with `invalidateQueries` or `cancelQueries`.
+*   **Console Log:** Never `console.log` in production code; use `debugLog()`.
+
+---
+
 ## 🆕 Lessons (Inbox) — Только что выучено
 
-> Сырые записи о проблемах и решениях. Записывать СРАЗУ после подтверждения пользователя.
+### 2026-02-01 Dashboard Word Export: Plan Badge vs Disabled Button
+**Problem:** Dashboard showed the "Есть план" badge, but the Word export button was disabled.
+**Attempts:** Verified UI state; traced export gating to `planData` being missing on the card.
+**Solution:** Build `planData` from `sermon.draft || sermon.plan` in `SermonCard` and pass it into `ExportButtons`, aligning gating with plan presence.
+**Why it worked:** Word export now receives the same structured plan data used to determine plan readiness, so enabled state matches the badge.
+**Principle:** Feature availability must be driven by the same source of truth as its UI indicators to avoid UX mismatches.
+
+### 2026-02-01 Export i18n Coverage: UI + Document Strings
+**Problem:** Some export UI labels/tooltips/aria and Word document strings remained hardcoded, causing partial localization.
+**Attempts:** Initial i18n pass missed new strings and export-only text.
+**Solution:** Added export-specific i18n keys (buttons, tooltips, aria) and localized Word headers/date/filename/placeholder, with safe fallbacks for tests.
+**Why it worked:** All export-facing strings now come from i18n with locale-aware dates, so language switches don’t leave stray English/Russian text.
+**Principle:** Export UI and output must be fully i18n-driven, with safe fallbacks for non-initialized i18n contexts.
+
+### 2026-02-01 Tooltip Clipping: SermonCard Overflow
+**Problem:** Dashboard export tooltip was clipped by the SermonCard border.
+**Attempts:** None.
+**Solution:** Switched SermonCard container to `overflow-visible` so tooltips can render outside the card boundary.
+**Why it worked:** Tooltips are absolutely positioned and need overflow visible or a portal to escape the card bounds.
+**Principle:** Containers hosting tooltips should not use overflow clipping unless the tooltip is rendered in a portal.
+
+### 2026-02-01 Jest Mock: Named Export Fidelity
+**Problem:** New Column tests crashed with "Element type is invalid" because a mocked component resolved to `undefined`.
+**Attempts:** Mocked the component as a default export while the real code imported a named export.
+**Solution:** Match the module's export shape in the mock (export the named symbol).
+**Why it worked:** React components must resolve to a valid function; mismatched export shapes yield `undefined` at render time.
+**Principle:** Jest mocks must mirror the real module's export shape (named vs default) or React will render `undefined`.
+
+### 2026-01-31 Word Export: Language-Independent Structured Data Flow
+**Problem:** Word export relied on parsing markdown strings with regex to find headers like "Вступление" (Introduction). This broke when the UI language changed, as headers were translated, leading to empty exports or missing sections.
+**Attempts:** Initially tried adding more language aliases to the parser, but realized it was a fragile approach.
+**Solution:** (1) Removed `parseMarkdownPlan` entirely. (2) Added a structured `planData` prop (matching the `PlanData` interface) to the `ExportButtons` component. (3) Updated pages (`PlanPage`, `StructurePage`) to construct and pass this object directly.
+**Why it worked:** Business logic now operates on stable, typed data objects instead of volatile UI text. The export logic no longer cares about the language of the headers in the markdown; it just map-joins the structured points.
+**Principle:** Never use UI-facing localized strings (headers, labels) as anchor points for data extraction or business logic. Use structured, technical data as the source of truth.
+
+### 2026-01-31 Export Connectivity: Standardizing Prop Flow across Workspaces
+**Problem:** `ExportButtons` had inconsistent data sources depending on whether it was in a Column (Focus Mode) or on the Plan Page, making it hard to maintain consistent Word formatting.
+**Solution:** (1) Standardized on `planData={planData}` and `focusedSection={id}` props. (2) Updated `Column.tsx` to pass these down. (3) Modified `wordExport.ts` to accept `focusedSection` for filtering.
+**Why it worked:** Explicit props make component behavior predictable and testable. Filtering at the export utility level ensures that global metadata (title, verses) is always included even in section-specific exports.
+**Principle:** When a component is used in multiple contexts (dashboard, focus mode, detail page), synchronize its data requirements through explicit, unified props rather than generic "blob" getters.
+
 ### 2026-01-31 Middleware CORS tests failing on Vercel (CI)
 **Problem:** Middleware tests passed locally but failed on Vercel build: `Access-Control-Allow-Origin` was expected `http://localhost:3000` but received `null`.
 **Cause:** On Vercel, `process.env.CORS_ALLOWED_ORIGINS` is set (e.g. to production domain only). The tests assumed default env (unset), so the middleware used DEFAULT_ALLOWED_ORIGINS (which includes localhost). In CI, the env was set, so localhost was not in the allowed list.
@@ -424,6 +496,11 @@
 *   **Protocol:** В `jest.mock()` использовать **ТОЛЬКО** строковые литералы. Переменные объявлять внутри фабрики или использовать `doMock`.
 *   **Reasoning:** Переменные вне мока не инициализированы в момент поднятия мока (`ReferenceError`).
 
+**Named Export Mock Fidelity**
+*   **Context:** React components imported as named exports.
+*   **Protocol:** Jest mocks must export the same named symbol (not default) when the real module uses named exports.
+*   **Reasoning:** Mismatched export shapes yield `undefined` components and "Element type is invalid" render failures.
+
 **Browser API Simulation**
 *   **Context:** JSDOM окружение.
 *   **Protocol:** Для API, отсутствующих в JSDOM (`matchMedia`, `ResizeObserver`, `clipboard`):
@@ -499,6 +576,11 @@
 *   **Protocol:** Кнопки действий (Edit/Delete) размещать в **Header**, а не внизу.
 *   **Reasoning:** Пользователь не должен скроллить 10к слов чтобы найти кнопку редактирования.
 
+**Tooltip Overflow Safety**
+*   **Context:** Tooltip/Popover внутри карточек и контейнеров.
+*   **Protocol:** Не использовать `overflow-hidden` на контейнерах, где tooltip выходит за границы. Альтернатива — рендер в portal.
+*   **Reasoning:** Иначе tooltip визуально обрезается и теряет информативность.
+
 ### 📆 Calendar Module Protocols
 
 **View vs Selection Separation**
@@ -522,6 +604,11 @@
 *   **Context:** Добавление/изменение ключей.
 *   **Protocol:** `grep` ключа → Обновление **ВСЕХ ТРЕХ** файлов (`en`, `ru`, `uk`) в одном коммите.
 *   **Reasoning:** CI тесты покрытия переводов упадут, если пропустить язык.
+
+**Export Output Localization**
+*   **Context:** Экспорт документов (Word/PDF/TXT) и экспортные UI-элементы (кнопки, тултипы, aria labels).
+*   **Protocol:** Все текстовые элементы экспорта должны идти через i18n ключи, а дата форматироваться по локали пользователя. Запрещено хардкодить язык в экспортируемых документах или экспортных UI-ярлыках.
+*   **Reasoning:** Экспорт — часть пользовательского интерфейса; локаль не должна ломать читаемость и ожидания пользователя.
 
 ### 🔧 Developer Experience Protocols
 
@@ -554,10 +641,6 @@
 *   **Protocol:** Сохраняй ключевые классы/DOM структуру и проверяй логические секции в обоих режимах.
 *   **Reasoning:** Предотвращает поломку UI и тестов при рефакторинге фокус-мода.
 
-**Dynamic Debug Logging Pattern**
-*   **Context:** Отладка в production с пользовательским контролем.
-*   **Protocol:** Используй `debugLog()` из `@/utils/debugMode` вместо прямого `console.log`. Логирование включается/выключается через настройки пользователя (Debug Mode Toggle).
-*   **Reasoning:** Позволяет пользователям включать подробное логирование для troubleshooting без засорения production консоли. Сохраняет performance когда отключено.
 
 **Test Coverage Verification**
 *   **Context:** Проверка что изменения покрыты тестами.

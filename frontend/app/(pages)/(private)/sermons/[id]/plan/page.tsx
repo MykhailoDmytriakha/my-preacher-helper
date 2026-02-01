@@ -1275,7 +1275,9 @@ const PlanMainLayout = ({
                   getPdfContent={getPdfContent}
                   title={sermon.title || "Sermon Plan"}
                   className="ml-auto"
-                  disabledFormats={['pdf']} // Add this prop to disable PDF
+                  disabledFormats={['pdf']}
+                  planData={(sermon.plan || sermon.draft) ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse } : undefined}
+                  sermonTitle={sermon.title}
                 />
               </div>
             </div>

@@ -11,13 +11,12 @@ import remarkGfm from "remark-gfm";
 import "@locales/i18n";
 
 import AudioExportModal from "@/components/AudioExportModal";
+import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
-// Placeholder text constant to avoid duplicate strings
-const PLACEHOLDER_CONTENT = 'Content will be added later';
-const AUDIO_BUTTON_LABEL = 'Audio (Beta)';
-
 import { PlanData, exportToWord } from "../../utils/wordExport";
+
+const AUDIO_BUTTON_LABEL = 'Audio (Beta)';
 
 
 
@@ -28,6 +27,7 @@ interface ExportButtonsLayoutProps {
   onAudioClick?: () => void;
   orientation?: "horizontal" | "vertical";
   isPdfAvailable?: boolean;
+  isWordDisabled?: boolean;
   isAudioEnabled?: boolean;
   isPreached?: boolean;
   variant?: 'default' | 'icon';
@@ -45,13 +45,6 @@ const TOOLTIP_POSITION_BY_ORIENTATION: Record<Orientation, string> = {
   vertical: "tooltiptext-right",
 };
 
-const PDF_EXPORT_LABEL = "PDF export";
-const PDF_EXPORT_COMING_SOON_LABEL = "PDF export (coming soon)";
-const WORD_EXPORT_LABEL = "Word export";
-
-const getPdfAriaLabel = (isPdfAvailable: boolean) =>
-  isPdfAvailable ? PDF_EXPORT_LABEL : PDF_EXPORT_COMING_SOON_LABEL;
-
 const getTxtIconButtonClassName = (isPreached: boolean) =>
   isPreached
     ? "text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-400"
@@ -66,10 +59,14 @@ const getPdfIconButtonClassName = (isPdfAvailable: boolean, isPreached: boolean)
     : "text-gray-400 hover:bg-purple-50 hover:text-purple-600 dark:text-gray-500 dark:hover:bg-purple-900/30 dark:hover:text-purple-400";
 };
 
-const getWordIconButtonClassName = (isPreached: boolean) =>
-  isPreached
+const getWordIconButtonClassName = (isWordDisabled: boolean, isPreached: boolean) => {
+  if (isWordDisabled) {
+    return "text-gray-300 cursor-not-allowed dark:text-gray-700";
+  }
+  return isPreached
     ? "text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400"
     : "text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400";
+};
 
 const getAudioIconButtonClassName = (isPreached: boolean) =>
   isPreached
@@ -92,10 +89,14 @@ const getPdfTextButtonClassName = (isPdfAvailable: boolean, isPreached: boolean)
     : "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 opacity-50 cursor-not-allowed";
 };
 
-const getWordTextButtonClassName = (isPreached: boolean) =>
-  isPreached
+const getWordTextButtonClassName = (isWordDisabled: boolean, isPreached: boolean) => {
+  if (isWordDisabled) {
+    return "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50";
+  }
+  return isPreached
     ? "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-green-100 hover:text-green-600 dark:hover:bg-green-900 dark:hover:text-green-300"
     : "bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800";
+};
 
 const getAudioTextButtonClassName = (isPreached: boolean) =>
   isPreached
@@ -109,21 +110,36 @@ function ExportButtonsLayout({
   onAudioClick,
   orientation = "horizontal",
   isPdfAvailable = false,
+  isWordDisabled = false,
   isAudioEnabled = false,
   isPreached = false,
   variant = 'default',
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
+  const translate = (key: string, fallback: string) => {
+    const result = t(key, { defaultValue: fallback });
+    return result === key ? fallback : result;
+  };
   const layoutClass = LAYOUT_CLASS_BY_ORIENTATION[orientation];
   const pdfTooltipPositionClass = TOOLTIP_POSITION_BY_ORIENTATION[orientation];
-  const pdfAriaLabel = getPdfAriaLabel(isPdfAvailable);
-  const audioLabel = t('export.audioButton', { defaultValue: AUDIO_BUTTON_LABEL });
+  const pdfExportLabel = translate('export.pdfTitle', 'Export to PDF');
+  const pdfExportComingSoonLabel = translate('export.pdfTitleComingSoon', 'Export to PDF (coming soon)');
+  const wordExportLabel = translate('export.wordTitle', 'Export to Word');
+  const txtExportLabel = translate('export.txtTitle', 'Export to TXT');
+  const pdfButtonLabel = translate('export.pdfButton', 'PDF');
+  const txtButtonLabel = translate('export.txtButton', 'TXT');
+  const wordButtonLabel = translate('export.wordButton', 'Word');
+  const soonAvailableLabel = translate('export.soonAvailable', 'Coming soon!');
+  const noPlanForWordLabel = translate('export.noPlanForWord', 'Plan required for Word');
+  const pdfAriaLabel = isPdfAvailable ? pdfExportLabel : pdfExportComingSoonLabel;
+  const audioLabel = translate('export.audioButton', AUDIO_BUTTON_LABEL);
 
   if (variant === 'icon') {
     const txtIconButtonClassName = getTxtIconButtonClassName(isPreached);
     const pdfIconButtonClassName = getPdfIconButtonClassName(isPdfAvailable, isPreached);
-    const wordIconButtonClassName = getWordIconButtonClassName(isPreached);
-    const pdfTooltipText = isPdfAvailable ? "PDF" : t('export.soonAvailable');
+    const wordIconButtonClassName = getWordIconButtonClassName(isWordDisabled, isPreached);
+    const pdfTooltipText = isPdfAvailable ? pdfButtonLabel : soonAvailableLabel;
+    const wordTooltipText = isWordDisabled ? noPlanForWordLabel : wordButtonLabel;
 
     return (
       <div className={`flex ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
@@ -132,11 +148,11 @@ function ExportButtonsLayout({
             onClick={onTxtClick}
             className={`p-1.5 rounded-md transition-colors ${txtIconButtonClassName
               }`}
-            aria-label={t('export.txtTitle')}
+            aria-label={txtExportLabel}
           >
             <FileText className="w-4 h-4" />
           </button>
-          <span className="tooltiptext tooltiptext-top">TXT</span>
+          <span className="tooltiptext tooltiptext-top">{txtButtonLabel}</span>
         </div>
 
         <div className="tooltip">
@@ -155,13 +171,14 @@ function ExportButtonsLayout({
         <div className="tooltip">
           <button
             onClick={onWordClick}
+            disabled={isWordDisabled}
             className={`p-1.5 rounded-md transition-colors ${wordIconButtonClassName
               }`}
-            aria-label={WORD_EXPORT_LABEL}
+            aria-label={wordExportLabel}
           >
             <FileType className="w-4 h-4" />
           </button>
-          <span className="tooltiptext tooltiptext-top">Word</span>
+          <span className="tooltiptext tooltiptext-top">{wordTooltipText}</span>
         </div>
 
         {isAudioEnabled && onAudioClick && (
@@ -182,7 +199,7 @@ function ExportButtonsLayout({
 
   const txtTextButtonClassName = getTxtTextButtonClassName(isPreached);
   const pdfTextButtonClassName = getPdfTextButtonClassName(isPdfAvailable, isPreached);
-  const wordTextButtonClassName = getWordTextButtonClassName(isPreached);
+  const wordTextButtonClassName = getWordTextButtonClassName(isWordDisabled, isPreached);
 
   return (
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
@@ -191,7 +208,7 @@ function ExportButtonsLayout({
         className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${txtTextButtonClassName
           }`}
       >
-        TXT
+        {txtButtonLabel}
       </button>
 
       <div className="tooltip flex-1 sm:flex-none">
@@ -201,11 +218,11 @@ function ExportButtonsLayout({
           className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md w-full ${pdfTextButtonClassName}`}
           aria-label={pdfAriaLabel}
         >
-          PDF
+          {pdfButtonLabel}
         </button>
         {!isPdfAvailable && (
           <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
-            {t('export.soonAvailable')}
+            {soonAvailableLabel}
           </span>
         )}
       </div>
@@ -213,13 +230,18 @@ function ExportButtonsLayout({
       <div className="tooltip flex-1 sm:flex-none">
         <button
           onClick={onWordClick}
-          disabled={false}
+          disabled={isWordDisabled}
           className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${wordTextButtonClassName
             }`}
-          aria-label={WORD_EXPORT_LABEL}
+          aria-label={wordExportLabel}
         >
-          Word
+          {wordButtonLabel}
         </button>
+        {isWordDisabled && (
+          <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
+            {noPlanForWordLabel}
+          </span>
+        )}
       </div>
 
       {isAudioEnabled && onAudioClick && (
@@ -622,6 +644,10 @@ interface ExportButtonsContainerProps {
   enableAudio?: boolean;
   /** Sermon title for audio filename - required if enableAudio is true */
   sermonTitle?: string;
+  /** Structured plan data for Word export */
+  planData?: PlanData;
+  /** Section to export in Focus Mode */
+  focusedSection?: string;
 }
 
 const TooltipStyles = () => (
@@ -709,8 +735,9 @@ export default function ExportButtons({
   variant = 'default',
   enableAudio = false,
   sermonTitle = '',
+  planData,
+  focusedSection,
 }: ExportButtonsContainerProps) {
-  const { t } = useTranslation();
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
@@ -719,8 +746,8 @@ export default function ExportButtons({
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes('pdf');
   // Similarly, check if TXT is disabled (though less likely needed)
   const isTxtDisabled = disabledFormats.includes('txt');
-  // Word is now enabled
-  const isWordDisabled = disabledFormats.includes('word');
+  // Word is disabled if no planData is provided (since Word only exports Plans now)
+  const isWordDisabled = !planData || disabledFormats.includes('word');
 
   useEffect(() => {
     setShowTxtModal(showTxtModalDirectly || false);
@@ -742,87 +769,32 @@ export default function ExportButtons({
 
   const handlePdfClick = () => {
     if (!isPdfAvailable) return;
-    console.log("handlePdfClick called");
+    debugLog("ExportButtons: open PDF modal");
     setShowPdfModal(true);
   };
 
   const handleClosePdfModal = () => {
-    console.log("handleClosePdfModal called");
+    debugLog("ExportButtons: close PDF modal");
     setShowPdfModal(false);
   };
 
-  const parseMarkdownPlan = (content: string, defaultTitle: string): PlanData => {
-    const lines = content.split('\n');
-    const result = {
-      sermonTitle: defaultTitle,
-      sermonVerse: '',
-      introduction: '',
-      main: '',
-      conclusion: '',
-    };
-    let currentSection: 'introduction' | 'main' | 'conclusion' | '' = '';
-
-    const getSectionFromHeader = (line: string) => {
-      if (!line.startsWith('## ')) return null;
-      if (line.includes(t('tags.introduction')) || line.includes('Introduction')) return 'introduction';
-      if (line.includes(t('tags.mainPart')) || line.includes('Main Part') || line.includes('Основная часть')) return 'main';
-      if (line.includes(t('tags.conclusion')) || line.includes('Conclusion')) return 'conclusion';
-      return null;
-    };
-
-    lines.forEach((line, i) => {
-      if (i === 0 && line.startsWith('# ')) {
-        result.sermonTitle = line.replace('# ', '').trim();
-        return;
-      }
-
-      if (line.startsWith('>')) {
-        const versePart = line.startsWith('> ') ? line.substring(2).trim() : line.substring(1).trim();
-        result.sermonVerse = result.sermonVerse ? `${result.sermonVerse}\n${versePart}` : versePart;
-        return;
-      }
-
-      const nextSection = getSectionFromHeader(line);
-      if (nextSection) {
-        currentSection = nextSection;
-        return;
-      }
-
-      if (currentSection && line.trim()) {
-        result[currentSection] += line + '\n';
-      }
-    });
-
-    return {
-      sermonTitle: result.sermonTitle,
-      sermonVerse: result.sermonVerse || undefined,
-      introduction: result.introduction.trim() || PLACEHOLDER_CONTENT,
-      main: result.main.trim() || PLACEHOLDER_CONTENT,
-      conclusion: result.conclusion.trim() || PLACEHOLDER_CONTENT,
-    };
-  };
 
   const handleWordClick = async () => {
-    if (isWordDisabled) return;
+    if (isWordDisabled || !planData) return;
 
     try {
-      // Get the plan content in markdown format
-      const content = await getExportContent('markdown', { includeTags: false });
-
-      // Parse the content to extract sections - keep markdown formatting intact
-      const planData = parseMarkdownPlan(content, title || 'План проповеди');
-
-      await exportToWord({ data: planData });
-
+      await exportToWord({
+        data: planData,
+        filename: `sermon-plan-${sermonTitle.replace(/[^a-zA-Zа-яА-Я0-9]/g, '-').toLowerCase()}.docx`,
+        focusedSection: focusedSection
+      });
     } catch (error) {
       console.error('Error exporting to Word:', error);
     }
   };
 
   const handleAudioClick = () => {
-    if (enableAudio) {
-      setShowAudioModal(true);
-    }
+    setShowAudioModal(true);
   };
 
   const handleCloseAudioModal = () => {
@@ -839,6 +811,7 @@ export default function ExportButtons({
         onAudioClick={enableAudio ? handleAudioClick : undefined}
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
+        isWordDisabled={isWordDisabled}
         isAudioEnabled={enableAudio}
         isPreached={isPreached}
         variant={variant}

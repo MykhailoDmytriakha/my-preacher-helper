@@ -81,7 +81,26 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div data-testid="k
 jest.mock('@/components/plan/PlanStyleSelector', () => () => <div data-testid="plan-style-selector">Mocked Plan Style Selector</div>);
 jest.mock('@/components/plan/ViewPlanMenu', () => () => <div data-testid="view-plan-menu">Mocked View Plan Menu</div>);
 jest.mock('@/components/ExportButtons', () => () => <div data-testid="export-buttons">Mocked Export Buttons</div>);
-jest.mock('@/components/PreachingTimer', () => () => <div data-testid="preaching-timer">Mocked Preaching Timer</div>);
+jest.mock('@/components/PreachingTimer', () => {
+  const React = require('react');
+  return function MockPreachingTimer(props: any) {
+    const { onTimerStateChange } = props;
+    const didRun = React.useRef(false);
+    React.useEffect(() => {
+      if (didRun.current) return;
+      didRun.current = true;
+      onTimerStateChange?.({
+        currentPhase: 'introduction',
+        phaseProgress: 0.5,
+        totalProgress: 0.1,
+        timeRemaining: 600,
+        isFinished: false,
+      });
+    }, [onTimerStateChange]);
+
+    return <div data-testid="preaching-timer">Mocked Preaching Timer</div>;
+  };
+});
 jest.mock('@/components/FloatingTextScaleControls', () => () => <div data-testid="floating-text-controls">Mocked Floating Text Controls</div>);
 
 // Mock i18n with the specific translations needed for this test
@@ -300,6 +319,14 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
     expect(await screen.findByTestId('preaching-timer')).toBeInTheDocument();
     expect(screen.queryByTestId('sermon-plan-page-container')).not.toBeInTheDocument();
+  });
+
+  it('shows progress overlays when timer state is provided in preaching view', async () => {
+    mockSearchParams = new URLSearchParams('planView=preaching');
+    renderWithQueryClient(<SermonPlanPage />);
+
+    const progressBars = await screen.findAllByRole('progressbar');
+    expect(progressBars.length).toBeGreaterThan(0);
   });
 
   it('renders overlay portal when planView=overlay', async () => {

@@ -29,6 +29,34 @@ jest.mock('@dnd-kit/sortable', () => ({
   verticalListSortingStrategy: jest.fn()
 }));
 
+jest.mock('@hello-pangea/dnd', () => {
+  const React = require('react');
+  return {
+    DragDropContext: ({ children }: any) => <div data-testid="drag-drop-context">{children}</div>,
+    Droppable: ({ children }: any) => (
+      <div data-testid="droppable">
+        {children({
+          innerRef: jest.fn(),
+          droppableProps: {},
+          placeholder: null,
+        })}
+      </div>
+    ),
+    Draggable: ({ children }: any) => (
+      <div data-testid="draggable">
+        {children(
+          {
+            innerRef: jest.fn(),
+            draggableProps: { style: {} },
+            dragHandleProps: {},
+          },
+          { isDragging: false }
+        )}
+      </div>
+    ),
+  };
+});
+
 // Mock the i18next library
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
@@ -81,6 +109,10 @@ jest.mock('sonner', () => ({
     success: jest.fn(),
     error: jest.fn()
   }
+}));
+
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => true
 }));
 
 // Mock outline service
@@ -170,26 +202,24 @@ jest.mock('react-markdown', () => (props: any) => <>{props.children}</>);
 jest.mock('remark-gfm', () => ({}));
 
 // Mock the AudioRecorder component
-jest.mock('../../app/components/AudioRecorder', () => {
-  return function MockAudioRecorder(props: any) {
-    return (
-      <div
-        data-testid="audio-recorder-component"
-        className={`${props.className || ''} ${props.variant === "mini" ? "space-y-2" : "space-y-4"}`}
-      >
-        <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 ${props.variant === "mini" ? "flex-col gap-2" : ""}`}>
-          <button
-            data-testid="record-button"
-            className={`${props.variant === "mini" ? "min-w-full px-3 py-2 text-sm" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium`}
-            onClick={props.onRecordingComplete ? () => props.onRecordingComplete(new Blob()) : undefined}
-          >
-            {props.variant === "mini" ? "Mini Audio Recorder" : "Standard Audio Recorder"}
-          </button>
-        </div>
+jest.mock('../../app/components/AudioRecorder', () => ({
+  AudioRecorder: (props: any) => (
+    <div
+      data-testid="audio-recorder-component"
+      className={`${props.className || ''} ${props.variant === "mini" ? "space-y-2" : "space-y-4"}`}
+    >
+      <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 ${props.variant === "mini" ? "flex-col gap-2" : ""}`}>
+        <button
+          data-testid="record-button"
+          className={`${props.variant === "mini" ? "min-w-full px-3 py-2 text-sm" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium`}
+          onClick={props.onRecordingComplete ? () => props.onRecordingComplete(new Blob()) : undefined}
+        >
+          {props.variant === "mini" ? "Mini Audio Recorder" : "Standard Audio Recorder"}
+        </button>
       </div>
-    );
-  };
-});
+    </div>
+  )
+}));
 
 // Mock dynamic thought service used by audio recorder
 jest.mock('@/services/thought.service', () => ({
@@ -236,15 +266,13 @@ jest.mock('../../app/components/ExportButtons', () => {
 });
 
 // Mock FocusRecorderButton component
-jest.mock('../../app/components/FocusRecorderButton', () => {
-  return function MockFocusRecorderButton(props: any) {
-    return (
-      <div data-testid="focus-recorder-button">
-        <button onClick={props.onRecordingComplete}>Focus Recorder</button>
-      </div>
-    );
-  };
-});
+jest.mock('../../app/components/FocusRecorderButton', () => ({
+  FocusRecorderButton: (props: any) => (
+    <div data-testid="focus-recorder-button">
+      <button onClick={props.onRecordingComplete}>Focus Recorder</button>
+    </div>
+  )
+}));
 
 // Mock Icons
 jest.mock('@/components/Icons', () => ({
@@ -252,12 +280,12 @@ jest.mock('@/components/Icons', () => ({
   SwitchViewIcon: (props: any) => <svg {...props} data-testid="switch-view-icon" />
 }));
 
-import { cleanup, render, screen, fireEvent, within } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
 import { Item } from '@/models/models';
-import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 
 import Column from '../../app/components/Column';
 import { runScenarios } from '../../test-utils/scenarioRunner';
@@ -419,8 +447,66 @@ describe('Column Component', () => {
       jest.useRealTimers();
     });
 
-    it('adds/edits/deletes outline points flows are available (covered by SermonOutline tests)', async () => {
-      expect(true).toBe(true);
+    it('adds a new outline point and saves in focus mode', async () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(12345);
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={[]}
+          isFocusMode={true}
+          sermonId="sermon-123"
+          outlinePoints={[]}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Add outline point'));
+      fireEvent.change(screen.getByPlaceholderText('Enter new outline point'), {
+        target: { value: 'New Point' }
+      });
+      fireEvent.click(screen.getByLabelText('Save'));
+
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+
+      await waitFor(() => expect(updateSermonOutline).toHaveBeenCalled());
+      const [sermonId, outline] = (updateSermonOutline as jest.Mock).mock.calls[0];
+      expect(sermonId).toBe('sermon-123');
+      expect(outline.introduction).toHaveLength(1);
+      expect(outline.introduction[0].text).toBe('New Point');
+
+      nowSpy.mockRestore();
+    });
+
+    it('generates outline points and persists them', async () => {
+      (generateSermonPointsForSection as jest.Mock).mockResolvedValue([
+        { id: 'gen-1', text: 'Generated Point' }
+      ]);
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={[]}
+          isFocusMode={true}
+          sermonId="sermon-123"
+          outlinePoints={[]}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Generate'));
+
+      await waitFor(() => {
+        expect(generateSermonPointsForSection).toHaveBeenCalledWith('sermon-123', 'introduction');
+      });
+
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+
+      await waitFor(() => expect(updateSermonOutline).toHaveBeenCalled());
     });
   });
 

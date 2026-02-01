@@ -72,8 +72,8 @@ describe('wordExport', () => {
             expect(Document).toHaveBeenCalledWith(
               expect.objectContaining({
                 creator: 'My Preacher Helper',
-                title: `План проповеди: ${basePlanData.sermonTitle}`,
-                description: 'Автоматически сгенерированный план проповеди',
+                title: `Sermon Plan: ${basePlanData.sermonTitle}`,
+                description: 'Auto-generated sermon plan',
               })
             )
             expect(saveAs).toHaveBeenCalledWith(expect.any(Object), 'test-sermon.docx')
@@ -86,7 +86,7 @@ describe('wordExport', () => {
             await exportToWord({ data: getPlanData() })
 
             const [[, resolvedFilename]] = mockSaveAs.mock.calls
-            expect(resolvedFilename).toContain('план-проповеди-test-sermon')
+            expect(resolvedFilename).toContain('sermon-plan-test-sermon')
           },
         },
         {

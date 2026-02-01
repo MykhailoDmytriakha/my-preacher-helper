@@ -19,14 +19,7 @@ import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 import { getCanonicalTagForSection } from "@/utils/tagUtils";
 import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
 
-// Translation key constants to avoid duplicate strings
-const TRANSLATION_STRUCTURE_ADD_THOUGHT = 'structure.addThoughtToSection';
-const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = 'structure.unassignedThoughts';
-const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = 'Unassigned Thoughts';
-
-// CSS class constants to avoid duplicate strings
-const BG_GRAY_LIGHT_DARK = 'bg-gray-50 dark:bg-gray-800';
-const BG_GRAY_LIGHTER_DARK = 'bg-gray-100 dark:bg-gray-700';
+import { PlanData } from "../../utils/wordExport";
 
 import { AudioRecorder } from "./AudioRecorder";
 import ExportButtons from "./ExportButtons";
@@ -35,6 +28,15 @@ import { FocusRecorderButton } from "./FocusRecorderButton";
 import FocusSidebar from "./FocusSidebar";
 import { OutlinePointGuidanceTooltip, SermonSectionGuidanceTooltip } from "./SermonGuidanceTooltips";
 import SortableItem from "./SortableItem";
+
+// Translation key constants to avoid duplicate strings
+const TRANSLATION_STRUCTURE_ADD_THOUGHT = 'structure.addThoughtToSection';
+const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = 'structure.unassignedThoughts';
+const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = 'Unassigned Thoughts';
+
+// CSS class constants to avoid duplicate strings
+const BG_GRAY_LIGHT_DARK = 'bg-gray-50 dark:bg-gray-800';
+const BG_GRAY_LIGHTER_DARK = 'bg-gray-100 dark:bg-gray-700';
 
 interface ColumnProps {
   id: string;
@@ -68,6 +70,7 @@ interface ColumnProps {
   onSwitchPage?: (sectionId?: string) => void; // Callback to switch to plan view
   onNavigateToSection?: (sectionId: string) => void; // Callback for navigating between sections in Focus Mode
   onRetryPendingThought?: (itemId: string) => void; // Retry pending thought sync
+  planData?: PlanData; // Structured plan data for export
 }
 
 // Define SectionType based on Column ID mapping
@@ -268,7 +271,6 @@ const SermonPointPlaceholder: React.FC<{
               )}
               {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
                 <>
-                  {console.log('Column: Rendering FocusRecorderButton for outline point:', containerId)}
                   <FocusRecorderButton
                     size="small"
                     onRecordingComplete={async (audioBlob) => {
@@ -462,7 +464,8 @@ export default function Column({
   onToggleReviewed,
   onSwitchPage,
   onNavigateToSection,
-  onRetryPendingThought
+  onRetryPendingThought,
+  planData
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -499,11 +502,6 @@ export default function Column({
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
   const [, setAudioError] = useState<string | null>(null);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
-
-  // Log audio popover changes
-  useEffect(() => {
-    console.log('Column: showAudioPopover changed to:', showAudioPopover);
-  }, [showAudioPopover]);
 
   // Close normal-mode recorder popover on outside click
   useEffect(() => {
@@ -952,6 +950,9 @@ export default function Column({
             sermonId={sermonId}
             className="inline-flex"
             orientation="horizontal"
+            planData={planData}
+            focusedSection={isFocusMode ? id : undefined}
+            sermonTitle={planData?.sermonTitle ?? title}
           />
         </div>
       )}
@@ -1227,7 +1228,7 @@ export default function Column({
             <div className="relative" ref={normalModePopoverRef}>
               <button
                 onClick={() => {
-                  console.log('Column: Mic button clicked, toggling audio popover');
+                  debugLog('Column: mic button clicked', { sectionId: id });
                   setShowAudioPopover((v) => !v);
                 }}
                 className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"

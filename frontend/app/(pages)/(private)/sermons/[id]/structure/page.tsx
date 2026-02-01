@@ -283,6 +283,19 @@ function StructurePageContent() {
     });
   };
 
+  const planData = useMemo(() => {
+    const planSource = sermon?.plan || sermon?.draft;
+    if (!planSource) return undefined;
+
+    return {
+      sermonTitle: sermon.title,
+      sermonVerse: sermon.verse,
+      introduction: planSource.introduction?.outline || '',
+      main: planSource.main?.outline || '',
+      conclusion: planSource.conclusion?.outline || ''
+    };
+  }, [sermon]);
+
   // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
   const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
     if (!sermonId || !sermon || containerId !== 'ambiguous') {
@@ -518,6 +531,7 @@ function StructurePageContent() {
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
+                planData={planData}
               />
             )}
 
@@ -554,6 +568,7 @@ function StructurePageContent() {
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
+                planData={planData}
               />
             )}
 
@@ -590,6 +605,7 @@ function StructurePageContent() {
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
+                planData={planData}
               />
             )}
           </div>

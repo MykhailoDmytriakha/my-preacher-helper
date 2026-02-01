@@ -238,6 +238,22 @@ function SermonCardBadges({
 }
 
 function SermonCardFooter({ sermon, t }: SermonCardFooterProps) {
+  const planSource = sermon.draft || sermon.plan;
+  const hasPlan = Boolean(
+    planSource?.introduction?.outline ||
+    planSource?.main?.outline ||
+    planSource?.conclusion?.outline
+  );
+  const planData = hasPlan && planSource
+    ? {
+        sermonTitle: sermon.title,
+        sermonVerse: sermon.verse,
+        introduction: planSource.introduction?.outline || '',
+        main: planSource.main?.outline || '',
+        conclusion: planSource.conclusion?.outline || ''
+      }
+    : undefined;
+
   return (
     <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
       <div className="flex-grow">
@@ -252,6 +268,8 @@ function SermonCardFooter({ sermon, t }: SermonCardFooterProps) {
           className=""
           isPreached={sermon.isPreached}
           variant="icon"
+          planData={planData}
+          sermonTitle={sermon.title}
         />
       </div>
     </div>
@@ -296,7 +314,7 @@ export default function SermonCard({
     bg-white dark:bg-gray-800
     rounded-xl shadow-sm hover:shadow-md transition-all duration-300
     border border-gray-200 dark:border-gray-700
-    h-full relative overflow-hidden
+    h-full relative overflow-visible
   `;
 
   return (

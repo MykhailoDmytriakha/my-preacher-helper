@@ -51,6 +51,13 @@ describe('ExportButtons Component', () => {
   const mockGetExportContent = jest.fn(() => Promise.resolve('Test content'));
   const mockSermonId = 'test-sermon-id';
   const mockGetPdfContent = jest.fn(() => Promise.resolve('<div>PDF</div>'));
+  const planData = {
+    sermonTitle: 'Test Sermon',
+    sermonVerse: 'John 1:1',
+    introduction: 'Intro',
+    main: 'Main',
+    conclusion: 'Conclusion',
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -88,8 +95,8 @@ describe('ExportButtons Component', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'PDF export (coming soon)' })).toBeDisabled();
-    expect(screen.getByText('export.soonAvailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export to PDF (coming soon)' })).toBeDisabled();
+    expect(screen.getByText('Coming soon!')).toBeInTheDocument();
   });
 
   it('enables PDF export when getPdfContent is provided', () => {
@@ -101,8 +108,8 @@ describe('ExportButtons Component', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'PDF export' })).toBeEnabled();
-    expect(screen.queryByText('export.soonAvailable')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export to PDF' })).toBeEnabled();
+    expect(screen.queryByText('Coming soon!')).not.toBeInTheDocument();
   });
 
   it('positions PDF tooltip to the right when orientation is vertical', () => {
@@ -114,7 +121,7 @@ describe('ExportButtons Component', () => {
       />
     );
 
-    const tooltip = screen.getByText('export.soonAvailable');
+    const tooltip = screen.getByText('Coming soon!');
     expect(tooltip).toHaveClass('tooltiptext');
     expect(tooltip).toHaveClass('tooltiptext-right');
   });
@@ -159,6 +166,7 @@ describe('ExportButtons Component', () => {
         getExportContent={mockGetExportContent}
         sermonId={mockSermonId}
         isPreached={true}
+        planData={planData}
       />
     );
 
@@ -178,6 +186,7 @@ describe('ExportButtons Component', () => {
         getExportContent={mockGetExportContent}
         sermonId={mockSermonId}
         isPreached={false}
+        planData={planData}
       />
     );
 
@@ -191,46 +200,44 @@ describe('ExportButtons Component', () => {
     expect(wordButton).toHaveClass('bg-green-100', 'dark:bg-green-900', 'text-green-600', 'dark:text-green-300');
   });
 
-  it('calls getExportContent with markdown and exports to word on Word click', async () => {
+  it('disables Word export when planData is not provided', () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Export to Word' })).toBeDisabled();
+  });
+
+  it('exports to Word using planData on Word click', async () => {
     const user = userEvent.setup();
-
-    // Custom content with multiple verses and section headers
-    // Using ## headers as expected by the fixed parser
-    const markdownContent = `# Sermon Title
-> Verse line 1
-> Verse line 2
-
-## Introduction
-Intro content
-
-## Main Part
-Main content
-
-## Conclusion
-Conclusion content`;
-
-    mockGetExportContent.mockResolvedValueOnce(markdownContent);
+    const customPlanData = {
+      sermonTitle: 'Sermon Title',
+      sermonVerse: 'Verse line 1\nVerse line 2',
+      introduction: 'Intro content',
+      main: 'Main content',
+      conclusion: 'Conclusion content'
+    };
 
     render(
       <ExportButtons
         getExportContent={mockGetExportContent}
         sermonId={mockSermonId}
         title="Custom Title"
+        sermonTitle="Sermon Title"
+        planData={customPlanData}
       />
     );
 
     const wordButton = screen.getByText('Word');
     await user.click(wordButton);
 
-    expect(mockGetExportContent).toHaveBeenCalledWith('markdown', { includeTags: false });
     expect(mockExportToWord).toHaveBeenCalledWith({
-      data: {
-        sermonTitle: 'Sermon Title',
-        sermonVerse: 'Verse line 1\nVerse line 2',
-        introduction: 'Intro content',
-        main: 'Main content',
-        conclusion: 'Conclusion content'
-      }
+      data: customPlanData,
+      filename: 'sermon-plan-sermon-title.docx',
+      focusedSection: undefined
     });
   });
 });

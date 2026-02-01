@@ -2,10 +2,6 @@
 
 ---
 
-если проповедь содержит два стиха, в экпорте word их нужно каждый стих на отдельной строке.
-
----
-
 I need to find all places where order of thoughts is used and incapsulate logic to use the same logic evrywhere. 
 
 ---
