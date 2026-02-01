@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/ActionButton';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import SeriesSelector from '@/components/series/SeriesSelector';
 import { useAuth } from '@/hooks/useAuth';
@@ -316,15 +317,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
       {/* Right side: Preach Button and Export Buttons */}
       <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-shrink-0">
-        <button
-          onClick={handleStartPreaching}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-          title={t('plan.preachButton') || 'Preach'}
-        >
-          <ScrollText className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('plan.preachButton') || 'Preach'}</span>
-        </button>
-
         <ExportButtons
           sermonId={sermon.id}
           getExportContent={generateExportContent}
@@ -333,6 +325,20 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           disabledFormats={['pdf']} // Disable PDF export here
           enableAudio={enableAudio}
           sermonTitle={sermon.title}
+          slotClassName={ACTION_BUTTON_SLOT_CLASS}
+          className="w-full sm:w-auto"
+          extraButtons={
+            <div className={`${ACTION_BUTTON_SLOT_CLASS} sm:min-w-[150px]`}>
+              <ActionButton
+                onClick={handleStartPreaching}
+                className="bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
+                title={t('plan.preachButton') || 'Preach'}
+              >
+                <ScrollText className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline">{t('plan.preachButton') || 'Preach'}</span>
+              </ActionButton>
+            </div>
+          }
         />
         {/* Mode toggle moved to global DashboardNav */}
       </div>

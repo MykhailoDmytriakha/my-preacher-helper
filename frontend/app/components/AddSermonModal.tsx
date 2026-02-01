@@ -21,6 +21,8 @@ interface AddSermonModalProps {
   showTriggerButton?: boolean;
 }
 
+const NEW_SERMON_KEY = 'addSermon.newSermon';
+
 export default function AddSermonModal({
   onNewSermonCreated,
   onCancel,
@@ -73,7 +75,7 @@ export default function AddSermonModal({
     } catch (error) {
       console.error('Error creating sermon:', error);
     }
-    
+
     setTitle('');
     setVerse('');
     setSelectedSeriesId('');
@@ -84,14 +86,14 @@ export default function AddSermonModal({
   const modalContent = (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[110] p-4" onClick={handleClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-bold mb-6">{t('addSermon.newSermon')}</h2>
+        <h2 className="text-2xl font-bold mb-6">{t(NEW_SERMON_KEY)}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
           <div className="mb-6">
             <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('addSermon.titleLabel')}
             </label>
-            <TextareaAutosize 
-              id="title" 
+            <TextareaAutosize
+              id="title"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('addSermon.titlePlaceholder')}
@@ -109,7 +111,7 @@ export default function AddSermonModal({
               {t('addSermon.verseLabel')}
             </label>
             <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 350px)' }}>
-              <TextareaAutosize 
+              <TextareaAutosize
                 id="verse"
                 value={verse}
                 onChange={e => setVerse(e.target.value)}
@@ -156,8 +158,8 @@ export default function AddSermonModal({
             >
               {t('addSermon.cancel')}
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               {t('addSermon.save')}
@@ -174,10 +176,10 @@ export default function AddSermonModal({
         <button
           onClick={() => setInternalOpen(true)}
           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-          aria-label="Add new sermon"
+          aria-label={t(NEW_SERMON_KEY)}
         >
           <PlusIcon className="w-5 h-5" />
-          {t('addSermon.newSermon')}
+          <span className="hidden sm:inline">{t(NEW_SERMON_KEY)}</span>
         </button>
       )}
 

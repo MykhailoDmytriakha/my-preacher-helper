@@ -1,50 +1,26 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import SermonCard from "@/components/dashboard/SermonCard";
+import DashboardContent from "@/components/dashboard/DashboardContent";
+import DashboardStats from "@/components/dashboard/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
-import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
+import { useFilteredSermons } from "@/hooks/useFilteredSermons";
 import { useSeries } from "@/hooks/useSeries";
 import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
-import { getThoughtSnippets, matchesSermonQuery, tokenizeQuery, ThoughtSnippet } from "@/utils/sermonSearch";
 import AddSermonModal from "@components/AddSermonModal";
-import DashboardStats from "@components/dashboard/DashboardStats";
 import { ChevronIcon } from "@components/Icons";
 
 // Tab styling constants
-const TAB_BASE_CLASSES = "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors";
-const TAB_INACTIVE_CLASSES = "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300";
+const TAB_BASE_CLASSES =
+  "whitespace-nowrap font-medium transition-colors text-sm px-3 py-2 rounded-md border";
+const TAB_INACTIVE_CLASSES =
+  "border-gray-200 text-gray-600 hover:text-gray-700 hover:border-gray-300 bg-white dark:bg-gray-900/40 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
 const BADGE_INACTIVE_CLASSES = "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300";
-
-const getLatestPreachTimestamp = (sermon: Sermon) => {
-  if (!sermon.isPreached || !sermon.preachDates || sermon.preachDates.length === 0) {
-    return null;
-  }
-
-  const timestamps = sermon.preachDates
-    .map((preachDate) => new Date(preachDate.date).getTime())
-    .filter((timestamp) => !Number.isNaN(timestamp));
-
-  if (timestamps.length === 0) {
-    return null;
-  }
-
-  return Math.max(...timestamps);
-};
-
-const getSortTimestamp = (sermon: Sermon) => {
-  const preachedTimestamp = getLatestPreachTimestamp(sermon);
-  if (preachedTimestamp !== null) {
-    return preachedTimestamp;
-  }
-
-  return new Date(sermon.date).getTime();
-};
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -73,6 +49,26 @@ export default function DashboardPage() {
   const [searchInTags, setSearchInTags] = useState(true);
   const [sortOption, setSortOption] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "inSeries" | "standalone">("all");
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
+
+  const hasFilterChanges =
+    sortOption !== "newest" ||
+    seriesFilter !== "all" ||
+    !searchInThoughts ||
+    !searchInTags;
+
+  const activeFilterCount =
+    (searchQuery.trim().length > 0 ? 1 : 0) +
+    (sortOption !== "newest" ? 1 : 0) +
+    (seriesFilter !== "all" ? 1 : 0) +
+    (!searchInThoughts || !searchInTags ? 1 : 0);
+
+  const handleResetFilters = () => {
+    setSortOption("newest");
+    setSeriesFilter("all");
+    setSearchInThoughts(true);
+    setSearchInTags(true);
+  };
 
   const handleDeleteSermon = (id: string) => {
     deleteSermonFromCache(id);
@@ -86,79 +82,31 @@ export default function DashboardPage() {
     addSermonToCache(newSermon);
   };
 
-  const searchTokens = useMemo(() => tokenizeQuery(searchQuery), [searchQuery]);
-
-  const searchOptions = useMemo(
-    () => ({
-      searchInTitleVerse: true,
+  // Filtering & Sorting
+  const { processedSermons, searchSnippetsById } = useFilteredSermons(
+    sermons,
+    {
+      searchQuery,
       searchInThoughts,
       searchInTags,
-    }),
-    [searchInThoughts, searchInTags]
+      sortOption,
+      seriesFilter,
+      activeTab,
+    },
+    t
   );
-
-  // Filtering & Sorting
-  const { processedSermons, searchSnippetsById } = useMemo(() => {
-    let filtered = [...sermons];
-
-    // Series filter
-    if (seriesFilter === "inSeries") {
-      filtered = filtered.filter((sermon) => sermon.seriesId);
-    } else if (seriesFilter === "standalone") {
-      filtered = filtered.filter((sermon) => !sermon.seriesId);
-    }
-
-    // Tab filter (Active vs Preached vs All)
-    if (activeTab === "active") {
-      filtered = filtered.filter((s) => !s.isPreached);
-    } else if (activeTab === "preached") {
-      filtered = filtered.filter((s) => s.isPreached);
-    }
-
-    // Search filter
-    if (searchTokens.length) {
-      filtered = filtered.filter((sermon) =>
-        matchesSermonQuery(sermon, searchTokens, searchOptions, t)
-      );
-    }
-
-    const sorted = filtered.sort((a, b) => {
-      switch (sortOption) {
-        case "newest":
-          return getSortTimestamp(b) - getSortTimestamp(a);
-        case "oldest":
-          return getSortTimestamp(a) - getSortTimestamp(b);
-        case "alphabetical":
-          return a.title.localeCompare(b.title);
-        default:
-          return 0;
-      }
-    });
-
-    const snippets: Record<string, ThoughtSnippet[] | undefined> = {};
-    if (searchTokens.length) {
-      sorted.forEach((sermon) => {
-        const thoughtSnippets = getThoughtSnippets(sermon, searchQuery, Infinity, 90, undefined, t);
-        if (thoughtSnippets.length > 0) {
-          snippets[sermon.id] = thoughtSnippets;
-        }
-      });
-    }
-
-    return { processedSermons: sorted, searchSnippetsById: snippets };
-  }, [sermons, searchTokens, searchOptions, sortOption, seriesFilter, activeTab, searchQuery, t]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold leading-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             {t('dashboard.mySermons')}
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex items-center gap-2 ml-auto">
           <AddSermonModal onNewSermonCreated={handleNewSermon} />
         </div>
       </div>
@@ -175,14 +123,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+      <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+        <nav className="flex flex-wrap gap-2" aria-label="Tabs">
           <button
             onClick={() => handleTabChange("active")}
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "active"
-                ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-900/30 dark:text-blue-300"
                 : TAB_INACTIVE_CLASSES
               }
             `}
@@ -200,7 +148,7 @@ export default function DashboardPage() {
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "preached"
-                ? "border-purple-500 text-purple-600 dark:text-purple-400"
+                ? "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-500/40 dark:bg-purple-900/30 dark:text-purple-300"
                 : TAB_INACTIVE_CLASSES
               }
             `}
@@ -218,7 +166,7 @@ export default function DashboardPage() {
             className={`
               ${TAB_BASE_CLASSES}
               ${activeTab === "all"
-                ? "border-green-500 text-green-600 dark:text-green-400"
+                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/40 dark:bg-green-900/30 dark:text-green-300"
                 : TAB_INACTIVE_CLASSES
               }
             `}
@@ -236,147 +184,154 @@ export default function DashboardPage() {
 
       {/* Search & Filters Toolbar */}
       <div className="flex flex-col gap-3 bg-white dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
-          <div className="relative w-full flex-1 min-w-[280px]">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <input
-              type="text"
-              placeholder={t('dashboard.searchSermons')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 border rounded-lg border-gray-200 dark:border-gray-700 
-                        dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              {t('dashboard.searchPanel.title')}
+            </h2>
+            {activeFilterCount > 0 && (
+              <span
+                className="inline-flex items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                aria-label={`${t('filters.activeFilters')}: ${activeFilterCount}`}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                {activeFilterCount}
+              </span>
+            )}
+            {hasFilterChanges && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-xs font-semibold text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100"
+              >
+                {t('filters.resetFilters')}
               </button>
             )}
           </div>
-          <div className="flex gap-3 w-full sm:w-auto sm:items-center mt-3 sm:mt-0">
-            <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
-              <select
-                value={sortOption}
-                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200 
-                          dark:border-gray-700 dark:bg-gray-800 bg-white
-                          focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-              >
-                <option value="newest">{t('dashboard.newest')}</option>
-                <option value="oldest">{t('dashboard.oldest')}</option>
-                <option value="alphabetical">{t('dashboard.alphabetical')}</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
-                <ChevronIcon direction="down" className="w-4 h-4" />
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={() => setIsSearchPanelOpen((prev) => !prev)}
+            aria-expanded={isSearchPanelOpen}
+            aria-controls="dashboard-search-panel"
+            aria-label={isSearchPanelOpen ? t('dashboard.searchPanel.hide') : t('dashboard.searchPanel.show')}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+          >
+            <ChevronIcon className={`h-5 w-5 transform ${isSearchPanelOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
 
-            <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
-              <select
-                value={seriesFilter}
-                onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
-                className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200
-                          dark:border-gray-700 dark:bg-gray-800 bg-white
-                          focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-              >
-                <option value="all">{t('workspaces.series.filters.allSermons')}</option>
-                <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
-                <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
-                <ChevronIcon direction="down" className="w-4 h-4" />
+        <div
+          id="dashboard-search-panel"
+          className={isSearchPanelOpen ? "flex flex-col gap-3" : "hidden"}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
+            <form
+              role="search"
+              aria-label={t('dashboard.searchPanel.title')}
+              onSubmit={(event) => event.preventDefault()}
+              className="relative w-full flex-1 min-w-[280px]"
+            >
+              <label htmlFor="dashboard-search-input" className="sr-only">
+                {t('dashboard.searchSermons')}
+              </label>
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                id="dashboard-search-input"
+                type="search"
+                placeholder={t('dashboard.searchSermons')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 border rounded-lg border-gray-200 dark:border-gray-700 
+                          dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  aria-label={t('dashboard.clearSearch')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </form>
+            <div className="flex gap-3 w-full sm:w-auto sm:items-center mt-3 sm:mt-0">
+              <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
+                <select
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
+                  className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200 
+                            dark:border-gray-700 dark:bg-gray-800 bg-white
+                            focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                >
+                  <option value="newest">{t('dashboard.newest')}</option>
+                  <option value="oldest">{t('dashboard.oldest')}</option>
+                  <option value="alphabetical">{t('dashboard.alphabetical')}</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
+                  <ChevronIcon direction="down" className="w-4 h-4" />
+                </div>
+              </div>
+
+              <div className="relative flex-1 sm:flex-initial sm:min-w-[160px]">
+                <select
+                  value={seriesFilter}
+                  onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
+                  className="appearance-none w-full pl-3 pr-10 py-2.5 border rounded-lg border-gray-200
+                            dark:border-gray-700 dark:bg-gray-800 bg-white
+                            focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                >
+                  <option value="all">{t('workspaces.series.filters.allSermons')}</option>
+                  <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
+                  <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
+                  <ChevronIcon direction="down" className="w-4 h-4" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={searchInThoughts}
-              onChange={(e) => setSearchInThoughts(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-            />
-            <span>{t('dashboard.searchInThoughts') ?? 'Search in thoughts'}</span>
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={searchInTags}
-              onChange={(e) => setSearchInTags(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-            />
-            <span>{t('dashboard.searchInTags') ?? 'Search in tags'}</span>
-          </label>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={searchInThoughts}
+                onChange={(e) => setSearchInThoughts(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
+              />
+              <span>{t('dashboard.searchInThoughts') ?? 'Search in thoughts'}</span>
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={searchInTags}
+                onChange={(e) => setSearchInTags(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
+              />
+              <span>{t('dashboard.searchInTags') ?? 'Search in tags'}</span>
+            </label>
+          </div>
         </div>
       </div>
 
       {/* Content Area */}
-      {loading ? (
-        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <SermonCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : sermons.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-          <div className="mx-auto h-12 w-12 text-gray-400">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
-            {t('dashboard.noSermons')}
-          </h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
-            {t('dashboard.createFirstSermon')}
-          </p>
-        </div>
-      ) : processedSermons.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="mx-auto h-12 w-12 text-gray-400">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
-            {t('dashboard.noSearchResults')}
-          </h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {t('dashboard.tryDifferentSearch')}
-          </p>
-          <button
-            onClick={() => setSearchQuery("")}
-            className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-500"
-          >
-            Clear search
-          </button>
-        </div>
-      ) : (
-        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3" data-testid="sermon-grid">
-          {processedSermons.map((sermon) => (
-            <SermonCard
-              key={sermon.id}
-              sermon={sermon}
-              series={allSeries}
-              onDelete={handleDeleteSermon}
-              onUpdate={handleUpdateSermon}
-              searchQuery={searchQuery}
-              searchSnippets={searchSnippetsById[sermon.id]}
-            />
-          ))}
-        </div>
-      )}
+      <DashboardContent
+        loading={loading}
+        sermons={sermons}
+        processedSermons={processedSermons}
+        searchSnippetsById={searchSnippetsById}
+        allSeries={allSeries}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onDeleteSermon={handleDeleteSermon}
+        onUpdateSermon={handleUpdateSermon}
+      />
     </div>
   );
 }

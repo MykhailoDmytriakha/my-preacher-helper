@@ -4,6 +4,7 @@ import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { TestProviders } from '@test-utils/test-providers';
+import { createAudioThought } from '@services/thought.service';
 import '@testing-library/jest-dom';
 
 // Mock next/navigation - useSearchParams overridable per test
@@ -20,6 +21,15 @@ jest.mock('next/navigation', () => ({
 
 // Mock child components with simpler implementations
 
+jest.mock('@components/AudioRecorder', () => ({
+  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError }: any) => (
+    <div data-testid="audio-recorder">
+      <button onClick={() => onRecordingComplete?.(new Blob(['test']))}>Mock Record</button>
+      <button onClick={() => onRetry?.()}>Mock Retry</button>
+      <button onClick={() => onClearError?.()}>Mock Clear</button>
+    </div>
+  ),
+}));
 
 jest.mock('@/components/sermon/SermonHeader', () => ({ sermon, uiMode, onModeChange }: any) => (
   <div data-testid="sermon-header">
@@ -49,6 +59,21 @@ jest.mock('@/components/sermon/KnowledgeSection', () => ({ uiMode }: any) => (
     <h2>Knowledge Section</h2>
     <p>Mode: {uiMode || 'classic'}</p>
   </div>
+));
+
+jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart }: any) => (
+  <div data-testid="thought-list">
+    <button onClick={() => onDelete?.('thought-1')}>Mock Delete</button>
+    <button onClick={() => onEditStart?.({ id: 'thought-1', text: 'Hello', tags: [] }, 0)}>Mock Edit Start</button>
+  </div>
+));
+
+jest.mock('@components/EditThoughtModal', () => ({ isOpen, onSave }: any) => (
+  isOpen ? (
+    <div data-testid="edit-thought-modal">
+      <button onClick={() => onSave('Updated text', ['tag1'], undefined)}>Mock Save</button>
+    </div>
+  ) : null
 ));
 
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: any) => (
@@ -81,6 +106,12 @@ jest.mock('@/hooks/useSermon', () => ({
 }));
 
 // Mock services
+jest.mock('@/services/thought.service', () => ({
+  createAudioThought: jest.fn(),
+  deleteThought: jest.fn(),
+  updateThought: jest.fn(),
+}));
+
 // Mock prep components to test callbacks
 jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ onSavePassageSummary }: any) => (
   <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
@@ -445,6 +476,35 @@ describe('Sermon Detail Page', () => {
     });
   });
 
+  describe('Audio Recorder', () => {
+    it('retries transcription after initial failure', async () => {
+      const user = userEvent.setup();
+      const createAudioThoughtMock = createAudioThought as jest.Mock;
+      createAudioThoughtMock
+        .mockRejectedValueOnce(new Error('Transcription failed'))
+        .mockResolvedValueOnce({ id: 'thought-1', text: 'Hello', tags: [] });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await user.click(screen.getByText('Mock Record'));
+      await waitFor(() => {
+        expect(createAudioThoughtMock).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(screen.getByText('Mock Retry'));
+      await waitFor(() => {
+        expect(createAudioThoughtMock).toHaveBeenCalledTimes(2);
+        expect(defaultUseSermonReturn.setSermon).toHaveBeenCalled();
+      });
+
+      await user.click(screen.getByText('Mock Clear'));
+    });
+  });
+
   describe('Accessibility', () => {
     beforeEach(() => {
       render(
@@ -518,4 +578,3 @@ describe('Sermon Detail Page', () => {
     });
   });
 });
-

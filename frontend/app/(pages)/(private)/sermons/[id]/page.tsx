@@ -1536,7 +1536,7 @@ export default function SermonPage() {
         <motion.div
           className="flex"
           initial={false}
-          animate={{ x: uiMode === 'prep' ? '0%' : '-50%' }}
+          animate={{ x: uiMode === 'prep' ? '0%' : 'calc(-50% - 1px)' }}
           transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
           style={{ width: '200%', willChange: 'transform' }}
         >
@@ -1554,7 +1554,7 @@ export default function SermonPage() {
 
           {/* Slide 2: Classic layout (right) */}
           <div className="basis-1/2 shrink-0">
-            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 pl-px`}>
               <div className="lg:col-span-2">
                 {renderClassicContent()}
               </div>

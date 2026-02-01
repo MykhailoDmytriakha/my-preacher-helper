@@ -1,6 +1,6 @@
 ---
-name: 73-close-lessons-learn-150
-description: "[73] CLOSE. Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, or enhancing Project Architecture Quick Reference with new insights."
+name: 73-lessons-learn-150
+description: "[73] LESSONS. Record and maintain Lessons in MEMORY.md after a problem is solved or the user confirms success. Use when capturing a new lesson, moving lessons through the pipeline, or enhancing Project Architecture Quick Reference with new insights."
 ---
 
 # Close-Lessons-Learn 150 Protocol
@@ -59,17 +59,3 @@ Use this skill when:
 - Report how many **Principles Detected** were recorded and where (Inbox lesson **Principle:** field vs. `## 🧠 Principles` section).
 - If you did **not** write a lesson, say why.
 - If you updated the Project Architecture Quick Reference, specify what was added or modified.
-
-## Session Log Entry (MANDATORY)
-
-After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
-
-```
-### [HH:MM] Close-Lessons-Learn 150 Complete
-**Lessons Recorded:** <count>
-**Principles Recorded:** <count> (Inbox / Principles section: <where each was written>)
-**Type:** <Inbox/Short/Long-Term>
-**Key Principle:** <one-line summary>
-```
-
----

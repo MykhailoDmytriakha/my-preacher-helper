@@ -76,11 +76,17 @@
   "dashboard": {
     "mySermons": "My Sermons",
     "searchSermons": "Search sermons...",
+    "clearSearch": "Clear search",
     "searchInThoughts": "Search in thoughts",
     "searchInTags": "Search in tags",
     "newest": "Newest first",
     "oldest": "Oldest first",
     "alphabetical": "Alphabetical",
+    "searchPanel": {
+      "title": "Search & Filters",
+      "show": "Show",
+      "hide": "Hide"
+    },
     "noSermons": "No sermons yet",
     "createFirstSermon": "Create your first sermon using the button above",
     "noSearchResults": "No results found",

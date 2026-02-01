@@ -57,7 +57,8 @@ jest.mock('@/components/series/SeriesSelector', () => {
 jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
   default: (props: any) => (
-    <div data-testid="export-buttons" {...props}>
+    <div data-testid="export-buttons">
+      {props.extraButtons}
       <button type="button">TXT</button>
       <button type="button">PDF</button>
       <button type="button">Word</button>
@@ -151,6 +152,26 @@ describe('SermonHeader Component', () => {
       expect(screen.getByText('TXT')).toBeInTheDocument();
       expect(screen.getByText('PDF')).toBeInTheDocument();
       expect(screen.getByText('Word')).toBeInTheDocument();
+    });
+
+    it('renders preach button and navigates to preaching plan', () => {
+      const originalLocation = window.location;
+      // Override window.location for test
+      delete (window as Partial<Window>).location;
+      window.location = {
+        ...originalLocation,
+        href: '',
+      };
+
+      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+
+      const preachButton = screen.getByTitle('Preach');
+      fireEvent.click(preachButton);
+
+      expect(window.location.href).toBe(`/sermons/${mockSermon.id}/plan?planView=preaching`);
+
+      // Restore original location
+      window.location = originalLocation;
     });
   });
 

@@ -76,11 +76,17 @@
   "dashboard": {
     "mySermons": "Мои проповеди",
     "searchSermons": "Поиск проповедей...",
+    "clearSearch": "Очистить поиск",
     "searchInThoughts": "Искать в мыслях",
     "searchInTags": "Искать в тегах",
     "newest": "Сначала новые",
     "oldest": "Сначала старые",
     "alphabetical": "По алфавиту",
+    "searchPanel": {
+      "title": "Поиск и фильтры",
+      "show": "Показать",
+      "hide": "Скрыть"
+    },
     "noSermons": "Пока нет проповедей",
     "createFirstSermon": "Создайте свою первую проповедь с помощью кнопки выше",
     "noSearchResults": "Ничего не найдено",

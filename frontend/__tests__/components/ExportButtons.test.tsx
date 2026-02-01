@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
-import ExportButtons from '../../app/components/ExportButtons';
+import ExportButtons, { ExportTxtModal } from '../../app/components/ExportButtons';
 import '@testing-library/jest-dom';
 
 // Mock the required dependencies
@@ -39,6 +39,11 @@ jest.mock('html2canvas', () => ({
   default: jest.fn().mockResolvedValue({
     toDataURL: jest.fn().mockReturnValue('data:image/png;base64,test')
   })
+}));
+
+jest.mock('@/components/AudioExportModal', () => ({
+  __esModule: true,
+  default: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div data-testid="audio-export-modal" /> : null),
 }));
 
 const mockExportToWord = jest.fn();
@@ -238,6 +243,156 @@ describe('ExportButtons Component', () => {
       data: customPlanData,
       filename: 'sermon-plan-sermon-title.docx',
       focusedSection: undefined
+    });
+  });
+
+  it('renders extra buttons and applies slot class', () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        slotClassName="slot-test"
+        extraButtons={<div data-testid="extra-button">Extra</div>}
+      />
+    );
+
+    expect(screen.getByTestId('extra-button')).toBeInTheDocument();
+    const txtWrapper = screen.getByText('TXT').closest('div');
+    expect(txtWrapper).toHaveClass('slot-test');
+  });
+
+  it('opens TXT modal and loads content', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+      />
+    );
+
+    await user.click(screen.getByText('TXT'));
+    expect(await screen.findByTestId('export-txt-modal')).toBeInTheDocument();
+    await waitFor(() => expect(mockGetExportContent).toHaveBeenCalled());
+  });
+
+  it('opens TXT modal when showTxtModalDirectly is true', async () => {
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        showTxtModalDirectly
+      />
+    );
+
+    expect(await screen.findByTestId('export-txt-modal')).toBeInTheDocument();
+  });
+
+  it('opens PDF modal when PDF export is available', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        getPdfContent={mockGetPdfContent}
+        sermonId={mockSermonId}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Export to PDF' }));
+    expect(await screen.findByText('export.savePdf')).toBeInTheDocument();
+  });
+
+  it('renders audio export button and opens modal', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        enableAudio
+        sermonTitle="Test Sermon"
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Audio (Beta)' }));
+    expect(screen.getByTestId('audio-export-modal')).toBeInTheDocument();
+  });
+
+  describe('ExportTxtModal Interactions', () => {
+    const mockClose = jest.fn();
+    const mockGetContent = jest.fn();
+
+    beforeAll(() => {
+      // Setup clipboard mock
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          writeText: jest.fn().mockResolvedValue(undefined),
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      // Setup URL mocks
+      if (typeof window.URL.createObjectURL === 'undefined') {
+        Object.defineProperty(window.URL, 'createObjectURL', { value: jest.fn(() => 'blob:test'), writable: true, configurable: true });
+      } else {
+        jest.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:test');
+      }
+
+      if (typeof window.URL.revokeObjectURL === 'undefined') {
+        Object.defineProperty(window.URL, 'revokeObjectURL', { value: jest.fn(), writable: true, configurable: true });
+      } else {
+        jest.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => { });
+      }
+    });
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('toggles between Plain and Markdown formats', async () => {
+      mockGetContent.mockResolvedValue('Content');
+      const user = userEvent.setup();
+
+      render(
+        <ExportTxtModal
+          isOpen={true}
+          onClose={mockClose}
+          getContent={mockGetContent}
+          format="plain"
+        />
+      );
+
+      await waitFor(() => expect(screen.getByText('Content')).toBeInTheDocument());
+
+      const mdButton = screen.getByText('export.formatMarkdown');
+      await user.click(mdButton);
+
+      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('markdown', { includeTags: false }));
+    });
+
+    it('toggles tags inclusion', async () => {
+      mockGetContent.mockResolvedValue('Content');
+      const user = userEvent.setup();
+      render(<ExportTxtModal isOpen={true} onClose={mockClose} getContent={mockGetContent} />);
+      await waitFor(() => expect(screen.getByText('Content')).toBeInTheDocument());
+      const toggle = screen.getByRole('switch');
+      await user.click(toggle);
+      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('plain', { includeTags: true }));
+    });
+
+    it('handles download', async () => {
+      mockGetContent.mockResolvedValue('Content to download');
+      const user = userEvent.setup();
+      render(<ExportTxtModal isOpen={true} onClose={mockClose} getContent={mockGetContent} />);
+      await waitFor(() => expect(screen.getByText('Content to download')).toBeInTheDocument());
+
+      // Spy on click
+      const clickSpy = jest.spyOn(HTMLAnchorElement.prototype, 'click');
+      const downloadButton = screen.getByText('export.downloadTxt');
+      await user.click(downloadButton);
+      expect(clickSpy).toHaveBeenCalled();
     });
   });
 });

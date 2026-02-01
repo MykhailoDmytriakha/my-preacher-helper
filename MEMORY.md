@@ -39,6 +39,50 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-01 Refactoring to Reduce Cognitive Complexity
+**Problem:** `DashboardPage` had high cognitive complexity (23 > 20) due to mixed state management, filtering logic, and complex rendering ternaries.
+**Solution:** (1) Extracted filtering/sorting logic into `useFilteredSermons` hook. (2) Extracted conditional rendering (Loading/Empty/Grid) into `DashboardContent` component.
+**Why it worked:** Splitting "Data Preparation" (Hook) from "Data Presentation" (Component) and "Conditional Rendering" (Sub-cmp) removed nested branches from the main controller.
+**Principle:** When a component is too complex, extract: Logic -> Custom Hook, Rendering -> Sub-component. Specifically, replacing nested ternaries in JSX `return` with a dedicated `Content` component that uses early returns is a huge complexity win.
+
+### 2026-02-01 Jest Transform Issue with New Files
+**Problem:** Newly created test files in `__tests__` failed with "SyntaxError: Cannot use import statement outside a module", while existing files worked fine. Resetting cache didn't help.
+**Cause:** Likely a Jest/Babel configuration caching issue or strict transform pattern match that didn't pick up the new file immediately.
+**Solution:** Merged the new tests into an existing, working test file (`ExportButtons.test.tsx`) instead of fighting the configuration.
+**Why it worked:** The existing file was already being correctly transformed by the test runner.
+**Principle:** When the build system fights you on file recognition, merging into a known-good context is often a faster path to value than debugging the toolchain.
+
+### 2026-02-01 Safe Global Mocking in Jest
+**Problem:** `Object.assign(navigator, ...)` failed or was unsafe for mocking `clipboard` in strict environments (JSDOM/TypeScript readonly properties).
+**Solution:** Used `Object.defineProperty(navigator, 'clipboard', { value: ... })` which bypasses assignment checks and allows defining usually read-only properties for testing.
+**Why it worked:** `defineProperty` is the standard way to override read-only properties in JavaScript environments.
+**Principle:** Always use `Object.defineProperty` to mock global browser APIs (`navigator`, `window.URL`) to ensure compatibility and avoid "read-only property" errors.
+
+### 2026-02-01 Coverage for Skeletons
+**Problem:** `DashboardStatsSkeleton` had 0% coverage despite being used in `DashboardPage`, because the page test explicitly mocked it.
+**Solution:** (1) Added `data-testid` to the Skeleton component. (2) Removed the mock from the page test. (3) Updated the test to expect the real component via `getByTestId`.
+**Why it worked:** The test now renders the actual skeleton code (divs, classes), registering as coverage.
+**Principle:** To cover visual-only components (skeletons, icons) in integration tests, do not mock them; instead, give them stable test IDs and let them render.
+
+### 2026-02-01 Mobile Subpixel Rendering Seams
+**Problem:** A thin vertical line appeared on the left edge of the "Classic Mode" sermon view on mobile.
+**Cause:** The container used `width: 200%` and `x: -50%` to slide content. On some mobile viewports, subpixel rendering caused a 1px gap/bleed from the adjacent slide.
+**Solution:** Overshift the slide by 1px using `x: calc(-50% - 1px)` and add `pl-px` to the inner container to compensate for the content clipping.
+**Why it worked:** The 1px overlap covers the subpixel gap, and the padding restores the visual alignment of the content.
+**Principle:** When using percentage-based transforms for sliders (`x: -50%`), beware of subpixel rendering gaps on mobile; use a 1px overlap (`calc`) to mask the seam.
+
+### 2026-02-01 Dashboard Tabs Wrapping
+**Problem:** Dashboard tabs overflowed horizontally on narrow mobile screens (390px), breaking the layout.
+**Solution:** Switched from `flex-nowrap` + `space-x` to `flex-wrap` + `gap`. Updated styling to use "pills" on mobile for clearer touch targets in a multiline layout.
+**Why it worked:** `flex-wrap` allows tabs to flow naturally onto a second line, and `gap` ensures consistent spacing both horizontally and vertically.
+**Principle:** For navigation tabs that may exceed viewport width on mobile, prefer `flex-wrap` + `gap` over scrolling or hiding, unless horizontal swipe is an explicit design choice.
+
+### 2026-02-01 Export Action Layout Alignment
+**Problem:** "Word" export button (short label) rendered significantly smaller than "PDF" (longer label) and "Preach" (icon only) in the sermon header flex container.
+**Solution:** Enforced equal width for all action slots using `flex-1 basis-0 min-w-[64px]` and a shared `ActionButton` base component.
+**Why it worked:** `flex-1 basis-0` forces Flexbox to distribute available space equally regardless of content size, provided the content fits or wraps.
+**Principle:** To visually equalize a row of buttons with varying label lengths (Text vs Icon), use `flex-1 basis-0` on their containers rather than relying on padding or content size.
+
 ### 2026-02-01 Dashboard Word Export: Plan Badge vs Disabled Button
 **Problem:** Dashboard showed the "Есть план" badge, but the Word export button was disabled.
 **Attempts:** Verified UI state; traced export gating to `planData` being missing on the card.

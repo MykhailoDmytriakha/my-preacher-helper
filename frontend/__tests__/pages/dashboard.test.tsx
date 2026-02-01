@@ -30,9 +30,7 @@ jest.mock('@/components/dashboard/SermonCard', () => ({
     ))}
   </div>
 ));
-jest.mock('@/components/skeletons/DashboardStatsSkeleton', () => ({
-  DashboardStatsSkeleton: () => <div data-testid="dashboard-stats-skeleton">Stats Skeleton</div>
-}));
+
 jest.mock('@/components/skeletons/SermonCardSkeleton', () => ({
   SermonCardSkeleton: () => <div data-testid="sermon-card-skeleton">Card Skeleton</div>
 }));

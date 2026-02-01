@@ -38,9 +38,9 @@ export default function DashboardStats({ sermons }: DashboardStatsProps) {
     : '--';
   
   return (
-    <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
       {/* Total Sermons */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-2 sm:mb-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5">
         <div className="flex items-center">
           <div className="rounded-full bg-blue-100 dark:bg-blue-900 p-2 sm:p-3 mr-3 sm:mr-4 flex-shrink-0">
             <DocumentIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
@@ -57,7 +57,7 @@ export default function DashboardStats({ sermons }: DashboardStatsProps) {
       </div>
       
       {/* Total Thoughts */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-2 sm:mb-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5">
         <div className="flex items-center">
           <div className="rounded-full bg-purple-100 dark:bg-purple-900 p-2 sm:p-3 mr-3 sm:mr-4 flex-shrink-0">
             <PencilIcon className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-400" />
@@ -74,7 +74,7 @@ export default function DashboardStats({ sermons }: DashboardStatsProps) {
       </div>
       
       {/* Sermons with Outlines */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5 mb-2 sm:mb-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-3 sm:p-5">
         <div className="flex items-center">
           <div className="rounded-full bg-green-100 dark:bg-green-900 p-2 sm:p-3 mr-3 sm:mr-4 flex-shrink-0">
             <ChevronIcon direction="right" className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />

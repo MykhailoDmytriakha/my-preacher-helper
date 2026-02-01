@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import "@locales/i18n";
 
 import AudioExportModal from "@/components/AudioExportModal";
+import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from "@/components/common/ActionButton";
 import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
@@ -31,6 +32,8 @@ interface ExportButtonsLayoutProps {
   isAudioEnabled?: boolean;
   isPreached?: boolean;
   variant?: 'default' | 'icon';
+  extraButtons?: React.ReactNode;
+  slotClassName?: string;
 }
 
 type Orientation = NonNullable<ExportButtonsLayoutProps['orientation']>;
@@ -114,6 +117,8 @@ function ExportButtonsLayout({
   isAudioEnabled = false,
   isPreached = false,
   variant = 'default',
+  extraButtons,
+  slotClassName,
 }: ExportButtonsLayoutProps) {
   const { t } = useTranslation();
   const translate = (key: string, fallback: string) => {
@@ -200,26 +205,30 @@ function ExportButtonsLayout({
   const txtTextButtonClassName = getTxtTextButtonClassName(isPreached);
   const pdfTextButtonClassName = getPdfTextButtonClassName(isPdfAvailable, isPreached);
   const wordTextButtonClassName = getWordTextButtonClassName(isWordDisabled, isPreached);
+  const textButtonSlotClassName = slotClassName || ACTION_BUTTON_SLOT_CLASS;
 
   return (
     <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
-      <button
-        onClick={onTxtClick}
-        className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors flex-1 sm:flex-none text-center ${txtTextButtonClassName
-          }`}
-      >
-        {txtButtonLabel}
-      </button>
+      {extraButtons}
 
-      <div className="tooltip flex-1 sm:flex-none">
-        <button
+      <div className={textButtonSlotClassName}>
+        <ActionButton
+          onClick={onTxtClick}
+          className={txtTextButtonClassName}
+        >
+          {txtButtonLabel}
+        </ActionButton>
+      </div>
+
+      <div className={`tooltip ${textButtonSlotClassName}`}>
+        <ActionButton
           onClick={onPdfClick}
           disabled={!isPdfAvailable}
-          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md w-full ${pdfTextButtonClassName}`}
+          className={pdfTextButtonClassName}
           aria-label={pdfAriaLabel}
         >
           {pdfButtonLabel}
-        </button>
+        </ActionButton>
         {!isPdfAvailable && (
           <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
             {soonAvailableLabel}
@@ -227,16 +236,15 @@ function ExportButtonsLayout({
         )}
       </div>
 
-      <div className="tooltip flex-1 sm:flex-none">
-        <button
+      <div className={`tooltip ${textButtonSlotClassName}`}>
+        <ActionButton
           onClick={onWordClick}
           disabled={isWordDisabled}
-          className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full ${wordTextButtonClassName
-            }`}
+          className={wordTextButtonClassName}
           aria-label={wordExportLabel}
         >
           {wordButtonLabel}
-        </button>
+        </ActionButton>
         {isWordDisabled && (
           <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
             {noPlanForWordLabel}
@@ -245,14 +253,14 @@ function ExportButtonsLayout({
       </div>
 
       {isAudioEnabled && onAudioClick && (
-        <div className="tooltip flex-1 sm:flex-none">
-          <button
+        <div className={`tooltip ${textButtonSlotClassName}`}>
+          <ActionButton
             onClick={onAudioClick}
-            className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors w-full flex items-center justify-center ${getAudioTextButtonClassName(isPreached)}`}
+            className={getAudioTextButtonClassName(isPreached)}
             aria-label={audioLabel}
           >
-            <AudioLines className="w-5 h-5" />
-          </button>
+            <AudioLines className="w-4 h-4" />
+          </ActionButton>
           <span className={`tooltiptext ${pdfTooltipPositionClass}`}>
             {audioLabel}
           </span>
@@ -493,7 +501,7 @@ interface ExportPdfModalProps {
   title: string;
 }
 
-const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
+export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   isOpen,
   onClose,
   getContent,
@@ -648,6 +656,10 @@ interface ExportButtonsContainerProps {
   planData?: PlanData;
   /** Section to export in Focus Mode */
   focusedSection?: string;
+  /** Optional extra buttons rendered before export actions */
+  extraButtons?: React.ReactNode;
+  /** Optional slot class override for action sizing */
+  slotClassName?: string;
 }
 
 const TooltipStyles = () => (
@@ -655,7 +667,6 @@ const TooltipStyles = () => (
     /* Base tooltip styles */
     .tooltip {
       position: relative;
-      display: inline-block;
     }
     
     .tooltip .tooltiptext {
@@ -737,6 +748,8 @@ export default function ExportButtons({
   sermonTitle = '',
   planData,
   focusedSection,
+  extraButtons,
+  slotClassName,
 }: ExportButtonsContainerProps) {
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -815,6 +828,8 @@ export default function ExportButtons({
         isAudioEnabled={enableAudio}
         isPreached={isPreached}
         variant={variant}
+        extraButtons={extraButtons}
+        slotClassName={slotClassName}
       />
 
       <ExportTxtModal
