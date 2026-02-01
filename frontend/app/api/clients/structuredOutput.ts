@@ -58,6 +58,8 @@ export interface StructuredOutputOptions {
   formatName: string;
   /** Additional context for logging */
   logContext?: Record<string, unknown>;
+  /** Optional model override */
+  model?: string;
 }
 
 /**
@@ -95,8 +97,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   const { formatName, logContext = {} } = options;
   const operationName = `StructuredOutput:${formatName}`;
 
-  logger.info(operationName, "Starting structured output call");
-  
+  logger.info(operationName, `Starting structured output call using model: ${options.model || aiModel}`);
+
   if (isDebugMode) {
     logger.debug(operationName, "Input context", logContext);
   }
@@ -112,7 +114,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     // Make API call with structured output
     const completion = await aiAPI.beta.chat.completions.parse({
-      model: aiModel,
+      model: options.model || aiModel,
       messages,
       response_format: zodResponseFormat(schema, formatName),
     });
@@ -123,12 +125,12 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     // Check for refusal (model declined to respond)
     const message = completion.choices[0]?.message;
-    
+
     if (message?.refusal) {
       logger.warn(operationName, `Model refused to respond after ${formattedDuration}`, {
         refusal: message.refusal
       });
-      
+
       return {
         success: false,
         data: null,
@@ -139,10 +141,10 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     // Get parsed response
     const parsed = message?.parsed;
-    
+
     if (!parsed) {
       logger.error(operationName, `No parsed data in response after ${formattedDuration}`);
-      
+
       return {
         success: false,
         data: null,
@@ -152,7 +154,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     }
 
     logger.success(operationName, `Completed in ${formattedDuration}`);
-    
+
     if (isDebugMode) {
       logger.debug(operationName, "Parsed response", parsed);
     }

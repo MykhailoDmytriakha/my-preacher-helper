@@ -36,6 +36,7 @@ import {
     SpeechOptimizationResult,
     WizardStep
 } from '@/types/audioGeneration.types';
+import { getSortedThoughts } from '@/utils/sermonSorting';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
 import ChunkEditorModal from './ChunkEditorModal';
@@ -632,28 +633,8 @@ export default function StepByStepWizard({
         const getThoughtsForSection = (sectionId: string) => {
             if (!sermon) return [];
 
-            return sermon.thoughts.filter(t => {
-                const tags = (t.tags || []).map(tag => tag.toLowerCase().trim());
-
-                const isIntro = tags.some(tag =>
-                    ['introduction', 'intro', 'start', 'beginning', 'vstup', 'вступ', 'вступление', 'начало'].includes(tag)
-                );
-                const isConclusion = tags.some(tag =>
-                    ['conclusion', 'end', 'summary', 'outro', 'zaver', 'висновок', 'заключение', 'конец', 'кінець'].includes(tag)
-                );
-                const isMainExplicit = tags.some(tag =>
-                    ['main', 'mainpart', 'body', 'content', 'основная часть', 'основная', 'основна частина'].includes(tag)
-                );
-
-                if (sectionId === 'introduction') return isIntro;
-                if (sectionId === 'conclusion') return isConclusion;
-
-                if (sectionId === 'mainPart') {
-                    return isMainExplicit || (!isIntro && !isConclusion);
-                }
-
-                return false;
-            }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const mappedSection = sectionId === 'mainPart' ? 'main' : sectionId as 'introduction' | 'main' | 'conclusion';
+            return getSortedThoughts(sermon, mappedSection);
         };
 
         return (
@@ -736,7 +717,7 @@ export default function StepByStepWizard({
                                     onClick={handleOptimize}
                                     className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full font-bold shadow-md transition-colors"
                                 >
-                                    {t('audioExport.startOptimization', { defaultValue: 'Start Optimization' })}
+                                    {t('audioExport.prepareTextBtn', { defaultValue: 'Prepare Text for Audio' })}
                                 </button>
                             </div>
                         ) : (
@@ -809,24 +790,12 @@ export default function StepByStepWizard({
                             )}
 
                             <button
-                                onClick={chunks.length === 0 ? handleOptimize : handleGenerate}
-                                disabled={isLoading}
-                                className={`px-6 py-3 rounded-xl shadow-lg text-sm font-bold flex items-center gap-2 transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 ${chunks.length === 0
-                                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-purple-500/20'
-                                    : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-green-500/20'
-                                    }`}
+                                onClick={handleGenerate}
+                                disabled={isLoading || chunks.length === 0}
+                                className={`px-6 py-3 rounded-xl shadow-lg text-sm font-bold flex items-center gap-2 transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-green-500/20 ${chunks.length === 0 ? 'hidden' : ''}`}
                             >
-                                {chunks.length === 0 ? (
-                                    <>
-                                        <Sparkles className="w-4 h-4" />
-                                        {t('audioExport.optimizeBtn', { defaultValue: 'Optimize Content' })}
-                                    </>
-                                ) : (
-                                    <>
-                                        {t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}
-                                        <ArrowRight className="w-4 h-4" />
-                                    </>
-                                )}
+                                {t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}
+                                <ArrowRight className="w-4 h-4" />
                             </button>
                         </div>
                     </div>

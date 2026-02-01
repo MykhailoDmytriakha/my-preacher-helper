@@ -129,6 +129,8 @@ export interface SpeechOptimizationOptions {
     scriptureVerse?: string;
     /** Sections to optimize */
     sections: SectionSelection;
+    /** Context from previous chunk for smooth transitions */
+    previousContext?: string;
 }
 
 /** Result of speech optimization */

@@ -168,7 +168,7 @@ describe('StepByStepWizard', () => {
         rerender(<StepByStepWizard {...defaultProps} step="review" />);
 
         // Trigger Optimization (calls the 3 optimization mocks + 1 save mock)
-        fireEvent.click(screen.getByText('Start Optimization'));
+        fireEvent.click(screen.getByText('Prepare Text for Audio'));
 
         // 2. Mock Generate Fetch (POST) - This is for handleGenerate later
         const encoder = new TextEncoder();
@@ -187,9 +187,11 @@ describe('StepByStepWizard', () => {
             },
         });
 
-        // Use waitFor to ensure optimization state updates and "Generate Audio" button appears
+        // Use waitFor to ensure optimization state updates and "Generate Audio" button is ready
         await waitFor(() => {
-            expect(screen.getByText('Generate Audio')).toBeInTheDocument();
+            const btn = screen.getByText('Generate Audio');
+            expect(btn).toBeInTheDocument();
+            expect(btn).toBeEnabled();
         }, { timeout: 3000 });
 
         fireEvent.click(screen.getByText('Generate Audio'));

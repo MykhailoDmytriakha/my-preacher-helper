@@ -4,20 +4,35 @@
  * POST /api/sermons/[id]/audio/optimize
  * 
  * Step 1 of step-by-step audio generation:
- * Runs GPT optimization only, saves chunks to Firestore.
+ * Runs GPT optimization, saves chunks to Firestore.
+ * 
+ * IMPEMENTATION:
+ * - Iterative sequential generation.
+ * - Processes outline points one by one.
+ * - Passes previous chunk context to the next generation step.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { createAudioChunks } from '@/api/clients/tts.client';
-import { extractSermonText, SectionKey } from '@/api/services/sermonTextService';
+import { SectionKey, SECTION_CONFIG, getSectionThoughts } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
-import type { Sermon } from '@/models/models';
+import type { Sermon, Thought } from '@/models/models';
 import type { AudioChunk, AudioMetadata, SectionSelection } from '@/types/audioGeneration.types';
 
-// Text extraction logic moved to @/api/services/sermonTextService
+// ============================================================================
+// Types
+// ============================================================================
+
+interface GenerationSegment {
+    id: string;
+    section: SectionKey;
+    title: string;
+    thoughts: Thought[];
+    contextType: 'start' | 'transition';
+}
 
 // ============================================================================
 // Route Handler
@@ -31,9 +46,9 @@ export async function POST(
         const { id: sermonId } = await params;
         const body = await request.json();
         const requestedSections: SectionSelection = body.sections || 'all';
-        const userId = body.userId; // Required for ownership verification
+        const userId = body.userId;
 
-        // Default to true for backward compatibility, unless explicitly false
+        // Default to true for backward compatibility
         const saveToDb = body.saveToDb !== false;
 
         if (!userId) {
@@ -47,81 +62,93 @@ export async function POST(
         }
         const sermon = { id: sermonDoc.id, ...sermonDoc.data() } as Sermon;
 
-        // Verify ownership
         if (sermon.userId !== userId) {
-            return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        // 2. Identify sections to process
+        // 2. Prepare Segments based on Outline & Thoughts
         const sectionsToProcess: SectionKey[] = requestedSections === 'all'
             ? ['introduction', 'mainPart', 'conclusion']
             : [requestedSections as SectionKey];
 
+        const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
+
+        // 3. Sequential Generation Loop with Context
         let allChunks: AudioChunk[] = [];
-        const existingChunks = (sermon.audioChunks || []) as AudioChunk[];
-
-        // 3. Process each section independently
-        // If we are optimizing specific sections, we should keep existing chunks from OTHER sections
-        if (requestedSections !== 'all') {
-            allChunks = existingChunks.filter(c => c.sectionId !== requestedSections);
-        }
-
+        let accumulatedContext = '';
         let totalOriginalLength = 0;
         let totalOptimizedLength = 0;
 
-        for (const section of sectionsToProcess) {
-            // Extract raw text for this section
-            const rawSectionText = extractSermonText(sermon, section);
+        // If filtering, load existing chunks to preserve what we don't change?
+        // Current logic: we overwrite what we touch. If user requested specific section,
+        // we might want to keep others.
+        const existingChunks = (sermon.audioChunks || []) as AudioChunk[];
+        if (requestedSections !== 'all') {
+            // Keep chunks from other sections
+            allChunks = existingChunks.filter(c => c.sectionId !== requestedSections);
+        }
 
-            console.log(`[OptimizeAPI] Processing section: ${section}, TextLength: ${rawSectionText?.length}`);
+        console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
 
-            if (!rawSectionText) {
-                console.log(`[OptimizeAPI] Skipping empty section: ${section}`);
+        for (const segment of segments) {
+            console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+
+            // Construct text for this segment
+            const segmentText = formatSegmentText(segment);
+
+            if (!segmentText) {
+                console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
                 continue;
             }
 
-            totalOriginalLength += rawSectionText.length;
+            totalOriginalLength += segmentText.length;
 
-            // Optimize
-            const optimized = await optimizeTextForSpeech(
-                rawSectionText,
+            // Generate with context from previous loop
+            const result = await optimizeTextForSpeech(
+                segmentText,
                 sermon,
                 {
                     sermonTitle: sermon.title,
                     scriptureVerse: sermon.verse,
-                    sections: section, // Pass specific section context
+                    sections: segment.section,
+                    previousContext: accumulatedContext || undefined
                 }
             );
 
-            totalOptimizedLength += optimized.optimizedText.length;
+            // Update stats
+            totalOptimizedLength += result.optimizedLength;
 
-            // Chunk (using GPT-provided semantic chunks)
-            // Note: createAudioChunks maps them to AudioChunk objects
-            const sectionChunks = createAudioChunks(optimized.chunks, section);
+            // Update context for NEXT iteration
+            // We use the last generated chunk (or full text if small) as context
+            accumulatedContext = result.optimizedText.slice(-1000); // Last 1000 chars
 
-            // Adjust indexes to be global or keep them local? 
-            // Ideally we want a global sequence for playback, but local for editing.
-            // createAudioChunks assigns 0-based index. 
-            // We can re-index later if needed, but for now let's just append.
-            allChunks.push(...sectionChunks);
+            // Convert to AudioChunk objects
+            const newChunks = createAudioChunks(result.chunks, segment.section);
+
+            // Push to our local collection
+            // Note: we will re-index globally at the end
+            allChunks.push(...newChunks);
         }
 
-        // Re-assign global indexes to ensure correct playback order
-        // Sort by section order first: Intro -> Main -> Conclusion
+        // 4. Global Re-indexing
+        // Sort by section order first, then by existing sequence
         const sectionOrder: Record<string, number> = { introduction: 0, mainPart: 1, conclusion: 2 };
+
         allChunks.sort((a, b) => {
             const secDiff = (sectionOrder[a.sectionId] || 0) - (sectionOrder[b.sectionId] || 0);
             if (secDiff !== 0) return secDiff;
-            return a.index - b.index; // Keep relative order within section
+            // Within same section, trust the push order (stable sort usually) 
+            // Since we reconstructed the list sequentially, this should be fine.
+            return 0;
         });
 
-        // Re-index globally
+        // Assign clean 0-based index
         allChunks = allChunks.map((chunk, idx) => ({ ...chunk, index: idx }));
 
-        // 4. Save to Firestore (only if saveToDb is true)
+        // 5. Save to DB
         if (saveToDb) {
             const metadata: AudioMetadata = {
-                voice: 'onyx', // Default, should effectively be updated by generate step or passed here
+                voice: 'onyx',
                 model: 'gpt-4o-mini-tts',
                 lastGenerated: new Date().toISOString(),
                 chunksCount: allChunks.length,
@@ -133,19 +160,19 @@ export async function POST(
             });
         }
 
-        // 5. Return chunks for preview
         return NextResponse.json({
             success: true,
             chunks: allChunks.map((c, i) => ({
                 index: i,
                 sectionId: c.sectionId,
                 text: c.text,
-                preview: c.text.slice(0, 150) + (c.text.length > 150 ? '...' : ''),
+                preview: c.text.slice(0, 150) + '...',
             })),
             totalChunks: allChunks.length,
             originalLength: totalOriginalLength,
             optimizedLength: totalOptimizedLength,
         });
+
     } catch (error) {
         console.error('Optimize error:', error);
         return NextResponse.json(
@@ -153,4 +180,90 @@ export async function POST(
             { status: 500 }
         );
     }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Turns the hierarchical sermon structure into a flat list of generation tasks.
+ */
+function buildGenerationSegments(
+    sermon: Sermon,
+    sectionsToProcess: SectionKey[]
+): GenerationSegment[] {
+    const segments: GenerationSegment[] = [];
+
+    for (const sectionKey of sectionsToProcess) {
+        const config = SECTION_CONFIG[sectionKey];
+        const outlinePoints = sermon.outline?.[sectionKey as keyof typeof sermon.outline] || [];
+        const allThoughts = getSectionThoughts(sermon, sectionKey);
+
+        // 1. If we have Outline Points, prioritize them
+        if (outlinePoints.length > 0) {
+            const thoughtsByPoint = new Map<string, Thought[]>();
+
+            // Bucket thoughts by outline point
+            for (const t of allThoughts) {
+                if (t.outlinePointId) {
+                    const existing = thoughtsByPoint.get(t.outlinePointId) || [];
+                    existing.push(t);
+                    thoughtsByPoint.set(t.outlinePointId, existing);
+                }
+            }
+
+            // Create segment for each point
+            for (const point of outlinePoints) {
+                const pointsThoughts = thoughtsByPoint.get(point.id) || [];
+                segments.push({
+                    id: point.id,
+                    section: sectionKey,
+                    title: point.text,
+                    thoughts: pointsThoughts,
+                    contextType: 'transition'
+                });
+            }
+
+            // Handle "orphaned" thoughts in this section (not assigned to points)
+            const orphanedThoughts = allThoughts.filter(t => !t.outlinePointId);
+            if (orphanedThoughts.length > 0) {
+                segments.push({
+                    id: `${sectionKey}-orphans`,
+                    section: sectionKey,
+                    title: `${config.title} (Additional)`,
+                    thoughts: orphanedThoughts,
+                    contextType: 'transition'
+                });
+            }
+
+        } else {
+            // 2. If NO Outline Points, treat the whole section as one big segment
+            if (allThoughts.length > 0) {
+                segments.push({
+                    id: sectionKey,
+                    section: sectionKey,
+                    title: config.title,
+                    thoughts: allThoughts,
+                    contextType: 'transition'
+                });
+            }
+        }
+    }
+
+    return segments;
+}
+
+function formatSegmentText(segment: GenerationSegment): string {
+    const lines: string[] = [];
+
+    // Add segment title as context/header
+    lines.push(`## ${segment.title}`);
+
+    // Add thoughts
+    for (const t of segment.thoughts) {
+        lines.push(t.text);
+    }
+
+    return lines.join('\n\n').trim();
 }

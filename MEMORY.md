@@ -19,8 +19,9 @@
 ### 📐 Coding Conventions (The "How")
 *   **Strict Boundaries:** Use `zod` for ALL external data limits (API, AI, Forms). Types must strictly match Zod schemas.
 *   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
-*   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors.
+*   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors. For AI chains, use **Sequence-Aware Mocking** to verify context passing.
 *   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
+*   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
 
 ### ⚖️ Domain Axioms (The "Why")
@@ -45,6 +46,24 @@
 **Why it worked:** Splitting "Data Preparation" (Hook) from "Data Presentation" (Component) and "Conditional Rendering" (Sub-cmp) removed nested branches from the main controller.
 **Principle:** When a component is too complex, extract: Logic -> Custom Hook, Rendering -> Sub-component. Specifically, replacing nested ternaries in JSX `return` with a dedicated `Content` component that uses early returns is a huge complexity win.
 
+### 2026-02-01 Hierarchical Sermon Sorting Logic
+**Problem:** `getSortedThoughts` ignored `sermon.outline`. Thoughts assigned to outline points were treated as orphans, leading to incorrect ordering when no manual structure existed.
+**Solution:** Refactored utility to resolve order by: (1) Manual Structure, (2) Outline Points order, (3) Tag-based orphans.
+**Why it worked:** Explicitly iterating through the outline points array before gathering leftovers ensures the UI respects the hierarchical relationship of the sermon model.
+**Principle:** **Hierarchical Data Resolution**: When multiple sources of truth exist, resolve them in descending order of user intentionality (Manual > Planned > Metadata).
+
+### 2026-02-01 Tag Normalization & Aliasing
+**Problem:** Normalization logic for sermon sections was case-sensitive and missed camelCase variants like `mainPart`, causing "orphaned" thoughts even when tagged correctly.
+**Solution:** Added `mainpart` to the canonical alias map and enforced lowercasing during normalization.
+**Why it worked:** Canonical matching now captures all variations of "Main Part" regardless of casing.
+**Principle:** **Pre-processing Normalization**: Always transform external/user metadata (tags, input) to a canonical, lowercase, space-normalized format before logical lookups.
+
+### 2026-02-01 Sequence-Aware Mocking for AI Chains
+**Problem:** Testing sequential AI loops (context passing) with standard mocks led to race conditions where the Nth call received the wrong mock value.
+**Solution:** Used `mockResolvedValueOnce` chains to simulate sequential API responses and `toHaveBeenNthCalledWith` to verify that the Nth call correctly received the (N-1)th output as `previousContext`.
+**Why it worked:** FIFO mock consumption mirrors the sequential `for...of` loop execution.
+**Principle:** To verify stateful chain integrity (e.g. "short-term memory" in AI), use discrete mock responses and positional argument assertions.
+
 ### 2026-02-01 Jest Transform Issue with New Files
 **Problem:** Newly created test files in `__tests__` failed with "SyntaxError: Cannot use import statement outside a module", while existing files worked fine. Resetting cache didn't help.
 **Cause:** Likely a Jest/Babel configuration caching issue or strict transform pattern match that didn't pick up the new file immediately.
@@ -57,6 +76,12 @@
 **Solution:** Used `Object.defineProperty(navigator, 'clipboard', { value: ... })` which bypasses assignment checks and allows defining usually read-only properties for testing.
 **Why it worked:** `defineProperty` is the standard way to override read-only properties in JavaScript environments.
 **Principle:** Always use `Object.defineProperty` to mock global browser APIs (`navigator`, `window.URL`) to ensure compatibility and avoid "read-only property" errors.
+
+### 2026-02-01 Context-Aware Audio Generation
+**Problem:** Parallel generation of sermon audio chunks resulted in disjointed, "robotic" transitions because the AI didn't know what it had just said in the previous chunk.
+**Solution:** Switched from `Promise.all` (parallel) to a sequential `for...of` loop. Captured the last ~1000 characters of chunk N and passed it as `previousContext` to the prompt for chunk N+1, explicitly instructing the AI to create a natural transition.
+**Why it worked:** Giving the AI "short-term memory" of its own previous output allows it to generate connective tissue (transitions) that makes the whole speech sound cohesive, even if generated in parts.
+**Principle:** For long-form AI content generation where coherence matters, favor sequential processing with context passing ("tail context") over faster parallel processing. Coherence requires state.
 
 ### 2026-02-01 Coverage for Skeletons
 **Problem:** `DashboardStatsSkeleton` had 0% coverage despite being used in `DashboardPage`, because the page test explicitly mocked it.
@@ -433,6 +458,20 @@
 
 ---
 
+### 2026-02-01 Mocking next/server in Jest
+**Problem:** `route.test.ts` failed with `Response.json is not a function` because Jest's environment (JSDOM/node) doesn't polyfill the complete Next.js Request/Response API.
+**Solution:** Explicitly mock `next/server` with a custom `NextRequest` class and `NextResponse` object that mimics the production API's behavior (`json()` method).
+**Why it worked:** The test environment now has a working implementation of the API surface used by the route handler.
+**Principle:** For Next.js Route Handlers tested in Jest, mocking `next/server` is often more reliable than relying on partial polyfills.
+
+### 2026-02-01 Race Conditions in UI Tests (toBeEnabled)
+**Problem:** `StepByStepWizard` test failed because it clicked "Generate Audio" immediately after an async state update, but the button was still disabled/loading or not fully interactive.
+**Solution:** Added `expect(btn).toBeEnabled()` inside a `waitFor` block before the click action.
+**Why it worked:** `waitFor` retries until the assertion passes, effectively waiting for the async state to settle and the UI to become interactive.
+**Principle:** Always verify that a button is interactive (`toBeEnabled()`) inside `waitFor` before clicking it in tests, especially if its state depends on async operations.
+
+---
+
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
 > Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
@@ -778,6 +817,7 @@
 - Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
-- Structural Logic: Use `tagUtils.ts` (canonical IDs) for any conditional logic involving Introduction/Main/Conclusion sections.
+- Audio Generation Workflow: Sequential optimization in `api/sermons/[id]/audio/optimize/route.ts` using "tail context" for coherent transitions. Final TTS generation (parallel) in `api/sermons/[id]/audio/generate/route.ts`.
+- Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
 - Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
 - Comments: English only in code

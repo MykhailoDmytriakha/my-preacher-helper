@@ -35,6 +35,7 @@ const STRUCTURE_ALIAS_TO_CANONICAL: Record<string, CanonicalStructureId> = {
   'introduction': 'intro',
   'intro': 'intro',
   'main part': 'main',
+  'mainpart': 'main',
   'main': 'main',
   'conclusion': 'conclusion',
 

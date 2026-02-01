@@ -3,9 +3,12 @@
  * 
  * Uses GPT-4o-mini to convert written sermon text to natural speech format.
  * Removes markdown, smooths transitions, converts scripture references.
+ * Implemented using OpenAI's Structured Output for reliability.
  */
 
-import OpenAI from 'openai';
+import { SpeechOptimizationResponseSchema } from "@/config/schemas/zod";
+
+import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { Sermon } from '@/models/models';
 import type {
@@ -14,19 +17,7 @@ import type {
     SermonSection
 } from '@/types/audioGeneration.types';
 
-// ============================================================================
-// OpenAI Client Setup
-// ============================================================================
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
-const OPTIMIZATION_MODEL = 'gpt-4o-mini';
-
-// ============================================================================
-// System Prompt
-// ============================================================================
+const OPTIMIZATION_MODEL = process.env.OPENAI_OPTIMIZATION_MODEL || 'gpt-4o-mini';
 
 // ============================================================================
 // System Prompt
@@ -46,15 +37,6 @@ Requirements:
    - **CRITICAL**: Each chunk MUST be under 4000 characters.
    - **CRITICAL**: Semantic split (do not break sentences).
    - **CRITICAL**: Preserve exact meaning and sequence.
-
-Output Format (JSON):
-{
-  "chunks": [
-    "First chunk of optimized text...",
-    "Second chunk of text...",
-    ...
-  ]
-}
 `;
 
 // ============================================================================
@@ -63,7 +45,7 @@ Output Format (JSON):
 
 /**
  * Optimizes sermon text for natural speech synthesis.
- * Uses semantic chunking via LLM to preserve flow.
+ * Uses semantic chunking via LLM with Structured Output.
  */
 export async function optimizeTextForSpeech(
     rawText: string,
@@ -72,42 +54,49 @@ export async function optimizeTextForSpeech(
 ): Promise<SpeechOptimizationResult> {
     const userPrompt = buildOptimizationPrompt(rawText, options);
 
-    console.log('[SpeechOptimization] Request Prompt:', userPrompt);
+    // LOGGING: Detailed logs for user verification of Context-Aware Generation
+    console.log('\n--- [Speech Optimization] Request ---');
+    console.log('Section:', options.sections);
+    console.log('Context Length:', options.previousContext?.length || 0);
+    if (options.previousContext) {
+        console.log('PREVIOUS CONTEXT (Snippet):', options.previousContext.slice(-200));
+    }
+    console.log('Model:', OPTIMIZATION_MODEL);
+    console.log('USER PROMPT:', userPrompt);
+    console.log('-------------------------------------\n');
 
-    const response = await openai.chat.completions.create({
-        model: OPTIMIZATION_MODEL,
-        messages: [
-            { role: 'system', content: SPEECH_OPTIMIZATION_SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        response_format: { type: 'json_object' }, // Enforce JSON
-        max_tokens: 16000,
-    });
-
-    const content = response.choices[0]?.message?.content?.trim() || '{}';
-    console.log('[SpeechOptimization] AI Response Content:', content);
-    let chunks: string[] = [];
-
-    try {
-        const parsed = JSON.parse(content);
-        chunks = parsed.chunks || [];
-
-        // Fallback if chunks empty but text exists (unlikely with json mode)
-        if (chunks.length === 0 && content.length > 20) {
-            chunks = [content];
+    const result = await callWithStructuredOutput(
+        SPEECH_OPTIMIZATION_SYSTEM_PROMPT,
+        userPrompt,
+        SpeechOptimizationResponseSchema,
+        {
+            formatName: "speech_optimization",
+            model: OPTIMIZATION_MODEL,
+            logContext: {
+                sermonTitle: options.sermonTitle,
+                textLength: rawText.length,
+            }
         }
-    } catch (e) {
-        console.error('Failed to parse GPT JSON response:', e);
-        // Fallback: treat whole response as one text block if parse fails
-        chunks = [content];
+    );
+
+    if (!result.success || !result.data) {
+        throw result.error || new Error(result.refusal || "Failed to optimize text for speech");
     }
 
+    const chunks = result.data.chunks;
+
+    // LOGGING: Result
+    console.log('\n--- [Speech Optimization] Result ---');
+    console.log('Generated Chunks:', chunks.length);
+    if (chunks.length > 0) {
+        console.log('Chunk 1 Preview:', chunks[0].slice(0, 100) + '...');
+    }
+    console.log('------------------------------------\n');
     const fullText = chunks.join(' ');
 
     return {
-        optimizedText: fullText, // For reference/metadata
-        chunks, // NEW: Direct chunks from LLM
+        optimizedText: fullText,
+        chunks,
         originalLength: rawText.length,
         optimizedLength: fullText.length,
     };
@@ -128,7 +117,7 @@ export function filterTextBySections(
         return rawText;
     }
 
-    // Section markers in Russian (matching exportContent.ts output)
+    // Section markers in Russian
     const sectionMarkers: Record<SermonSection, string[]> = {
         introduction: ['Вступление:', 'Introduction:', 'Введение:'],
         mainPart: ['Основная часть:', 'Main Part:', 'Основная:'],
@@ -151,7 +140,6 @@ export function filterTextBySections(
     }
 
     if (startIndex === -1) {
-        // Section not found, return empty
         return '';
     }
 
@@ -173,7 +161,6 @@ export function filterTextBySections(
 
 /**
  * Builds the user prompt for GPT optimization.
- * @internal
  */
 function buildOptimizationPrompt(
     rawText: string,
@@ -189,8 +176,13 @@ function buildOptimizationPrompt(
     prompt += '\n';
 
     // Add instructions
-    prompt += 'Convert the following sermon text to natural speech format:\n\n';
-    prompt += '---\n';
+    prompt += 'Convert the following sermon text to natural speech format:\n';
+
+    if (options.previousContext) {
+        prompt += `\nCONTEXT: The previous section ended with the following text. You must start the new section with a natural transition that flows from this context:\n"${options.previousContext}"\n`;
+    }
+
+    prompt += '\n---\n';
     prompt += rawText;
     prompt += '\n---\n';
 
@@ -199,7 +191,6 @@ function buildOptimizationPrompt(
 
 /**
  * Gets the system prompt for speech optimization.
- * @internal
  */
 export function getSystemPrompt(): string {
     return SPEECH_OPTIMIZATION_SYSTEM_PROMPT;

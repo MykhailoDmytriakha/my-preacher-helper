@@ -25,6 +25,9 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+const TTS_MODEL_STANDARD = process.env.OPENAI_TTS_MODEL_STANDARD || 'gpt-4o-mini-tts';
+const TTS_MODEL_HD = process.env.OPENAI_TTS_MODEL_HD || 'tts-1';
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -279,15 +282,10 @@ export function estimateDuration(text: string): number {
  * Gets TTS model based on quality setting.
  * 
  * @param quality - 'standard' or 'hd'
- * @param preferMiniTTS - Use gpt-4o-mini-tts for cost savings
  * @returns Model identifier string
  */
 export function getTTSModel(
-    quality: 'standard' | 'hd',
-    preferMiniTTS: boolean = true
+    quality: 'standard' | 'hd'
 ): string {
-    if (preferMiniTTS) {
-        return 'gpt-4o-mini-tts';
-    }
-    return quality === 'hd' ? 'tts-1-hd' : 'tts-1';
+    return quality === 'hd' ? TTS_MODEL_HD : TTS_MODEL_STANDARD;
 }

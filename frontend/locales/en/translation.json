@@ -234,6 +234,7 @@
     "regenerate": "Re-optimize",
     "noChunks": "No text generated yet",
     "chunksLabel": "Text Chunks",
+    "prepareTextBtn": "Prepare Text for Audio",
     "generateAudioButton": "Generate Audio",
     "chunksTitle": "Text Chunks",
     "edit": "Edit",

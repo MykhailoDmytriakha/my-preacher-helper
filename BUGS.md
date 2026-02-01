@@ -5,3 +5,5 @@
 I need to find all places where order of thoughts is used and incapsulate logic to use the same logic evrywhere. 
 
 ---
+
+Эеспорт со страницы /sermon/id/ в TXT, нужно добавить выбор между экопртом мыслей и экспоттром плана. Выбор будет существовать если только план сгенирирован.

@@ -16,4 +16,9 @@ export {
   PolishTranscriptionSchema,
   type PolishTranscription
 } from './polishTranscription.zod';
+export {
+  SpeechOptimizationResponseSchema,
+  type SpeechOptimizationResponse
+} from './speechOptimization.zod';
+
 
