@@ -18,13 +18,14 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     ArrowLeft, ArrowRight, Loader2, FileText,
-    Activity, Play, Square, Mic, AudioLines, Sparkles, RefreshCw, AlertTriangle, Check
+    Activity, Play, Square, Mic, AudioLines, Sparkles, RefreshCw, AlertTriangle, Check, Copy
 } from 'lucide-react';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useClipboard } from '@/hooks/useClipboard';
 import useSermon from '@/hooks/useSermon';
 import {
     AVAILABLE_VOICES,
@@ -128,6 +129,9 @@ export default function StepByStepWizard({
     // Audio Preview State
     const [playingPreview, setPlayingPreview] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Clipboard
+    const { isCopied, copyToClipboard } = useClipboard({ successDuration: 2000 });
 
     const togglePreview = useCallback((voiceId: string) => {
         if (playingPreview === voiceId) {
@@ -629,10 +633,8 @@ export default function StepByStepWizard({
     // ============================================================================
 
     const renderReview = () => {
-
         const getThoughtsForSection = (sectionId: string) => {
             if (!sermon) return [];
-
             const mappedSection = sectionId === 'mainPart' ? 'main' : sectionId as 'introduction' | 'main' | 'conclusion';
             return getSortedThoughts(sermon, mappedSection);
         };
@@ -646,7 +648,7 @@ export default function StepByStepWizard({
                     <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
                         <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest flex items-center gap-2">
                             <FileText className="w-4 h-4" />
-                            Original Text
+                            {t('audioExport.originalText', { defaultValue: 'Original Text' })}
                         </h3>
                     </div>
 
@@ -679,19 +681,42 @@ export default function StepByStepWizard({
                     <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
                         <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest flex items-center gap-2">
                             <Sparkles className="w-4 h-4 text-amber-500" />
-                            Optimized for Speech
+                            {t('audioExport.optimizationResults', { defaultValue: 'Optimized for Speech' })}
                         </h3>
 
-                        {/* Stats Integrated in Header */}
-                        <div className="flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-                            <div className="flex items-center gap-1.5">
-                                <Activity className="w-3.5 h-3.5 text-purple-500" />
-                                <span>{stats?.estimatedMinutes || 0} min</span>
-                            </div>
-                            <div className="w-px h-3 bg-gray-300 dark:bg-gray-600" />
-                            <div className="flex items-center gap-1.5">
-                                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                                <span>{stats?.totalChunks || 0} chunks</span>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => {
+                                    const allText = chunks.map(c => c.text).join('\n\n');
+                                    copyToClipboard(allText);
+                                }}
+                                className="bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 text-xs font-semibold transition-colors flex items-center gap-2"
+                                title={t('export.copyAll', { defaultValue: 'Copy All' })}
+                            >
+                                {isCopied ? (
+                                    <>
+                                        <Check className="w-3.5 h-3.5 text-green-500" />
+                                        <span className="text-green-600 dark:text-green-400">{t('export.copied', { defaultValue: 'Copied' })}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>{t('export.copyAll', { defaultValue: 'Copy All' })}</span>
+                                    </>
+                                )}
+                            </button>
+                            <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 self-center mx-1" />
+
+                            <div className="flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
+                                <div className="flex items-center gap-1.5">
+                                    <Activity className="w-3.5 h-3.5 text-purple-500" />
+                                    <span>{stats?.estimatedMinutes || 0} {t('audioExport.mins', { defaultValue: 'min' })}</span>
+                                </div>
+                                <div className="w-px h-3 bg-gray-300 dark:bg-gray-600" />
+                                <div className="flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>{stats?.totalChunks || 0} {t('audioExport.chunks', { defaultValue: 'chunks' })}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

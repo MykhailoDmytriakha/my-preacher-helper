@@ -63,6 +63,7 @@ jest.mock('lucide-react', () => ({
     RefreshCw: () => <div data-testid="icon-refresh" />,
     AlertTriangle: () => <div data-testid="icon-alert" />,
     Check: () => <div data-testid="icon-check" />,
+    Copy: () => <div data-testid="icon-copy" />,
 }));
 
 // Mock ChunkEditorModal
@@ -207,5 +208,68 @@ describe('StepByStepWizard', () => {
         await waitFor(() => {
             expect(defaultProps.onStepChange).toHaveBeenCalledWith('success');
         }, { timeout: 2000 });
+    });
+
+    it('copies all chunks to clipboard when Copy All is clicked', async () => {
+        // Mock navigator.clipboard and security context
+        const mockWriteText = jest.fn().mockImplementation(() => Promise.resolve());
+        Object.assign(navigator, {
+            clipboard: {
+                writeText: mockWriteText,
+            },
+        });
+        Object.defineProperty(window, 'isSecureContext', {
+            value: true,
+            configurable: true
+        });
+
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce({ // introduction
+                ok: true,
+                json: async () => ({
+                    chunks: [{ index: 0, text: 'Unique Intro Content', sectionId: 'introduction' }],
+                    originalLength: 5,
+                    optimizedLength: 4,
+                }),
+            })
+            .mockResolvedValueOnce({ // mainPart
+                ok: true,
+                json: async () => ({
+                    chunks: [{ index: 1, text: 'Unique Main Content', sectionId: 'mainPart' }],
+                    originalLength: 10,
+                    optimizedLength: 8,
+                }),
+            })
+            .mockResolvedValueOnce({ // conclusion
+                ok: true,
+                json: async () => ({
+                    chunks: [{ index: 2, text: 'Unique Conclusion Content', sectionId: 'conclusion' }],
+                    originalLength: 5,
+                    optimizedLength: 4,
+                }),
+            })
+            .mockResolvedValueOnce({ // save chunks
+                ok: true,
+                json: async () => ({ success: true }),
+            });
+
+        render(<StepByStepWizard {...defaultProps} step="review" />);
+
+        // Click prepare
+        fireEvent.click(screen.getByText('Prepare Text for Audio'));
+
+        // Wait for chunks to appear
+        await waitFor(() => {
+            expect(screen.getByText('Unique Intro Content')).toBeInTheDocument();
+        }, { timeout: 3000 });
+
+        // Click Copy All
+        const copyBtn = screen.getByTitle('Copy All');
+        fireEvent.click(copyBtn);
+
+        expect(mockWriteText).toHaveBeenCalledWith('Unique Intro Content\n\nUnique Main Content\n\nUnique Conclusion Content');
+        await waitFor(() => {
+            expect(screen.getByText('Copied')).toBeInTheDocument();
+        });
     });
 });
