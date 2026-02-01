@@ -1,10 +1,9 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
 
+import { PlanData } from '@/models/models';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
-
-import { PlanData } from '@/models/models';
 
 interface WordExportOptions {
   data: PlanData;

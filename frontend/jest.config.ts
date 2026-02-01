@@ -67,6 +67,7 @@ const config: Config = {
     '!app/**/__tests__/**', // Exclude __tests__ directories within app
     '!app/**/__mocks__/**', // Exclude __mocks__ directories
     '!**/node_modules/**', // Standard exclusion
+    '!app/models/models.ts', // Types-only file; no runtime coverage
     '!<rootDir>/app/layout.tsx', // Often excluded as it's hard to test directly
     '!<rootDir>/app/globals.css', // CSS files don't have coverage
     // Add any other specific files/directories you want to exclude

@@ -198,10 +198,9 @@ describe('StepByStepWizard', () => {
     it('copies all chunks to clipboard when Copy All is clicked', async () => {
         // Mock navigator.clipboard and security context
         const mockWriteText = jest.fn().mockImplementation(() => Promise.resolve());
-        Object.assign(navigator, {
-            clipboard: {
-                writeText: mockWriteText,
-            },
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText: mockWriteText },
+            configurable: true,
         });
         Object.defineProperty(window, 'isSecureContext', {
             value: true,
@@ -230,6 +229,18 @@ describe('StepByStepWizard', () => {
 
         // Click prepare
         fireEvent.click(screen.getByText('Prepare Text for Audio'));
+
+        const optimizeCalls = (global.fetch as jest.Mock).mock.calls.filter(
+            ([url]) => String(url).includes('/audio/optimize')
+        );
+        expect(optimizeCalls).toHaveLength(1);
+        const optimizeOptions = optimizeCalls[0][1];
+        const optimizeBody = JSON.parse(optimizeOptions.body as string);
+        expect(optimizeBody).toMatchObject({
+            sections: 'all',
+            saveToDb: false,
+            userId: 'user-123',
+        });
 
         // Wait for chunks to appear
         await waitFor(() => {

@@ -2,6 +2,9 @@ import {
   isSermonReadyForPlan,
   getSermonAccessType,
   getSermonPlanAccessRoute,
+  getSermonPlanData,
+  hasPlan,
+  isSermonReadyForPreaching,
 } from '@/utils/sermonPlanAccess';
 
 import type { Sermon } from '@/models/models';
@@ -30,6 +33,15 @@ describe('sermonPlanAccess utilities', () => {
     expect(isSermonReadyForPlan(sermon)).toBe(true);
     expect(getSermonAccessType(sermon)).toBe('structure');
     expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
+  });
+
+  it('returns safe defaults for null or undefined inputs', () => {
+    expect(hasPlan(null)).toBe(false);
+    expect(hasPlan(undefined)).toBe(false);
+    expect(isSermonReadyForPlan(null)).toBe(false);
+    expect(getSermonAccessType(undefined)).toBe('structure');
+    expect(isSermonReadyForPreaching(null)).toBe(false);
+    expect(getSermonPlanData(undefined)).toBeUndefined();
   });
 
   it('prefers plan access when a complete plan exists and thoughts are assigned', () => {
@@ -73,6 +85,67 @@ describe('sermonPlanAccess utilities', () => {
     expect(isSermonReadyForPlan(sermon)).toBe(false);
     expect(getSermonAccessType(sermon)).toBe('structure');
     expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
+  });
+
+  it('returns plan data when any outline section is present', () => {
+    const sermon: Sermon = {
+      ...baseSermon,
+      plan: {
+        introduction: { outline: 'Intro outline' },
+        main: { outline: '' },
+        conclusion: { outline: '' },
+      },
+    };
+
+    const planData = getSermonPlanData(sermon);
+
+    expect(planData).toEqual({
+      sermonTitle: baseSermon.title,
+      sermonVerse: baseSermon.verse,
+      introduction: 'Intro outline',
+      main: '',
+      conclusion: '',
+    });
+  });
+
+  it('returns undefined plan data when outlines are empty', () => {
+    const sermon: Sermon = {
+      ...baseSermon,
+      plan: {
+        introduction: { outline: '' },
+        main: { outline: '' },
+        conclusion: { outline: '' },
+      },
+    };
+
+    expect(hasPlan(sermon)).toBe(false);
+    expect(getSermonPlanData(sermon)).toBeUndefined();
+  });
+
+  it('prefers draft over plan when extracting plan data', () => {
+    const sermon: Sermon = {
+      ...baseSermon,
+      plan: {
+        introduction: { outline: 'Plan intro' },
+        main: { outline: '' },
+        conclusion: { outline: '' },
+      },
+      draft: {
+        introduction: { outline: 'Draft intro' },
+        main: { outline: 'Draft main' },
+        conclusion: { outline: 'Draft conclusion' },
+      },
+    };
+
+    const planData = getSermonPlanData(sermon);
+
+    expect(planData).toEqual({
+      sermonTitle: baseSermon.title,
+      sermonVerse: baseSermon.verse,
+      introduction: 'Draft intro',
+      main: 'Draft main',
+      conclusion: 'Draft conclusion',
+    });
   });
 
   it('handles partial plan and partial structure inputs consistently', () => {

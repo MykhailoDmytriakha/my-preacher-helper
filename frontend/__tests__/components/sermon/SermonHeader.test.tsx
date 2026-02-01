@@ -4,7 +4,10 @@ import React from 'react';
 import SermonHeader from '@/components/sermon/SermonHeader';
 import { Sermon, Series } from '@/models/models';
 import { updateSermon } from '@/services/sermon.service';
+import { getExportContent } from '@utils/exportContent';
 import '@testing-library/jest-dom';
+
+let latestExportProps: any = null;
 
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
@@ -56,14 +59,17 @@ jest.mock('@/components/series/SeriesSelector', () => {
 
 jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
-  default: (props: any) => (
-    <div data-testid="export-buttons">
-      {props.extraButtons}
-      <button type="button">TXT</button>
-      <button type="button">PDF</button>
-      <button type="button">Word</button>
-    </div>
-  ),
+  default: (props: any) => {
+    latestExportProps = props;
+    return (
+      <div data-testid="export-buttons">
+        {props.extraButtons}
+        <button type="button">TXT</button>
+        <button type="button">PDF</button>
+        <button type="button">Word</button>
+      </div>
+    );
+  },
 }));
 
 jest.mock('@/hooks/useUserSettings', () => ({
@@ -110,6 +116,7 @@ describe('SermonHeader Component', () => {
   beforeEach(() => {
     mockOnUpdate.mockClear();
     mockUpdateSermon.mockClear();
+    latestExportProps = null;
   });
 
   const mockSermon: Sermon = {
@@ -152,6 +159,40 @@ describe('SermonHeader Component', () => {
       expect(screen.getByText('TXT')).toBeInTheDocument();
       expect(screen.getByText('PDF')).toBeInTheDocument();
       expect(screen.getByText('Word')).toBeInTheDocument();
+    });
+
+    it('passes plan data to export buttons when plan exists', () => {
+      const sermonWithPlan: Sermon = {
+        ...mockSermon,
+        plan: {
+          introduction: { outline: 'Intro outline' },
+          main: { outline: '' },
+          conclusion: { outline: '' },
+        },
+      };
+
+      render(<SermonHeader sermon={sermonWithPlan} onUpdate={mockOnUpdate} />);
+
+      expect(latestExportProps?.planData).toEqual({
+        sermonTitle: sermonWithPlan.title,
+        sermonVerse: sermonWithPlan.verse,
+        introduction: 'Intro outline',
+        main: '',
+        conclusion: '',
+      });
+    });
+
+    it('exposes export content callbacks for plain and PDF', async () => {
+      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+
+      await latestExportProps.getExportContent('plain', { includeTags: true });
+      expect(getExportContent).toHaveBeenCalledWith(mockSermon, undefined, {
+        format: 'plain',
+        includeTags: true,
+      });
+
+      const pdfContent = await latestExportProps.getPdfContent();
+      expect(React.isValidElement(pdfContent)).toBe(true);
     });
 
     it('renders preach button and navigates to preaching plan', () => {

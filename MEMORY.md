@@ -40,6 +40,13 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-01 PDF Export Rasterization Detection
+**Problem:** Exported PDF looked like images and text was not selectable/searchable.
+**Evidence:** `pdfimages -list` showed one full-page image per page; `pdftotext` returned empty content.
+**Cause:** html2canvas → jsPDF `addImage` pipeline rasterizes the DOM into page-sized images.
+**Solution:** Use PDF structure inspection tools (`pdfimages`, `pdffonts`, `pdftotext`) to confirm raster vs text. For true text PDFs, switch to a text/vector export pipeline (e.g., jsPDF text API with embedded UTF-8 fonts).
+**Principle:** **PDF Forensics First**: Validate export type (raster vs text) using `pdfimages`/`pdftotext` before changing rendering logic; it prevents chasing styling when the core pipeline is the issue.
  
 ### 2026-02-01 Prevention of Duplicate Audio Generations
 **Problem:** Duplicate audio chunks appeared in the database after regenerating "All Sections" in the audio wizard.

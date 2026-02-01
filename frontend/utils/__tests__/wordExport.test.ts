@@ -433,6 +433,7 @@ describe('wordExport', () => {
           run: () => {
             const minimalPlanData: PlanData = {
               sermonTitle: 'Minimal Sermon',
+              sermonVerse: 'John 3:16',
               introduction: 'Intro',
               main: 'Main',
               conclusion: 'Conclusion',
@@ -446,6 +447,7 @@ describe('wordExport', () => {
             const validOptions: WordExportOptions = {
               data: {
                 sermonTitle: 'Test',
+                sermonVerse: 'Psalm 23:1',
                 introduction: 'Intro',
                 main: 'Main',
                 conclusion: 'Conclusion',

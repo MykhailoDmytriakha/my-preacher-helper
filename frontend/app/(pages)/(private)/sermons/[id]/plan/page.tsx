@@ -27,8 +27,8 @@ import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { hasPlan } from "@/utils/sermonPlanAccess";
+import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
 
