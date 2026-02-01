@@ -122,38 +122,23 @@ describe('StepByStepWizard', () => {
         // Reset mocks
         (global.fetch as jest.Mock).mockReset();
 
-        // 0. Mock Optimization Fetches (3 parallel calls for all sections)
-        // Each call should return its own chunk
+        // 0. Mock Optimization Fetch (ONE sequential call for all sections)
         (global.fetch as jest.Mock)
             .mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({
-                    optimizedText: 'Intro text',
-                    chunks: [{ index: 0, text: 'intro chunk', preview: 'intro chunk', sectionId: 'introduction' }],
-                    originalLength: 5,
-                    optimizedLength: 4,
-                }),
-            })
-            .mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    optimizedText: 'Main text',
-                    chunks: [{ index: 1, text: 'main chunk', preview: 'main chunk', sectionId: 'mainPart' }],
-                    originalLength: 10,
-                    optimizedLength: 8,
-                }),
-            })
-            .mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    optimizedText: 'Conclusion text',
-                    chunks: [{ index: 2, text: 'conclusion chunk', preview: 'conclusion chunk', sectionId: 'conclusion' }],
-                    originalLength: 5,
-                    optimizedLength: 4,
+                    optimizedText: 'Full sermon text',
+                    chunks: [
+                        { index: 0, text: 'intro chunk', preview: 'intro chunk', sectionId: 'introduction' },
+                        { index: 1, text: 'main chunk', preview: 'main chunk', sectionId: 'mainPart' },
+                        { index: 2, text: 'conclusion chunk', preview: 'conclusion chunk', sectionId: 'conclusion' }
+                    ],
+                    originalLength: 20,
+                    optimizedLength: 16,
                 }),
             });
 
-        // 1. Mock Save Chunks Fetch (PUT) - Called after parallel optimizations finish
+        // 1. Mock Save Chunks Fetch (PUT) - Called after optimization finishes
         (global.fetch as jest.Mock).mockResolvedValueOnce({
             ok: true,
             json: async () => ({ success: true }),
@@ -224,28 +209,16 @@ describe('StepByStepWizard', () => {
         });
 
         (global.fetch as jest.Mock)
-            .mockResolvedValueOnce({ // introduction
+            .mockResolvedValueOnce({ // One call for 'all' sections
                 ok: true,
                 json: async () => ({
-                    chunks: [{ index: 0, text: 'Unique Intro Content', sectionId: 'introduction' }],
-                    originalLength: 5,
-                    optimizedLength: 4,
-                }),
-            })
-            .mockResolvedValueOnce({ // mainPart
-                ok: true,
-                json: async () => ({
-                    chunks: [{ index: 1, text: 'Unique Main Content', sectionId: 'mainPart' }],
-                    originalLength: 10,
-                    optimizedLength: 8,
-                }),
-            })
-            .mockResolvedValueOnce({ // conclusion
-                ok: true,
-                json: async () => ({
-                    chunks: [{ index: 2, text: 'Unique Conclusion Content', sectionId: 'conclusion' }],
-                    originalLength: 5,
-                    optimizedLength: 4,
+                    chunks: [
+                        { index: 0, text: 'Unique Intro Content', sectionId: 'introduction' },
+                        { index: 1, text: 'Unique Main Content', sectionId: 'mainPart' },
+                        { index: 2, text: 'Unique Conclusion Content', sectionId: 'conclusion' }
+                    ],
+                    originalLength: 20,
+                    optimizedLength: 16,
                 }),
             })
             .mockResolvedValueOnce({ // save chunks

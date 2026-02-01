@@ -22,6 +22,7 @@ import EditableVerse from '@components/common/EditableVerse'; // Import the new 
 import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
+import { getSermonPlanData } from '@utils/sermonPlanAccess';
 
 import type { Sermon, Series } from '@/models/models';
 
@@ -327,6 +328,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           sermonTitle={sermon.title}
           slotClassName={ACTION_BUTTON_SLOT_CLASS}
           className="w-full sm:w-auto"
+          planData={getSermonPlanData(sermon)}
           extraButtons={
             <div className={`${ACTION_BUTTON_SLOT_CLASS} sm:min-w-[150px]`}>
               <ActionButton

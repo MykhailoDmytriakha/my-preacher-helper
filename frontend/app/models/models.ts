@@ -369,3 +369,12 @@ export type Structure = ThoughtsBySection;
 export type Item = ThoughtInStructure;
 export type ThoughtsPlan = SectionHints;
 export type Plan = SermonContent;
+
+export interface PlanData {
+  sermonTitle: string;
+  sermonVerse: string;
+  introduction: string;
+  main: string;
+  conclusion: string;
+  exportDate?: string;
+}

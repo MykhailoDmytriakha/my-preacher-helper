@@ -12,6 +12,7 @@ import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
 import { getContrastColor } from "@utils/color";
 import { formatDate } from "@utils/dateFormatter";
+import { getSermonPlanData } from "@utils/sermonPlanAccess";
 
 import HighlightedText from "../HighlightedText";
 
@@ -81,11 +82,10 @@ function SermonCardHeader({
           <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
         </div>
         <div
-          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-            formattedPreachedDate
+          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${formattedPreachedDate
               ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
               : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
-          }`}
+            }`}
         >
           <CheckCircle2 className="w-3 h-3" />
           <span className="uppercase tracking-wide text-[10px]">{t(DASHBOARD_PREACHED_KEY)}</span>
@@ -114,7 +114,7 @@ function SermonCardTitleVerse({ sermon, searchQuery }: SermonCardTitleVerseProps
           className={`text-lg font-bold leading-tight transition-colors ${sermon.isPreached
             ? `${TEXT_PRIMARY_CLASSES} group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400`
             : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
-          }`}
+            }`}
         >
           <HighlightedText text={sermon.title} searchQuery={searchQuery} />
         </h3>
@@ -238,21 +238,7 @@ function SermonCardBadges({
 }
 
 function SermonCardFooter({ sermon, t }: SermonCardFooterProps) {
-  const planSource = sermon.draft || sermon.plan;
-  const hasPlan = Boolean(
-    planSource?.introduction?.outline ||
-    planSource?.main?.outline ||
-    planSource?.conclusion?.outline
-  );
-  const planData = hasPlan && planSource
-    ? {
-        sermonTitle: sermon.title,
-        sermonVerse: sermon.verse,
-        introduction: planSource.introduction?.outline || '',
-        main: planSource.main?.outline || '',
-        conclusion: planSource.conclusion?.outline || ''
-      }
-    : undefined;
+  const planData = getSermonPlanData(sermon);
 
   return (
     <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
@@ -289,10 +275,10 @@ export default function SermonCard({
   const formattedCreatedDate = formatDate(sermon.date);
   const latestPreachDate = sermon.isPreached
     ? sermon.preachDates?.reduce<string | null>((latest, preachDate) => {
-        if (!preachDate.date) return latest;
-        if (!latest) return preachDate.date;
-        return new Date(preachDate.date) > new Date(latest) ? preachDate.date : latest;
-      }, null) ?? null
+      if (!preachDate.date) return latest;
+      if (!latest) return preachDate.date;
+      return new Date(preachDate.date) > new Date(latest) ? preachDate.date : latest;
+    }, null) ?? null
     : null;
   const formattedPreachedDate = latestPreachDate ? formatDate(latestPreachDate) : null;
   const thoughtCount = sermon.thoughts?.length || 0;

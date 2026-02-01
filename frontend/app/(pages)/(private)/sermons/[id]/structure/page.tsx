@@ -18,6 +18,7 @@ import "@locales/i18n";
 import { getExportContent } from "@/utils/exportContent";
 import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
+import { getSermonPlanData } from "@utils/sermonPlanAccess";
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
 import { FocusNav } from "./components/FocusNav";
@@ -284,16 +285,7 @@ function StructurePageContent() {
   };
 
   const planData = useMemo(() => {
-    const planSource = sermon?.plan || sermon?.draft;
-    if (!planSource) return undefined;
-
-    return {
-      sermonTitle: sermon.title,
-      sermonVerse: sermon.verse,
-      introduction: planSource.introduction?.outline || '',
-      main: planSource.main?.outline || '',
-      conclusion: planSource.conclusion?.outline || ''
-    };
+    return getSermonPlanData(sermon);
   }, [sermon]);
 
   // REVISED HANDLER: Function to DELETE a thought and remove it from the structure

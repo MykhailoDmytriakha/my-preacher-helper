@@ -28,6 +28,7 @@ import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { hasPlan } from "@/utils/sermonPlanAccess";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
 
@@ -1276,7 +1277,7 @@ const PlanMainLayout = ({
                   title={sermon.title || "Sermon Plan"}
                   className="ml-auto"
                   disabledFormats={['pdf']}
-                  planData={(sermon.plan || sermon.draft) ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse } : undefined}
+                  planData={hasPlan(sermon) ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse } : undefined}
                   sermonTitle={sermon.title}
                 />
               </div>

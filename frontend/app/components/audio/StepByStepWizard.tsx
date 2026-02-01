@@ -34,7 +34,6 @@ import {
     SectionSelection,
     TTSVoice,
     SermonSection,
-    SpeechOptimizationResult,
     WizardStep
 } from '@/types/audioGeneration.types';
 import { getSortedThoughts } from '@/utils/sermonSorting';
@@ -277,84 +276,31 @@ export default function StepByStepWizard({
             let totalOriginal = 0;
             let totalOptimized = 0;
 
-            if (sections === 'all') {
-                const sectionKeys: SectionSelection[] = ['introduction', 'mainPart', 'conclusion'];
-
-                const results = await Promise.allSettled(
-                    sectionKeys.map(section =>
-                        fetch(`/api/sermons/${sermonId}/audio/optimize`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                sections: section,
-                                saveToDb: false,
-                                userId: user?.uid
-                            }),
-                        }).then(async res => {
-                            if (!res.ok) {
-                                const err = await res.json();
-                                throw new Error(err.error || `Failed to optimize ${section}`);
-                            }
-                            return res.json();
-                        })
-                    )
-                );
-
-                const successfulData = results
-                    .filter((r): r is PromiseFulfilledResult<SpeechOptimizationResult & { chunks: AudioChunk[] }> => r.status === 'fulfilled')
-                    .map(r => r.value);
-
-                if (successfulData.length === 0) {
-                    const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
-                    throw new Error(firstError?.reason?.message || 'Optimization failed for all sections');
-                }
-
-                newChunks = successfulData.flatMap(d => d.chunks);
-                totalOriginal = successfulData.reduce((sum, d) => sum + (d.originalLength || 0), 0);
-                totalOptimized = successfulData.reduce((sum, d) => sum + (d.optimizedLength || 0), 0);
-
-            } else {
-                const response = await fetch(`/api/sermons/${sermonId}/audio/optimize`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sections,
-                        saveToDb: false,
-                        userId: user?.uid
-                    }),
-                });
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    throw new Error(data.error || 'Optimization failed');
-                }
-
-                const data = await response.json();
-                newChunks = data.chunks;
-                totalOriginal = data.originalLength || 0;
-                totalOptimized = data.optimizedLength || 0;
-            }
-
-            // Sort and re-index
-            const sectionOrder: Record<string, number> = { introduction: 0, mainPart: 1, conclusion: 2 };
-            newChunks.sort((a, b) => {
-                const secDiff = (sectionOrder[a.sectionId || ''] || 0) - (sectionOrder[b.sectionId || ''] || 0);
-                if (secDiff !== 0) return secDiff;
-                return a.index - b.index;
+            const response = await fetch(`/api/sermons/${sermonId}/audio/optimize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sections, // can be 'all' or specific sectionId
+                    saveToDb: false,
+                    userId: user?.uid
+                }),
             });
 
-            newChunks = newChunks.map((c, i) => ({ ...c, index: i }));
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Optimization failed');
+            }
 
-            // Save to DB
+            const data = await response.json();
+            newChunks = data.chunks;
+            totalOriginal = data.originalLength || 0;
+            totalOptimized = data.optimizedLength || 0;
+
+            // Save to DB (optional step if backend didn't save, but we keep it for consistency with current flow)
             await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chunks: newChunks, userId: user?.uid }),
-            });
-            // Sort and re-index
-            newChunks.sort((a, b) => {
-                const sectOrder: Record<string, number> = { 'introduction': 0, 'mainPart': 1, 'conclusion': 2 };
-                return (sectOrder[a.sectionId] || 0) - (sectOrder[b.sectionId] || 0) || a.index - b.index;
             });
 
             setChunks(newChunks);

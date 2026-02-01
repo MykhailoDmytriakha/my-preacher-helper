@@ -23,6 +23,7 @@
 *   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
 *   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
+*   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
 
 ### ⚖️ Domain Axioms (The "Why")
 *   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
@@ -39,6 +40,13 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+ 
+### 2026-02-01 Prevention of Duplicate Audio Generations
+**Problem:** Duplicate audio chunks appeared in the database after regenerating "All Sections" in the audio wizard.
+**Attempts:** Initial system used parallel `fetch` calls from the frontend for each section, but the backend optimized each section by merging it with existing chunks, leading to a "fan-out" of duplicates on the client.
+**Solution:** Unified the frontend requests into a single API call when `sections === 'all'`. The backend already handles sections sequentially.
+**Why it worked:** A single request aligns the client's state with the backend's sequential source of truth, preventing the "fan-out" duplication caused by multiple parallel merges of shared state.
+**Principle:** **Unified Batch Processing**: Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating.
 
 ### 2026-02-01 Refactoring to Reduce Cognitive Complexity
 **Problem:** `DashboardPage` had high cognitive complexity (23 > 20) due to mixed state management, filtering logic, and complex rendering ternaries.
@@ -817,7 +825,7 @@
 - Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
-- Audio Generation Workflow: Sequential optimization in `api/sermons/[id]/audio/optimize/route.ts` using "tail context" for coherent transitions. Final TTS generation (parallel) in `api/sermons/[id]/audio/generate/route.ts`.
+- Audio Generation Workflow: Sequential optimization in `api/sermons/[id]/audio/optimize/route.ts` using "tail context" for coherent transitions. Unified Batch Pattern (single request from client) prevents data duplication. Final TTS generation (parallel) in `api/sermons/[id]/audio/generate/route.ts`.
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
 - Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
 - Comments: English only in code

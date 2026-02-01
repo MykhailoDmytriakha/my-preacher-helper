@@ -1,6 +1,7 @@
-import { Sermon } from '@/models/models';
+import { Sermon, PlanData } from '@/models/models';
 
-const hasStructure = (sermon: Sermon): boolean => {
+const hasStructure = (sermon: Sermon | null | undefined): boolean => {
+  if (!sermon) return false;
   const structure = sermon.thoughtsBySection || sermon.structure;
   if (!structure) {
     return false;
@@ -9,12 +10,13 @@ const hasStructure = (sermon: Sermon): boolean => {
   const { introduction, main, conclusion } = structure;
   return Boolean(
     introduction?.length ||
-      main?.length ||
-      conclusion?.length
+    main?.length ||
+    conclusion?.length
   );
 };
 
-const hasPlan = (sermon: Sermon): boolean => {
+export const hasPlan = (sermon: Sermon | null | undefined): boolean => {
+  if (!sermon) return false;
   const draft = sermon.draft || sermon.plan;
   if (!draft) {
     return false;
@@ -23,13 +25,13 @@ const hasPlan = (sermon: Sermon): boolean => {
   const { introduction, main, conclusion } = draft;
   return Boolean(
     introduction?.outline ||
-      main?.outline ||
-      conclusion?.outline
+    main?.outline ||
+    conclusion?.outline
   );
 };
 
-const allThoughtsAssigned = (sermon: Sermon): boolean => {
-  if (!sermon.thoughts) {
+const allThoughtsAssigned = (sermon: Sermon | null | undefined): boolean => {
+  if (!sermon || !sermon.thoughts) {
     return false;
   }
 
@@ -40,7 +42,8 @@ const allThoughtsAssigned = (sermon: Sermon): boolean => {
  * Determines if a sermon is ready for plan access
  * A sermon is considered "prepared" if it has structure or plan
  */
-export function isSermonReadyForPlan(sermon: Sermon): boolean {
+export function isSermonReadyForPlan(sermon: Sermon | null | undefined): boolean {
+  if (!sermon) return false;
   return hasStructure(sermon) || hasPlan(sermon);
 }
 
@@ -49,7 +52,8 @@ export function isSermonReadyForPlan(sermon: Sermon): boolean {
  * Returns the specific type of access available
  * Defaults to 'structure' for new sermons without data
  */
-export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
+export function getSermonAccessType(sermon: Sermon | null | undefined): 'plan' | 'structure' {
+  if (!sermon) return 'structure';
   const planReady = hasPlan(sermon);
   const thoughtsReady = allThoughtsAssigned(sermon);
 
@@ -64,7 +68,8 @@ export function getSermonAccessType(sermon: Sermon): 'plan' | 'structure' {
  * Checks if a sermon has a complete plan ready for preaching
  * A plan is considered ready for preaching if it has content in all sections
  */
-export function isSermonReadyForPreaching(sermon: Sermon): boolean {
+export function isSermonReadyForPreaching(sermon: Sermon | null | undefined): boolean {
+  if (!sermon) return false;
   const draft = sermon.draft || sermon.plan;
   if (!draft) {
     return false;
@@ -94,4 +99,25 @@ export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): stri
   }
 
   return `/sermons/${sermonId}/structure`;
+}
+
+/**
+ * Extracts PlanData from a sermon for export purposes.
+ * Returns undefined if no plan or draft is found or if it's empty.
+ */
+export function getSermonPlanData(sermon: Sermon | null | undefined): PlanData | undefined {
+  if (!sermon) return undefined;
+  const planSource = sermon.draft || sermon.plan;
+  if (!planSource) return undefined;
+
+  // A plan is considered ready if at least one section has an outline
+  if (!hasPlan(sermon)) return undefined;
+
+  return {
+    sermonTitle: sermon.title,
+    sermonVerse: sermon.verse,
+    introduction: planSource.introduction?.outline || '',
+    main: planSource.main?.outline || '',
+    conclusion: planSource.conclusion?.outline || ''
+  };
 }

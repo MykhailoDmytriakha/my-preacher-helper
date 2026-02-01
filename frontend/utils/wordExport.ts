@@ -4,14 +4,7 @@ import { saveAs } from 'file-saver';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
 
-interface PlanData {
-  sermonTitle: string;
-  sermonVerse?: string;
-  introduction: string;
-  main: string;
-  conclusion: string;
-  exportDate?: string;
-}
+import { PlanData } from '@/models/models';
 
 interface WordExportOptions {
   data: PlanData;
