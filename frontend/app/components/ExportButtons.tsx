@@ -270,12 +270,17 @@ function ExportButtonsLayout({
   );
 }
 
+// Constants for button styles
+const ACTIVE_BUTTON_CLASS = 'bg-blue-500 text-white shadow-sm';
+const INACTIVE_BUTTON_CLASS = 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600';
+
 interface ExportTxtModalProps {
   isOpen: boolean;
   onClose: () => void;
   content?: string;
-  getContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
+  getContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean; type?: 'thoughts' | 'plan' }) => Promise<string>;
   format?: 'plain' | 'markdown';
+  hasPlan?: boolean;
 }
 
 export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
@@ -284,9 +289,11 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
   content,
   getContent,
   format = 'plain',
+  hasPlan = false,
 }) => {
   const { t } = useTranslation();
   const [activeFormat, setActiveFormat] = useState<'plain' | 'markdown'>(format);
+  const [exportType, setExportType] = useState<'thoughts' | 'plan'>('thoughts');
   const [showTags, setShowTags] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
   const [exportContent, setExportContent] = useState<string>('');
@@ -304,7 +311,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
     };
   }, []);
 
-  // Initial content loading and when format/tags change
+  // Initial content loading and when format/tags/type change
   useEffect(() => {
     if (isOpen) {
       setIsLoading(true);
@@ -314,7 +321,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
         setExportContent(content);
         setIsLoading(false);
       } else if (getContent) {
-        getContent(activeFormat, { includeTags: showTags })
+        getContent(activeFormat, { includeTags: showTags, type: exportType })
           .then((result) => {
             setExportContent(result);
             setIsLoading(false);
@@ -327,7 +334,7 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
           });
       }
     }
-  }, [isOpen, content, getContent, activeFormat, showTags]);
+  }, [isOpen, content, getContent, activeFormat, showTags, exportType]);
 
   // No longer need to fetch content in these handlers since the useEffect will handle it
   const handleFormatChange = (newFormat: 'plain' | 'markdown') => {
@@ -389,54 +396,87 @@ export const ExportTxtModal: React.FC<ExportTxtModalProps> = ({
           </button>
         </div>
 
-        {/* Options row - Format selection and Tags toggle */}
-        <div className="flex flex-wrap items-center mb-4 text-sm flex-shrink-0 gap-4">
-          {/* Format selection */}
-          <div className="flex items-center">
-            <span className="mr-2">{t('export.format')}:</span>
-            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
-              <button
-                className={`px-3 py-1 rounded ${activeFormat === 'plain'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                onClick={() => handleFormatChange('plain')}
-                disabled={isLoading}
-              >
-                {t('export.formatPlain')}
-              </button>
-              <button
-                className={`px-3 py-1 rounded ${activeFormat === 'markdown'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                onClick={() => handleFormatChange('markdown')}
-                disabled={isLoading}
-              >
-                {t('export.formatMarkdown')}
-              </button>
-            </div>
-          </div>
+        {/* Options row - Export type, Format selection and Tags toggle */}
+        <div className="flex flex-col gap-4 mb-4 text-sm flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Export content selection - only show if plan exists */}
+            {hasPlan && (
+              <div className="flex items-center">
+                <span className="mr-2">{t('export.exportContent', 'Export content')}:</span>
+                <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+                  <button
+                    className={`px-3 py-1 rounded transition-colors ${exportType === 'thoughts'
+                      ? ACTIVE_BUTTON_CLASS
+                      : INACTIVE_BUTTON_CLASS
+                      }`}
+                    onClick={() => setExportType('thoughts')}
+                    disabled={isLoading}
+                  >
+                    {t('export.thoughtsOption', 'Thoughts')}
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded transition-colors ${exportType === 'plan'
+                      ? ACTIVE_BUTTON_CLASS
+                      : INACTIVE_BUTTON_CLASS
+                      }`}
+                    onClick={() => setExportType('plan')}
+                    disabled={isLoading}
+                  >
+                    {t('export.planOption', 'Plan')}
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Tags toggle switch */}
-          <div className="flex items-center ml-auto">
-            <span className="mr-2">{t('export.includeTags')}:</span>
-            <button
-              onClick={handleTagsToggle}
-              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              role="switch"
-              aria-checked={showTags}
-              aria-label={showTags ? t('export.hideTags') : t('export.showTags')}
-              style={{
-                backgroundColor: showTags ? '#3b82f6' : '#e5e7eb',
-              }}
-              disabled={isLoading}
-            >
-              <span
-                className={`${showTags ? 'translate-x-6' : 'translate-x-1'
-                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-              />
-            </button>
+            {/* Format selection */}
+            <div className="flex items-center">
+              <span className="mr-2">{t('export.format', 'Format')}:</span>
+              <div className="flex bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+                <button
+                  className={`px-3 py-1 rounded transition-colors ${activeFormat === 'plain'
+                    ? ACTIVE_BUTTON_CLASS
+                    : INACTIVE_BUTTON_CLASS
+                    }`}
+                  onClick={() => handleFormatChange('plain')}
+                  disabled={isLoading}
+                >
+                  {t('export.formatPlain', 'Plain Text')}
+                </button>
+                <button
+                  className={`px-3 py-1 rounded transition-colors ${activeFormat === 'markdown'
+                    ? ACTIVE_BUTTON_CLASS
+                    : INACTIVE_BUTTON_CLASS
+                    }`}
+                  onClick={() => handleFormatChange('markdown')}
+                  disabled={isLoading}
+                >
+                  {t('export.formatMarkdown', 'Markdown')}
+                </button>
+              </div>
+            </div>
+
+            {/* Tags toggle switch - only relevant for thoughts */}
+            {exportType === 'thoughts' && (
+              <div className="flex items-center ml-auto">
+                <span className="mr-2">{t('export.includeTags', 'Include tags')}:</span>
+                <button
+                  onClick={handleTagsToggle}
+                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  role="switch"
+                  aria-checked={showTags}
+                  aria-label={showTags ? t('export.hideTags') : t('export.showTags')}
+                  style={{
+                    backgroundColor: showTags ? '#3b82f6' : '#e5e7eb',
+                  }}
+                  disabled={isLoading}
+                >
+                  <span
+                    className={`${showTags ? 'translate-x-6' : 'translate-x-1'
+                      } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -638,7 +678,7 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
 
 interface ExportButtonsContainerProps {
   sermonId: string;
-  getExportContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => Promise<string>;
+  getExportContent: (format: 'plain' | 'markdown', options?: { includeTags?: boolean; type?: 'thoughts' | 'plan' }) => Promise<string>;
   getPdfContent?: () => Promise<React.ReactNode>;
   orientation?: "horizontal" | "vertical";
   className?: string;
@@ -660,6 +700,8 @@ interface ExportButtonsContainerProps {
   extraButtons?: React.ReactNode;
   /** Optional slot class override for action sizing */
   slotClassName?: string;
+  /** Explicitly override if plan is available */
+  hasPlan?: boolean;
 }
 
 const TooltipStyles = () => (
@@ -747,6 +789,7 @@ export default function ExportButtons({
   enableAudio = false,
   sermonTitle = '',
   planData,
+  hasPlan: initialHasPlan,
   focusedSection,
   extraButtons,
   slotClassName,
@@ -754,6 +797,9 @@ export default function ExportButtons({
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
+
+  // Consider plan available if initialHasPlan is explicitly true or if planData exists
+  const hasPlan = initialHasPlan !== undefined ? initialHasPlan : !!planData;
 
   // Determine if PDF is available based on the disabledFormats prop
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes('pdf');
@@ -836,7 +882,7 @@ export default function ExportButtons({
         isOpen={showTxtModal}
         onClose={handleCloseModal}
         getContent={getExportContent}
-        format="plain"
+        hasPlan={hasPlan}
       />
 
       {getPdfContent && (

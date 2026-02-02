@@ -204,7 +204,11 @@
     "includeTags": "Include tags",
     "soon": "Soon",
     "multipleTagsThoughts": "Thoughts with Multiple Tags",
-    "audioButton": "Audio (Beta)"
+    "audioButton": "Audio (Beta)",
+    "exportContent": "Export content",
+    "thoughtsOption": "Thoughts",
+    "planOption": "Plan",
+    "noPlanAvailable": "No plan available for export"
   },
   "audioExport": {
     "title": "Audio Generation",

@@ -500,6 +500,19 @@
 **Why it worked:** `waitFor` retries until the assertion passes, effectively waiting for the async state to settle and the UI to become interactive.
 **Principle:** Always verify that a button is interactive (`toBeEnabled()`) inside `waitFor` before clicking it in tests, especially if its state depends on async operations.
 
+### 2026-02-02 Coverage Blind Spots in Utility Files
+**Problem:** `exportContent.ts` had passing tests but only 56% coverage, effectively hiding the broken "Plan" export logic which had zero tests.
+**Attempts:** Relied on existing test suite which passed, overlooking that the specific "Plan" branch was never entered.
+**Solution:** Enforced strict ≥80% coverage for changed files. This forced writing new tests that immediately revealed the logic gap.
+**Why it worked:** Coverage metrics are a heatmap of confidence; forcing green on the specific file ensures no logic branch is left behind.
+**Principle:** **Coverage Blind Spots:** High project-wide coverage can hide zero-coverage cliffs in specific files; enforce strict per-file thresholds (≥80%) for modified files to reveal these gaps.
+
+### 2026-02-02 Test Fidelity vs Translation Mocks
+**Problem:** `ExportTxtModal` test failed because it queried for a button by its translation key (`export.formatMarkdown`), but the mock was configured to return the fallback text ("Markdown").
+**Solution:** Updated the test assertion to query for the rendered text ("Markdown"), matching what the user (and the DOM) actually sees.
+**Why it worked:** The test now verifies the *outcome* of the render (text is present) rather than an implementation detail (key is passed), which is more robust.
+**Principle:** **Test Rendered Reality:** When testing UI with i18n mocks that return fallbacks, assert against the fallback text (what the user sees) rather than the translation key.
+
 ---
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении

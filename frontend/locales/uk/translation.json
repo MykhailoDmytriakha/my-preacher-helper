@@ -204,7 +204,11 @@
     "includeTags": "Включати теги",
     "soon": "Скоро",
     "multipleTagsThoughts": "Думки з кількома тегами",
-    "audioButton": "Аудіо (Beta)"
+    "audioButton": "Аудіо (Beta)",
+    "exportContent": "Експорт контенту",
+    "thoughtsOption": "Думки",
+    "planOption": "План",
+    "noPlanAvailable": "План недоступний для експорту"
   },
   "audioExport": {
     "title": "Генерація аудіо",

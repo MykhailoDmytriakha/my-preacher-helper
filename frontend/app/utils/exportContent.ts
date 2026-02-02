@@ -33,6 +33,7 @@ interface ExportData {
 type ExportFormat = 'plain' | 'markdown';
 
 interface ExportOptions {
+  type?: 'thoughts' | 'plan';
   format?: ExportFormat;
   includeTags?: boolean;
   includeMetadata?: boolean;
@@ -123,17 +124,30 @@ export function getExportContent(
   sermon: Sermon,
   focusedSection?: string,
   options: ExportOptions = {}
-): Promise<string> { // Still returns Promise for compatibility
+): Promise<string> {
   debugLog("getExportContent called", { title: sermon?.title, focusedSection, options });
 
   // Default options
   const {
+    type = 'thoughts',
     format = 'plain',
     includeTags = false,
     includeMetadata = true
   } = options;
 
-  // REMOVED: Test-specific logic blocks (Priority 1)
+  if (type === 'plan') {
+    // Prioritize sermon.plan as it is the source for the "Preaching Plan" view
+    const plan = sermon.plan || sermon.draft;
+    if (!plan) return Promise.resolve(i18n.t('export.noPlanAvailable', 'No plan available for export'));
+
+    let formattedPlan = '';
+    if (format === 'markdown') {
+      formattedPlan = formatPlanMarkdown(sermon, includeMetadata);
+    } else {
+      formattedPlan = formatPlanPlainText(sermon, includeMetadata);
+    }
+    return Promise.resolve(formattedPlan);
+  }
 
   // Step 1: Organize the data (Separation of Concerns - Priority 2)
   const organizedData = organizeSermonContent(sermon, focusedSection);
@@ -147,8 +161,86 @@ export function getExportContent(
   }
 
   debugLog("Formatting complete", { format, contentLength: formattedContent.length });
-  // Wrap in Promise.resolve for backward compatibility if needed, though could return string directly
   return Promise.resolve(formattedContent);
+}
+
+/**
+ * Formats the sermon plan into a plain text string.
+ */
+function formatPlanPlainText(
+  sermon: Sermon,
+  includeMetadata: boolean
+): string {
+  const plan = sermon.plan || sermon.draft;
+  if (!plan) return '';
+
+  let content = '';
+
+  // Add header
+  if (includeMetadata) {
+    content += `${TRANSLATIONS.sermonTitle}${sermon.title}\n`;
+    if (sermon.verse && sermon.verse.trim()) {
+      content += `${TRANSLATIONS.scriptureText.trim()}\n${sermon.verse}\n`;
+    }
+    content += '\n';
+  }
+
+  const sections = [
+    { key: 'introduction', title: TRANSLATIONS.introTitle },
+    { key: 'main', title: TRANSLATIONS.mainTitle },
+    { key: 'conclusion', title: TRANSLATIONS.conclusionTitle }
+  ];
+
+  sections.forEach(({ key, title }) => {
+    const sectionData = plan[key as keyof typeof plan];
+    if (sectionData && sectionData.outline && sectionData.outline.trim()) {
+      content += `${title}:\n\n`;
+      content += `${sectionData.outline}\n\n`;
+      content += '---------------------\n\n';
+    }
+  });
+
+  return content;
+}
+
+/**
+ * Formats the sermon plan into a Markdown string.
+ */
+function formatPlanMarkdown(
+  sermon: Sermon,
+  includeMetadata: boolean
+): string {
+  const plan = sermon.plan || sermon.draft;
+  if (!plan) return '';
+
+  let content = '';
+
+  // Add header
+  if (includeMetadata) {
+    content += `# ${TRANSLATIONS.sermonTitle}${sermon.title}\n\n`;
+    if (sermon.verse && sermon.verse.trim()) {
+      const lines = sermon.verse.trim().split(/\n/).filter(line => line.trim() !== '');
+      const formattedVerse = lines.map(line => '> ' + line.trim()).join('\n> \n');
+      content += `**${TRANSLATIONS.scriptureText.trim()}**\n${formattedVerse}\n\n`;
+    }
+  }
+
+  const sections = [
+    { key: 'introduction', title: TRANSLATIONS.introTitle },
+    { key: 'main', title: TRANSLATIONS.mainTitle },
+    { key: 'conclusion', title: TRANSLATIONS.conclusionTitle }
+  ];
+
+  sections.forEach(({ key, title }) => {
+    const sectionData = plan[key as keyof typeof plan];
+    if (sectionData && sectionData.outline && sectionData.outline.trim()) {
+      content += `## ${title}\n\n`;
+      content += `${sectionData.outline}\n\n`;
+      content += '---\n\n';
+    }
+  });
+
+  return content;
 }
 
 

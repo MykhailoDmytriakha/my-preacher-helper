@@ -369,7 +369,28 @@ describe('ExportButtons Component', () => {
       const mdButton = screen.getByText('export.formatMarkdown');
       await user.click(mdButton);
 
-      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('markdown', { includeTags: false }));
+      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('markdown', { includeTags: false, type: 'thoughts' }));
+    });
+
+    it('toggles between Thoughts and Plan export types', async () => {
+      mockGetContent.mockResolvedValue('Content');
+      const user = userEvent.setup();
+
+      render(
+        <ExportTxtModal
+          isOpen={true}
+          onClose={mockClose}
+          getContent={mockGetContent}
+          hasPlan={true}
+        />
+      );
+
+      await waitFor(() => expect(screen.getByText('Content')).toBeInTheDocument());
+
+      const planButton = screen.getByText('export.planOption');
+      await user.click(planButton);
+
+      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('plain', { includeTags: false, type: 'plan' }));
     });
 
     it('toggles tags inclusion', async () => {
@@ -379,7 +400,7 @@ describe('ExportButtons Component', () => {
       await waitFor(() => expect(screen.getByText('Content')).toBeInTheDocument());
       const toggle = screen.getByRole('switch');
       await user.click(toggle);
-      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('plain', { includeTags: true }));
+      await waitFor(() => expect(mockGetContent).toHaveBeenCalledWith('plain', { includeTags: true, type: 'thoughts' }));
     });
 
     it('handles download', async () => {

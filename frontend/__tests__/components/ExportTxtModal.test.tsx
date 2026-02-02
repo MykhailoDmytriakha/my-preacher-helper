@@ -57,7 +57,7 @@ describe('ExportTxtModal', () => {
 
     await waitFor(() => expect(getContent).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole('button', { name: 'export.formatMarkdown' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Markdown' }));
 
     // Should fetch again for markdown format
     await waitFor(() => expect(getContent).toHaveBeenCalledTimes(2));

@@ -195,6 +195,17 @@ describe('SermonHeader Component', () => {
       expect(React.isValidElement(pdfContent)).toBe(true);
     });
 
+    it('passes export type (plan/thoughts) to export function', async () => {
+      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+
+      await latestExportProps.getExportContent('plain', { includeTags: false, type: 'plan' });
+      expect(getExportContent).toHaveBeenCalledWith(mockSermon, undefined, {
+        format: 'plain',
+        includeTags: false,
+        type: 'plan'
+      });
+    });
+
     it('renders preach button and navigates to preaching plan', () => {
       const originalLocation = window.location;
       // Override window.location for test

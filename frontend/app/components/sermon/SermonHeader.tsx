@@ -126,10 +126,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
   // Removed legacy mode switch (framework/content)
 
-  const generateExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
+  const generateExportContent = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean; type?: 'thoughts' | 'plan' }) => {
     return getExportContent(sermon, undefined, {
       format,
-      includeTags: options?.includeTags
+      includeTags: options?.includeTags,
+      type: options?.type
     });
   };
 
