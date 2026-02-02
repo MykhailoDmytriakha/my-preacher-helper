@@ -12,8 +12,9 @@ import { enUS, ru, uk } from "date-fns/locale";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BibleLocale } from "@/(pages)/(private)/studies/bibleData";
-import { computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
+import { BibleLocale, BookInfo } from "@/(pages)/(private)/studies/bibleData";
+import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
+import { buildBookPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import { Sermon } from "@/models/models";
 
 interface AnalyticsSectionProps {
@@ -25,6 +26,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
     const sermonsLabel = t('calendar.analytics.sermons', { defaultValue: 'sermons' });
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear);
+    const [selectedBook, setSelectedBook] = useState<BookInfo | null>(null);
+    const [isBookModalOpen, setIsBookModalOpen] = useState(false);
 
     const getDateLocale = () => {
         switch (i18n.language) {
@@ -51,6 +54,12 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         selectedYear,
         locale: i18n.language,
     }), [sermonsByDate, i18n.language, selectedYear]);
+
+    const bookEntries = useMemo(() => buildBookPreachEntries({
+        sermonsByDate,
+        selectedYear,
+        locale: i18n.language,
+    }), [sermonsByDate, selectedYear, i18n.language]);
 
     const formatMonthLabel = (monthKey?: string) => {
         if (!monthKey) return 'N/A';
@@ -203,17 +212,31 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                             {stats.oldTestamentBooks.map((book) => {
                                 const count = stats.bibleBookCounts[book.id] || 0;
                                 const intensity = stats.bibleBookMax > 0 ? (count / stats.bibleBookMax) * 100 : 0;
+                                const isClickable = count > 0;
+                                const handleOpenBook = () => {
+                                    if (!isClickable) return;
+                                    setSelectedBook(book);
+                                    setIsBookModalOpen(true);
+                                };
 
                                 return (
                                     <div
                                         key={book.id}
-                                        className="relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 transition-colors cursor-pointer group"
+                                        data-testid={`book-tile-${book.id}`}
+                                        className={`relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors group ${isClickable ? 'cursor-pointer hover:border-purple-300 dark:hover:border-purple-500' : 'cursor-default opacity-80'}`}
                                         style={{
                                             backgroundColor: count > 0
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
                                         title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
+                                        onClick={handleOpenBook}
+                                        role={isClickable ? 'button' : undefined}
+                                        tabIndex={isClickable ? 0 : undefined}
+                                        onKeyDown={isClickable ? (event) => {
+                                            if (event.key === 'Enter') handleOpenBook();
+                                        } : undefined}
+                                        aria-disabled={isClickable ? undefined : true}
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
@@ -246,17 +269,31 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                             {stats.newTestamentBooks.map((book) => {
                                 const count = stats.bibleBookCounts[book.id] || 0;
                                 const intensity = stats.bibleBookMax > 0 ? (count / stats.bibleBookMax) * 100 : 0;
+                                const isClickable = count > 0;
+                                const handleOpenBook = () => {
+                                    if (!isClickable) return;
+                                    setSelectedBook(book);
+                                    setIsBookModalOpen(true);
+                                };
 
                                 return (
                                     <div
                                         key={book.id}
-                                        className="relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 transition-colors cursor-pointer group"
+                                        data-testid={`book-tile-${book.id}`}
+                                        className={`relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors group ${isClickable ? 'cursor-pointer hover:border-purple-300 dark:hover:border-purple-500' : 'cursor-default opacity-80'}`}
                                         style={{
                                             backgroundColor: count > 0
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
                                         title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
+                                        onClick={handleOpenBook}
+                                        role={isClickable ? 'button' : undefined}
+                                        tabIndex={isClickable ? 0 : undefined}
+                                        onKeyDown={isClickable ? (event) => {
+                                            if (event.key === 'Enter') handleOpenBook();
+                                        } : undefined}
+                                        aria-disabled={isClickable ? undefined : true}
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
@@ -362,6 +399,16 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                     )}
                 </div>
             </div>
+
+            <BibleBookSermonsModal
+                isOpen={isBookModalOpen}
+                onClose={() => {
+                    setIsBookModalOpen(false);
+                    setSelectedBook(null);
+                }}
+                book={selectedBook}
+                entries={selectedBook ? (bookEntries[selectedBook.id] || []) : []}
+            />
         </div>
     );
 }

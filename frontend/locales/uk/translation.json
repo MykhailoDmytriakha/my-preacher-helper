@@ -868,6 +868,11 @@
       "noActivity": "Немає активності",
       "mostActivity": "Найбільша активність",
       "noActivityRecorded": "Активність ще не записана",
+      "bookModalTitle": "Проповіді по книзі {{book}}",
+      "bookModalCount": "{{count}} проповідей",
+      "bookModalEmpty": "Немає проповідей по цій книзі",
+      "bookModalNoVerse": "Місце Писання не вказано",
+      "bookModalUntitled": "Без назви",
       "other": "Інші"
     },
     "churchAutocomplete": {

@@ -103,7 +103,7 @@ describe('AgendaView', () => {
 
         // Check that the verse is wrapped in a div with proper multi-line classes
         const verseContainer = verseElement.closest('div');
-        expect(verseContainer).toHaveClass('line-clamp-2', 'break-words', 'flex-1');
+        expect(verseContainer).toHaveClass('break-words', 'whitespace-pre-line', 'flex-1');
 
         // Check that parent container has proper alignment classes
         const parentContainer = verseContainer?.parentElement;

@@ -868,6 +868,11 @@
       "noActivity": "Нет активности",
       "mostActivity": "Наибольшая активность",
       "noActivityRecorded": "Активность еще не записана",
+      "bookModalTitle": "Проповеди по книге {{book}}",
+      "bookModalCount": "{{count}} проповедей",
+      "bookModalEmpty": "Нет проповедей по этой книге",
+      "bookModalNoVerse": "Место Писания не указано",
+      "bookModalUntitled": "Без названия",
       "other": "Другие"
     },
     "churchAutocomplete": {

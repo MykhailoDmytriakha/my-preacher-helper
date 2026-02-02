@@ -2,6 +2,7 @@ import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages
 import { PreachDate, Sermon } from "@/models/models";
 
 export type SermonsByDate = Record<string, Sermon[]>;
+export type BookPreachEntry = { sermon: Sermon; preachDate: PreachDate };
 
 type PreachDateEntry = { pd: PreachDate; sermon: Sermon };
 
@@ -85,20 +86,33 @@ const filterPreachDatesByYear = (
     });
 };
 
-const buildBookNameCandidates = (book: BookInfo): string[] => ([
-    book.names.en.toLowerCase(),
-    book.names.ru.toLowerCase(),
-    book.names.uk?.toLowerCase(),
-    book.abbrev.en.toLowerCase(),
-    book.abbrev.ru.toLowerCase(),
-    book.abbrev.uk?.toLowerCase()
-].filter(Boolean));
+const buildBookNameCandidates = (book: BookInfo): string[] => {
+    const names = [book.names.en, book.names.ru, book.names.uk].filter(Boolean) as string[];
+    const nameVariants = names.flatMap((name) => {
+        const lower = name.toLowerCase();
+        const variants = [lower];
+        if (lower.startsWith('от ')) variants.push(lower.slice(3));
+        if (lower.startsWith('від ')) variants.push(lower.slice(4));
+        return variants;
+    });
+    const abbrevs = [
+        book.abbrev.en,
+        book.abbrev.ru,
+        book.abbrev.uk
+    ].filter(Boolean).map((abbr) => abbr.toLowerCase());
+
+    return Array.from(new Set([...nameVariants, ...abbrevs]));
+};
 
 const matchBookByNameCandidates = (lowerVerse: string, book: BookInfo): string | null => {
+    const trimmed = lowerVerse.trim();
+    if (!trimmed) return null;
+    const compactVerse = trimmed.replace(/\s+/g, '');
     const bookNames = buildBookNameCandidates(book);
     for (const name of bookNames) {
-        if (lowerVerse.startsWith(name)) return book.id;
-        if (name.startsWith(lowerVerse.substring(0, Math.min(4, lowerVerse.length)))) return book.id;
+        if (trimmed.startsWith(name)) return book.id;
+        const compactName = name.replace(/\s+/g, '');
+        if (compactVerse.length <= 4 && compactName.startsWith(compactVerse)) return book.id;
     }
     return null;
 };
@@ -138,6 +152,89 @@ const resolveMatchedBook = (verseText: string, locale: string): string | null =>
     if (dashMatch) return dashMatch;
 
     return findFuzzyBookMatch(verseText, locale);
+};
+
+export const resolveBookIdFromVerse = (rawVerse: string, locale: string): string | null => {
+    const verseText = rawVerse.trim();
+    if (!verseText) return null;
+    return resolveMatchedBook(verseText, locale);
+};
+
+const normalizeVerseText = (rawVerse: string): string => {
+    return rawVerse
+        .replace(/[\u202F\u00A0]/g, ' ')
+        .replace(/[–—−‒‑﹘﹣]/g, '-')
+        .replace(/[.,;:!?()"'«»]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const isNumericToken = (token: string): boolean => /^\d+(-\d+)?$/.test(token);
+
+const tryMatchBookAtTokens = (tokens: string[], index: number, locale: string): { bookId: string; consumed: number } | null => {
+    const maxLen = Math.min(3, tokens.length - index);
+    for (let len = maxLen; len >= 1; len -= 1) {
+        const sliceTokens = tokens.slice(index, index + len);
+        const hasNumeric = sliceTokens.some(isNumericToken);
+        if (hasNumeric) {
+            const numericAtStart = isNumericToken(sliceTokens[0]) && sliceTokens.slice(1).every(token => !isNumericToken(token));
+            if (!numericAtStart) continue;
+        }
+
+        const slice = sliceTokens.join(' ');
+        if (!slice) continue;
+
+        const candidates = [
+            slice,
+            slice.replace(/\s+/g, ''),
+            slice.replace(/^(\d)(\p{L})/u, '$1 $2'),
+        ];
+
+        for (const variant of candidates) {
+            const matched = getBookByName(variant, locale as BibleLocale);
+            if (matched) return { bookId: matched.id, consumed: len };
+            const fuzzyMatch = resolveMatchedBook(variant, locale);
+            if (fuzzyMatch) return { bookId: fuzzyMatch, consumed: len };
+        }
+    }
+    return null;
+};
+
+export const extractBookIdsFromVerse = (rawVerse: string, locale: string): string[] => {
+    const normalized = normalizeVerseText(rawVerse);
+    if (!normalized) return [];
+
+    const tokens = normalized
+        .split(/\s+/)
+        .map(token => token.replace(/^-+/, '').replace(/-+$/, ''))
+        .filter(Boolean);
+
+    if (tokens.length === 0) return [];
+
+    const found: string[] = [];
+    const seen = new Set<string>();
+
+    for (let i = 0; i < tokens.length; i += 1) {
+        const match = tryMatchBookAtTokens(tokens, i, locale);
+        if (match) {
+            const nextToken = tokens[i + match.consumed];
+            const hasNumber = nextToken ? isNumericToken(nextToken) : false;
+            const isOnlyBook = i === 0 && match.consumed === tokens.length;
+            if (!hasNumber && !isOnlyBook) continue;
+            if (!seen.has(match.bookId)) {
+                seen.add(match.bookId);
+                found.push(match.bookId);
+            }
+            i += Math.max(0, match.consumed - 1);
+        }
+    }
+
+    if (found.length === 0) {
+        const fallback = resolveBookIdFromVerse(rawVerse, locale);
+        if (fallback) return [fallback];
+    }
+
+    return found;
 };
 
 const resolveTopicFromVerse = (rawVerse: string, locale: string): string => {
@@ -232,8 +329,15 @@ export const computeAnalyticsStats = ({
         const { monthKey } = parseDateInfo(pd.date);
         monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
 
-        const topic = resolveTopicFromVerse(sermon.verse, locale);
-        topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+        const bookIds = extractBookIdsFromVerse(sermon.verse || '', locale);
+        if (bookIds.length > 0) {
+            bookIds.forEach(bookId => {
+                topicCounts[bookId] = (topicCounts[bookId] || 0) + 1;
+            });
+        } else {
+            const topic = resolveTopicFromVerse(sermon.verse, locale);
+            topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+        }
 
         if (sermon.date && pd.date) {
             const start = new Date(sermon.date).getTime();
@@ -290,4 +394,37 @@ export const computeAnalyticsStats = ({
         newTestamentBooks,
         bibleBookMax
     };
+};
+
+export const buildBookPreachEntries = ({
+    sermonsByDate,
+    selectedYear,
+    locale,
+}: {
+    sermonsByDate: SermonsByDate;
+    selectedYear: number | 'all';
+    locale: string;
+}): Record<string, BookPreachEntry[]> => {
+    const allPreachDates = buildAllPreachDates(sermonsByDate);
+    const filteredPreachDates = filterPreachDatesByYear(allPreachDates, selectedYear);
+
+    const entriesByBook: Record<string, BookPreachEntry[]> = {};
+
+    filteredPreachDates.forEach(({ pd, sermon }) => {
+        const bookIds = extractBookIdsFromVerse(sermon.verse || '', locale);
+        if (bookIds.length === 0) return;
+
+        bookIds.forEach(bookId => {
+            if (!entriesByBook[bookId]) {
+                entriesByBook[bookId] = [];
+            }
+            entriesByBook[bookId].push({ sermon, preachDate: pd });
+        });
+    });
+
+    Object.values(entriesByBook).forEach(entries => {
+        entries.sort((a, b) => b.preachDate.date.localeCompare(a.preachDate.date));
+    });
+
+    return entriesByBook;
 };

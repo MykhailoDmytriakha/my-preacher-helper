@@ -868,6 +868,11 @@
       "noActivity": "No activity",
       "mostActivity": "Most activity",
       "noActivityRecorded": "No activity recorded yet",
+      "bookModalTitle": "Sermons in {{book}}",
+      "bookModalCount": "{{count}} sermons",
+      "bookModalEmpty": "No sermons for this book yet",
+      "bookModalNoVerse": "No scripture provided",
+      "bookModalUntitled": "Untitled sermon",
       "other": "Other"
     },
     "churchAutocomplete": {

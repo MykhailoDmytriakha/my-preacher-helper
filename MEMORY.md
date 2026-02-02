@@ -42,6 +42,20 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-02 Calendar Book Parsing False Positives
+**Problem:** Sermons referencing "1Пет" were misclassified under "Иисус Навин" because fuzzy matching treated words like "Иисуса" inside verse text as book tokens.
+**Attempts:** Added multi-book parsing and prefix matching; false positives persisted.
+**Solution:** Limit fuzzy prefix matching to short tokens (<=4 chars) and require a numeric chapter token after a book match (or allow book-only input).
+**Why it worked:** Common words inside verse text no longer qualify as book matches, while abbreviations remain detectable.
+**Principle:** For scripture parsing, accept fuzzy prefix matches only for short tokens and confirm with a chapter number to avoid false positives.
+
+### 2026-02-02 Scripture References Hidden by Line Clamp
+**Problem:** Calendar list items and the book modal truncated multi-verse text, hiding additional references.
+**Attempts:** None.
+**Solution:** Remove `line-clamp-2` and use `whitespace-pre-line` so full verse text renders inside scrollable containers.
+**Why it worked:** The container already limits height and scrolls; removing clamp reveals all references without breaking layout.
+**Principle:** When full scripture text is required, avoid clamping; rely on container scrolling and `whitespace-pre-line` for safe multi-line display.
+
 ### 2026-02-01 PDF Export Rasterization Detection
 **Problem:** Exported PDF looked like images and text was not selectable/searchable.
 **Evidence:** `pdfimages -list` showed one full-page image per page; `pdftotext` returned empty content.
@@ -696,6 +710,11 @@
 *   **Context:** Вторичные представления (Календарь, Агенда).
 *   **Protocol:** Наследовать визуальные паттерны (цвета серий, бейджи) из Dashboard. Использовать `useSeries`.
 *   **Reasoning:** Пользователь должен узнавать серию проповеди мгновенно, вне зависимости от экрана.
+
+**Book Parsing Guardrails**
+*   **Context:** Calendar analytics book distribution from freeform `sermon.verse` text.
+*   **Protocol:** Accept book matches only when followed by a chapter number (or when the input is book-only) and keep fuzzy prefix matching to short tokens (<=4 chars).
+*   **Reasoning:** Prevents accidental matches on common words like "Иисуса" while preserving abbreviation support.
 
 ### 🌍 Localization (i18n) Protocols
 

@@ -133,7 +133,7 @@ export default function AgendaView({ sermons, series = [] }: AgendaViewProps) {
                                     </div>
                                     <div className="flex items-start gap-1.5">
                                         <BookOpenIcon className="w-4 h-4 mt-0.5" />
-                                        <div className="line-clamp-2 break-words flex-1">{event.sermon.verse}</div>
+                                        <div className="break-words whitespace-pre-line flex-1">{event.sermon.verse}</div>
                                     </div>
                                 </div>
                             </div>
