@@ -1,13 +1,13 @@
 ---
 name: 60-test-coverage
-description: "[60-test-coverage] VALIDATE. STRICT. Force ≥80% coverage for changed code (staged + unstaged). Run `npm run test:coverage && npm run lint:full` from root until BOTH green. No exceptions. Use when validating coverage for recent changes, adding tests for modified code, or ensuring nothing broke."
+description: "[60-test-coverage] VALIDATE. STRICT. Force ≥80% coverage for changed code (staged + unstaged). Key focus: 100% coverage of NEW/CHANGED logic. Run `npm run test:coverage && npm run lint:full` from root until BOTH green. No exceptions."
 ---
 
 # Test Coverage Protocol — STRICT MODE
 
 ## Goal
 
-**FORCE** coverage of all changed code (functions, methods, lines) at **≥80%** and ensure **both** `npm run test:coverage` and `npm run lint:full` are **green**. Run from **root directory** only. No shortcuts. No exceptions.
+**FORCE** coverage of all changed code (functions, methods, lines) at **≥80%** (file-wide) with a **primary mandate for 100% coverage of the specific logic introduced or modified**. Ensure **both** `npm run test:coverage` and `npm run lint:full` are **green**. Run from **root directory** only. No shortcuts. No exceptions.
 
 ## Invariant
 
@@ -21,7 +21,7 @@ npm run test:coverage && npm run lint:full
 
 ## Workflow
 
-### Phase 1: Identify Changed Files
+### Phase 1: Identify Changed Files & Logic
 
 1. **Get all changed files** (staged + unstaged):
    ```bash
@@ -30,72 +30,81 @@ npm run test:coverage && npm run lint:full
    ```
    Union both lists. Filter to **testable** files: `*.ts`, `*.tsx` under `frontend/app`, `frontend/locales`, `frontend/utils`, etc. (exclude config, mocks, `*.test.*`, `*.spec.*`).
 
-2. **Record** the list of changed files. These are the **coverage targets**.
+2. **Identify specific line changes**:
+   - Use `git diff -U0` to see exactly which lines were modified.
+
+3. **Record** the list of changed files and the **logic blocks** (functions/branches) affected. These are the **primary coverage targets**.
 
 ### Phase 2: Baseline Coverage Measurement
 
-3. **Run initial coverage** from root:
+4. **Run initial coverage** from root:
    ```bash
    npm run test:coverage
    ```
    If it **fails** (tests red), fix valid test failures first.
 
-4. **Record BASELINE coverage** for each changed file:
-   - Identify the coverage % (Lines/Statements) for every file found in Phase 1.
-   - **Store this baseline.** You MUST report this value later to show improvement.
-   - Example log: `utils/dateFormatter.ts: 50% (Baseline)`
-   - If a changed file is **<80%**, it is a mandated target for Phase 3.
+5. **Record BASELINE coverage** for each changed file:
+   - Identify the coverage % (Lines/Statements).
+   - **Crucially: Check if the CHANGED lines are uncovered** (check "Uncovered Line #s" in Jest output).
+   - Example log: `utils/dateFormatter.ts: 50% (Baseline) - Lines 45-50 (NEW) are UNCOVERED`.
 
-### Phase 3: Add Tests Until ≥80%
+### Phase 3: Add Regression Tests for Changes
 
-5. **Prioritize** changed files with coverage <80%:
-   - Start with the lowest coverage.
-   - Focus on **changed functions, methods, branches** — write tests that execute them.
+6. **Prioritize covering the DIFF**:
+   - Even if the file has 90% coverage, if your **changes** are in the 10% uncovered part, you MUST add tests.
+   - Focus on **newly added branches, edge cases, and bug fixes**.
 
-6. **Write tests** that:
-   - Directly exercise the **changed logic** (not just imports).
-   - Assert behavior, edge cases, and failure paths.
-   - Prefer behavior/structure assertions over snapshots.
+7. **Write tests** that:
+   - Specifically target the **modified lines and logic**.
+   - Assert the **fix** for the bug or the **correctness** of the new feature.
+   - Use mock data that reflects the specific scenarios handled in the diff.
 
-7. **Re-run coverage**:
+8. **Re-run coverage**:
    ```bash
    npm run test:coverage
    ```
-   Verify each changed file is **≥80%** (lines or statements). If not → repeat steps 5–7.
+   Verify:
+   - Changed file is **≥80%** overall.
+   - **All modified/new lines are covered.**
 
 ### Phase 4: Lint Until Green
 
-8. **Run full lint** from root:
+9. **Run full lint** from root:
    ```bash
    npm run lint:full
    ```
    This runs: `lint` → `compile` → `lint:unused`.
 
-9. **Fix all lint/compile/unused errors**:
-   - Do not leave any error unfixed.
-   - Re-run `npm run lint:full` until it passes.
+10. **Fix all lint/compile/unused errors**:
+    - Do not leave any error unfixed.
+    - Re-run `npm run lint:full` until it passes.
 
-### Phase 5: Final Validation
+### Phase 5: Final Validation & Report
 
-10. **Run the full invariant** from root:
+11. **Run the full invariant** from root:
     ```bash
     npm run test:coverage && npm run lint:full
     ```
-    **Both must pass.** If either fails → return to the failing phase and fix.
+    **Both must pass.**
 
-11. **Report**:
-    - List changed files and their final coverage %.
-    - Confirm each changed file ≥80%.
-    - Confirm `test:coverage` green.
-    - Confirm `lint:full` green.
+12. **Generate Final Report**:
+    - You **MUST** provide a comparison showing that the **changes** are specifically covered.
+    - Format:
+      ```
+      | File | Baseline % | Final % | Changes Covered? | Status |
+      |------|------------|---------|------------------|--------|
+      | utils/api.ts | 45% | 85% | Yes (Lines 120-145) | ✅ |
+      | components/Calc.tsx | 100% | 100% | Yes (Regression added) | ✅ |
+      ```
 
 ---
 
 ## Validation Checklist
 
-- [ ] Changed files identified (staged + unstaged).
+- [ ] Changed files AND changed line ranges identified.
 - [ ] `npm run test:coverage` passes.
-- [ ] Each changed file has ≥80% coverage (lines/statements).
+- [ ] Every single modified line is exercised by a test.
+- [ ] File-wide coverage ≥80%.
 - [ ] `npm run lint:full` passes.
 - [ ] Final run: `npm run test:coverage && npm run lint:full` — both green.
 
@@ -103,16 +112,15 @@ npm run test:coverage && npm run lint:full
 
 ## Output Expectations
 
-- Provide the exact command used: `npm run test:coverage && npm run lint:full` (from root).
-- Provide per-file coverage for each changed file (before/after if tests were added).
-- Explicitly state how changed code is exercised by tests.
-- Confirm the 80% threshold is met for all changed files.
+- Provide the exact command used: `npm run test:coverage && npm run lint:full`.
+- Explicitly state which **changed line ranges** or **newly added functions** are now covered.
+- Provide before/after coverage comparison.
 - Confirm both test:coverage and lint:full are green.
 
 ---
 
 ## Exclusions
 
-- Files explicitly excluded in `jest.config.ts` (e.g. `layout.tsx`, `globals.css`) are not in scope.
-- If a changed file is excluded by Jest `collectCoverageFrom`, document it and skip coverage check for that file.
+- Files explicitly excluded in `jest.config.ts`.
 - If no changed files are testable (e.g. only config changes), run the invariant anyway and report.
+

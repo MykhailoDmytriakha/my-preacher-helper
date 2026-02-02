@@ -13,7 +13,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BibleLocale } from "@/(pages)/(private)/studies/bibleData";
-import { computeAnalyticsStats } from "@/components/calendar/calendarAnalytics";
+import { computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import { Sermon } from "@/models/models";
 
 interface AnalyticsSectionProps {
@@ -37,8 +37,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
     const availableYears = useMemo(() => {
         const years = new Set<number>();
         Object.keys(sermonsByDate).forEach(dateStr => {
-            const year = Number(dateStr.slice(0, 4));
-            if (!Number.isNaN(year)) {
+            const { year } = parseDateInfo(dateStr);
+            if (!Number.isNaN(year) && year > 1900) {
                 years.add(year);
             }
         });
@@ -54,7 +54,12 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
 
     const formatMonthLabel = (monthKey?: string) => {
         if (!monthKey) return 'N/A';
-        const monthDate = new Date(`${monthKey}-01`);
+        const parts = monthKey.split('-');
+        if (parts.length < 2) return monthKey;
+        const year = Number(parts[0]);
+        const month = Number(parts[1]);
+        if (month < 1 || month > 12) return monthKey;
+        const monthDate = new Date(year, month - 1, 1);
         if (Number.isNaN(monthDate.getTime())) return monthKey;
         return format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
     };
@@ -301,7 +306,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                         {stats.monthlyActivity.map(({ month, count }) => {
                             const intensity = stats.totalPreachings > 0 ? (count / Math.max(...stats.monthlyActivity.map(m => m.count))) * 100 : 0;
-                            const monthDate = new Date(month + '-01');
+                            const [year, monthNum] = month.split('-').map(Number);
+                            const monthDate = new Date(year, monthNum - 1, 1);
 
                             return (
                                 <div

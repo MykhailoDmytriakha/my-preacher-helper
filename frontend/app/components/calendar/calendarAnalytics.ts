@@ -22,6 +22,43 @@ export type AnalyticsStats = {
     bibleBookMax: number;
 };
 
+export const parseDateInfo = (dateStr: string): { year: number; monthKey: string; monthOnly: string } => {
+    let year = 0;
+    let monthNum = 0;
+
+    // Use regex split to handle both '-' and '.' delimiters
+    const parts = dateStr.split(/[-.]/);
+    if (parts.length >= 3) {
+        // Find which part looks like a 4-digit year
+        const yearIdx = parts.findIndex(p => p.length === 4);
+        if (yearIdx !== -1) {
+            year = Number(parts[yearIdx]);
+            // Usually the month is at index 1 regardless of order (YYYY-MM-DD or DD.MM.YYYY)
+            monthNum = Number(parts[1]);
+        } else {
+            // If no 4-digit year found, assume the first part over 31 is year, or last part
+            const p0 = Number(parts[0]);
+            if (p0 > 31) {
+                year = p0;
+                monthNum = Number(parts[1]);
+            } else {
+                year = Number(parts[2]);
+                monthNum = Number(parts[1]);
+            }
+        }
+    } else {
+        // Fallback for simple YYYY-MM strings or partial ISO
+        year = Number(dateStr.substring(0, 4));
+        monthNum = Number(dateStr.substring(5, 7));
+    }
+
+    // Ensure 2-digit padding for month to match computeMonthlyActivity expectation
+    const monthOnly = String(monthNum).padStart(2, '0');
+    const monthKey = `${year}-${monthOnly}`;
+
+    return { year, monthKey, monthOnly };
+};
+
 const buildAllPreachDates = (sermonsByDate: SermonsByDate): PreachDateEntry[] => {
     const allPreachDates: PreachDateEntry[] = [];
 
@@ -43,7 +80,7 @@ const filterPreachDatesByYear = (
 ): PreachDateEntry[] => {
     if (selectedYear === 'all') return allPreachDates;
     return allPreachDates.filter(({ pd }) => {
-        const year = Number(pd.date.slice(0, 4));
+        const { year } = parseDateInfo(pd.date);
         return year === selectedYear;
     });
 };
@@ -192,7 +229,7 @@ export const computeAnalyticsStats = ({
         const churchKey = `${pd.church.name}${pd.church.city ? `, ${pd.church.city}` : ''}`;
         churchCounts[churchKey] = (churchCounts[churchKey] || 0) + 1;
 
-        const monthKey = pd.date.substring(0, 7);
+        const { monthKey } = parseDateInfo(pd.date);
         monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
 
         const topic = resolveTopicFromVerse(sermon.verse, locale);
@@ -220,6 +257,7 @@ export const computeAnalyticsStats = ({
 
     const monthlyActivity = computeMonthlyActivity(monthCounts, selectedYear);
     const busiestMonth = monthlyActivity.reduce<{ month: string; count: number } | null>((best, current) => {
+        if (current.count === 0) return best;
         if (!best || current.count > best.count) {
             return current;
         }

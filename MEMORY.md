@@ -20,6 +20,7 @@
 *   **Strict Boundaries:** Use `zod` for ALL external data limits (API, AI, Forms). Types must strictly match Zod schemas.
 *   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors. For AI chains, use **Sequence-Aware Mocking** to verify context passing.
+*   **Strict Change Coverage:** Maintain **100% test coverage** for all newly added or modified lines (diff). Overall file coverage must remain **≥80%**. Run `npm run test:coverage && npm run lint:full` from root to verify.
 *   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
 *   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
@@ -610,6 +611,11 @@
 *   **Context:** Конфликт "Чистый код" vs "Требования тестов".
 *   **Protocol:** Если требования Jest/RTL конфликтуют с красотой кода (например, дублирование моков) — **ВЫБИРАТЬ ТРЕБОВАНИЯ ТЕСТОВ**.
 *   **Reasoning:** Работающие тесты важнее эстетики в тестовой инфраструктуре.
+
+**Coverage Scope for Types**
+*   **Context:** Jest coverage with TypeScript models/interfaces.
+*   **Protocol:** Exclude types-only modules from `collectCoverageFrom`. Cover only executable runtime code; remove the exclusion if a file gains runtime logic.
+*   **Reasoning:** Types are erased at compile time, so coverage can never hit them.
 
 **Agent-Created Tests Must Run**
 *   **Context:** Я добавляю новые тесты.
