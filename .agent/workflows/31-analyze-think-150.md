@@ -161,7 +161,7 @@ This Skill is **universal** and applies to any situation requiring quality think
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Analyze-Think 150 Complete
+### [date - HH"MM] Analyze-Think 150 Complete
 **Topic:** <what was analyzed>
 **Conclusion:** <key insight/decision>
 **Risks:** <identified risks>

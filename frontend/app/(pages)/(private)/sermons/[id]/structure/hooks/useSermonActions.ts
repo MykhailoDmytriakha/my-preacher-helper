@@ -8,6 +8,7 @@ import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
 import { debugLog } from "@/utils/debugMode";
 import { getCanonicalTagForSection } from "@/utils/tagUtils";
+import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
 
 import { buildStructureFromContainers, buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
 
@@ -83,6 +84,9 @@ export function useSermonActions({
         if (!sermon) return;
         const { localId, sectionId, text, tags, outlinePointId } = payload;
 
+        const outlineSection = resolveSectionFromOutline(sermon, outlinePointId ?? null);
+        const finalOutlinePointId = outlineSection && outlineSection !== sectionId ? undefined : outlinePointId;
+
         debugLog('Structure: submit pending thought', { localId, sectionId, textLength: text.length, tags, outlinePointId });
         pendingActions.markPendingStatus(localId, 'sending', { resetExpiry: true });
 
@@ -108,19 +112,19 @@ export function useSermonActions({
                 id: localId,
                 text,
                 tags: requestTags,
-                outlinePointId,
+                outlinePointId: finalOutlinePointId,
                 date: new Date().toISOString(),
             });
             debugLog('Structure: createManualThought result', { id: addedThought.id, tags: addedThought.tags, outlinePointId: addedThought.outlinePointId });
 
-            const outlinePoint = findOutlinePoint(outlinePointId, sermon);
+            const outlinePoint = findOutlinePoint(finalOutlinePointId, sermon);
             const newItem = buildItemForUI({
                 id: addedThought.id,
                 text,
                 tags,
                 allowedTags,
                 sectionTag,
-                outlinePointId,
+                outlinePointId: finalOutlinePointId,
                 outlinePoint,
             });
 
@@ -132,17 +136,30 @@ export function useSermonActions({
             });
             pendingActions.removePendingThought(localId, { removeFromContainers: false });
 
-            setSermon((prev) => {
-                if (!prev) return null;
-                return { ...prev, thoughts: [...prev.thoughts, addedThought] };
-            });
-
             // Prepare updated structure immediately to avoid race conditions with containersRef
             const currentStructure = buildStructureFromContainers(containersRef.current);
-            const updatedStructure: ThoughtsBySection = {
-                ...currentStructure,
-                [sectionId]: [...(currentStructure[sectionId as keyof ThoughtsBySection] || []), addedThought.id]
-            };
+            const thoughtsById = new Map(
+                [...sermon.thoughts, addedThought].map((thought) => [thought.id, thought])
+            );
+            const updatedStructure = insertThoughtIdInStructure({
+                structure: currentStructure,
+                section: sectionId,
+                thoughtId: addedThought.id,
+                outlinePointId: finalOutlinePointId,
+                thoughtsById,
+                thoughts: [...sermon.thoughts, addedThought],
+                outline: sermon.outline,
+            });
+
+            setSermon((prev) => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    thoughts: [...prev.thoughts, addedThought],
+                    structure: updatedStructure,
+                    thoughtsBySection: updatedStructure,
+                };
+            });
 
             try {
                 await updateStructure(sermon.id, updatedStructure);

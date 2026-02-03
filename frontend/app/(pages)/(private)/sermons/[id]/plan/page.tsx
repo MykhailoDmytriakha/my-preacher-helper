@@ -23,12 +23,13 @@ import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import PreachingTimer from "@/components/PreachingTimer";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import useSermon from "@/hooks/useSermon";
-import { SermonPoint, Sermon, Thought, Plan, ThoughtsBySection } from "@/models/models";
+import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
 
@@ -2594,48 +2595,7 @@ export default function PlanPage() {
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = (outlinePointId: string): Thought[] => {
     if (!sermon) return [];
-
-    // 1. Найти точку плана и определить, к какой секции она относится
-    let sectionName: string | null = null;
-
-    if (sermon.outline?.introduction.some(op => op.id === outlinePointId)) {
-      sectionName = SECTION_NAMES.INTRODUCTION;
-    } else if (sermon.outline?.main.some(op => op.id === outlinePointId)) {
-      sectionName = SECTION_NAMES.MAIN;
-    } else if (sermon.outline?.conclusion.some(op => op.id === outlinePointId)) {
-      sectionName = SECTION_NAMES.CONCLUSION;
-    }
-
-    if (!sectionName) {
-      // Если секция не найдена, возвращаем мысли в порядке по умолчанию
-      return sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
-    }
-
-    // 2. Получаем упорядоченный массив ID мыслей из структуры для данной секции
-    const structureIds = sermon.structure?.[sectionName as keyof ThoughtsBySection];
-    const structureIdsArray = Array.isArray(structureIds) ? structureIds :
-      (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
-
-    // 3. Отфильтровываем все мысли, связанные с данной точкой плана
-    const thoughtsForPoint = sermon.thoughts.filter(thought => thought.outlinePointId === outlinePointId);
-
-    // 4. Если массив структуры пуст, возвращаем мысли без сортировки
-    if (!structureIdsArray.length) {
-      return thoughtsForPoint;
-    }
-
-    // 5. Сортируем мысли в соответствии с порядком в структуре
-    return thoughtsForPoint.sort((a, b) => {
-      const indexA = structureIdsArray.indexOf(a.id);
-      const indexB = structureIdsArray.indexOf(b.id);
-
-      // Если мысль не найдена в структуре, помещаем её в конец
-      if (indexA === -1) return 1;
-      if (indexB === -1) return -1;
-
-      // Сортировка по порядку в структуре
-      return indexA - indexB;
-    });
+    return getThoughtsForOutlinePoint(sermon, outlinePointId);
   };
 
   // Find thoughts for an outline point

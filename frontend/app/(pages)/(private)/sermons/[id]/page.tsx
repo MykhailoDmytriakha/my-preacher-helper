@@ -35,6 +35,7 @@ import { useTags } from "@/hooks/useTags";
 import { getSectionLabel } from '@/lib/sections';
 import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
+import { updateStructure } from "@/services/structure.service";
 import AddThoughtManual from "@components/AddThoughtManual";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -44,6 +45,7 @@ import { createAudioThought, deleteThought, updateThought } from "@services/thou
 import { getContrastColor } from "@utils/color";
 import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
+import { findThoughtSectionInStructure, insertThoughtIdInStructure, resolveSectionForNewThought, resolveSectionFromOutline } from "@utils/thoughtOrdering";
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { ReactNode } from "react";
@@ -836,6 +838,42 @@ export default function SermonPage() {
     });
   }, [setSermon]);
 
+  const appendNewThoughtWithStructure = useCallback(async (newThought: Thought) => {
+    if (!sermon) return;
+
+    const targetSection = resolveSectionForNewThought({
+      sermon,
+      outlinePointId: newThought.outlinePointId ?? null,
+      tags: newThought.tags,
+    });
+
+    const thoughtsById = new Map(
+      [...(sermon.thoughts ?? []), newThought].map((thought) => [thought.id, thought])
+    );
+    const updatedStructure = insertThoughtIdInStructure({
+      structure: sermon.structure,
+      section: targetSection,
+      thoughtId: newThought.id,
+      outlinePointId: newThought.outlinePointId,
+      thoughtsById,
+      thoughts: [...(sermon.thoughts ?? []), newThought],
+      outline: sermon.outline,
+    });
+
+    setSermon((prevSermon) =>
+      prevSermon
+        ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])], structure: updatedStructure, thoughtsBySection: updatedStructure }
+        : prevSermon
+    );
+
+    try {
+      await updateStructure(sermon.id, updatedStructure);
+    } catch (error) {
+      console.error("Failed to update structure after adding thought", error);
+      alert(t('errors.failedToSaveStructure') || 'Failed to save structure.');
+    }
+  }, [sermon, setSermon, t]);
+
   // Show skeleton while loading OR if we have no data and no error yet (initial fetch)
   if (loading || (!sermon && !error)) {
     return <SermonDetailSkeleton />;
@@ -878,11 +916,7 @@ export default function SermonPage() {
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
       const newThought: Thought = { ...thoughtResponse };
-      setSermon((prevSermon: Sermon | null) =>
-        prevSermon
-          ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
-          : prevSermon
-      );
+      await appendNewThoughtWithStructure(newThought);
 
       // Clear stored audio on success
       setStoredAudioBlob(null);
@@ -908,11 +942,7 @@ export default function SermonPage() {
     try {
       const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
       const newThought: Thought = { ...thoughtResponse };
-      setSermon((prevSermon: Sermon | null) =>
-        prevSermon
-          ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])] }
-          : prevSermon
-      );
+      await appendNewThoughtWithStructure(newThought);
 
       // Clear stored audio on success
       setStoredAudioBlob(null);
@@ -976,12 +1006,46 @@ export default function SermonPage() {
 
     try {
       await updateThought(sermon.id, updatedThoughtData);
+      const outlineSection = resolveSectionFromOutline(sermon, outlinePointId ?? null);
+      const currentSection = findThoughtSectionInStructure(sermon.structure, thoughtToUpdate.id);
+      let updatedStructure = sermon.structure;
+      let structureChanged = false;
+
+      if (outlinePointId && outlineSection && outlineSection !== currentSection) {
+        const thoughtsById = new Map(
+          [...sermon.thoughts.filter((t) => t.id !== thoughtToUpdate.id), updatedThoughtData].map((thought) => [thought.id, thought])
+        );
+        updatedStructure = insertThoughtIdInStructure({
+          structure: sermon.structure,
+          section: outlineSection,
+          thoughtId: thoughtToUpdate.id,
+          outlinePointId,
+          thoughtsById,
+          thoughts: [...sermon.thoughts.filter((t) => t.id !== thoughtToUpdate.id), updatedThoughtData],
+          outline: sermon.outline,
+        });
+        structureChanged = true;
+      }
+
       setSermon((prevSermon) => {
         if (!prevSermon) return null;
         const newThoughts = [...prevSermon.thoughts];
         newThoughts[thoughtIndex] = updatedThoughtData;
-        return { ...prevSermon, thoughts: newThoughts };
+        return {
+          ...prevSermon,
+          thoughts: newThoughts,
+          structure: updatedStructure ?? prevSermon.structure,
+          thoughtsBySection: updatedStructure ?? prevSermon.thoughtsBySection,
+        };
       });
+      if (structureChanged && updatedStructure) {
+        try {
+          await updateStructure(sermon.id, updatedStructure);
+        } catch (error) {
+          console.error("Failed to update structure after outline change", error);
+          alert(t('errors.failedToSaveStructure') || 'Failed to save structure.');
+        }
+      }
       setEditingModalData(null);
     } catch (error) {
       console.error("Failed to update thought", error);
@@ -990,10 +1054,7 @@ export default function SermonPage() {
   };
 
   const handleNewManualThought = (newThought: Thought) => {
-    setSermon((prevSermon) => prevSermon ? {
-      ...prevSermon,
-      thoughts: [newThought, ...(prevSermon.thoughts ?? [])],
-    } : null);
+    void appendNewThoughtWithStructure(newThought);
   };
 
   const handleEditThoughtStart = (thought: Thought, index: number) => {

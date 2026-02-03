@@ -200,7 +200,7 @@ Use both when task requires excellent thinking AND excellent execution.
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Execute-Quality 150 Complete
+### [date - HH"MM] Execute-Quality 150 Complete
 **Task:** <task executed>
 **Quality Score:** <confidence %>
 **Verified:** <what was verified>

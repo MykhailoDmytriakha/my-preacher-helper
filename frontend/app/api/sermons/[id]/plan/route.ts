@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { SermonContent } from '@/models/models';
+import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -165,24 +166,8 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       );
     }
 
-    // Find thoughts related to this outline point AND sort them based on structure
-    const structureIds = sermon.structure?.[sectionName as keyof typeof sermon.structure];
-    const structureIdsArray: string[] = Array.isArray(structureIds) ? structureIds :
-      (typeof structureIds === 'string' ? JSON.parse(structureIds) : []);
-
-    const thoughtsForPoint = sermon.thoughts.filter(thought =>
-      thought.outlinePointId === outlinePointId
-    );
-
-    const relatedThoughts = structureIdsArray.length > 0 ?
-      thoughtsForPoint.sort((a, b) => {
-        const indexA = structureIdsArray.indexOf(a.id);
-        const indexB = structureIdsArray.indexOf(b.id);
-        if (indexA === -1) return 1; // Put thoughts not in structure at the end
-        if (indexB === -1) return -1;
-        return indexA - indexB;
-      }) :
-      thoughtsForPoint; // Use unsorted if structure is empty
+    // Find thoughts related to this outline point in canonical order
+    const relatedThoughts = getThoughtsForOutlinePoint(sermon, outlinePointId);
 
     if (relatedThoughts.length === 0) {
       return NextResponse.json(

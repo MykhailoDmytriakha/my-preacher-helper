@@ -371,7 +371,7 @@ Continue? (Yes / Pause / Reroute / Stop)
 After completing the chain, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Chain-of-Skills 150 Complete
+### [date - HH"MM] Chain-of-Skills 150 Complete
 **Goal:** <original goal>
 **Result:** <Success/Partial>
 **Steps Executed:** <N>

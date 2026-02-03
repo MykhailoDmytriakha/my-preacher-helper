@@ -216,7 +216,7 @@ User: "Yes"
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Execute-Gated 150 Complete
+### [date - HH"MM] Execute-Gated 150 Complete
 **Plan Executed:** <plan name>
 **Steps Completed:** <X/N>
 **Outcome:** <Success/Rolled Back>

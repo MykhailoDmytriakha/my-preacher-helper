@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
+import { getPreachOrderedThoughtsBySection, insertThoughtIdInStructure, resolveSectionForNewThought } from '@utils/thoughtOrdering';
 import { STRUCTURE_TAGS } from '@lib/constants';
 
 import type { Thought, Sermon } from '@/models/models';
@@ -28,6 +29,12 @@ const mockStructureEmpty: Sermon['structure'] = {
   conclusion: [],
   ambiguous: [],
 }
+
+const mockOutline: Sermon['outline'] = {
+  introduction: [{ id: 'p1', text: 'Intro' }],
+  main: [{ id: 'p2', text: 'Main' }],
+  conclusion: [{ id: 'p3', text: 'Conclusion' }],
+};
 
 // Helper to render the hook
 const setupHook = (initialThoughts = mockThoughts, sermonStructure = mockStructure) => {
@@ -162,7 +169,7 @@ describe('useThoughtFiltering Hook', () => {
     expect(result.current.sortOrder).toBe('structure');
     // Order based on mockStructure: 1 (intro), 2 (main), 4 (main), 3 (concl)
     // Then non-structured thoughts by date: 6, 5
-    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['1', '2', '4', '3', '6', '5']); 
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['1', '2', '4', '3', '5', '6']); 
   });
 
    it('should fall back to tag-based structure sort when structure is missing or incomplete', () => {
@@ -178,7 +185,7 @@ describe('useThoughtFiltering Hook', () => {
     // Thought 1 first due to structure
     // Then by tag order: 2, 4 (main), 3 (conclusion)
     // Then non-structure tags by date: 6, 5
-    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['1', '2', '4', '3', '6', '5']);
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['1', '4', '2', '3', '5', '6']);
   });
 
   it('should sort by date when sortOrder is "structure" but no thoughts have structure tags', () => {
@@ -231,4 +238,54 @@ describe('useThoughtFiltering Hook', () => {
         expect(result.current.activeCount).toBe(6);
     });
 
-}); 
+});
+
+describe('thoughtOrdering utilities', () => {
+  it('orders thoughts by structure and appends orphans by date asc', () => {
+    const sermon = {
+      thoughts: mockThoughts,
+      structure: mockStructure,
+      outline: mockOutline,
+    } as Sermon;
+
+    const ordered = getPreachOrderedThoughtsBySection(sermon, 'ambiguous', { includeOrphans: true });
+    expect(ordered.map((t) => t.id)).toEqual(['5', '6']);
+  });
+
+  it('inserts a thought after the last outline group item when outlinePointId is provided', () => {
+    const newThought = {
+      id: '7',
+      text: 'New',
+      tags: [STRUCTURE_TAGS.MAIN_BODY],
+      date: '2023-10-26T14:00:00Z',
+      outlinePointId: 'p2'
+    } as Thought;
+    const thoughtEntries: Array<[string, Thought]> = [
+      ...mockThoughts.map((t) => [t.id, t] as [string, Thought]),
+      ['7', newThought],
+    ];
+    const thoughtMap = new Map<string, Thought>(thoughtEntries);
+
+    const updated = insertThoughtIdInStructure({
+      structure: mockStructure,
+      section: 'main',
+      thoughtId: '7',
+      outlinePointId: 'p2',
+      thoughtsById: thoughtMap,
+      thoughts: [...mockThoughts, newThought],
+      outline: mockOutline,
+    });
+
+    expect(updated.main).toEqual(['2', '7', '4']);
+  });
+
+  it('resolves section from outline before tags for new thoughts', () => {
+    const sermon = { outline: mockOutline } as Sermon;
+    const resolved = resolveSectionForNewThought({
+      sermon,
+      outlinePointId: 'p2',
+      tags: [STRUCTURE_TAGS.INTRODUCTION],
+    });
+    expect(resolved).toBe('main');
+  });
+});

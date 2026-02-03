@@ -2,4 +2,4 @@
 
 ---
 
-I need to find all places where order of thoughts is used and incapsulate logic to use the same logic evrywhere. 
+I need to find all places where order of thoughts is used and incapsulate logic to use the same logic evrywhere.  - see session file .sessions/SESSION_2026-02-02-refactor-thoughts-order-logic.md - fixed

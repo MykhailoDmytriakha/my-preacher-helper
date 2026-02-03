@@ -421,7 +421,7 @@ describe('useSermonStructureData Hook', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introIds = result.current.containers.introduction.map((i) => i.id);
-    expect(introIds).toEqual(['t7', 't1']);
+    expect(introIds).toEqual(['t1', 't7']);
     // Ensure not duplicated elsewhere
     expect(result.current.containers.ambiguous.some(i => i.id === 't7' || i.id === 't1')).toBe(false);
   });

@@ -83,7 +83,7 @@ Final state in `.sessions/SESSION_[date]-[name].md`:
 ```
 ⏱️ **MID-SESSION CHECKPOINT**
 
-**Checkpoint:** #N | [HH:MM]
+**Checkpoint:** #N | [date - date - HH"MM]
 **Task:** [Current task name]
 
 ## Since Last Checkpoint

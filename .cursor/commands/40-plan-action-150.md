@@ -235,7 +235,7 @@ goal-clarity → research-deep → impact-map → action-plan → execute
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Plan-Action 150 Complete
+### [date - HH"MM] Plan-Action 150 Complete
 **Action:** Created/Updated action plan
 **Result:** <plan readiness>
 **Artifacts:** <task.md/implementation_plan.md>

@@ -1,4 +1,5 @@
 import { normalizeStructureTag, isStructureTag } from "@/utils/tagUtils";
+import { getPreachOrderedThoughtsBySection } from "@/utils/thoughtOrdering";
 import { i18n } from '@locales/i18n';
 
 import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
@@ -83,9 +84,11 @@ function organizeSermonContent(
 
   sectionsToProcess.forEach(sectionKey => {
     const sectionTitle = getSectionTitle(sectionKey);
-    // Ensure thoughts array exists
-    const allThoughts = sermon.thoughts || [];
-    const sectionThoughts = filterThoughtsBySection(allThoughts, sectionKey);
+    const sectionThoughts = getPreachOrderedThoughtsBySection(
+      sermon,
+      sectionKey as 'introduction' | 'main' | 'conclusion' | 'ambiguous',
+      { includeOrphans: true }
+    );
 
     debugLog(`Processing section ${sectionKey}`, { thoughtCount: sectionThoughts.length });
 
@@ -428,7 +431,7 @@ function processThoughtsByOutline(
   // Create a block for each outline point that has thoughts
   return pointsInOrder.map(point => {
     const pointThoughts = thoughtsByOutline.get(point.id) || [];
-    const sortedThoughts = sortThoughtsForOutlinePoint(pointThoughts, sectionOrderIds); // Prefer structure order, then position/date
+    const sortedThoughts = sortThoughtsForOutlinePoint(pointThoughts, sectionOrderIds); // Prefer structure order, then date
     return {
       type: 'outline' as const,
       title: point.text, // Use outline point text as block title
@@ -460,9 +463,12 @@ function processThoughtsByStructure(thoughts: Thought[], structure: ThoughtsBySe
     }
   });
 
+  const structuredIdSet = new Set(orderedThoughts.map((t) => t.id));
+  const orphans = thoughts.filter((t) => !structuredIdSet.has(t.id));
+  const orderedOrphans = sortThoughtsByDate(orphans);
+
   debugLog(`processThoughtsByStructure - Found ${orderedThoughts.length} structured thoughts for ${sectionKey}`);
-  // Only return thoughts explicitly defined in the structure for this section
-  return orderedThoughts;
+  return [...orderedThoughts, ...orderedOrphans];
 }
 
 
@@ -558,8 +564,8 @@ function processSection(
   if (outlinePoints.length > 0) {
     debugLog(`processSection - Processing with outline points for ${sectionKey}`);
     const outlineMap = new Map<string, SermonPoint>(outlinePoints.map(p => [p.id, p]));
-    const sectionOrderIds = structure && sectionKey !== 'ambiguous'
-      ? structure[sectionKey as keyof ThoughtsBySection]
+    const sectionOrderIds = sectionKey !== 'ambiguous'
+      ? thoughtsToProcess.map((t) => t.id)
       : undefined;
 
     // Separate thoughts based on assignment to *these* outline points
@@ -617,7 +623,7 @@ function sortThoughtsByDate(thoughts: Thought[]): Thought[] {
   return [...thoughts].sort(sortByDateHelper);
 }
 
-/** Sort thoughts within an outline point using position when available, then date */
+/** Sort thoughts within an outline point using structure order when available, then date */
 function sortThoughtsForOutlinePoint(thoughts: Thought[], sectionOrderIds?: string[]): Thought[] {
   if (!thoughts) return [];
   if (sectionOrderIds && sectionOrderIds.length > 0) {
@@ -630,17 +636,10 @@ function sortThoughtsForOutlinePoint(thoughts: Thought[], sectionOrderIds?: stri
         const idxB = orderB ?? Number.POSITIVE_INFINITY;
         if (idxA !== idxB) return idxA - idxB;
       }
-      return compareThoughtsByPositionThenDate(a, b);
+      return sortByDateHelper(a, b);
     });
   }
-  return [...thoughts].sort(compareThoughtsByPositionThenDate);
-}
-
-function compareThoughtsByPositionThenDate(a: Thought, b: Thought): number {
-  const posA = typeof a.position === 'number' ? a.position : Number.POSITIVE_INFINITY;
-  const posB = typeof b.position === 'number' ? b.position : Number.POSITIVE_INFINITY;
-  if (posA !== posB) return posA - posB;
-  return sortByDateHelper(a, b);
+  return [...thoughts].sort(sortByDateHelper);
 }
 
 /** Helper for date comparison */
@@ -651,20 +650,6 @@ function sortByDateHelper(a: Thought, b: Thought): number {
 }
 
 /** Filter thoughts relevant to a specific section key */
-function filterThoughtsBySection(thoughts: Thought[] | undefined, sectionKey: string): Thought[] {
-  if (!thoughts) return [];
-  if (sectionKey === 'ambiguous') {
-    return thoughts.filter(thought =>
-      !thought.tags?.some(tag => normalizeStructureTag(tag) !== null)
-    );
-  }
-  const targetCanonical = sectionKey === 'introduction' ? 'intro' : sectionKey === 'main' ? 'main' : sectionKey === 'conclusion' ? 'conclusion' : '';
-  if (!targetCanonical) return [];
-  return thoughts.filter(thought =>
-    thought.tags?.some(tag => normalizeStructureTag(tag) === targetCanonical)
-  );
-}
-
 /** Get localized section title */
 function getSectionTitle(sectionKey: string): string {
   const titleMap: Record<string, string> = {

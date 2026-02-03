@@ -277,7 +277,7 @@ Status: ✅ Verified
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Close-Task 150 Complete
+### [date - date - HH"MM] Close-Task 150 Complete
 **Task:** <task updated>
 **New Status:** <status>
 **Reason:** <transition reason>

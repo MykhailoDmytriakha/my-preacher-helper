@@ -266,7 +266,7 @@ RECOMMENDATIONS:
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Validate-Integrity 150 Complete
+### [date - HH"MM] Validate-Integrity 150 Complete
 **Target:** <what was validated>
 **Score:** <X/100>
 **Issues:** <found issues/none>

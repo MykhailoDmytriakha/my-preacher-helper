@@ -216,7 +216,7 @@ Use together: **Clarity** on what to do → **Think** deeply about how → **Exe
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Understand-Goal 150 Complete
+### [date - HH"MM] Understand-Goal 150 Complete
 **Action:** Clarified goals and constraints
 **Result:** <clarity achieved/confirmed>
 **Artifacts:** <updated docs/plans>

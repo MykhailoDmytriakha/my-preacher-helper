@@ -19,6 +19,7 @@ import { getExportContent } from "@/utils/exportContent";
 import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
+import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/thoughtOrdering";
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
 import { FocusNav } from "./components/FocusNav";
@@ -219,7 +220,9 @@ function StructurePageContent() {
     if (!sermon) return;
 
     try {
-      const sectionTag = getCanonicalTagForSection(sectionId);
+      const outlineSection = resolveSectionFromOutline(sermon, thought.outlinePointId ?? null);
+      const finalSection = outlineSection && outlineSection !== 'ambiguous' ? outlineSection : sectionId;
+      const sectionTag = getCanonicalTagForSection(finalSection);
 
       // Compute custom tags (exclude structural tag), preserving original order
       const customTags = (thought.tags || []).filter((tag) => normalizeStructureTag(tag) === null);
@@ -239,30 +242,68 @@ function StructurePageContent() {
         outlinePoint,
       };
 
-      // 1) Update sermon state
-      setSermon((prev) => prev ? { ...prev, thoughts: [...prev.thoughts, thought] } : prev);
-
-      // 2) Update containers UI (append to end of the target section)
+      // 1) Update containers UI (append to end of the target section)
       setContainers((prev) => {
         const next = { ...prev };
-        next[sectionId] = [...(prev[sectionId] || []), newItem];
+        const items = prev[finalSection] || [];
+        const insertAtOutlineGroupEnd = (list: Item[], item: Item): Item[] => {
+          if (!item.outlinePointId) return [...list, item];
+          let lastIndex = -1;
+          list.forEach((existing, index) => {
+            if (existing.outlinePointId === item.outlinePointId) {
+              lastIndex = index;
+            }
+          });
+          if (lastIndex === -1) return [...list, item];
+          const nextList = [...list];
+          nextList.splice(lastIndex + 1, 0, item);
+          return nextList;
+        };
+        next[finalSection] = insertAtOutlineGroupEnd(items, newItem);
         return next;
       });
 
-      // 3) Persist updated structure (append id to the section)
+      // 2) Persist updated structure (append id to the section)
+      const insertAtOutlineGroupEnd = (list: Item[], item: Item): Item[] => {
+        if (!item.outlinePointId) return [...list, item];
+        let lastIndex = -1;
+        list.forEach((existing, index) => {
+          if (existing.outlinePointId === item.outlinePointId) {
+            lastIndex = index;
+          }
+        });
+        if (lastIndex === -1) return [...list, item];
+        const nextList = [...list];
+        nextList.splice(lastIndex + 1, 0, item);
+        return nextList;
+      };
       const updatedContainers = {
         ...containersRef.current,
-        [sectionId]: [...(containersRef.current[sectionId] || []), newItem],
+        [finalSection]: insertAtOutlineGroupEnd(containersRef.current[finalSection] || [], newItem),
       } as Record<string, Item[]>;
 
       containersRef.current = updatedContainers;
 
-      const newStructure: ThoughtsBySection = {
-        introduction: (updatedContainers.introduction || []).map((it) => it.id),
-        main: (updatedContainers.main || []).map((it) => it.id),
-        conclusion: (updatedContainers.conclusion || []).map((it) => it.id),
-        ambiguous: (updatedContainers.ambiguous || []).map((it) => it.id),
-      };
+      const thoughtsById = new Map(
+        [...(sermon.thoughts || []), thought].map((t) => [t.id, t])
+      );
+      const newStructure = insertThoughtIdInStructure({
+        structure: {
+          introduction: (updatedContainers.introduction || []).map((it) => it.id),
+          main: (updatedContainers.main || []).map((it) => it.id),
+          conclusion: (updatedContainers.conclusion || []).map((it) => it.id),
+          ambiguous: (updatedContainers.ambiguous || []).map((it) => it.id),
+        },
+        section: finalSection,
+        thoughtId: thought.id,
+        outlinePointId: thought.outlinePointId,
+        thoughtsById,
+        thoughts: [...(sermon.thoughts || []), thought],
+        outline: sermon.outline,
+      });
+
+      // 3) Update sermon state (thoughts + structure)
+      setSermon((prev) => prev ? { ...prev, thoughts: [...prev.thoughts, thought], structure: newStructure, thoughtsBySection: newStructure } : prev);
 
       // Use debounced structure save
       debouncedSaveStructure(sermon.id, newStructure);

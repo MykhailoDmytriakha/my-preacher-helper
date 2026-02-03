@@ -8,7 +8,8 @@ import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySecti
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
-import { CANONICAL_TO_SECTION, getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
+import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
+import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
 // Helper: Fetch sermon data
@@ -128,90 +129,50 @@ function processThoughtsIntoItems(
   return allThoughtItems;
 }
 
-// Helper: Distribute items to sections
-function distributeItemsToSections(
-  allThoughtItems: Record<string, Item>,
-  structure: ThoughtsBySection | string | undefined
+// Helper: Build containers from canonical structure order
+function buildContainersFromCanonicalStructure(
+  canonicalStructure: ThoughtsBySection,
+  allThoughtItems: Record<string, Item>
 ): {
   intro: Item[];
   main: Item[];
   concl: Item[];
   ambiguous: Item[];
 } {
-  const intro: Item[] = [];
-  const main: Item[] = [];
-  const concl: Item[] = [];
-  const ambiguous: Item[] = [];
-  const usedIds = new Set<string>();
+  const buildSectionItems = (
+    ids: string[],
+    section?: 'introduction' | 'main' | 'conclusion'
+  ): Item[] => {
+    const items = ids
+      .map((id) => allThoughtItems[id])
+      .filter(Boolean) as Item[];
 
-  // Step 1: Process structure if it exists
-  if (structure) {
-    const structureObj = typeof structure === "string"
-      ? JSON.parse(structure)
-      : structure;
-
-    if (structureObj && typeof structureObj === 'object') {
-      ["introduction", "main", "conclusion"].forEach((section) => {
-        if (Array.isArray(structureObj[section])) {
-          const target = section === "introduction" ? intro : section === "main" ? main : concl;
-          const sectionTag = getCanonicalTagForSection(section as 'introduction' | 'main' | 'conclusion');
-          const seen = new Set<string>();
-          const orderedUniqueIds = structureObj[section].filter((id: string) => {
-            if (seen.has(id)) return false;
-            seen.add(id);
-            return true;
-          });
-
-          const itemsForSection = orderedUniqueIds
-            .map((thoughtId: string) => allThoughtItems[thoughtId])
-            .filter(Boolean) as Item[];
-
-          const withSectionTag = itemsForSection.map((it) => ({
-            ...it,
-            requiredTags: it.requiredTags?.includes(sectionTag)
-              ? it.requiredTags
-              : [...(it.requiredTags || []), sectionTag]
-          }));
-
-          for (const item of withSectionTag) {
-            target.push(item);
-            usedIds.add(item.id);
-          }
-        }
-      });
+    if (!section) {
+      return items.map((item) => ({
+        ...item,
+        requiredTags: [],
+      }));
     }
-  }
 
-  // Step 2: Add remaining thoughts
-  Object.values(allThoughtItems).forEach(item => {
-    if (!usedIds.has(item.id)) {
-      const itemRequiredTags = item.requiredTags || [];
-      let placed = false;
-      if (itemRequiredTags.length === 1) {
-        const canonical = normalizeStructureTag(itemRequiredTags[0]);
-        if (canonical) {
-          const section = CANONICAL_TO_SECTION[canonical];
-          if (section === 'introduction') {
-            intro.push(item);
-            placed = true;
-          } else if (section === 'main') {
-            main.push(item);
-            placed = true;
-          } else if (section === 'conclusion') {
-            concl.push(item);
-            placed = true;
-          }
-        }
+    const sectionTag = getCanonicalTagForSection(section);
+    return items.map((item) => {
+      const requiredTags = item.requiredTags || [];
+      if (requiredTags.includes(sectionTag)) {
+        return item;
       }
+      return {
+        ...item,
+        requiredTags: [...requiredTags, sectionTag],
+      };
+    });
+  };
 
-      if (!placed) {
-        item.requiredTags = [];
-        ambiguous.push(item);
-      }
-    }
-  });
-
-  return { intro, main, concl, ambiguous };
+  return {
+    intro: buildSectionItems(canonicalStructure.introduction, 'introduction'),
+    main: buildSectionItems(canonicalStructure.main, 'main'),
+    concl: buildSectionItems(canonicalStructure.conclusion, 'conclusion'),
+    ambiguous: buildSectionItems(canonicalStructure.ambiguous ?? [], undefined),
+  };
 }
 
 // Helper: Fetch outline data
@@ -366,12 +327,6 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         // Process thoughts into items
         const allThoughtItems = processThoughtsIntoItems(fetchedSermon, allTags);
 
-        // Distribute items to sections
-        const { intro, main, concl, ambiguous } = distributeItemsToSections(
-          allThoughtItems,
-          fetchedSermon.structure
-        );
-
         // Fetch outline
         const outlineData = await fetchOutlineData(
           sermonId,
@@ -390,6 +345,18 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         } else {
           setSermonPoints({ introduction: [], main: [], conclusion: [] });
         }
+
+        // Canonicalize structure order (outline blocks -> unassigned tail)
+        const canonicalStructure = canonicalizeStructure({
+          thoughts: fetchedSermon.thoughts ?? [],
+          structure: fetchedSermon.structure ?? fetchedSermon.thoughtsBySection,
+          outline: outlineData ?? fetchedSermon.outline,
+        });
+
+        const { intro, main, concl, ambiguous } = buildContainersFromCanonicalStructure(
+          canonicalStructure,
+          allThoughtItems
+        );
 
         const finalContainers = {
           introduction: seedPositions(intro),

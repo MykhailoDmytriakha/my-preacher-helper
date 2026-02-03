@@ -314,7 +314,7 @@ Confidence: 95%
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Understand-Deep 150 Complete
+### [date - HH"MM] Understand-Deep 150 Complete
 **Topic:** <research topic>
 **Sources:** <internal/external sources used>
 **Key Findings:** <bullet points>

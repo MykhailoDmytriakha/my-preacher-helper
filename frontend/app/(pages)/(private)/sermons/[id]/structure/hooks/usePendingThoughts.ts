@@ -85,6 +85,19 @@ export const usePendingThoughts = ({
       const section = pending.sectionId;
       const existingIndex = (next[section] || []).findIndex((item) => item.id === pending.localId);
       const pendingItem = buildPendingItem(pending);
+      const insertAtOutlineGroupEnd = (items: Item[], item: Item): Item[] => {
+        if (!item.outlinePointId) return [...items, item];
+        let lastIndex = -1;
+        items.forEach((existing, index) => {
+          if (existing.outlinePointId === item.outlinePointId) {
+            lastIndex = index;
+          }
+        });
+        if (lastIndex === -1) return [...items, item];
+        const nextItems = [...items];
+        nextItems.splice(lastIndex + 1, 0, item);
+        return nextItems;
+      };
 
       const removeFromOtherSections = (current: Record<string, Item[]>) => {
         const sections = ['introduction', 'main', 'conclusion', 'ambiguous'];
@@ -100,7 +113,8 @@ export const usePendingThoughts = ({
       };
 
       if (existingIndex === -1) {
-        next[section] = [...(next[section] || []), pendingItem];
+        const sectionItems = next[section] || [];
+        next[section] = insertAtOutlineGroupEnd(sectionItems, pendingItem);
         updated = true;
         removeFromOtherSections(next);
       } else {

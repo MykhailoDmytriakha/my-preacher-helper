@@ -42,6 +42,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-03 Jest Fake Timers Cleanup
+**Problem:** Timer-based hooks (with `setInterval`) can leak fake timers across tests and cause flaky behavior.
+**Attempts:** None.
+**Solution:** When a test uses `jest.useFakeTimers()`, always restore with `jest.useRealTimers()` in `afterEach`.
+**Why it worked:** Restoring real timers resets the global timer state so later tests run with default timing behavior.
+**Principle:** Tests that enable fake timers must always restore real timers in `afterEach` to avoid cross-test interference.
+
 ### 2026-02-02 Calendar Book Parsing False Positives
 **Problem:** Sermons referencing "1Пет" were misclassified under "Иисус Навин" because fuzzy matching treated words like "Иисуса" inside verse text as book tokens.
 **Attempts:** Added multi-book parsing and prefix matching; false positives persisted.

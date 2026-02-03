@@ -250,7 +250,7 @@ goal-clarity-150 → impact-map-150 → deep-think-150 → max-quality-150
 After completing this skill, write to `.sessions/SESSION_[date]-[name].md`:
 
 ```
-### [HH:MM] Analyze-Impact 150 Complete
+### [date - HH"MM] Analyze-Impact 150 Complete
 **Core Change:** <what is changing>
 **Blast Radius:** <Small/Medium/Large>
 **Key Dependencies:** <critical up/downstream>

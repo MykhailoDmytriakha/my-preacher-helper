@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server';
 
-import { generatePlanForSection } from '@/api/clients/openAI.client';
-import { GET } from '@/api/sermons/[id]/plan/route';
+import { generatePlanForSection, generatePlanPointContent } from '@/api/clients/openAI.client';
+import { GET, PUT } from '@/api/sermons/[id]/plan/route';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
+import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
 
 // Mock dependencies
 jest.mock('@/api/repositories/sermons.repository');
 jest.mock('@/api/clients/openAI.client');
+jest.mock('@/utils/thoughtOrdering');
 jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, options = {}) => ({
@@ -61,6 +63,11 @@ describe('Sermon Plan Route', () => {
         { id: '1', text: 'Thought 1', tags: [], date: '2023-01-01' },
         { id: '2', text: 'Thought 2', tags: [], date: '2023-01-01' }
       ],
+      outline: {
+        introduction: [{ id: 'p1', text: 'Intro point' }],
+        main: [{ id: 'p2', text: 'Main point' }],
+        conclusion: [{ id: 'p3', text: 'Conclusion point' }],
+      },
       date: '2023-01-01'
     };
 
@@ -77,9 +84,15 @@ describe('Sermon Plan Route', () => {
     // Setup repository mock
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(mockSermon);
     (sermonsRepository.updateSermonContent as jest.Mock).mockResolvedValue({});
+    (sermonsRepository.fetchAdjacentOutlinePoints as jest.Mock).mockResolvedValue({
+      previousPoint: { text: 'Prev' },
+      nextPoint: { text: 'Next' },
+      section: 'introduction',
+    });
 
     // Setup OpenAI client mock
     (generatePlanForSection as jest.Mock).mockResolvedValue(mockPlanResult);
+    (generatePlanPointContent as jest.Mock).mockResolvedValue({ content: 'Outline content', success: true });
 
     // Create mock request
     mockRequest = {
@@ -146,6 +159,94 @@ describe('Sermon Plan Route', () => {
       expect(responseData).toHaveProperty('conclusion');
     });
 
+    it('should return 404 when sermon is not found', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
+
+      const mockRequestWithSection = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'section') return 'main';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'missing-sermon' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should return 500 when plan generation fails', async () => {
+      (generatePlanForSection as jest.Mock).mockResolvedValue({
+        plan: { introduction: { outline: '' }, main: { outline: '' }, conclusion: { outline: '' } },
+        success: false,
+      });
+
+      const mockRequestWithSection = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'section') return 'conclusion';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should still return plan when save fails', async () => {
+      (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValue(new Error('save failed'));
+
+      const mockRequestWithSection = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'section') return 'introduction';
+              if (param === 'style') return 'memory';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData).toHaveProperty('introduction');
+    });
+
+    it('should return 500 when generation throws', async () => {
+      (generatePlanForSection as jest.Mock).mockRejectedValue(new Error('AI error'));
+
+      const mockRequestWithSection = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'section') return 'main';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(responseData).toHaveProperty('error');
+    });
+
     it('should return 400 for invalid section parameter', async () => {
       // Mock request with invalid section
       const mockRequestWithInvalidSection = {
@@ -167,4 +268,192 @@ describe('Sermon Plan Route', () => {
       expect(responseData.error).toContain('Invalid section');
     });
   });
-}); 
+
+  describe('GET /api/sermons/:id/plan?outlinePointId=<id>', () => {
+    it('should generate content for outline point', async () => {
+      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+        { id: 't1', text: 'First thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', keyFragments: ['k1'] },
+        { id: 't2', text: 'Second thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', keyFragments: ['k2'] },
+      ]);
+
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'p1';
+              if (param === 'style') return 'memory';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(generatePlanPointContent).toHaveBeenCalledWith(
+        mockSermon.title,
+        mockSermon.verse,
+        'Intro point',
+        ['First thought', 'Second thought'],
+        'introduction',
+        ['k1', 'k2'],
+        {
+          previousPoint: { text: 'Prev' },
+          nextPoint: { text: 'Next' },
+          section: 'introduction',
+        },
+        'memory'
+      );
+      expect(responseData).toEqual({ content: 'Outline content' });
+    });
+
+    it('should generate content for main outline point with mixed key fragments', async () => {
+      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+        { id: 't3', text: 'Main thought', tags: [], date: '2023-01-01', outlinePointId: 'p2' },
+        { id: 't4', text: 'Main thought 2', tags: [], date: '2023-01-01', outlinePointId: 'p2', keyFragments: ['k3'] },
+      ]);
+
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'p2';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(generatePlanPointContent).toHaveBeenCalledWith(
+        mockSermon.title,
+        mockSermon.verse,
+        'Main point',
+        ['Main thought', 'Main thought 2'],
+        'main',
+        ['k3'],
+        {
+          previousPoint: { text: 'Prev' },
+          nextPoint: { text: 'Next' },
+          section: 'introduction',
+        },
+        'memory'
+      );
+      expect(responseData).toEqual({ content: 'Outline content' });
+    });
+
+    it('should return 404 when outline point is not found', async () => {
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'missing';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should return 400 when no thoughts exist for outline point', async () => {
+      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([]);
+
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'p1';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should return 500 when outline point generation fails', async () => {
+      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+        { id: 't5', text: 'Thought', tags: [], date: '2023-01-01', outlinePointId: 'p1' },
+      ]);
+      (generatePlanPointContent as jest.Mock).mockResolvedValue({ content: '', success: false });
+
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'p1';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(responseData).toHaveProperty('error');
+    });
+  });
+
+  describe('PUT /api/sermons/:id/plan', () => {
+    it('should return 404 when sermon is not found', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
+
+      const mockRequest = {
+        json: jest.fn().mockResolvedValue({}),
+      } as unknown as NextRequest;
+
+      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'missing-sermon' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should return 400 for invalid plan data', async () => {
+      const mockRequest = {
+        json: jest.fn().mockResolvedValue(null),
+      } as unknown as NextRequest;
+
+      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(responseData).toHaveProperty('error');
+    });
+
+    it('should save plan content and return success', async () => {
+      const mockRequest = {
+        json: jest.fn().mockResolvedValue({
+          introduction: { outline: 'Intro', outlinePoints: { p1: 'Intro point' } },
+          main: { outline: 'Main', outlinePoints: { p2: 'Main point' } },
+          conclusion: { outline: 'Conclusion' },
+        }),
+      } as unknown as NextRequest;
+
+      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+      const responseData = await response.json();
+
+      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith('test-sermon-123', expect.any(Object));
+      expect(responseData).toHaveProperty('success', true);
+      expect(responseData.plan).toHaveProperty('introduction');
+      expect(responseData.plan).toHaveProperty('main');
+      expect(responseData.plan).toHaveProperty('conclusion');
+    });
+  });
+});
