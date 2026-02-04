@@ -5,9 +5,10 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import '@locales/i18n';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
+import { debugLog } from '@/utils/debugMode';
+import '@locales/i18n';
 
 // Route constants
 const ROUTES = {
@@ -158,10 +159,13 @@ const buildSegmentCrumb = ({
   };
 };
 
-export default function Breadcrumbs() {
+export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
+
+  const isPreachingMode = searchParams?.get('planView') === 'preaching';
+  const shouldHide = isPreachingMode && !forceShow;
 
   // Get sermonId from different sources
   const sermonId = useMemo(() => {
@@ -194,6 +198,10 @@ export default function Breadcrumbs() {
   const { series } = useSeriesDetail(seriesId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
+    if (shouldHide) {
+      return [];
+    }
+
     if (!pathname || pathname === '/' || pathname === ROUTES.DASHBOARD) {
       return [];
     }
@@ -210,9 +218,9 @@ export default function Breadcrumbs() {
     // Determine the root breadcrumb based on the first segment (context-dependent)
     const firstSegment = segments[0];
     const rootConfig = segmentLabels[firstSegment];
-    
+
     const crumbs: BreadcrumbItem[] = [];
-    
+
     // Add root breadcrumb based on context
     if (rootConfig) {
       crumbs.push({
@@ -242,8 +250,40 @@ export default function Breadcrumbs() {
       crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series }));
     });
 
+    // Handle "Preaching" mode overlay
+    if (searchParams?.get('planView') === 'preaching' && crumbs.length > 0) {
+      // Modify the last existing crumb (Plan) to be a link
+      const lastCrumb = crumbs[crumbs.length - 1];
+      if (lastCrumb) {
+        lastCrumb.isCurrent = false;
+        // Reconstruct href for the plan page (assuming the last segment path is correct)
+        // If the last segment was 'plan', currentPath already points to /sermons/ID/plan
+        lastCrumb.href = crumbs[crumbs.length - 1].href || pathname || undefined;
+      }
+
+      // Append Preaching crumb
+      crumbs.push({
+        label: t('navigation.breadcrumb.preaching', { defaultValue: 'Preaching' }),
+        href: undefined,
+        isCurrent: true
+      });
+    }
+
+    // Log the computed crumbs (debug only)
+    debugLog('Breadcrumbs computed:', {
+      path: pathname,
+      sermonId,
+      sermonTitle: sermon?.title,
+      itemsLength: crumbs.length,
+      items: JSON.stringify(crumbs)
+    });
+
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, t, sermon, series]);
+  }, [pathname, searchParams, sermon, sermonId, series, shouldHide, t]);
+
+  if (shouldHide) {
+    return null;
+  }
 
   if (items.length <= 1) {
     return null;

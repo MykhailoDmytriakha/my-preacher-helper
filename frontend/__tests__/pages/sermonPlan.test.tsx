@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
@@ -337,6 +337,28 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(await screen.findByTestId('sermon-plan-overlay')).toBeInTheDocument();
   });
 
+  it('copies overlay content using the clipboard', async () => {
+    mockSearchParams = new URLSearchParams('planView=overlay');
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('sermon-plan-overlay');
+    const copyButtons = screen.getAllByTitle('copy.copyFormatted');
+
+    await act(async () => {
+      fireEvent.click(copyButtons[0]);
+    });
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+    });
+  });
+
   it('toggles edit mode and saves outline point content', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 
@@ -355,6 +377,31 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalled();
     });
+  });
+
+  it('auto-scrolls to a section when section param is provided', async () => {
+    const originalRaf = window.requestAnimationFrame;
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+
+    jest.useFakeTimers();
+    mockSearchParams = new URLSearchParams('section=introduction');
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    act(() => {
+      jest.runAllTimers();
+    });
+
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    jest.useRealTimers();
+    window.requestAnimationFrame = originalRaf;
+    Element.prototype.scrollIntoView = originalScrollIntoView;
   });
 
 }); 

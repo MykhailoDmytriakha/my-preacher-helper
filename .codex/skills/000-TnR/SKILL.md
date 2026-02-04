@@ -91,7 +91,12 @@ This doctrine is the enforcement mechanism for AGENTS.md:
 - Claims in SESSION.md backed by Rigor proof chains
 - JOURNAL.md receives Absolute Rigor timestamps
 - MEMORY.md receives distilled axioms from Rigor cycles
-- **Current session file (session log):** TnR MUST write detailed reports into the active session file `.sessions/SESSION_[date]-[name].md` — every run appends a full report: objective, depletion record, proof chain, certainty derivation, gaps (if any), and resolution (execute or failure report). No summary-only; reports must be auditable and complete.
+- **CRITICAL: ALL TnR reports MUST be written ONLY to the active session file** `.sessions/SESSION_[date]-[name].md`
+  - **NEVER create separate artifact files** (e.g., `tnr_analysis.md`, `split_button_analysis.md`, etc.) for TnR reports
+  - Every TnR run appends a **full, comprehensive report** directly to the session file
+  - Report structure: objective, role assumed, depletion record, proof chain, certainty derivation, gaps (if any), and resolution (execute or failure report)
+  - **No summary-only**; reports must be auditable and complete
+  - All findings, evidence, and analysis must flow into the single source of truth: the session file
 
 ---
 
@@ -484,23 +489,177 @@ User: "Why is API slow?"
 
 ---
 
-## Operational Log Mandate (Current Session File + .sessions/SESSION_[date]-[name].md)
+## Operational Log Mandate (Session File ONLY)
 
-**Session file requirement:** Write detailed reports to the **current session file** (the active session log). Every TnR run MUST append a full, auditable report to that file — not a one-line summary. The report must allow anyone to reconstruct what was done, what was proved, and what was left open.
+**CRITICAL RULE: ALL TnR reports go ONLY to `.sessions/SESSION_[date]-[name].md`**
 
-Post-Rigor requirements for the session log:
+### Mandatory Requirements
+
+1. **Single Source of Truth**: The active session file is the ONLY destination for TnR reports
+2. **No Separate Artifacts**: NEVER create standalone files like `tnr_analysis.md`, `rigor_report.md`, etc.
+3. **Full Reports Only**: No summaries — every report must be comprehensive and auditable
+4. **Append to Session**: Each TnR run appends to the existing session file, creating a chronological audit trail
+
+### Report Structure (Template)
+
+Every TnR run MUST append the following structure to the session file:
+
+```markdown
+---
+
+## TnR ABSOLUTE RIGOR: [Task Name]
+
+**Timestamp:** [YYYY-MM-DD HH:MM:SS]  
+**Analyst Role:** [Senior X Engineer/Architect]  
+**Objective:** [Clear statement of what you're investigating]  
+**Certainty Target:** ≥95%
+
+### Mental Models Applied
+
+**1. INVERSION THINKING** ✓
+- Failure Mode 1: [description] → [impact] → [mitigation]
+- Failure Mode 2: [description] → [impact] → [mitigation]
+- ...
+
+**2. FIRST PRINCIPLES** ✓
+- Axiom 1: [fundamental truth]
+- Axiom 2: [fundamental truth]
+- Conflicts detected: [list or "None"]
+
+**3. MULTI-ORDER EFFECTS** ✓
+- 1st Order: [direct impact]
+- 2nd Order: [ripple effects]
+- 3rd Order: [systemic/long-term resonance]
+
+**4. CIRCLE OF CERTAINTY** ✓
+- Inside (Verified): [list with source weights]
+- Outside (Speculative): [list with risks]
+
+**5. MAP ≠ TERRITORY** ✓
+- Model expectation: [what design suggests]
+- Reality observation: [what actually happens]
+- Delta: [gap quantification]
+
+### Source Depletion Record
+
+**Internal Sources:**
+- Files read: [list]
+- Grep searches: [summary]
+- Git history: [relevant commits if applicable]
+- Tests executed: [if applicable]
+
+**External Sources:**
+- Official docs: [URLs with weights]
+- UX research: [URLs with weights]
+- Community sources: [URLs with weights]
+
+**Depletion Status:** 🟢 SATURATED / 🟡 PARTIAL / 🔴 INCOMPLETE
+
+### Evidence & Certainty Derivation
+
+| Claim | Source | Weight | Critical? | Force |
+|-------|--------|--------|-----------|-------|
+| [Claim 1] | [Source] | [0.XX] | YES/NO | [0.XX] |
+| [Claim 2] | [Source] | [0.XX] | YES/NO | [0.XX] |
+| ... | ... | ... | ... | ... |
+
+**Base Certainty:** ([sum of forces]) / [count] = [X.XX]%  
+**Penalties Applied:** [list or "None"] = [-X]%  
+**Final Derived Certainty:** **[XX]%**
+
+### Proposed Solutions
+
+**Option 1: [Name]**
+- Pros: [list]
+- Cons: [list]
+- Certainty Score: [XX]%
+- Verdict: ✅ APPROVED / ⚠️ CAUTION / ❌ FAILURE
+
+**Option 2: [Name]**
+- [same structure]
+
+[... for all options]
+
+### Recommendation
+
+**Primary:** [Option X - Name]  
+**Rationale:** [evidence-based justification]  
+**Implementation:** [brief technical approach]  
+**Risk Level:** [Minimal/Low/Medium/High]
+
+### TnR Checklist Status
 
 ```
-### [DATE - date - HH"MM] TnR ABSOLUTE RIGOR Applied
-**Target:** <objective>
-**Models Forced:** Inv ✓ | FirstPrin ✓ | 3rdOrder ✓ | Certainty ✓ | TruthMap ✓
-**Axiomatic Findings:** <summary>
-**Rigor Chain:** <count> claims | <percentage>% Derived Certainty
-**Failure Gaps:** <remaining gaps or "None">
-**Vector Resolution:** <Execute or Report Produced>
+☑ 1. INVERSION — [brief status]
+☑ 2. FIRST PRINCIPLES — [brief status]
+☑ 3. MULTI-ORDER EFFECTS — [brief status]
+☑ 4. CIRCLE OF CERTAINTY — [brief status]
+☑ 5. MAP ≠ TERRITORY — [brief status]
+☐/☑ 6. INTERNAL DEPLETION — [brief status]
+☐/☑ 7. EXTERNAL VERIFICATION — [brief status]
+☐/☑ 8-13. [continue for all 14 items]
 ```
 
-(Expand as needed: depletion record, sources consulted, key evidence links, and full Systemic Failure Report if &lt;95%.)
+### Final Verdict
+
+| Metric | Value |
+|--------|-------|
+| **Derived Certainty** | [XX]% |
+| **Threshold** | ≥95% |
+| **Status** | ✅ PASS / ❌ FAIL |
+| **Action** | PROCEED / SYSTEMIC FAILURE REPORT |
+
+**Outcome:** [Execute with Option X] OR [RIGOR FAILURE - gaps documented above]
+
+---
+```
+
+### Example: Minimal Format (when appropriate)
+
+For less complex tasks, a condensed format is acceptable:
+
+```markdown
+---
+
+## TnR ABSOLUTE RIGOR: [Task Name]
+
+**Timestamp:** [YYYY-MM-DD HH:MM:SS]  
+**Models Forced:** Inv ✓ | FirstPrin ✓ | 3rdOrder ✓ | Certainty ✓ | TruthMap ✓  
+**Depletion:** Internal [files] + External [sources] → SATURATED  
+**Axiomatic Findings:** [1-2 sentence summary]  
+**Rigor Chain:** [N] claims | **[XX]%** Derived Certainty  
+**Failure Gaps:** [list or "None"]  
+**Recommendation:** [Option X] — [one sentence rationale]  
+**Verdict:** ✅ PROCEED / ❌ RIGOR FAILURE
+
+---
+```
+
+### Anti-Patterns (FORBIDDEN)
+
+❌ **DO NOT:**
+- Create separate artifact files (`tnr_analysis.md`, `rigor_report_[date].md`, etc.)
+- Write summary-only entries ("Applied TnR, 96% certainty, see analysis file")
+- Reference external files for TnR findings
+- Split analysis across multiple documents
+
+✅ **DO:**
+- Append full report to active session file
+- Include all evidence and reasoning inline
+- Make reports self-contained and auditable
+- Maintain chronological order in session file
+
+### Integration with Session Management
+
+When starting a new task that requires TnR:
+
+1. Create/identify session file: `.sessions/SESSION_[date]-[description].md`
+2. Add initial context and objective to session file
+3. Execute TnR analysis
+4. **Append complete TnR report to SAME session file** (using structure above)
+5. Continue with implementation/verification, logging to same session file
+
+**The session file becomes the complete, auditable record of all work, including rigorous analysis.**
 
 ---
 

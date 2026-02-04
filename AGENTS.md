@@ -76,6 +76,47 @@ Each your answer must beggin with "I'm acting as The 150% Operator [professional
 
 - Read file `MEMORY.md`
 
+## 📋 Session Management (MANDATORY)
+
+**For ANY new task with confidence ≥70%, you MUST:**
+
+1. **CREATE session file FIRST** (before solving the problem)
+   - Format: `.sessions/SESSION_[YYYY-MM-DD]-[descriptive-name].md`
+   - Use descriptive names: `fix-[problem]`, `implement-[feature]`, `investigate-[topic]`
+
+2. **Auto-Create Triggers** (≥70% confidence = NEW session):
+   - User provides URL, error message, or bug description
+   - User says: "investigate", "fix", "implement", "analyze", "research"
+   - Clear NEW problem/task/feature distinct from previous context
+   - `.sessions/` directory exists but NO active session for this topic
+
+3. **Session Structure** (required sections):
+   ```markdown
+   ## Meta
+   ## Progress Log
+   ## Investigations
+   ## Decisions
+   ## Lessons Learned
+   ## Current State
+   ## Next Steps
+   ```
+
+4. **If You Forget:**
+   - STOP immediately when you realize
+   - CREATE session file NOW with backfilled progress
+   - Document the miss in `## Lessons Learned`
+   - Continue with proper tracking
+
+**Default Rule:** When in doubt (50-69% confidence), CREATE NEW SESSION.  
+**Rationale:** Session files are cheap. Lost context is expensive.
+
+**Only ask "New or Continue?" if:**
+- Confidence <50% that this is new task
+- User explicitly says "continue", "next step"
+- Recent session exists with directly related context
+
+See workflow: `.agent/workflows/10-session-new-150.md` for full protocol.
+
 ## 🛡️ Continuous Principle Detection
 
 After **EVERY** message, you must perform a "Principle Scan":

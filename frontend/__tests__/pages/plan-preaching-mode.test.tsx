@@ -66,7 +66,7 @@ describe('PreachingTimer - Plan Integration', () => {
   it('renders correctly in plan context', () => {
     render(<PreachingTimer initialDuration={1200} className="plan-timer" />);
 
-    expect(screen.getAllByRole('timer')).toHaveLength(3); // Component has multiple timer elements
+    expect(screen.getAllByRole('timer')).toHaveLength(2); // Desktop + mobile layouts
     expect(screen.getByRole('region', { name: /plan.timer.regionLabel/i })).toBeInTheDocument();
 
     // Verify hook integration
@@ -94,7 +94,7 @@ describe('PreachingTimer - Plan Integration', () => {
 
     render(<PreachingTimer initialDuration={1800} />);
 
-    expect(screen.getAllByRole('timer')).toHaveLength(3);
+    expect(screen.getAllByRole('timer')).toHaveLength(2);
     expect(mockUsePreachingTimer).toHaveBeenCalledWith({
       totalDuration: 1800,
     }, {

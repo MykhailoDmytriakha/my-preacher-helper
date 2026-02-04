@@ -15,7 +15,19 @@
     "seriesDetail": "Series",
     "groupDetail": "Group",
     "studyDetail": "Study",
-    "calendar": "Calendar"
+    "calendar": "Calendar",
+    "breadcrumb": {
+      "dashboard": "Dashboard",
+      "sermon": "Sermon",
+      "plan": "Plan",
+      "preaching": "Preaching"
+    },
+    "tooltip": {
+      "swipe": "💡 Tip: Swipe right to go back, or use breadcrumbs above"
+    },
+    "escape": {
+      "ariaLabel": "Go back"
+    }
   },
   "landing": {
     "title": "Preacher Helper, built for preachers",
@@ -943,6 +955,7 @@
     "back": "Back",
     "backToPlan": "Back to Plan",
     "backToSermon": "Back to sermon",
+    "backToDashboard": "Back to Dashboard",
     "copyAll": "Copy All",
     "goToOutline": "Go to Outline",
     "remove": "Remove",

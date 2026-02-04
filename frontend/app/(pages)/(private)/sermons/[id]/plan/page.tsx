@@ -16,6 +16,7 @@ import { PlanStyle } from "@/api/clients/openAI.client";
 import ExportButtons from "@/components/ExportButtons";
 import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
 import { SwitchViewIcon } from "@/components/Icons";
+import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
@@ -1565,23 +1566,6 @@ const PlanImmersiveView = ({
           }
         }
 
-        /* Preaching mode specific styles */
-        .preaching-mode {
-          padding-top: 80px; /* Desktop: Account for sticky timer header */
-        }
-
-        @media (max-width: 768px) {
-          .preaching-mode {
-            padding-top: 65px; /* Tablet: Slightly less padding */
-          }
-        }
-
-        @media (max-width: 640px) {
-          .preaching-mode {
-            padding-top: 50px; /* Mobile: Less padding for compact timer */
-          }
-        }
-
         .preaching-content {
           max-width: 4xl;
           margin: 0 auto;
@@ -1691,7 +1675,6 @@ const PlanImmersiveView = ({
 
 interface PlanPreachingViewProps {
   sermon: Sermon;
-  sermonId: string;
   combinedPlan: {
     introduction: string;
     main: string;
@@ -1703,7 +1686,6 @@ interface PlanPreachingViewProps {
   planViewMode: PlanViewMode | null;
   noContentText: string;
   preachingDuration: number | null;
-  onExitPreaching: () => void;
   onTimerStateChange: (timerState: {
     currentPhase: TimerPhase;
     phaseProgress: number;
@@ -1717,7 +1699,6 @@ interface PlanPreachingViewProps {
 
 const PlanPreachingView = ({
   sermon,
-  sermonId,
   combinedPlan,
   t,
   timerState,
@@ -1725,7 +1706,6 @@ const PlanPreachingView = ({
   planViewMode,
   noContentText,
   preachingDuration,
-  onExitPreaching,
   onTimerStateChange,
   onTimerFinished,
   onSetDuration,
@@ -1850,36 +1830,17 @@ const PlanPreachingView = ({
           }
         }
 
-        /* Preaching mode specific styles */
-        .preaching-mode {
-          padding-top: 80px; /* Desktop: Account for sticky timer header */
-        }
-
-        @media (max-width: 768px) {
-          .preaching-mode {
-            padding-top: 65px; /* Tablet: Slightly less padding */
-          }
-        }
-
-        @media (max-width: 640px) {
-          .preaching-mode {
-            padding-top: 50px; /* Mobile: Less padding for compact timer */
-          }
-        }
-
         .preaching-content {
           max-width: 4xl;
           margin: 0 auto;
         }
       `}</style>
-      <div className={`min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 ${isPlanPreaching ? 'preaching-mode' : ''}`}>
+      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
         {/* Sticky Timer Header - Always show in preaching mode */}
         <div className="fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <PreachingTimer
             initialDuration={preachingDuration !== null ? preachingDuration : 0}
             className="border-0 shadow-none"
-            sermonId={sermonId}
-            onExitPreaching={onExitPreaching}
             onTimerStateChange={onTimerStateChange}
             onTimerFinished={onTimerFinished}
             onSetDuration={onSetDuration}
@@ -1891,8 +1852,11 @@ const PlanPreachingView = ({
 
         {/* Show plan content in preaching mode */}
         {planViewMode === "preaching" && (
-          <main className="flex-1 overflow-y-auto">
-            <div className="preaching-content px-6 py-8">
+          <main className="flex-1 overflow-y-auto pt-[115px] lg:pt-[65px]">
+            <div className="preaching-content px-4 sm:px-6 pt-0 pb-8">
+              <div className="mb-4 mt-0 lg:-mt-1">
+                <Breadcrumbs forceShow={true} />
+              </div>
               <FullPlanContent
                 sermonTitle={sermon.title}
                 sermonVerse={sermon.verse}
@@ -2040,8 +2004,8 @@ const PlanOverlayPortal = ({
               >
                 <X className="h-7 w-7" />
               </button>
-            </div>
-          </div>
+            </div >
+          </div >
           <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
             <FullPlanContent
               sermonTitle={sermon.title}
@@ -2053,9 +2017,9 @@ const PlanOverlayPortal = ({
               noContentText={noContentText}
             />
           </div>
-        </div>
-      </div>
-    </div>,
+        </div >
+      </div >
+    </div >,
     document.body
   );
 };
@@ -3152,7 +3116,6 @@ export default function PlanPage() {
     return (
       <PlanPreachingView
         sermon={sermon}
-        sermonId={sermonId}
         combinedPlan={combinedPlan}
         t={t}
         timerState={preachingTimerState}
@@ -3160,7 +3123,6 @@ export default function PlanPage() {
         planViewMode={planViewMode}
         noContentText={noContentText}
         preachingDuration={preachingDuration}
-        onExitPreaching={() => updatePlanViewMode(null)}
         onTimerStateChange={handleTimerStateChange}
         onTimerFinished={() => {
           debugLog('Timer finished naturally, showing negative countdown');
