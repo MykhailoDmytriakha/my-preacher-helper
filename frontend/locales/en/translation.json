@@ -583,6 +583,8 @@
     "markedAsReviewed": "Marked as reviewed",
     "markedAsUnreviewed": "Marked as unreviewed",
     "reviewed": "Reviewed",
+    "allPointsBlocked": "All outline points are reviewed",
+    "pointBlocked": "Outline point is reviewed and blocked",
     "showSidebar": "Show sidebar",
     "hideSidebar": "Hide sidebar"
   },

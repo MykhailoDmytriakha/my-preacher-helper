@@ -32,7 +32,11 @@ import SortableItem from "./SortableItem";
 // Translation key constants to avoid duplicate strings
 const TRANSLATION_STRUCTURE_ADD_THOUGHT = 'structure.addThoughtToSection';
 const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = 'structure.unassignedThoughts';
+const TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED = 'structure.allPointsBlocked';
+const TRANSLATION_STRUCTURE_RECORD_AUDIO = 'structure.recordAudio';
 const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = 'Unassigned Thoughts';
+const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All outline points are reviewed';
+const DEFAULT_RECORD_AUDIO_TEXT = 'Record voice note';
 
 // CSS class constants to avoid duplicate strings
 const BG_GRAY_LIGHT_DARK = 'bg-gray-50 dark:bg-gray-800';
@@ -262,9 +266,10 @@ const SermonPointPlaceholder: React.FC<{
                     });
                     onAddThought(containerId, point.id);
                   }}
-                  className="w-[39px] h-[39px] rounded-full bg-gray-400 hover:bg-green-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center"
-                  title={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                  aria-label={t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                  disabled={point.isReviewed}
+                  className={`w-[39px] h-[39px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${point.isReviewed ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
+                  title={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                  aria-label={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                 >
                   <PlusIcon className="h-[30px] w-[30px] text-white" />
                 </button>
@@ -273,6 +278,7 @@ const SermonPointPlaceholder: React.FC<{
                 <>
                   <FocusRecorderButton
                     size="small"
+                    disabled={point.isReviewed}
                     onRecordingComplete={async (audioBlob) => {
                       try {
                         setIsRecordingAudio(true);
@@ -496,6 +502,9 @@ export default function Column({
   // --- State for SermonOutline Point Editing (only relevant in focus mode) ---
   const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calculate if all outline points are blocked (reviewed) - only block if there are points AND all are reviewed
+  const allPointsBlocked = localSermonPoints.length > 0 && localSermonPoints.every(point => point.isReviewed);
 
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
@@ -835,6 +844,7 @@ export default function Column({
           <AudioRecorder
             variant="mini"
             hideKeyboardShortcuts={true}
+            disabled={allPointsBlocked}
             onRecordingComplete={async (audioBlob) => {
               try {
                 setIsRecordingAudio(true);
@@ -914,49 +924,54 @@ export default function Column({
             </>
           )}
         </button>
-      )}
+      )
+      }
 
       {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
-      {isDiffModeActive && hasHighlightedItems && (
-        <div className="space-y-2 mt-3 pt-3 border-t border-white dark:border-gray-600 border-opacity-30 dark:border-opacity-30">
-          <h3 className="text-sm font-medium text-white dark:text-gray-100 mb-2">
-            {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
-          </h3>
+      {
+        isDiffModeActive && hasHighlightedItems && (
+          <div className="space-y-2 mt-3 pt-3 border-t border-white dark:border-gray-600 border-opacity-30 dark:border-opacity-30">
+            <h3 className="text-sm font-medium text-white dark:text-gray-100 mb-2">
+              {t('structure.aiSuggestions', { defaultValue: 'AI Suggestions' })}
+            </h3>
 
-          {/* Accept all button */}
-          <button
-            onClick={() => onKeepAll?.(id)}
-            className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 dark:bg-green-700 text-white hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center justify-center"
-          >
-            <CheckIcon className="h-4 w-4 mr-2" />
-            {t('structure.acceptAllChanges', { defaultValue: 'Accept all remaining' })}
-          </button>
+            {/* Accept all button */}
+            <button
+              onClick={() => onKeepAll?.(id)}
+              className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 dark:bg-green-700 text-white hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center justify-center"
+            >
+              <CheckIcon className="h-4 w-4 mr-2" />
+              {t('structure.acceptAllChanges', { defaultValue: 'Accept all remaining' })}
+            </button>
 
-          {/* Reject all button */}
-          <button
-            onClick={() => onRevertAll?.(id)}
-            className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center justify-center"
-          >
-            <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
-            {t('structure.rejectAllChanges', { defaultValue: 'Reject all suggestions' })}
-          </button>
-        </div>
-      )}
+            {/* Reject all button */}
+            <button
+              onClick={() => onRevertAll?.(id)}
+              className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center justify-center"
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
+              {t('structure.rejectAllChanges', { defaultValue: 'Reject all suggestions' })}
+            </button>
+          </div>
+        )
+      }
 
-      {getExportContent && sermonId && (
-        <div className="mt-4 flex justify-center">
-          <ExportButtons
-            getExportContent={getExportContent}
-            sermonId={sermonId}
-            className="inline-flex"
-            orientation="horizontal"
-            planData={planData}
-            focusedSection={isFocusMode ? id : undefined}
-            sermonTitle={planData?.sermonTitle ?? title}
-          />
-        </div>
-      )}
-    </div>
+      {
+        getExportContent && sermonId && (
+          <div className="mt-4 flex justify-center">
+            <ExportButtons
+              getExportContent={getExportContent}
+              sermonId={sermonId}
+              className="inline-flex"
+              orientation="horizontal"
+              planData={planData}
+              focusedSection={isFocusMode ? id : undefined}
+              sermonTitle={planData?.sermonTitle ?? title}
+            />
+          </div>
+        )
+      }
+    </div >
   );
 
   const renderFocusSidebarPoints = () => (
@@ -1231,9 +1246,10 @@ export default function Column({
                   debugLog('Column: mic button clicked', { sectionId: id });
                   setShowAudioPopover((v) => !v);
                 }}
-                className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
-                title={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
-                aria-label={t('structure.recordAudio', { defaultValue: 'Record voice note' })}
+                disabled={allPointsBlocked}
+                className={`p-1 rounded-full transition-colors ${allPointsBlocked ? 'bg-white bg-opacity-10 cursor-not-allowed opacity-50' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}
+                title={allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
+                aria-label={allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
               >
                 <MicrophoneIcon className="h-4 w-4 text-white" />
               </button>
@@ -1287,8 +1303,9 @@ export default function Column({
                 debugLog('Structure: add thought clicked', { sectionId: id, isFocusMode, sermonId });
                 onAddThought(id);
               }}
-              className="p-1 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-colors"
-              title={t('structure.addThoughtToSection', { section: title })}
+              disabled={allPointsBlocked}
+              className={`p-1 rounded-full transition-colors ${allPointsBlocked ? 'bg-white bg-opacity-10 cursor-not-allowed opacity-50' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}
+              title={allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t('structure.addThoughtToSection', { section: title })}
             >
               <PlusIcon className="h-4 w-4 text-white" />
             </button>

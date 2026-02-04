@@ -583,6 +583,8 @@
     "markedAsReviewed": "Позначено як перевірено",
     "markedAsUnreviewed": "Знято позначку перевірено",
     "reviewed": "Перевірено",
+    "allPointsBlocked": "Усі пункти плану перевірено",
+    "pointBlocked": "Пункт плану перевірено та заблоковано",
     "showSidebar": "Показати бічну панель",
     "hideSidebar": "Сховати бічну панель"
   },
