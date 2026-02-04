@@ -2,12 +2,15 @@ import { renderHook, act } from '@testing-library/react';
 
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 
-// Mock timer functions
-jest.useFakeTimers();
-
 describe('usePreachingTimer', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllTimers();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should initialize with default state', () => {
@@ -319,5 +322,178 @@ describe('usePreachingTimer', () => {
     expect(result.current.timerState.status).toBe('finished');
     expect(result.current.timerState.isFinished).toBe(true);
     expect(result.current.timerState.timeRemaining).toBe(0);
+  });
+
+  it('should set phase durations and switch to sections mode', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setPhaseDurations({
+        introduction: 120,
+        main: 600,
+        conclusion: 180
+      });
+    });
+
+    expect(result.current.settings.mode).toBe('sections');
+    expect(result.current.settings.totalDuration).toBe(900);
+    expect(result.current.timerState.timeRemaining).toBe(900);
+  });
+
+  it('should calculate phaseProgressByPhase for custom durations', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setPhaseDurations({
+        introduction: 60,
+        main: 120,
+        conclusion: 60
+      });
+      result.current.actions.start();
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(30000);
+    });
+
+    expect(result.current.progress.phaseProgressByPhase.introduction).toBeCloseTo(0.5, 2);
+    expect(result.current.progress.phaseProgressByPhase.main).toBe(0);
+    expect(result.current.progress.phaseProgressByPhase.conclusion).toBe(0);
+
+    act(() => {
+      jest.advanceTimersByTime(60000);
+    });
+
+    expect(result.current.progress.phaseProgressByPhase.introduction).toBe(1);
+    expect(result.current.progress.phaseProgressByPhase.main).toBeCloseTo(0.25, 2);
+  });
+
+  it('should reset to total mode after setting total duration', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setPhaseDurations({
+        introduction: 120,
+        main: 600,
+        conclusion: 180
+      });
+    });
+
+    act(() => {
+      result.current.actions.setDuration(1200);
+    });
+
+    expect(result.current.settings.mode).toBe('total');
+    expect(result.current.settings.totalDuration).toBe(1200);
+  });
+
+  it('handles localStorage read errors without crashing', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const getItemSpy = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('read-fail');
+    });
+
+    const { result } = renderHook(() => usePreachingTimer());
+
+    expect(result.current.settings.mode).toBe('total');
+
+    getItemSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('defaults to total mode when localStorage is unavailable', () => {
+    const originalLocalStorage = window.localStorage;
+    Object.defineProperty(window, 'localStorage', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+
+    const { result } = renderHook(() => usePreachingTimer());
+
+    expect(result.current.settings.mode).toBe('total');
+
+    Object.defineProperty(window, 'localStorage', {
+      value: originalLocalStorage,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('handles invalid stored phase durations', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    localStorage.setItem('preaching-timer-phase-durations', '{invalid-json');
+    localStorage.setItem('preaching-timer-mode', 'sections');
+
+    const { result } = renderHook(() => usePreachingTimer());
+
+    expect(result.current.settings.mode).toBe('total');
+
+    warnSpy.mockRestore();
+  });
+
+  it('guards against setDuration and setPhaseDurations while running', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.start();
+    });
+
+    const originalTotal = result.current.settings.totalDuration;
+    const originalMode = result.current.settings.mode;
+
+    act(() => {
+      result.current.actions.setDuration(600);
+      result.current.actions.setPhaseDurations({ introduction: 60, main: 60, conclusion: 60 });
+    });
+
+    expect(result.current.settings.totalDuration).toBe(originalTotal);
+    expect(result.current.settings.mode).toBe(originalMode);
+  });
+
+  it('ignores invalid phase duration inputs', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setPhaseDurations({ introduction: -1, main: 10, conclusion: 10 });
+    });
+
+    expect(result.current.settings.mode).toBe('total');
+    expect(result.current.settings.totalDuration).toBe(1200);
+  });
+
+  it('treats zero-duration phases as completed when elapsed passes start', () => {
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setPhaseDurations({ introduction: 0, main: 60, conclusion: 0 });
+      result.current.actions.start();
+    });
+
+    expect(result.current.progress.phaseProgressByPhase.introduction).toBe(1);
+    expect(result.current.progress.phaseProgressByPhase.main).toBe(0);
+
+    act(() => {
+      jest.advanceTimersByTime(60000);
+    });
+
+    expect(result.current.progress.phaseProgressByPhase.conclusion).toBe(1);
+  });
+
+  it('handles localStorage write errors for mode and phase durations', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('write-fail');
+    });
+
+    const { result } = renderHook(() => usePreachingTimer());
+
+    act(() => {
+      result.current.actions.setDuration(600);
+      result.current.actions.setPhaseDurations({ introduction: 60, main: 60, conclusion: 60 });
+    });
+
+    setItemSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });

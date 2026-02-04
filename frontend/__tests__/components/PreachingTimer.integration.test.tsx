@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 // Mock various hooks
@@ -16,7 +16,7 @@ const mockRouter = {
 // const mockSeries = { id: '456', title: 'Test Series' };
 
 // Mock hooks
-jest.mock('@hooks/usePreachingTimer', () => ({
+jest.mock('@/hooks/usePreachingTimer', () => ({
   usePreachingTimer: mockUsePreachingTimer,
 }));
 
@@ -83,6 +83,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import PreachingTimer from '../../app/components/PreachingTimer';
+import SectionTimePicker from '../../app/components/SectionTimePicker';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 describe('PreachingTimer Integration', () => {
@@ -92,6 +93,13 @@ describe('PreachingTimer Integration', () => {
         retry: false,
       },
     },
+  });
+
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      value: jest.fn(),
+      writable: true,
+    });
   });
 
   const renderWithClient = (ui: React.ReactNode) => {
@@ -111,6 +119,17 @@ describe('PreachingTimer Integration', () => {
       isPaused: false,
       isFinished: false,
     },
+    progress: {
+      totalProgress: 0,
+      phaseProgress: 0,
+      phaseProgressByPhase: {
+        introduction: 0,
+        main: 0,
+        conclusion: 0,
+      },
+      timeElapsed: 0,
+      timeRemaining: 1200,
+    },
     visualState: {
       displayTime: '20:00',
       displayColor: '#FCD34D',
@@ -126,6 +145,20 @@ describe('PreachingTimer Integration', () => {
       skip: jest.fn(),
       reset: jest.fn(),
       setDuration: jest.fn(),
+      setPhaseDurations: jest.fn(),
+    },
+    settings: {
+      totalDuration: 1200,
+      introductionRatio: 0.2,
+      mainRatio: 0.6,
+      conclusionRatio: 0.2,
+      mode: 'total' as const,
+      updateSettings: jest.fn(),
+    },
+    events: {
+      onPhaseChange: undefined,
+      onFinish: undefined,
+      onEmergency: undefined,
     },
   };
 
@@ -133,6 +166,7 @@ describe('PreachingTimer Integration', () => {
     jest.clearAllMocks();
     mockUsePreachingTimer.mockReturnValue(mockTimerData);
     queryClient.clear();
+    localStorage.clear();
   });
 
   it('renders timer display and controls with hook data', () => {
@@ -157,6 +191,25 @@ describe('PreachingTimer Integration', () => {
 
   it('renders with initial duration (smoke test)', () => {
     expect(() => renderWithClient(<PreachingTimer initialDuration={1200} />)).not.toThrow();
+  });
+
+  it('calls onTimerStateChange with per-phase progress', () => {
+    const onTimerStateChange = jest.fn();
+    renderWithClient(<PreachingTimer onTimerStateChange={onTimerStateChange} />);
+
+    expect(onTimerStateChange).toHaveBeenCalled();
+    const payload = onTimerStateChange.mock.calls[0][0] as {
+      phaseProgressByPhase: {
+        introduction: number;
+        main: number;
+        conclusion: number;
+      };
+    };
+    expect(payload.phaseProgressByPhase).toEqual({
+      introduction: 0,
+      main: 0,
+      conclusion: 0,
+    });
   });
 
   it('displays emergency styling when in emergency mode', () => {
@@ -237,5 +290,228 @@ describe('PreachingTimer Integration', () => {
     expect(startButtons).toHaveLength(2);
     expect(stopButtons).toHaveLength(2);
     expect(skipButtons).toHaveLength(2);
+  });
+
+  it('loads stored section durations when available', () => {
+    localStorage.setItem(
+      'preaching-timer-phase-durations',
+      JSON.stringify({ introduction: 120, main: 600, conclusion: 180 })
+    );
+    const getItemSpy = jest.spyOn(Storage.prototype, 'getItem');
+
+    renderWithClient(<PreachingTimer />);
+
+    expect(getItemSpy).toHaveBeenCalledWith('preaching-timer-phase-durations');
+    getItemSpy.mockRestore();
+  });
+
+  it('opens section picker and supports cancel/back/confirm flows', async () => {
+    const onSetDuration = jest.fn();
+    jest.useFakeTimers();
+    renderWithClient(<PreachingTimer onSetDuration={onSetDuration} />);
+
+    const openInlinePresets = () => {
+      const timerButtons = screen.getAllByRole('button', { name: '20:00' });
+      fireEvent.click(timerButtons[0]);
+      expect(screen.getAllByText('10m').length).toBeGreaterThan(0);
+    };
+
+    const openSectionPicker = async () => {
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /By sections|plan\.timePicker\.bySections/i }));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(60);
+      });
+      await screen.findByText(/Section times|plan\.timePicker\.sectionsTitle/i);
+    };
+
+    openInlinePresets();
+    await openSectionPicker();
+    fireEvent.click(screen.getByRole('button', { name: /common\.cancel|Cancel/i }));
+    expect(screen.queryByText(/Section times|plan\.timePicker\.sectionsTitle/i)).not.toBeInTheDocument();
+
+    openInlinePresets();
+    await openSectionPicker();
+    fireEvent.click(screen.getByRole('button', { name: /common\.back|Back/i }));
+    expect(screen.getAllByText('10m').length).toBeGreaterThan(0);
+
+    openInlinePresets();
+    await openSectionPicker();
+    const sectionDialog = screen.getByRole('dialog');
+    const dialogUtils = within(sectionDialog);
+
+    fireEvent.click(dialogUtils.getByRole('button', { name: '1m' }));
+    await act(async () => {
+      fireEvent.click(dialogUtils.getByRole('button', { name: /plan\.setTime|Set Time/i }));
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await waitFor(() => expect(onSetDuration).toHaveBeenCalledWith(1020));
+    jest.useRealTimers();
+  });
+
+  it('handles invalid stored section durations without crashing', () => {
+    localStorage.setItem('preaching-timer-phase-durations', '{invalid-json');
+    expect(() => renderWithClient(<PreachingTimer />)).not.toThrow();
+  });
+
+  it('ignores parseable but invalid stored section durations', () => {
+    localStorage.setItem(
+      'preaching-timer-phase-durations',
+      JSON.stringify({ introduction: 120, main: -10, conclusion: 180 })
+    );
+
+    expect(() => renderWithClient(<PreachingTimer />)).not.toThrow();
+  });
+
+});
+
+describe('SectionTimePicker', () => {
+  const baseDurations = { introduction: 240, main: 600, conclusion: 180 };
+
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      value: jest.fn(),
+      writable: true,
+    });
+  });
+
+  it('renders and switches active phases', () => {
+    render(
+      <SectionTimePicker
+        initialDurations={baseDurations}
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    expect(screen.getAllByText('00:04:00').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('sections.main'));
+    expect(screen.getAllByText('00:10:00').length).toBeGreaterThan(0);
+  });
+
+  it('applies presets and confirms/cancels/back', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const onBack = jest.fn();
+
+    render(
+      <SectionTimePicker
+        initialDurations={baseDurations}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onBack={onBack}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '30s' }));
+    expect(screen.getAllByText('00:00:30').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /plan\.setTime|Set Time/i }));
+    expect(onConfirm).toHaveBeenCalledWith({
+      introduction: 30,
+      main: 600,
+      conclusion: 180,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.cancel|Cancel/i }));
+    expect(onCancel).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.back|Back/i }));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('ignores scroll updates when index is unchanged', () => {
+    jest.useFakeTimers();
+    render(
+      <SectionTimePicker
+        initialDurations={{ introduction: 0, main: 0, conclusion: 0 }}
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    const listboxes = screen.getAllByRole('listbox');
+    const hoursList = listboxes[0] as HTMLElement;
+    Object.defineProperty(hoursList, 'scrollTop', {
+      value: 0,
+      writable: true,
+    });
+
+    fireEvent.scroll(hoursList);
+
+    act(() => {
+      jest.advanceTimersByTime(200);
+    });
+
+    expect(screen.getAllByText('00:00:00').length).toBeGreaterThan(0);
+    jest.useRealTimers();
+  });
+
+  it('keeps phase duration when preset matches current value', () => {
+    const onConfirm = jest.fn();
+
+    render(
+      <SectionTimePicker
+        initialDurations={baseDurations}
+        onConfirm={onConfirm}
+        onCancel={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '4m' }));
+    fireEvent.click(screen.getByRole('button', { name: /plan\.setTime|Set Time/i }));
+
+    expect(onConfirm).toHaveBeenCalledWith(baseDurations);
+  });
+
+  it('handles overlay and keyboard actions', () => {
+    const onConfirm = jest.fn();
+    const onCancel = jest.fn();
+    const { container } = render(
+      <SectionTimePicker
+        initialDurations={baseDurations}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+    );
+
+    const dialog = container.querySelector('.time-picker-container') as HTMLElement;
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.keyDown(dialog, { key: 'Enter' });
+    fireEvent.mouseDown(screen.getByRole('dialog'));
+    fireEvent.click(screen.getByRole('button', { name: /common\.close|Close/i }));
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
+  it('updates time via wheel scroll', () => {
+    jest.useFakeTimers();
+    render(
+      <SectionTimePicker
+        initialDurations={{ introduction: 0, main: 0, conclusion: 0 }}
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />
+    );
+
+    const listboxes = screen.getAllByRole('listbox');
+    const hoursList = listboxes[0] as HTMLElement;
+    Object.defineProperty(hoursList, 'scrollTop', {
+      value: 32,
+      writable: true,
+    });
+
+    fireEvent.scroll(hoursList);
+
+    act(() => {
+      jest.advanceTimersByTime(200);
+    });
+
+    expect(screen.getAllByText('01:00:00').length).toBeGreaterThan(0);
+    jest.useRealTimers();
   });
 });

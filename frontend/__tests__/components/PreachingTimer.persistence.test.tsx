@@ -5,7 +5,7 @@ import React from 'react';
 
 // Mock the usePreachingTimer hook BEFORE importing the component
 const mockUsePreachingTimer = jest.fn();
-jest.mock('@hooks/usePreachingTimer', () => ({
+jest.mock('@/hooks/usePreachingTimer', () => ({
   usePreachingTimer: mockUsePreachingTimer,
 }));
 
@@ -40,11 +40,24 @@ describe('PreachingTimer Persistence', () => {
     animationClass: '',
   };
 
+  const baseProgress = {
+    totalProgress: 0,
+    phaseProgress: 0,
+    phaseProgressByPhase: {
+      introduction: 0,
+      main: 0,
+      conclusion: 0,
+    },
+    timeElapsed: 0,
+    timeRemaining: 1200,
+  };
+
   const baseSettings = {
     totalDuration: 1200,
     introductionRatio: 0.2,
     mainRatio: 0.8,
     conclusionRatio: 0.0,
+    mode: 'total' as const,
   };
 
   const createActions = () => ({
@@ -55,23 +68,26 @@ describe('PreachingTimer Persistence', () => {
     skip: jest.fn(),
     reset: jest.fn(),
     setDuration: jest.fn(),
+    setPhaseDurations: jest.fn(),
   });
 
   type TimerActions = ReturnType<typeof createActions>;
   type TimerDataOverrides = {
     timerState?: Partial<typeof baseTimerState>;
     visualState?: Partial<typeof baseVisualState>;
+    progress?: Partial<typeof baseProgress>;
     actions?: Partial<TimerActions>;
     settings?: Partial<typeof baseSettings> & { updateSettings?: jest.Mock };
   };
 
   const createTimerData = (overrides: TimerDataOverrides = {}) => {
-    const { timerState, visualState, actions, settings } = overrides;
+    const { timerState, visualState, progress, actions, settings } = overrides;
     const { updateSettings, ...restSettings } = settings ?? {};
 
     return {
       timerState: { ...baseTimerState, ...timerState },
       visualState: { ...baseVisualState, ...visualState },
+      progress: { ...baseProgress, ...progress },
       actions: { ...createActions(), ...actions },
       settings: {
         ...baseSettings,

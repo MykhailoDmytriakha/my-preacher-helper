@@ -21,6 +21,7 @@
 *   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors. For AI chains, use **Sequence-Aware Mocking** to verify context passing.
 *   **Strict Change Coverage:** Maintain **100% test coverage** for all newly added or modified lines (diff). Overall file coverage must remain **≥80%**. Run `npm run test:coverage && npm run lint:full` from root to verify.
+*   **Color Scheme Compliance:** Use tokens from `@/utils/themeColors` (e.g., `SERMON_SECTION_COLORS`, `UI_COLORS`, `TIMER_CONTROL_COLORS`). Do not hardcode colors. Section-specific UI must reflect section colors.
 *   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
 *   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.

@@ -93,6 +93,11 @@ jest.mock('@/components/PreachingTimer', () => {
         currentPhase: 'introduction',
         phaseProgress: 0.5,
         totalProgress: 0.1,
+        phaseProgressByPhase: {
+          introduction: 0.5,
+          main: 0,
+          conclusion: 0,
+        },
         timeRemaining: 600,
         isFinished: false,
       });

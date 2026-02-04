@@ -1,4 +1,4 @@
-import { TimerPhase, TimerStatus, TimerSettings } from './TimerState';
+import { TimerMode, TimerPhase, TimerPhaseDurations, TimerStatus, TimerSettings } from './TimerState';
 
 export interface TimerSettingsProps {
   totalDuration: number;
@@ -11,6 +11,11 @@ export interface TimerSettingsProps {
 export interface TimerProgress {
   totalProgress: number; // 0-1
   phaseProgress: number; // 0-1
+  phaseProgressByPhase: {
+    introduction: number;
+    main: number;
+    conclusion: number;
+  };
   timeElapsed: number; // in seconds
   timeRemaining: number; // in seconds
 }
@@ -31,6 +36,7 @@ export interface TimerActions {
   skip: () => void;
   reset: () => void;
   setDuration: (seconds: number) => void;
+  setPhaseDurations: (durations: TimerPhaseDurations) => void;
 }
 
 export interface TimerStateSummary {
@@ -57,6 +63,11 @@ export interface UsePreachingTimerReturn {
   progress: {
     totalProgress: number;
     phaseProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
     timeElapsed: number;
     timeRemaining: number;
   };
@@ -79,6 +90,7 @@ export interface UsePreachingTimerReturn {
     skip: () => void;
     reset: () => void;
     setDuration: (seconds: number) => void;
+    setPhaseDurations: (durations: TimerPhaseDurations) => void;
   };
 
   // Settings
@@ -87,6 +99,7 @@ export interface UsePreachingTimerReturn {
     introductionRatio: number;
     mainRatio: number;
     conclusionRatio: number;
+    mode: TimerMode;
     updateSettings: (settings: Partial<{
       totalDuration: number;
       introductionRatio: number;

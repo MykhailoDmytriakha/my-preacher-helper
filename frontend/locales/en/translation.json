@@ -725,7 +725,10 @@
       "presets": "Quick presets",
       "min": "min",
       "setTimer": "Set Timer",
-      "startPreaching": "Start Preaching"
+      "startPreaching": "Start Preaching",
+      "bySections": "By sections...",
+      "sectionsTitle": "Section times",
+      "totalSum": "Total"
     },
     "timer": {
       "remaining": "remaining",

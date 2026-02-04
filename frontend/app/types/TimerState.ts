@@ -1,5 +1,12 @@
 export type TimerPhase = 'introduction' | 'main' | 'conclusion' | 'finished';
 export type TimerStatus = 'idle' | 'running' | 'paused' | 'finished';
+export type TimerMode = 'total' | 'sections';
+
+export type TimerPhaseDurations = {
+  introduction: number;
+  main: number;
+  conclusion: number;
+};
 
 export interface TimerSettings {
   totalDuration: number; // in seconds

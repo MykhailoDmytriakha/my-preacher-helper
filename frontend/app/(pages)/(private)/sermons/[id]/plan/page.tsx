@@ -212,6 +212,11 @@ interface FullPlanContentProps {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
   } | null;
   isPreachingMode?: boolean;
   noContentText: string;
@@ -247,42 +252,13 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
   const getProgressClipPath = useCallback((phase: TimerPhase): string => {
     if (!timerState) return 'inset(0 0 100% 0)'; // Nothing visible
 
-    const totalProgress = timerState.totalProgress; // 0-1
-    const currentPhase = timerState.currentPhase;
-    const phaseProgress = timerState.phaseProgress; // Progress within current phase (0-1)
-    let progressPercent = 0;
-
-
-    // Use currentPhase to determine if a phase is completed, avoiding floating point precision issues
-    // For active phases, use phaseProgress instead of totalProgress to handle skip operations correctly
-    switch (phase) {
-      case 'introduction':
-        // Introduction is completed if currentPhase is main, conclusion, or finished
-        if (['main', 'conclusion', 'finished'].includes(currentPhase)) {
-          progressPercent = 100;
-        } else if (currentPhase === 'introduction') {
-          progressPercent = Math.min(totalProgress / 0.2, 1) * 100;
-        }
-        break;
-      case 'main':
-        // Main is completed if currentPhase is conclusion or finished
-        if (['conclusion', 'finished'].includes(currentPhase)) {
-          progressPercent = 100;
-        } else if (currentPhase === 'main') {
-          // Use phaseProgress for active phase - this handles skip correctly
-          progressPercent = phaseProgress * 100;
-        }
-        break;
-      case 'conclusion':
-        // Conclusion is current if currentPhase is conclusion, completed if finished
-        if (currentPhase === 'conclusion') {
-          // Use phaseProgress for active phase - this handles skip correctly
-          progressPercent = phaseProgress * 100;
-        } else if (currentPhase === 'finished') {
-          progressPercent = 100;
-        }
-        break;
-    }
+    const byPhase = timerState.phaseProgressByPhase;
+    const value = phase === 'introduction'
+      ? byPhase.introduction
+      : phase === 'main'
+        ? byPhase.main
+        : byPhase.conclusion;
+    const progressPercent = Math.min(Math.max(value, 0), 1) * 100;
 
     // For top-to-bottom filling: inset(0 0 X% 0) where X is the percentage to hide from bottom
     const hideFromBottom = 100 - progressPercent;
@@ -335,14 +311,13 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
   const getProgressAriaAttributes = useCallback((phase: TimerPhase) => {
     if (!timerState) return {};
 
-    let progressValue = 0;
-
-    // Calculate progress value for accessibility
-    if (phase === timerState.currentPhase) {
-      progressValue = Math.round(timerState.phaseProgress * 100);
-    } else if (checkPhaseCompleted(phase, timerState.currentPhase)) {
-      progressValue = 100;
-    }
+    const byPhase = timerState.phaseProgressByPhase;
+    const value = phase === 'introduction'
+      ? byPhase.introduction
+      : phase === 'main'
+        ? byPhase.main
+        : byPhase.conclusion;
+    const progressValue = Math.round(Math.min(Math.max(value, 0), 1) * 100);
 
     let ariaLabel = '';
     switch (phase) {
@@ -364,7 +339,7 @@ const FullPlanContent = ({ sermonTitle, sermonVerse, combinedPlan, t, timerState
       'aria-valuemax': 100,
       'aria-label': ariaLabel.replace('{progress}', progressValue.toString()),
     };
-  }, [timerState, checkPhaseCompleted, t]);
+  }, [timerState, t]);
 
   return (
     <>
@@ -1690,6 +1665,11 @@ interface PlanPreachingViewProps {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
     timeRemaining: number;
     isFinished: boolean;
   }) => void;
@@ -2184,6 +2164,11 @@ export default function PlanPage() {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
     timeRemaining: number;
     isFinished: boolean;
   } | null>(null);
@@ -2192,6 +2177,11 @@ export default function PlanPage() {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
     timeRemaining: number;
     isFinished: boolean;
   }) => {
@@ -2205,36 +2195,16 @@ export default function PlanPage() {
 
     // Calculate progress for all phases in one place for consolidated logging
     const totalProgress = timerState.totalProgress;
-    const currentPhase = timerState.currentPhase;
-    const phaseProgress = timerState.phaseProgress;
 
-    // Calculate progress percentages for each phase (same logic as getProgressClipPath)
+    // Calculate progress percentages for each phase using per-phase progress
     const getPhaseProgressPercent = (phase: TimerPhase): number => {
-      switch (phase) {
-        case 'introduction':
-          if (['main', 'conclusion', 'finished'].includes(currentPhase)) {
-            return 100;
-          } else if (currentPhase === 'introduction') {
-            return Math.min(totalProgress / 0.2, 1) * 100;
-          }
-          return 0;
-        case 'main':
-          if (['conclusion', 'finished'].includes(currentPhase)) {
-            return 100;
-          } else if (currentPhase === 'main') {
-            return phaseProgress * 100;
-          }
-          return 0;
-        case 'conclusion':
-          if (currentPhase === 'conclusion') {
-            return phaseProgress * 100;
-          } else if (currentPhase === 'finished') {
-            return 100;
-          }
-          return 0;
-        default:
-          return 0;
-      }
+      const byPhase = timerState.phaseProgressByPhase;
+      const value = phase === 'introduction'
+        ? byPhase.introduction
+        : phase === 'main'
+          ? byPhase.main
+          : byPhase.conclusion;
+      return Math.min(Math.max(value, 0), 1) * 100;
     };
 
     const introProgress = getPhaseProgressPercent('introduction');
@@ -2256,6 +2226,9 @@ export default function PlanPage() {
         prevState.currentPhase === timerState.currentPhase &&
         prevState.phaseProgress === timerState.phaseProgress &&
         prevState.totalProgress === timerState.totalProgress &&
+        prevState.phaseProgressByPhase.introduction === timerState.phaseProgressByPhase.introduction &&
+        prevState.phaseProgressByPhase.main === timerState.phaseProgressByPhase.main &&
+        prevState.phaseProgressByPhase.conclusion === timerState.phaseProgressByPhase.conclusion &&
         prevState.timeRemaining === timerState.timeRemaining &&
         prevState.isFinished === timerState.isFinished
       ) {

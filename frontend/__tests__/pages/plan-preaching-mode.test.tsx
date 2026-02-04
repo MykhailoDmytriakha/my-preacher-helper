@@ -6,7 +6,7 @@ import PreachingTimer from '../../app/components/PreachingTimer';
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 
 // Mock the usePreachingTimer hook
-jest.mock('@hooks/usePreachingTimer', () => ({
+jest.mock('@/hooks/usePreachingTimer', () => ({
   usePreachingTimer: jest.fn(),
 }));
 
@@ -32,6 +32,11 @@ describe('PreachingTimer - Plan Integration', () => {
     progress: {
       totalProgress: 0,
       phaseProgress: 0,
+      phaseProgressByPhase: {
+        introduction: 0,
+        main: 0,
+        conclusion: 0,
+      },
       timeElapsed: 0,
       timeRemaining: 1200,
     },
@@ -43,12 +48,14 @@ describe('PreachingTimer - Plan Integration', () => {
       skip: jest.fn(),
       reset: jest.fn(),
       setDuration: jest.fn(),
+      setPhaseDurations: jest.fn(),
     },
     settings: {
       totalDuration: 1200,
       introductionRatio: 0.2,
       mainRatio: 0.8,
       conclusionRatio: 0.0,
+      mode: 'total' as const,
       updateSettings: jest.fn(),
     },
     events: {

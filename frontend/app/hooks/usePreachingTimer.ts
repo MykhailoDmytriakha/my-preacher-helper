@@ -6,15 +6,21 @@ import {
   UsePreachingTimerReturn
 } from '@/types/TimerProps';
 import {
-  TimerState,
+  TimerMode,
   TimerPhase,
+  TimerPhaseDurations,
   TimerSettings,
+  TimerState,
   DEFAULT_TIMER_SETTINGS,
   TIMER_PHASE_COLORS
 } from '@/types/TimerState';
 import {
   triggerScreenBlink
 } from '@/utils/visualEffects';
+
+const TIMER_MODE_KEY = 'preaching-timer-mode';
+const TIMER_DURATION_KEY = 'preaching-timer-duration';
+const TIMER_PHASE_DURATIONS_KEY = 'preaching-timer-phase-durations';
 
 export const usePreachingTimer = (
   initialSettings?: Partial<TimerSettings>,
@@ -30,12 +36,25 @@ export const usePreachingTimer = (
     ...initialSettings
   }), [initialSettings]);
 
+  const isValidDuration = (value: number): boolean => Number.isFinite(value) && Number.isInteger(value) && value >= 0;
+
+  const computeDurationsFromTotal = useCallback((total: number): TimerPhaseDurations => {
+    const intro = Math.floor(total * settings.introductionRatio);
+    const main = Math.floor(total * settings.mainRatio);
+    const conclusion = Math.max(0, total - intro - main);
+    return { introduction: intro, main, conclusion };
+  }, [settings.introductionRatio, settings.mainRatio]);
+
   // Load saved timer duration from localStorage
   const loadSavedDuration = (): number => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('preaching-timer-duration');
-        return saved ? parseInt(saved, 10) : settings.totalDuration;
+        const saved = localStorage.getItem(TIMER_DURATION_KEY);
+        const parsed = saved ? parseInt(saved, 10) : NaN;
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          return parsed;
+        }
+        return settings.totalDuration;
       } catch (error) {
         console.warn('Failed to load saved timer duration:', error);
         return settings.totalDuration;
@@ -44,31 +63,96 @@ export const usePreachingTimer = (
     return settings.totalDuration;
   };
 
-  // Save timer duration to localStorage
+  const loadSavedMode = (): TimerMode => {
+    if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+      return 'total';
+    }
+    try {
+      const saved = localStorage.getItem(TIMER_MODE_KEY);
+      return saved === 'sections' ? 'sections' : 'total';
+    } catch (error) {
+      console.warn('Failed to load timer mode:', error);
+      return 'total';
+    }
+  };
+
+  const loadSavedPhaseDurations = (): TimerPhaseDurations | null => {
+    if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+      return null;
+    }
+    try {
+      const saved = localStorage.getItem(TIMER_PHASE_DURATIONS_KEY);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as TimerPhaseDurations;
+      if (
+        parsed &&
+        isValidDuration(parsed.introduction) &&
+        isValidDuration(parsed.main) &&
+        isValidDuration(parsed.conclusion)
+      ) {
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('Failed to load phase durations:', error);
+    }
+    return null;
+  };
+
   const saveDuration = (duration: number): void => {
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('preaching-timer-duration', duration.toString());
+        localStorage.setItem(TIMER_DURATION_KEY, duration.toString());
       } catch (error) {
         console.warn('Failed to save timer duration:', error);
       }
     }
   };
 
-  // Load initial duration from localStorage or use settings
-  const initialDuration = loadSavedDuration();
+  const saveMode = (mode: TimerMode): void => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TIMER_MODE_KEY, mode);
+      } catch (error) {
+        console.warn('Failed to save timer mode:', error);
+      }
+    }
+  };
+
+  const savePhaseDurations = (durations: TimerPhaseDurations): void => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TIMER_PHASE_DURATIONS_KEY, JSON.stringify(durations));
+      } catch (error) {
+        console.warn('Failed to save phase durations:', error);
+      }
+    }
+  };
+
+  const savedMode = loadSavedMode();
+  const savedPhaseDurations = loadSavedPhaseDurations();
+  const savedTotalDuration = loadSavedDuration();
+
+  const initialMode: TimerMode = savedMode === 'sections' && savedPhaseDurations ? 'sections' : 'total';
+  const initialDurations = initialMode === 'sections' && savedPhaseDurations
+    ? savedPhaseDurations
+    : computeDurationsFromTotal(savedTotalDuration);
+  const initialTotalDuration = initialMode === 'sections'
+    ? (initialDurations.introduction + initialDurations.main + initialDurations.conclusion)
+    : savedTotalDuration;
+
+  const [timerMode, setTimerMode] = useState<TimerMode>(initialMode);
 
   // Timer state
   const [timerState, setTimerState] = useState<TimerState>({
-    totalDuration: initialDuration,
-    timeRemaining: initialDuration,
+    totalDuration: initialTotalDuration,
+    timeRemaining: initialTotalDuration,
     startTime: null,
     pausedTime: null,
     currentPhase: 'introduction',
     phaseStartTime: 0,
-    introductionDuration: Math.floor(initialDuration * settings.introductionRatio),
-    mainDuration: Math.floor(initialDuration * settings.mainRatio),
-    conclusionDuration: Math.floor(initialDuration * settings.conclusionRatio),
+    introductionDuration: initialDurations.introduction,
+    mainDuration: initialDurations.main,
+    conclusionDuration: initialDurations.conclusion,
     status: 'idle',
     isRunning: false,
     isPaused: false,
@@ -77,9 +161,15 @@ export const usePreachingTimer = (
     blinkCount: 0,
   });
 
+  const timerStateRef = useRef(timerState);
+
   // Refs for interval management
   const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventsRef = useRef<typeof events>(events);
+
+  useEffect(() => {
+    timerStateRef.current = timerState;
+  }, [timerState]);
 
   useEffect(() => {
     eventsRef.current = events;
@@ -87,19 +177,19 @@ export const usePreachingTimer = (
 
   // Calculate current phase and progress
   const calculateCurrentPhase = useCallback((elapsedSeconds: number): TimerPhase => {
-    // Use consistent ratios to match skip logic (20-60-20)
-    const totalDuration = timerState.totalDuration;
-    const introDuration = Math.floor(totalDuration * 0.2);  // 20%
-    const mainDuration = Math.floor(totalDuration * 0.6);   // 60%
+    const introDuration = timerState.introductionDuration;
+    const mainDuration = timerState.mainDuration;
+    const introEnd = introDuration;
+    const mainEnd = introDuration + mainDuration;
 
-    if (elapsedSeconds < introDuration) {
+    if (elapsedSeconds < introEnd) {
       return 'introduction';
-    } else if (elapsedSeconds < introDuration + mainDuration) {
+    } else if (elapsedSeconds < mainEnd) {
       return 'main';
     } else {
       return 'conclusion';
     }
-  }, [timerState.totalDuration]);
+  }, [timerState.introductionDuration, timerState.mainDuration]);
 
   // Calculate phase progress (0-1)
   const calculatePhaseProgress = useCallback((elapsedSeconds: number, phase: TimerPhase): number => {
@@ -126,6 +216,10 @@ export const usePreachingTimer = (
         break;
       default:
         return 0;
+    }
+
+    if (phaseDuration === 0) {
+      return elapsedSeconds >= phaseStartTime ? 1 : 0;
     }
 
     const phaseElapsed = elapsedSeconds - phaseStartTime;
@@ -198,8 +292,8 @@ export const usePreachingTimer = (
 
           if (phaseChanged && prevState.status !== 'finished') {
             // Calculate the correct phaseStartTime for the new phase
-            const introDuration = Math.floor(timerState.totalDuration * 0.2);
-            const mainDuration = Math.floor(timerState.totalDuration * 0.6);
+            const introDuration = prevState.introductionDuration;
+            const mainDuration = prevState.mainDuration;
             let newPhaseStartTime: number;
 
             switch (currentPhase) {
@@ -320,16 +414,17 @@ export const usePreachingTimer = (
       const now = Date.now();
       const elapsedSeconds = Math.floor((now - prevState.startTime) / 1000);
 
-      // Determine current phase based on elapsed time using consistent ratios
-      // to avoid any race conditions with stored durations
+      // Determine current phase based on elapsed time and current durations
       let actualCurrentPhase: TimerPhase;
       const totalDuration = prevState.totalDuration;
-      const introDuration = Math.floor(totalDuration * 0.2);  // 20%
-      const mainDuration = Math.floor(totalDuration * 0.6);   // 60%
+      const introDuration = prevState.introductionDuration;
+      const mainDuration = prevState.mainDuration;
+      const introEnd = introDuration;
+      const mainEnd = introDuration + mainDuration;
 
-      if (elapsedSeconds < introDuration) {
+      if (elapsedSeconds < introEnd) {
         actualCurrentPhase = 'introduction';
-      } else if (elapsedSeconds < introDuration + mainDuration) {
+      } else if (elapsedSeconds < mainEnd) {
         actualCurrentPhase = 'main';
       } else {
         actualCurrentPhase = 'conclusion';
@@ -341,11 +436,11 @@ export const usePreachingTimer = (
       switch (actualCurrentPhase) {
         case 'introduction':
           newPhase = 'main';
-          elapsedAtPhaseStart = introDuration; // Main starts after introduction (20% of total)
+          elapsedAtPhaseStart = introDuration; // Main starts after introduction
           break;
         case 'main':
           newPhase = 'conclusion';
-          elapsedAtPhaseStart = introDuration + mainDuration; // Conclusion starts after intro + main (80% of total)
+          elapsedAtPhaseStart = introDuration + mainDuration; // Conclusion starts after intro + main
           break;
         case 'conclusion':
         // Skip from conclusion immediately finishes the preaching session
@@ -382,15 +477,15 @@ export const usePreachingTimer = (
   const reset = useCallback(() => {
     setTimerState((prevState: TimerState) => ({
       ...prevState,
-      totalDuration: settings.totalDuration,
-      timeRemaining: settings.totalDuration,
+      totalDuration: prevState.totalDuration,
+      timeRemaining: prevState.totalDuration,
       startTime: null,
       pausedTime: null,
       currentPhase: 'introduction',
       phaseStartTime: 0,
-      introductionDuration: Math.floor(settings.totalDuration * settings.introductionRatio),
-      mainDuration: Math.floor(settings.totalDuration * settings.mainRatio),
-      conclusionDuration: Math.floor(settings.totalDuration * settings.conclusionRatio),
+      introductionDuration: prevState.introductionDuration,
+      mainDuration: prevState.mainDuration,
+      conclusionDuration: prevState.conclusionDuration,
       status: 'idle',
       isRunning: false,
       isPaused: false,
@@ -398,20 +493,64 @@ export const usePreachingTimer = (
       lastPhaseChange: null,
       blinkCount: 0,
     }));
-  }, [settings]);
+  }, []);
 
   const setDuration = useCallback((seconds: number) => {
+    if (timerStateRef.current.status !== 'idle') {
+      return;
+    }
+
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const durations = computeDurationsFromTotal(safeSeconds);
+
     setTimerState((prevState: TimerState) => ({
       ...prevState,
-      totalDuration: seconds,
-      timeRemaining: prevState.status === 'idle' ? seconds : prevState.timeRemaining,
-      introductionDuration: Math.floor(seconds * settings.introductionRatio),
-      mainDuration: Math.floor(seconds * settings.mainRatio),
-      conclusionDuration: Math.floor(seconds * settings.conclusionRatio)
+      totalDuration: safeSeconds,
+      timeRemaining: safeSeconds,
+      introductionDuration: durations.introduction,
+      mainDuration: durations.main,
+      conclusionDuration: durations.conclusion
     }));
-    // Save to localStorage
-    saveDuration(seconds);
-  }, [settings]);
+
+    setTimerMode('total');
+    saveMode('total');
+    saveDuration(safeSeconds);
+  }, [computeDurationsFromTotal]);
+
+  const setPhaseDurations = useCallback((durations: TimerPhaseDurations) => {
+    if (timerStateRef.current.status !== 'idle') {
+      return;
+    }
+
+    if (
+      !isValidDuration(durations.introduction) ||
+      !isValidDuration(durations.main) ||
+      !isValidDuration(durations.conclusion)
+    ) {
+      return;
+    }
+
+    const safeDurations: TimerPhaseDurations = {
+      introduction: durations.introduction,
+      main: durations.main,
+      conclusion: durations.conclusion
+    };
+    const total = safeDurations.introduction + safeDurations.main + safeDurations.conclusion;
+
+    setTimerState((prevState: TimerState) => ({
+      ...prevState,
+      totalDuration: total,
+      timeRemaining: total,
+      introductionDuration: safeDurations.introduction,
+      mainDuration: safeDurations.main,
+      conclusionDuration: safeDurations.conclusion
+    }));
+
+    setTimerMode('sections');
+    saveMode('sections');
+    savePhaseDurations(safeDurations);
+    saveDuration(total);
+  }, []);
 
   // Calculate progress information
   const elapsedSeconds = timerState.startTime
@@ -421,6 +560,31 @@ export const usePreachingTimer = (
   const totalProgress = timerState.totalDuration > 0
     ? Math.min(elapsedSeconds / timerState.totalDuration, 1)
     : 0;
+
+  const phaseProgressByPhase = useMemo(() => {
+    const introDuration = timerState.introductionDuration;
+    const mainDuration = timerState.mainDuration;
+    const conclusionDuration = timerState.conclusionDuration;
+    const introStart = 0;
+    const mainStart = introDuration;
+    const conclusionStart = introDuration + mainDuration;
+
+    const computeProgress = (start: number, duration: number): number => {
+      if (duration === 0) {
+        return elapsedSeconds >= start ? 1 : 0;
+      }
+      if (elapsedSeconds <= start) return 0;
+      const end = start + duration;
+      if (elapsedSeconds >= end) return 1;
+      return (elapsedSeconds - start) / duration;
+    };
+
+    return {
+      introduction: computeProgress(introStart, introDuration),
+      main: computeProgress(mainStart, mainDuration),
+      conclusion: computeProgress(conclusionStart, conclusionDuration)
+    };
+  }, [elapsedSeconds, timerState.introductionDuration, timerState.mainDuration, timerState.conclusionDuration]);
 
   const phaseProgress = calculatePhaseProgress(elapsedSeconds, timerState.currentPhase);
 
@@ -457,6 +621,7 @@ export const usePreachingTimer = (
     progress: {
       totalProgress,
       phaseProgress,
+      phaseProgressByPhase,
       timeElapsed: elapsedSeconds,
       timeRemaining: timerState.timeRemaining
     },
@@ -478,7 +643,8 @@ export const usePreachingTimer = (
       stop,
       skip,
       reset,
-      setDuration
+      setDuration,
+      setPhaseDurations
     },
 
   // Settings
@@ -487,6 +653,7 @@ export const usePreachingTimer = (
     introductionRatio: settings.introductionRatio,
     mainRatio: settings.mainRatio,
     conclusionRatio: settings.conclusionRatio,
+    mode: timerMode,
     updateSettings: () => {
       // This would update settings and recalculate durations
       // TODO: Implement settings persistence

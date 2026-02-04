@@ -5,13 +5,14 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
-import { TimerPhase } from '@/types/TimerState';
+import { TimerPhase, TimerPhaseDurations } from '@/types/TimerState';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 import { useNavigationOnboarding } from '@hooks/useNavigationOnboarding';
 import { useSwipeGesture } from '@hooks/useSwipeGesture';
 
 import CustomTimePicker from './CustomTimePicker';
 import DigitalTimerDisplay from './DigitalTimerDisplay';
+import SectionTimePicker from './SectionTimePicker';
 import TimerControls from './TimerControls';
 
 // Error Boundary for Timer Components
@@ -56,12 +57,14 @@ const TimerErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children 
 interface InlineTimerPresetsProps {
   onSelectDuration: (durationSeconds: number) => void;
   onOpenCustomPicker: () => void;
+  onOpenSectionPicker: () => void;
   onClose: () => void;
 }
 
 const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
   onSelectDuration,
   onOpenCustomPicker,
+  onOpenSectionPicker,
   onClose
 }) => {
   const { t } = useTranslation();
@@ -98,6 +101,14 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
     }, 100);
   }, [onOpenCustomPicker]);
 
+  const handleSectionPicker = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTimeout(() => {
+      onOpenSectionPicker();
+    }, 100);
+  }, [onOpenSectionPicker]);
+
   const handleCustomPickerMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
@@ -107,16 +118,23 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
       ref={popupRef}
       className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 z-50 min-w-max max-w-xs"
     >
-      <div className="flex gap-2 mb-3">
-        {[10, 15, 20, 25, 30].map((minutes) => (
-          <button
-            key={minutes}
-            onClick={() => handlePresetSelect(minutes)}
-            onMouseDown={handlePresetMouseDown}
-            className="px-3 py-2 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            {minutes}m
-          </button>
+      <div className="flex flex-col gap-2 mb-3">
+        {[
+          [10, 15, 20, 25, 30],
+          [35, 40, 45, 50, 55]
+        ].map((row) => (
+          <div key={row.join('-')} className="flex gap-2">
+            {row.map((minutes) => (
+              <button
+                key={minutes}
+                onClick={() => handlePresetSelect(minutes)}
+                onMouseDown={handlePresetMouseDown}
+                className="px-3 py-2 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                {minutes}m
+              </button>
+            ))}
+          </div>
         ))}
       </div>
 
@@ -127,9 +145,19 @@ const InlineTimerPresets: React.FC<InlineTimerPresetsProps> = ({
       >
         {t("plan.customTime", { defaultValue: "Custom Time..." })}
       </button>
+
+      <button
+        onClick={handleSectionPicker}
+        onMouseDown={handleCustomPickerMouseDown}
+        className="w-full mt-2 px-3 py-2 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+      >
+        {t("plan.timePicker.bySections", { defaultValue: "By sections..." })}
+      </button>
     </div>
   );
 };
+
+const TIMER_PHASE_DURATIONS_KEY = 'preaching-timer-phase-durations';
 
 interface PreachingTimerProps {
   initialDuration?: number; // in seconds, optional
@@ -140,6 +168,11 @@ interface PreachingTimerProps {
     currentPhase: TimerPhase;
     phaseProgress: number;
     totalProgress: number;
+    phaseProgressByPhase: {
+      introduction: number;
+      main: number;
+      conclusion: number;
+    };
     timeRemaining: number;
     isFinished: boolean;
     isBlinking?: boolean;
@@ -198,6 +231,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         currentPhase: timerState.currentPhase,
         phaseProgress: progress.phaseProgress,
         totalProgress: progress.totalProgress,
+        phaseProgressByPhase: progress.phaseProgressByPhase,
         timeRemaining: progress.timeRemaining,
         isFinished: timerState.isFinished,
       });
@@ -207,8 +241,42 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   const [showInlinePresets, setShowInlinePresets] = useState(false);
   const [showCustomPicker, setShowCustomPicker] = useState(false);
   const [pendingCustomPickerOpen, setPendingCustomPickerOpen] = useState(false);
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const [pendingSectionPickerOpen, setPendingSectionPickerOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<number>(settings.totalDuration);
-  const keyboardShortcutsEnabled = !showCustomPicker && !showInlinePresets;
+  const keyboardShortcutsEnabled = !showCustomPicker && !showInlinePresets && !showSectionPicker;
+
+  const computeDurationsFromTotal = useCallback((totalSeconds: number): TimerPhaseDurations => {
+    const intro = Math.floor(totalSeconds * settings.introductionRatio);
+    const main = Math.floor(totalSeconds * settings.mainRatio);
+    const conclusion = Math.max(0, totalSeconds - intro - main);
+    return { introduction: intro, main, conclusion };
+  }, [settings.introductionRatio, settings.mainRatio]);
+
+  const loadStoredPhaseDurations = useCallback((): TimerPhaseDurations | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(TIMER_PHASE_DURATIONS_KEY);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as TimerPhaseDurations;
+      if (
+        parsed &&
+        Number.isInteger(parsed.introduction) && parsed.introduction >= 0 &&
+        Number.isInteger(parsed.main) && parsed.main >= 0 &&
+        Number.isInteger(parsed.conclusion) && parsed.conclusion >= 0
+      ) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, []);
+
+  const [sectionDurations, setSectionDurations] = useState<TimerPhaseDurations>(() => {
+    const stored = loadStoredPhaseDurations();
+    return stored ?? computeDurationsFromTotal(settings.totalDuration);
+  });
 
   // Keyboard Shortcuts (disabled when modal or presets are open)
   useKeyboardShortcut({
@@ -222,6 +290,15 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
       setSelectedDuration(settings.totalDuration);
     }
   }, [settings.totalDuration, selectedDuration]);
+
+  useEffect(() => {
+    const stored = loadStoredPhaseDurations();
+    if (stored) {
+      setSectionDurations(stored);
+      return;
+    }
+    setSectionDurations(computeDurationsFromTotal(settings.totalDuration));
+  }, [settings.totalDuration, loadStoredPhaseDurations, computeDurationsFromTotal]);
 
   const prevInitialDurationRef = useRef(initialDuration);
 
@@ -237,13 +314,27 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   }, [pendingCustomPickerOpen, showInlinePresets]);
 
   useEffect(() => {
-    if (initialDuration !== undefined && initialDuration > 0 &&
+    if (pendingSectionPickerOpen && !showInlinePresets) {
+      const timer = setTimeout(() => {
+        setShowSectionPicker(true);
+        setPendingSectionPickerOpen(false);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingSectionPickerOpen, showInlinePresets]);
+
+  useEffect(() => {
+    if (
+      settings.mode === 'total' &&
+      initialDuration !== undefined &&
+      initialDuration > 0 &&
       prevInitialDurationRef.current !== undefined &&
-      prevInitialDurationRef.current !== initialDuration) {
+      prevInitialDurationRef.current !== initialDuration
+    ) {
       actions.setDuration(initialDuration);
     }
     prevInitialDurationRef.current = initialDuration;
-  }, [initialDuration, actions]);
+  }, [initialDuration, actions, settings.mode]);
 
   const handleOpenDurationPicker = useCallback(() => {
     setShowInlinePresets(true);
@@ -265,12 +356,26 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     setPendingCustomPickerOpen(true);
   }, []);
 
+  const handleOpenSectionPicker = useCallback(() => {
+    setShowInlinePresets(false);
+    setPendingSectionPickerOpen(true);
+  }, []);
+
   const handleCloseCustomPicker = useCallback(() => {
     setShowCustomPicker(false);
   }, []);
 
+  const handleCloseSectionPicker = useCallback(() => {
+    setShowSectionPicker(false);
+  }, []);
+
   const handleBackToPresets = useCallback(() => {
     setShowCustomPicker(false);
+    setShowInlinePresets(true);
+  }, []);
+
+  const handleBackToPresetsFromSections = useCallback(() => {
+    setShowSectionPicker(false);
     setShowInlinePresets(true);
   }, []);
 
@@ -279,6 +384,15 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     actions.setDuration(totalSeconds);
     onSetDuration?.(totalSeconds);
     setShowCustomPicker(false);
+  }, [actions, onSetDuration]);
+
+  const handleConfirmSectionTimes = useCallback((durations: TimerPhaseDurations) => {
+    const totalSeconds = durations.introduction + durations.main + durations.conclusion;
+    actions.setPhaseDurations(durations);
+    setSectionDurations(durations);
+    setSelectedDuration(totalSeconds);
+    onSetDuration?.(totalSeconds);
+    setShowSectionPicker(false);
   }, [actions, onSetDuration]);
 
   return (
@@ -354,13 +468,14 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         </div>
 
         {/* Inline Timer Presets */}
-        {showInlinePresets && (
-          <InlineTimerPresets
-            onSelectDuration={handleSelectDuration}
-            onOpenCustomPicker={handleOpenCustomPicker}
-            onClose={handleCloseInlinePresets}
-          />
-        )}
+      {showInlinePresets && (
+        <InlineTimerPresets
+          onSelectDuration={handleSelectDuration}
+          onOpenCustomPicker={handleOpenCustomPicker}
+          onOpenSectionPicker={handleOpenSectionPicker}
+          onClose={handleCloseInlinePresets}
+        />
+      )}
       </nav>
 
       {/* Floating Escape Button (Fallback) */}
@@ -393,6 +508,15 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           onConfirm={handleConfirmCustomTime}
           onCancel={handleCloseCustomPicker}
           onBack={handleBackToPresets}
+        />
+      )}
+
+      {showSectionPicker && (
+        <SectionTimePicker
+          initialDurations={sectionDurations}
+          onConfirm={handleConfirmSectionTimes}
+          onCancel={handleCloseSectionPicker}
+          onBack={handleBackToPresetsFromSections}
         />
       )}
     </TimerErrorBoundary>

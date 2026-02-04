@@ -725,7 +725,10 @@
       "presets": "Быстрые настройки",
       "min": "мин",
       "setTimer": "Установить таймер",
-      "startPreaching": "Начать проповедовать"
+      "startPreaching": "Начать проповедовать",
+      "bySections": "По частям...",
+      "sectionsTitle": "Время по частям",
+      "totalSum": "Итого"
     },
     "timer": {
       "remaining": "осталось",
