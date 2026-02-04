@@ -87,7 +87,7 @@ When max-quality-150 is active:
 ### Validation
 ```
 ❌ Standard: Check if it compiles
-✅ Max-Quality: Test edge cases, verify integration, fulfill **100% Diff Coverage** (mandate all new logic is exercised)
+✅ Max-Quality: Test edge cases, verify integration, check performance
 ```
 
 ## Output Format

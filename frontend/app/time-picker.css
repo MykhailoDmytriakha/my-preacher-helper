@@ -2,12 +2,15 @@
 
 /* Hide scrollbar for scroll wheels */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* Internet Explorer 10+ */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* Internet Explorer 10+ */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Safari and Chrome */
+  display: none;
+  /* Safari and Chrome */
 }
 
 /* Smooth scroll behavior for time picker wheels */
@@ -64,9 +67,7 @@
   color: rgb(59, 130, 246);
 }
 
-.time-picker-item.selected {
-  /* Selection indicated by wheel-selector highlight only */
-}
+
 
 .dark .time-picker-item {
   color: rgb(156, 163, 175);
@@ -125,6 +126,7 @@
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -221,7 +223,8 @@
 
 .wheel-selector {
   position: absolute;
-  inset-x: 0;
+  left: 0;
+  right: 0;
   top: 50%;
   height: 32px;
   background: rgba(255, 255, 255, 0.8);
@@ -242,6 +245,8 @@
   overflow-y: auto;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 20;
 }
 
 .wheel-scroll::-webkit-scrollbar {
