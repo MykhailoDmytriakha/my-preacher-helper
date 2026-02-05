@@ -64,6 +64,21 @@ const config: Config = {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      keyframes: {
+        'countdown-pop': {
+          '0%': { transform: 'scale(1.6)', opacity: '0.5' },
+          '50%': { transform: 'scale(0.95)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        'pulse-fast': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.4' },
+        },
+      },
+      animation: {
+        'countdown-pop': 'countdown-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+        'pulse-fast': 'pulse-fast 0.3s ease-in-out infinite',
+      },
     },
   },
   plugins: [typography],

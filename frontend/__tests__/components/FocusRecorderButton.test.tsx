@@ -62,7 +62,7 @@ class MockMediaRecorder {
 // Mock AudioContext
 class MockAudioContext {
   state: string = 'running';
-  
+
   createMediaStreamSource() {
     return {
       connect: jest.fn(),
@@ -125,7 +125,7 @@ describe('FocusRecorderButton', () => {
   describe('Rendering', () => {
     it('should render idle state with gray button', () => {
       render(<FocusRecorderButton onRecordingComplete={jest.fn()} />);
-      
+
       const button = screen.getByRole('button');
       expect(button).toBeInTheDocument();
       expect(button).toHaveClass('bg-gray-400');
@@ -142,7 +142,7 @@ describe('FocusRecorderButton', () => {
 
     it('should show microphone icon in idle state', () => {
       const { container } = render(<FocusRecorderButton onRecordingComplete={jest.fn()} />);
-      
+
       // Check for MicrophoneIcon (it has a specific class or SVG structure)
       const svgIcon = container.querySelector('svg');
       expect(svgIcon).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe('FocusRecorderButton', () => {
 
     it('should be disabled when disabled prop is true', () => {
       render(<FocusRecorderButton onRecordingComplete={jest.fn()} disabled={true} />);
-      
+
       const button = screen.getByRole('button');
       expect(button).toBeDisabled();
       expect(button).toHaveClass('disabled:opacity-50');
@@ -158,7 +158,7 @@ describe('FocusRecorderButton', () => {
 
     it('should be disabled when isProcessing is true', () => {
       render(<FocusRecorderButton onRecordingComplete={jest.fn()} isProcessing={true} />);
-      
+
       const button = screen.getByRole('button');
       expect(button).toBeDisabled();
     });
@@ -204,7 +204,7 @@ describe('FocusRecorderButton', () => {
     it('should start recording on button click', async () => {
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -228,7 +228,7 @@ describe('FocusRecorderButton', () => {
       jest.useFakeTimers();
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} maxDuration={90} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -252,7 +252,7 @@ describe('FocusRecorderButton', () => {
     it('should show cancel button when recording', async () => {
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
       fireEvent.click(recordButton);
 
@@ -304,7 +304,7 @@ describe('FocusRecorderButton', () => {
     it('should cancel recording when cancel button is clicked', async () => {
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
       fireEvent.click(recordButton);
 
@@ -324,9 +324,9 @@ describe('FocusRecorderButton', () => {
     it('should stop recording and call onRecordingComplete', async () => {
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const button = screen.getByRole('button');
-      
+
       // Start recording
       fireEvent.click(button);
 
@@ -342,11 +342,11 @@ describe('FocusRecorderButton', () => {
       });
     });
 
-    it('should automatically stop recording after maxDuration', async () => {
+    it('should automatically stop recording after maxDuration plus grace period', async () => {
       jest.useFakeTimers();
       const onRecordingComplete = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} maxDuration={5} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -354,8 +354,12 @@ describe('FocusRecorderButton', () => {
         expect(button).toHaveClass('bg-red-500');
       });
 
-      // Fast-forward time by maxDuration
-      jest.advanceTimersByTime(5000);
+      // Fast-forward time in 1-second steps to allow state updates and effects to run
+      for (let i = 0; i < 9; i++) {
+        await act(async () => {
+          jest.advanceTimersByTime(1000);
+        });
+      }
 
       await waitFor(() => {
         expect(onRecordingComplete).toHaveBeenCalled();
@@ -369,7 +373,7 @@ describe('FocusRecorderButton', () => {
     it('should show circular progress when recording', async () => {
       const onRecordingComplete = jest.fn();
       const { container } = render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -386,10 +390,10 @@ describe('FocusRecorderButton', () => {
   describe('Error Handling', () => {
     it('should handle microphone permission error', async () => {
       mockGetUserMedia.mockRejectedValueOnce(new Error('Permission denied'));
-      
+
       const onError = jest.fn();
       render(<FocusRecorderButton onRecordingComplete={jest.fn()} onError={onError} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -400,10 +404,10 @@ describe('FocusRecorderButton', () => {
 
     it('should show alert if no error handler provided', async () => {
       mockGetUserMedia.mockRejectedValueOnce(new Error('Permission denied'));
-      
+
       const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
       render(<FocusRecorderButton onRecordingComplete={jest.fn()} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -419,7 +423,7 @@ describe('FocusRecorderButton', () => {
     it('should cleanup resources on unmount', async () => {
       const onRecordingComplete = jest.fn();
       const { unmount } = render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -435,10 +439,10 @@ describe('FocusRecorderButton', () => {
     it('should cleanup timer on unmount', async () => {
       jest.useFakeTimers();
       const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
-      
+
       const onRecordingComplete = jest.fn();
       const { unmount } = render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} />);
-      
+
       const button = screen.getByRole('button');
       fireEvent.click(button);
 
@@ -449,7 +453,7 @@ describe('FocusRecorderButton', () => {
       unmount();
 
       expect(clearIntervalSpy).toHaveBeenCalled();
-      
+
       clearIntervalSpy.mockRestore();
       jest.useRealTimers();
     });
@@ -460,10 +464,10 @@ describe('FocusRecorderButton', () => {
       const { container } = render(
         <FocusRecorderButton onRecordingComplete={jest.fn()} isProcessing={true} />
       );
-      
+
       const button = screen.getByRole('button');
       expect(button).toHaveClass('bg-blue-500');
-      
+
       // Check for spinner
       const spinner = container.querySelector('.animate-spin');
       expect(spinner).toBeInTheDocument();

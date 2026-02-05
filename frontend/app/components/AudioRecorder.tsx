@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
 import { getBestSupportedFormat, getAllSupportedFormats, logAudioInfo, hasKnownIssues, createConfiguredMediaRecorder } from "@/utils/audioFormatUtils";
+import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 import { MicFilledIcon } from "@components/Icons";
 
 // Translation key constants
@@ -29,6 +30,8 @@ const ICON_SIZES = {
 // CSS animation constants
 const CSS_ANIMATIONS = {
   PULSE: 'animate-pulse',
+  PULSE_FAST: 'animate-pulse-fast',
+  COUNTDOWN_POP: 'animate-countdown-pop',
 } as const;
 
 type TranslationFn = (key: string) => string;
@@ -201,13 +204,11 @@ const MiniRecordingControls = ({
             onPause();
           }
         }}
-        className={`px-3.5 py-3 rounded-xl ${
-          isPaused
-            ? 'bg-green-500 hover:bg-green-600 text-white'
-            : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-        } transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus:ring-2 ${
-          isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
-        } focus:ring-offset-2`}
+        className={`px-3.5 py-3 rounded-xl ${isPaused
+          ? 'bg-green-500 hover:bg-green-600 text-white'
+          : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+          } transition-all duration-200 hover:scale-110 active:scale-105 focus:outline-none focus:ring-2 ${isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
+          } focus:ring-offset-2`}
         aria-label={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
         title={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       >
@@ -291,13 +292,11 @@ const StandardRecordingControls = ({
             onPause();
           }
         }}
-        className={`px-4 py-2 rounded-lg border ${
-          isPaused
-            ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-900/50'
-            : 'border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600 dark:hover:bg-yellow-900/50'
-        } transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 ${
-          isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
-        } focus:ring-offset-2`}
+        className={`px-4 py-2 rounded-lg border ${isPaused
+          ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-900/50'
+          : 'border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600 dark:hover:bg-yellow-900/50'
+          } transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 ${isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
+          } focus:ring-offset-2`}
         aria-label={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
         title={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       >
@@ -406,6 +405,8 @@ interface RecordingProgressProps {
   recordingTime: number;
   maxDuration: number;
   progressPercentage: number;
+  isInGracePeriod?: boolean;
+  gracePeriodRemaining?: number;
 }
 
 const RecordingProgress = ({
@@ -416,8 +417,12 @@ const RecordingProgress = ({
   recordingTime,
   maxDuration,
   progressPercentage,
+  isInGracePeriod = false,
+  gracePeriodRemaining = 0,
 }: RecordingProgressProps) => {
   if (!isRecording) return null;
+
+
 
   return (
     <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex items-center gap-3 flex-1"}`}>
@@ -428,13 +433,28 @@ const RecordingProgress = ({
           <div className="relative">
             {/* Time display - centered above the bar */}
             <div className="flex items-center justify-center gap-1 mb-1">
-              <span className="text-sm font-semibold font-mono text-gray-700 dark:text-gray-200 tabular-nums">
-                {formatTime(recordingTime)}
-              </span>
-              <span className="text-xs text-gray-400 dark:text-gray-500">/</span>
-              <span className="text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
-                {formatTime(maxDuration)}
-              </span>
+              {isInGracePeriod && gracePeriodRemaining > 0 ? (
+                <span
+                  key={gracePeriodRemaining}
+                  className={`text-2xl font-black tabular-nums text-white ${CSS_ANIMATIONS.COUNTDOWN_POP} ${gracePeriodRemaining === 1 ? CSS_ANIMATIONS.PULSE_FAST : CSS_ANIMATIONS.PULSE}`}
+                  style={{
+                    textShadow: '0 0 8px rgba(0,0,0,0.8), 0 0 16px rgba(0,0,0,0.5), 2px 2px 4px rgba(0,0,0,0.6)',
+                    WebkitTextStroke: '1px rgba(0,0,0,0.3)'
+                  }}
+                >
+                  {gracePeriodRemaining}
+                </span>
+              ) : (
+                <>
+                  <span className="text-sm font-semibold font-mono text-gray-700 dark:text-gray-200 tabular-nums">
+                    {formatTime(recordingTime)}
+                  </span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">/</span>
+                  <span className="text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                    {formatTime(maxDuration)}
+                  </span>
+                </>
+              )}
             </div>
 
             {/* Ultra-thin progress bar */}
@@ -453,18 +473,27 @@ const RecordingProgress = ({
         <div className="flex-1 min-w-[200px]">
           <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner h-4">
             <div
-              className={`absolute inset-y-0 left-0 h-full ${
-                isPaused
-                  ? `bg-gradient-to-r from-yellow-500 to-yellow-600 ${CSS_ANIMATIONS.PULSE}`
-                  : 'transition-all duration-300 ease-out bg-gradient-to-r from-red-500 to-red-600'
-              }`}
+              className={`absolute inset-y-0 left-0 h-full ${isPaused
+                ? `bg-gradient-to-r from-yellow-500 to-yellow-600 ${CSS_ANIMATIONS.PULSE}`
+                : 'transition-all duration-300 ease-out bg-gradient-to-r from-red-500 to-red-600'
+                }`}
               style={{ width: `${progressPercentage}%` }}
             />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="font-mono text-xs text-gray-800 dark:text-gray-200">
-                {isPaused && <span className="mr-2 text-yellow-600 dark:text-yellow-400">⏸</span>}
-                {formatTime(recordingTime)} / {formatTime(maxDuration)}
-              </span>
+              {isInGracePeriod && gracePeriodRemaining > 0 ? (
+                <span
+                  key={gracePeriodRemaining}
+                  className={`font-black text-lg text-white ${CSS_ANIMATIONS.COUNTDOWN_POP} ${gracePeriodRemaining === 1 ? CSS_ANIMATIONS.PULSE_FAST : CSS_ANIMATIONS.PULSE}`}
+                  style={{ textShadow: '0 0 8px rgba(255,255,255,0.8), 0 1px 3px rgba(0,0,0,0.5)' }}
+                >
+                  {gracePeriodRemaining}
+                </span>
+              ) : (
+                <span className="font-mono text-xs text-gray-800 dark:text-gray-200">
+                  {isPaused && <span className="mr-2 text-yellow-600 dark:text-yellow-400">⏸</span>}
+                  {formatTime(recordingTime)} / {formatTime(maxDuration)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -565,7 +594,7 @@ interface AudioRecorderProps {
 export const AudioRecorder = ({
   onRecordingComplete,
   isProcessing = false,
-  maxDuration = 90,
+  maxDuration = getAudioRecordingDuration(),
   onError,
   disabled = false,
   className = "",
@@ -586,6 +615,11 @@ export const AudioRecorder = ({
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
   const [isMobileView, setIsMobileView] = useState(false);
+
+  // Grace period state
+  const gracePeriodDuration = getAudioGracePeriod();
+  const [isInGracePeriod, setIsInGracePeriod] = useState(false);
+  const [gracePeriodRemaining, setGracePeriodRemaining] = useState(gracePeriodDuration);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -884,32 +918,32 @@ export const AudioRecorder = ({
     }
 
     console.log('AudioRecorder: Canceling recording...');
-    
+
     try {
       // CRITICAL: Clear chunks BEFORE stopping to prevent contamination
       chunks.current = [];
       console.log('AudioRecorder: Cleared chunks array');
-      
+
       // Prevent both onstop and ondataavailable from processing canceled data
       // CRITICAL: ondataavailable can fire AFTER stop() is called (async race condition)
       mediaRecorder.current.onstop = null;
       mediaRecorder.current.ondataavailable = null;
       mediaRecorder.current.stop();
-      
+
       // Reset all state
       setIsRecording(false);
       setIsPaused(false);
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
-      
+
       // Cleanup resources
       cleanup();
-      
+
       console.log('AudioRecorder: Recording canceled successfully');
     } catch (error) {
       console.error("Error canceling recording:", error);
-      
+
       // Force cleanup even on error
       chunks.current = [];
       cleanup();
@@ -931,7 +965,7 @@ export const AudioRecorder = ({
     }
 
     console.log('AudioRecorder: Pausing recording...');
-    
+
     try {
       mediaRecorder.current.pause();
       setIsPaused(true);
@@ -952,7 +986,7 @@ export const AudioRecorder = ({
     }
 
     console.log('AudioRecorder: Resuming recording...');
-    
+
     try {
       mediaRecorder.current.resume();
       setIsPaused(false);
@@ -1000,18 +1034,40 @@ export const AudioRecorder = ({
     }
   }, [transcriptionError]);
 
-  // Timer effect - pause timer when recording is paused
+  // Timer effect - pause timer when recording is paused, includes grace period logic
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= maxDuration) {
-            stopRecording();
-            return maxDuration;
-          }
-          return newTime;
-        });
+        // If in grace period, count down
+        if (isInGracePeriod) {
+          setGracePeriodRemaining((prev) => {
+            const newRemaining = prev - 1;
+            if (newRemaining <= 0) {
+              // Grace period ended, stop recording
+              stopRecording();
+              return 0;
+            }
+            return newRemaining;
+          });
+        } else {
+          // Normal recording time
+          setRecordingTime((prev) => {
+            const newTime = prev + 1;
+            if (newTime >= maxDuration) {
+              // Enter grace period instead of stopping immediately
+              if (gracePeriodDuration > 0) {
+                setIsInGracePeriod(true);
+                setGracePeriodRemaining(gracePeriodDuration);
+                return maxDuration; // Cap at maxDuration
+              } else {
+                // No grace period configured, stop immediately
+                stopRecording();
+                return maxDuration;
+              }
+            }
+            return newTime;
+          });
+        }
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -1020,6 +1076,8 @@ export const AudioRecorder = ({
       }
       if (!isRecording && recordingTime > 0 && !isProcessing) {
         setRecordingTime(0);
+        setIsInGracePeriod(false);
+        setGracePeriodRemaining(gracePeriodDuration);
       }
     }
 
@@ -1029,7 +1087,7 @@ export const AudioRecorder = ({
         timerRef.current = null;
       }
     };
-  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing]);
+  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing, isInGracePeriod, gracePeriodDuration]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1080,9 +1138,9 @@ export const AudioRecorder = ({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }, []);
 
-  const progressPercentage = useMemo(() => 
+  const progressPercentage = useMemo(() =>
     Math.min(100, (recordingTime / maxDuration) * 100)
-  , [recordingTime, maxDuration]);
+    , [recordingTime, maxDuration]);
 
   const isButtonDisabled = disabled || isProcessing || isInitializing;
 
@@ -1121,7 +1179,7 @@ export const AudioRecorder = ({
         />
 
         {/* Keyboard shortcuts tooltip removed: record button already shows this in title */}
-        
+
         <RecordingActionButtons
           isRecording={isRecording}
           isPaused={isPaused}
@@ -1142,7 +1200,7 @@ export const AudioRecorder = ({
           maxRetries={maxRetries}
           t={t}
         />
-        
+
         {/* Timer and inline progress — show only while actively recording */}
         <RecordingProgress
           isRecording={isRecording}
@@ -1152,6 +1210,8 @@ export const AudioRecorder = ({
           recordingTime={recordingTime}
           maxDuration={maxDuration}
           progressPercentage={progressPercentage}
+          isInGracePeriod={isInGracePeriod}
+          gracePeriodRemaining={gracePeriodRemaining}
         />
       </div>
 

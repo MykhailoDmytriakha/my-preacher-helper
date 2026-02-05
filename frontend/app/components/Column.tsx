@@ -311,7 +311,6 @@ const SermonPointPlaceholder: React.FC<{
                       }
                     }}
                     isProcessing={isRecordingAudio}
-                    maxDuration={90}
                     onError={(err) => {
                       setAudioError(err);
                       setIsRecordingAudio(false);
@@ -879,7 +878,6 @@ export default function Column({
               }
             }}
             isProcessing={isRecordingAudio}
-            maxDuration={90}
             onError={(error) => {
               setAudioError(error);
               setIsRecordingAudio(false);
@@ -1286,7 +1284,6 @@ export default function Column({
                         }
                       }}
                       isProcessing={isRecordingAudio}
-                      maxDuration={90}
                       onError={(error) => {
                         setAudioError(error);
                         setIsRecordingAudio(false);

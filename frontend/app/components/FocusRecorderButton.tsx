@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
 import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
 // Error translation key constant to avoid duplicate strings
 const ERROR_AUDIO_PROCESSING = 'errors.audioProcessing';
@@ -108,7 +109,7 @@ const ProgressIndicator = ({
   }
 
   return (
-    <svg 
+    <svg
       className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
       viewBox="0 0 100 100"
     >
@@ -139,12 +140,33 @@ const MainButtonContent = ({
   buttonState,
   formattedRemainingTime,
   sizeConfig,
+  isInGracePeriod = false,
+  gracePeriodRemaining = 0,
 }: {
   buttonState: ButtonState;
   formattedRemainingTime: string;
   sizeConfig: SizeConfig;
+  isInGracePeriod?: boolean;
+  gracePeriodRemaining?: number;
 }) => {
   if (buttonState === 'recording' || buttonState === 'paused') {
+    // During grace period, show countdown with urgent styling
+    // Use white text with shadow for visibility on the red button background
+    if (isInGracePeriod && gracePeriodRemaining > 0) {
+      // Faster pulse on final second for heightened urgency
+      const pulseClass = gracePeriodRemaining === 1 ? 'animate-pulse-fast' : 'animate-pulse';
+
+      return (
+        <span
+          key={gracePeriodRemaining}
+          className={`${sizeConfig.fontSize === 'text-xs' ? 'text-2xl' : 'text-3xl'} font-black tabular-nums text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] animate-countdown-pop ${pulseClass}`}
+          style={{ textShadow: '0 0 10px rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.4)' }}
+        >
+          {gracePeriodRemaining}
+        </span>
+      );
+    }
+
     return (
       <span className={`${sizeConfig.fontSize} font-mono font-bold`}>
         {formattedRemainingTime}
@@ -208,18 +230,18 @@ const PauseResumeButton = ({
     >
       {isPaused ? (
         // Play/Resume icon
-        <svg 
+        <svg
           className={`${sizeConfig.controlIconSize} text-white`}
-          fill="currentColor" 
+          fill="currentColor"
           viewBox="0 0 24 24"
         >
           <path d="M8 5v14l11-7z" />
         </svg>
       ) : (
         // Pause icon
-        <svg 
+        <svg
           className={`${sizeConfig.controlIconSize} text-white`}
-          fill="currentColor" 
+          fill="currentColor"
           viewBox="0 0 24 24"
         >
           <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
@@ -256,15 +278,15 @@ const CancelButton = ({
       aria-label={t('audio.cancelRecording')}
       title={t('audio.cancelRecording')}
     >
-      <svg 
+      <svg
         className={`${sizeConfig.controlIconSize} text-gray-700 group-hover:text-red-600 transition-colors`}
-        fill="currentColor" 
+        fill="currentColor"
         viewBox="0 0 20 20"
       >
-        <path 
-          fillRule="evenodd" 
-          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" 
-          clipRule="evenodd" 
+        <path
+          fillRule="evenodd"
+          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+          clipRule="evenodd"
         />
       </svg>
     </button>
@@ -274,7 +296,7 @@ const CancelButton = ({
 export const FocusRecorderButton = ({
   onRecordingComplete,
   isProcessing = false,
-  maxDuration = 90,
+  maxDuration = getAudioRecordingDuration(),
   onError,
   disabled = false,
   size = 'normal',
@@ -283,6 +305,11 @@ export const FocusRecorderButton = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+
+  // Grace period state
+  const gracePeriodDuration = getAudioGracePeriod();
+  const [isInGracePeriod, setIsInGracePeriod] = useState(false);
+  const [gracePeriodRemaining, setGracePeriodRemaining] = useState(gracePeriodDuration);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -342,7 +369,7 @@ export const FocusRecorderButton = ({
 
     console.log('FocusRecorderButton: Starting recording...');
     setIsInitializing(true);
-    
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -351,7 +378,7 @@ export const FocusRecorderButton = ({
           autoGainControl: true,
         }
       });
-      
+
       streamRef.current = stream;
 
       // Setup audio context for level monitoring
@@ -368,12 +395,12 @@ export const FocusRecorderButton = ({
       // Setup MediaRecorder with best supported format
       const bestFormat = getBestSupportedFormat();
       console.log(`FocusRecorderButton: Selected audio format: ${bestFormat}`);
-      
+
       if (hasKnownIssues(bestFormat)) {
         console.warn(`⚠️ FocusRecorderButton: Format ${bestFormat} has known compatibility issues with OpenAI`);
         console.warn(`⚠️ FocusRecorderButton: Your browser doesn't support better formats (MP4/MP3/WAV)`);
       }
-      
+
       mediaRecorder.current = new MediaRecorder(stream, {
         mimeType: bestFormat
       });
@@ -388,10 +415,10 @@ export const FocusRecorderButton = ({
         if (chunks.current.length > 0) {
           const mimeType = mediaRecorder.current?.mimeType || bestFormat;
           const blob = new Blob(chunks.current, { type: mimeType });
-          
+
           // Log audio information for debugging
           logAudioInfo(blob, 'FocusRecorderButton Output');
-          
+
           onRecordingComplete(blob);
         }
         cleanup();
@@ -439,7 +466,7 @@ export const FocusRecorderButton = ({
       // The issue: mediaRecorder.stop() is async and fires ondataavailable AFTER cleanup
       // This causes old chunks to remain in array, mixing with new recording → corrupted blob
       chunks.current = [];
-      
+
       // Prevent both onstop and ondataavailable from processing canceled data
       mediaRecorder.current.onstop = null;
       mediaRecorder.current.ondataavailable = null;
@@ -468,7 +495,7 @@ export const FocusRecorderButton = ({
     }
 
     console.log('FocusRecorderButton: Pausing recording...');
-    
+
     try {
       mediaRecorder.current.pause();
       setIsPaused(true);
@@ -489,7 +516,7 @@ export const FocusRecorderButton = ({
     }
 
     console.log('FocusRecorderButton: Resuming recording...');
-    
+
     try {
       mediaRecorder.current.resume();
       setIsPaused(false);
@@ -500,18 +527,40 @@ export const FocusRecorderButton = ({
     }
   }, [isRecording, isPaused, handleError]);
 
-  // Timer effect - pause timer when recording is paused
+  // Timer effect - pause timer when recording is paused, includes grace period logic
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= maxDuration) {
-            stopRecording();
-            return maxDuration;
-          }
-          return newTime;
-        });
+        // If in grace period, count down
+        if (isInGracePeriod) {
+          setGracePeriodRemaining((prev) => {
+            const newRemaining = prev - 1;
+            if (newRemaining <= 0) {
+              // Grace period ended, stop recording
+              stopRecording();
+              return 0;
+            }
+            return newRemaining;
+          });
+        } else {
+          // Normal recording time
+          setRecordingTime((prev) => {
+            const newTime = prev + 1;
+            if (newTime >= maxDuration) {
+              // Enter grace period instead of stopping immediately
+              if (gracePeriodDuration > 0) {
+                setIsInGracePeriod(true);
+                setGracePeriodRemaining(gracePeriodDuration);
+                return maxDuration; // Cap at maxDuration
+              } else {
+                // No grace period configured, stop immediately
+                stopRecording();
+                return maxDuration;
+              }
+            }
+            return newTime;
+          });
+        }
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -520,6 +569,8 @@ export const FocusRecorderButton = ({
       }
       if (!isRecording && recordingTime > 0 && !isProcessing) {
         setRecordingTime(0);
+        setIsInGracePeriod(false);
+        setGracePeriodRemaining(gracePeriodDuration);
       }
     }
 
@@ -529,7 +580,7 @@ export const FocusRecorderButton = ({
         timerRef.current = null;
       }
     };
-  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing]);
+  }, [isRecording, isPaused, maxDuration, stopRecording, recordingTime, isProcessing, isInGracePeriod, gracePeriodDuration]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -574,9 +625,8 @@ export const FocusRecorderButton = ({
         type="button"
         onClick={handleMainButtonClick}
         disabled={isButtonDisabled}
-        className={`relative ${sizeConfig.buttonSize} rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-          MAIN_BUTTON_STATE_STYLES[buttonState]
-        }`}
+        className={`relative ${sizeConfig.buttonSize} rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${MAIN_BUTTON_STATE_STYLES[buttonState]
+          }`}
         aria-label={mainButtonLabel}
         title={mainButtonLabel}
       >
@@ -589,6 +639,8 @@ export const FocusRecorderButton = ({
             buttonState={buttonState}
             formattedRemainingTime={formattedRemainingTime}
             sizeConfig={sizeConfig}
+            isInGracePeriod={isInGracePeriod}
+            gracePeriodRemaining={gracePeriodRemaining}
           />
         </div>
       </button>

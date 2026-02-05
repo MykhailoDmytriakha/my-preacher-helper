@@ -38,16 +38,19 @@ import('undici')
 // JSDOM does not provide ResizeObserver
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe() { }
+    unobserve() { }
+    disconnect() { }
   };
 }
 
 // Create a portal root element where portal content will be rendered
-const portalRoot = document.createElement('div');
-portalRoot.setAttribute('id', 'portal-root');
-document.body.appendChild(portalRoot);
+if (typeof document !== 'undefined') {
+  const portalRoot = document.createElement('div');
+  portalRoot.setAttribute('id', 'portal-root');
+  document.body.appendChild(portalRoot);
+  global.portalRoot = portalRoot; // Store for cleanup
+}
 
 // Store original console methods
 const originalConsole = {
@@ -75,14 +78,14 @@ if (!shouldShowLogs) {
       if (global.__CONSOLE_OVERRIDDEN_BY_TEST__) {
         return;
       }
-      
+
       // Otherwise use the silent implementation
       if (shouldShowLogs) {
         originalMethod(...args);
       }
     };
   };
-  
+
   console.log = createConsoleMock('log', originalConsole.log);
   console.error = createConsoleMock('error', originalConsole.error);
   console.warn = createConsoleMock('warn', originalConsole.warn);
@@ -121,7 +124,7 @@ afterAll(() => {
 jest.mock('react-dom/client', () => {
   // Store created roots to avoid recreating them
   const rootsMap = new Map();
-  
+
   return {
     createRoot: (container) => {
       // Ensure we have a valid container for createRoot
@@ -141,7 +144,7 @@ jest.mock('react-dom/client', () => {
       // Use React 18's ReactDOM to create an actual root
       const ReactDOMClient = jest.requireActual(REACT_DOM_CLIENT);
       const root = ReactDOMClient.createRoot(validContainer);
-      
+
       // Store the root for reuse
       const mockRoot = {
         render: (element) => {
@@ -153,7 +156,7 @@ jest.mock('react-dom/client', () => {
           rootsMap.delete(validContainer);
         }
       };
-      
+
       rootsMap.set(validContainer, mockRoot);
       return mockRoot;
     }
@@ -190,7 +193,7 @@ jest.mock('react-dom', () => {
       return () => {
         const rec = rootsMap.get(targetContainer);
         if (rec) {
-          try { rec.root.unmount(); } catch {}
+          try { rec.root.unmount(); } catch { }
           if (rec.portalElement && rec.portalElement.parentNode) {
             rec.portalElement.parentNode.removeChild(rec.portalElement);
           }
@@ -223,9 +226,14 @@ afterEach(() => {
   // Clear mocks
   jest.clearAllMocks();
 
-  // Reset the body but keep the portal root
-  document.body.innerHTML = '';
-  document.body.appendChild(portalRoot);
+  // Reset the body but keep the portal root if in JSDOM
+  if (typeof document !== 'undefined') {
+    document.body.innerHTML = '';
+    const portalRoot = global.portalRoot || document.getElementById('portal-root');
+    if (portalRoot) {
+      document.body.appendChild(portalRoot);
+    }
+  }
 });
 
 // Mock Next.js router
@@ -309,13 +317,13 @@ jest.mock('i18next', () => {
 
   return {
     // Keep existing mocks
-    use: () => mockInstance, 
+    use: () => mockInstance,
     init: jest.fn(),
     t: (key) => key,
     changeLanguage: jest.fn(),
     language: 'en',
     // Add the createInstance mock
-    createInstance: jest.fn(() => mockInstance), 
+    createInstance: jest.fn(() => mockInstance),
   };
 });
 
@@ -323,7 +331,7 @@ jest.mock('i18next', () => {
 // jest.mock('@locales/i18n', () => {}, { virtual: true });
 
 // Mock Date.now globally to prevent React Query timer issues in tests
-Date.now = jest.fn(() => new Date('2023-01-01').getTime()); 
+Date.now = jest.fn(() => new Date('2023-01-01').getTime());
 
 // Optimized Firebase mocks - shared mock user for consistency and performance
 const createMockUser = (isAnonymous = false) => ({
@@ -427,7 +435,7 @@ jest.mock('react-markdown', () => ({
 jest.mock('remark-gfm', () => ({
   __esModule: true,
   default: {}
-})); 
+}));
 
 // Mock Next.js Image component to avoid hostname configuration issues in tests
 jest.mock('next/image', () => ({
@@ -444,4 +452,38 @@ jest.mock('next/image', () => ({
       'data-testid': 'next-image'
     });
   }
-})); 
+}));
+
+// Define shared mocks to ensure instance consistency across files
+const mockJsPDFInstance = {
+  save: jest.fn(),
+  text: jest.fn(),
+  addImage: jest.fn(),
+  internal: {
+    pageSize: {
+      getWidth: () => 210,
+      getHeight: () => 297,
+    },
+  },
+};
+
+const mockMusicMetadataInstance = {
+  parseBuffer: jest.fn(),
+  parseStream: jest.fn(),
+  parseFile: jest.fn(),
+};
+
+// Mock jsPDF to avoid ESM parsing issues in node_modules
+jest.mock('jspdf', () => {
+  return {
+    jsPDF: jest.fn().mockImplementation(() => mockJsPDFInstance),
+  };
+}, { virtual: true });
+
+// Mock music-metadata to avoid ESM parsing issues
+jest.mock('music-metadata', () => {
+  return {
+    __esModule: true,
+    ...mockMusicMetadataInstance,
+  };
+}, { virtual: true });

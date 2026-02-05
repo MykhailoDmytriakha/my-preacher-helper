@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
 
@@ -43,9 +44,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate audio duration
+    const durationValidation = await validateAudioDuration(audioFile);
+    if (!durationValidation.valid) {
+      console.error("Thoughts transcribe route: Audio duration validation failed.", durationValidation);
+      return NextResponse.json(
+        { success: false, error: durationValidation.error || 'Audio file is too long' },
+        { status: 400 }
+      );
+    }
+
     console.log("Thoughts transcribe route: Starting transcription", {
       fileSize: audioFile.size,
       fileType: audioFile.type,
+      duration: durationValidation.duration,
     });
 
     let transcriptionText: string;

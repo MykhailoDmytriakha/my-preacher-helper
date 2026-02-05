@@ -84,7 +84,7 @@ beforeEach(() => {
 
   // Optional AudioContext mock (component tolerates absence, but avoid console noise)
   (global as any).AudioContext = function () {
-    return { createMediaStreamSource: () => ({}), createAnalyser: () => ({ fftSize: 0, frequencyBinCount: 1, getByteFrequencyData: () => {} }), close: () => Promise.resolve(), state: 'running' } as any;
+    return { createMediaStreamSource: () => ({}), createAnalyser: () => ({ fftSize: 0, frequencyBinCount: 1, getByteFrequencyData: () => { } }), close: () => Promise.resolve(), state: 'running' } as any;
   } as any;
 
   (global as any).requestAnimationFrame = jest.fn((cb: FrameRequestCallback) => {
@@ -104,28 +104,30 @@ afterEach(() => {
 
 describe('AudioRecorder autoStart behavior', () => {
 
-  it('autoStart fires once, stops at maxDuration, and does not restart', async () => {
+  it('autoStart fires once, stops at maxDuration + grace period, and does not restart', async () => {
     const onComplete = jest.fn();
 
     const { rerender } = render(
       <AudioRecorder autoStart variant="mini" maxDuration={2} onRecordingComplete={onComplete} />
     );
 
-    // Let useEffect schedule its 0ms timer, then flush all timers
+    // Let initial useEffect run and trigger autoStart (uses setTimeout 0)
     await act(async () => {
-      // First tick to ensure effect runs
+      jest.advanceTimersByTime(100);
       await Promise.resolve();
-      jest.runAllTimers();
     });
 
     // getUserMedia called once on autoStart
     await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
 
-    // Advance time to trigger auto stop at maxDuration (2s)
-    await act(async () => {
-      jest.advanceTimersByTime(2100);
-      await Promise.resolve();
-    });
+    // Advance through maxDuration (2s) + grace period (3s) = 5s total
+    // Advance time in 1-second steps to allow state updates between interval ticks
+    for (let i = 0; i < 6; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+    }
 
     // onRecordingComplete should be fired exactly once with a Blob
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));

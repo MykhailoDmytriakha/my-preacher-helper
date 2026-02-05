@@ -41,7 +41,7 @@ const config: Config = {
   // Tell Jest to transform specific node_modules packages and root app files
   transformIgnorePatterns: [
     // Ignore node_modules, but DO transform ESM modules that require transformation
-    '/node_modules/(?!react-markdown|unified|remark-.*|micromark|mdast-.*|unist-.*|@?vfile.*|decode-named-character-reference|property-information|comma-separated-tokens|hast-util-.*|space-separated-tokens|bail|character-entities|trough|markdown-table|ccount|html-void-elements|trim-lines|rehype.*|is-plain-obj|hastscript|web-namespaces|zwitch|hast-.*|style-to-object)/',
+    '/node_modules/(?!react-markdown|unified|remark-.*|micromark|mdast-.*|unist-.*|@?vfile.*|decode-named-character-reference|property-information|comma-separated-tokens|hast-util-.*|space-separated-tokens|bail|character-entities|trough|markdown-table|ccount|html-void-elements|trim-lines|rehype.*|is-plain-obj|hastscript|web-namespaces|zwitch|hast-.*|style-to-object|music-metadata|strtok3|peek-readable|token-types|jspdf|fflate|fast-png)/',
     // Keep the default Next.js pattern for CSS Modules
     '^.+\\.module\\.(css|sass|scss)$',
   ],

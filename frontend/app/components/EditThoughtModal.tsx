@@ -218,7 +218,7 @@ const TagsSection = ({
             key={tag + idx}
             label={displayName}
             ariaLabel={`Remove tag ${displayName}`}
-            onClick={disabled ? () => {} : () => onRemoveTag(idx)}
+            onClick={disabled ? () => { } : () => onRemoveTag(idx)}
             className={className}
             style={style}
             iconHtml={iconInfo?.svg ?? null}
@@ -242,7 +242,7 @@ const TagsSection = ({
             key={tag.name}
             label={displayName}
             ariaLabel={`Add tag ${displayName}`}
-            onClick={disabled ? () => {} : () => onAddTag(tag.name)}
+            onClick={disabled ? () => { } : () => onAddTag(tag.name)}
             className={className}
             style={style}
             iconHtml={iconInfo?.svg ?? null}
@@ -254,14 +254,14 @@ const TagsSection = ({
   </div>
 );
 
-export default function EditThoughtModal({ 
-  initialText, 
-  initialTags, 
+export default function EditThoughtModal({
+  initialText,
+  initialTags,
   initialSermonPointId,
-  allowedTags, 
+  allowedTags,
   sermonOutline,
   containerSection,
-  onSave, 
+  onSave,
   onClose,
   allowOffline = false,
 }: EditThoughtModalProps) {
@@ -417,7 +417,6 @@ export default function EditThoughtModal({
                   size="small"
                   onRecordingComplete={handleDictationComplete}
                   isProcessing={isDictating}
-                  maxDuration={90}
                   disabled={isSubmitting || isDictationDisabled}
                   onError={(errorMessage) => {
                     toast.error(errorMessage);
@@ -463,18 +462,18 @@ export default function EditThoughtModal({
         </div>
 
         <div ref={footerRef} className="flex justify-end gap-3 mt-4">
-	          <button 
-	            type="button" 
-	            onClick={onClose} 
+          <button
+            type="button"
+            onClick={onClose}
             className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
             disabled={isSubmitting}
           >
             {t('buttons.cancel')}
           </button>
-          <button 
-            type="button" 
-            disabled={!isChanged || isSubmitting || isReadOnly} 
-            onClick={handleSave} 
+          <button
+            type="button"
+            disabled={!isChanged || isSubmitting || isReadOnly}
+            onClick={handleSave}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
           >
             {isSubmitting ? t('buttons.saving') : t('buttons.save')}
