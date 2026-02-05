@@ -28,6 +28,7 @@ This raw data becomes the source for extracting lessons later. Don't just save "
 ## When to Use This Skill
 
 **Triggers:**
+- **AFTER EVERY USER INTERACTION:** Record progress, decisions, or new findings before or after responding.
 - Context window running low (but not ending session)
 - Significant progress made (feature partially done)
 - Important lesson learned (don't risk losing it)
@@ -61,6 +62,7 @@ Track the journey, not just the destination:
 
 **Write to:** `.sessions/SESSION_[date]-[name].md` in `## Progress Log` section
 **Purpose:** Raw material for extracting lessons later
+**Protocol:** ALWAYS append new checkpoints to the existing log. Use a horizontal rule `---` or a timestamp header to separate new entries from old ones. NEVER clear the previous log entries within the same session file.
 
 ### Step 3: CAPTURE LESSONS (if ready)
 If a clear lesson emerged:

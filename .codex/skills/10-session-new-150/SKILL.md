@@ -27,6 +27,7 @@ description: "[10] NEW. Start a NEW session for this project. Use when beginning
 5. Initialize the Session Log:
    - Insert structure: `## Meta`, `## Progress Log`, `## Investigations`, `## Decisions`, `## Next Steps`.
    - Log the initial User Request.
+   - **Incremental Nature (CRITICAL):** Treat the session file as a growing journal. When adding new progress or investigation findings, use `multi_replace_file_content` to APPEND them to their respective sections. Do not delete or overwrite historical logs within the file.
 
 6. Summarize in 5-8 bullets:
    - Most relevant protocols that will affect the upcoming work.

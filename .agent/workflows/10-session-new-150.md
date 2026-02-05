@@ -45,6 +45,7 @@ description: "[10] NEW. Start a NEW session for this project. Use when beginning
    - Insert structure: `## Meta`, `## Progress Log`, `## Investigations`, `## Decisions`, `## Lessons Learned`, `## Current State`, `## Next Steps`.
    - Log the initial User Request in `## Meta` section.
    - Include session creation timestamp.
+   - **Progressive Protocol:** If continuing a session, read it first and ALWAYS append to the end of sections using `multi_replace_file_content`. Never delete previous logs.
 
 6. Summarize in 5-8 bullets:
    - Most relevant protocols that will affect the upcoming work.

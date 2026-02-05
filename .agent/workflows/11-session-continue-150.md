@@ -21,6 +21,7 @@ description: "[11] CONTINUE. Resume an existing session. Use when continuing pre
 
 4. Read the selected session log.
    - Identify current state, open questions, and next steps.
+   - **Progressive Update Protocol:** Any new work or findings must be APPENDED to the existing sections of this file. Do not rewrite history or delete previous findings. Maintain the file as a single, chronological source of truth for the task.
 
 5. Summarize in 5-8 bullets:
    - Most relevant protocols that will affect the upcoming work.

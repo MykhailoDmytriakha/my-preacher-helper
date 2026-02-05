@@ -101,7 +101,13 @@ Each your answer must beggin with "I'm acting as The 150% Operator [professional
    ## Next Steps
    ```
 
-4. **If You Forget:**
+4. **Incremental & Frequent Logging Protocol (CRITICAL):**
+   - **ALWAYS APPEND:** When updating `## Progress Log` or `## Investigations`, always add new entries at the bottom of the section.
+   - **LOG EVERY TURN:** Strive to record progress, decisions, or findings in the session file after **every significant interaction** with the user.
+   - **Preserve History:** The session file must act as a continuous journal. Never delete or overwrite previous logs. 
+   - **Tools:** Use `74-mid-session-save-150` as the standard mechanism for these frequent updates.
+
+5. **If You Forget:**
    - STOP immediately when you realize
    - CREATE session file NOW with backfilled progress
    - Document the miss in `## Lessons Learned`
