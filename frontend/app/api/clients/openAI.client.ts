@@ -2,29 +2,35 @@ import 'openai/shims/node';
 import OpenAI from "openai";
 
 import {
-  thoughtSystemPrompt, createThoughtUserMessage,
-  insightsSystemPrompt, createInsightsUserMessage,
+  sortingSystemPrompt,
   createSortingUserMessage,
-  topicsSystemPrompt, createTopicsUserMessage,
-  versesSystemPrompt, createVersesUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
-  planSystemPrompt, createPlanUserMessage, createSectionHintsUserMessage,
-  brainstormSystemPrompt, createBrainstormUserMessage
+  planSystemPrompt, createPlanUserMessage
 } from "@/config/prompts";
 import {
-  thoughtFunctionSchema,
-  sortingFunctionSchema,
-  insightsFunctionSchema,
-  topicsFunctionSchema,
-  versesFunctionSchema,
-  directionsFunctionSchema,
-  planFunctionSchema,
-  brainstormFunctionSchema
-} from "@/config/schemas";
+  DirectionsResponseSchema,
+  PlanPointContentResponseSchema,
+  PlanSectionResponseSchema,
+  SortingResponseSchema,
+} from "@/config/schemas/zod";
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+import {
+  generateSermonInsightsStructured,
+  generateSermonTopicsStructured,
+  generateSectionHintsStructured,
+  generateSermonVersesStructured,
+  generateSermonPointsStructured,
+  generateBrainstormSuggestionStructured
+} from "./sermon.structured";
+import { callWithStructuredOutput } from "./structuredOutput";
+import { generateThoughtStructured, type GenerateThoughtResult } from "./thought.structured";
+
+import type { PlanContext, PlanStyle } from "./planTypes";
+
+export type { PlanContext, PlanStyle } from "./planTypes";
 
 
 // const isTestEnvironment = process.env.NODE_ENV === 'test';
@@ -40,272 +46,7 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true,
 });
 
-const gemini = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  // Allow browser environment during tests
-  dangerouslyAllowBrowser: true,
-});
-
 const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
-const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
-
-type JsonSchema = {
-  type?: string;
-  description?: string;
-  properties?: Record<string, JsonSchema>;
-};
-
-// Create XML function definition for Claude/Gemini-style prompts using JSON Schema
-// Correctly interprets the function.parameters JSON Schema and asks the model
-// to return an arguments object that CONFORMS to that schema (not the schema itself).
-function createXmlFunctionDefinition(functionSchema: { function: { name?: string; parameters?: JsonSchema } }): string {
-  const schema = functionSchema.function;
-  const parametersSchema = schema.parameters;
-
-  // parametersSchema follows JSON Schema: { type: 'object', properties: { ... }, required: [...] }
-  const properties = parametersSchema?.properties ?? {};
-
-  let xmlDefinition = `
-<function name="${schema.name as string}">
-  <parameters>`;
-
-  // List each top-level argument (actual properties of the JSON Schema)
-  for (const [propName, propSchema] of Object.entries(properties)) {
-    const p = propSchema ?? {};
-    xmlDefinition += `
-    <parameter name="${propName}" type="${(p.type as string) || 'object'}">
-      ${(p.description as string) || ''}
-    </parameter>`;
-  }
-
-  xmlDefinition += `
-  </parameters>
-</function>
-
-Your response should be structured as follows:
-
-<function_call name="${schema.name as string}">
-<arguments>
-{
-`;
-
-  // Provide an arguments template for each property
-  for (const [propName, propSchema] of Object.entries(properties)) {
-    const t = propSchema.type || 'object';
-    if (t === 'array') {
-      xmlDefinition += `  "${propName}": [],\n`;
-    } else if (t === 'object') {
-      xmlDefinition += `  "${propName}": {},\n`;
-    } else if (t === 'boolean') {
-      xmlDefinition += `  "${propName}": false,\n`;
-    } else if (t === 'number' || t === 'integer') {
-      xmlDefinition += `  "${propName}": 0,\n`;
-    } else {
-      // default to string
-      xmlDefinition += `  "${propName}": "",\n`;
-    }
-  }
-
-  // Remove the last trailing comma
-  xmlDefinition = xmlDefinition.replace(/,\n$/, '\n');
-
-  xmlDefinition += `}
-</arguments>
-</function_call>
-
-Only return the JSON arguments object that matches the schema inside <arguments>.
-Do not include the JSON Schema itself inside <arguments>. The response MUST be valid JSON.`;
-
-  return xmlDefinition;
-}
-
-// Helper function to extract structured data (like JSON) when returned within the main response content
-// Handles formats often seen with models like Claude or Gemini when not using strict tool/function calls
-// Tries parsing from <arguments> tags, JSON markdown blocks, and raw JSON objects.
-
-function cleanPotentiallyInvalidJsonString(jsonString: string): string {
-  // Attempt to fix unescaped quotes within strings
-  // This regex finds typical JSON string values and escapes unescaped quotes within them
-  try {
-    return jsonString.replace(/: *"((?:\\.|[^"\\])*)"/g, (_match, group1) => {
-      const cleanedGroup = group1.replace(/(?<!\\)"/g, '\\"');
-      return `: "${cleanedGroup}"`;
-    });
-  } catch (e) {
-    console.warn("JSON cleaning regex failed, using basic cleanup:", e);
-    // Basic heuristic cleanup as fallback (less reliable)
-    return jsonString.replace(/(?<!\\)"(?!\s*[:,\}\]])/g, '\\"');
-  }
-}
-
-function looksLikeJsonSchema(parsed: unknown): boolean {
-  if (!parsed || typeof parsed !== 'object') return false;
-  const record = parsed as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(record, 'properties')) return true;
-  if (Object.prototype.hasOwnProperty.call(record, 'type')) {
-    return record.type === 'object' || record.type === 'array';
-  }
-  return false;
-}
-
-function tryParseDirectJson<T>(trimmed: string): T | null {
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    return null;
-  }
-  try {
-    return JSON.parse(trimmed) as T;
-  } catch {
-    return null;
-  }
-}
-
-function tryParseArgumentsJson<T>(responseContent: string): T | null {
-  const argumentsMatch = responseContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
-  if (!argumentsMatch || !argumentsMatch[1]) {
-    return null;
-  }
-
-  let jsonString = argumentsMatch[1].trim();
-  jsonString = cleanPotentiallyInvalidJsonString(jsonString);
-  try {
-    const parsed = JSON.parse(jsonString);
-    if (looksLikeJsonSchema(parsed)) {
-      console.warn('Detected schema-like content inside <arguments>; attempting alternative extraction for data.');
-      return null;
-    }
-    return parsed as T;
-  } catch (parseError) {
-    console.warn("Failed to parse cleaned JSON from <arguments>, trying other methods:", parseError);
-    return null;
-  }
-}
-
-function tryParseCodeBlockJson<T>(responseContent: string): T | null {
-  const codeBlockMatches = [...responseContent.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
-  if (codeBlockMatches.length === 0) {
-    return null;
-  }
-
-  let codeBlockContent = codeBlockMatches[codeBlockMatches.length - 1][1].trim();
-  try {
-    const lastBrace = codeBlockContent.lastIndexOf('}');
-    const lastBracket = codeBlockContent.lastIndexOf(']');
-    const lastValidCharIndex = Math.max(lastBrace, lastBracket);
-
-    if (lastValidCharIndex > -1) {
-      let openBraces = 0;
-      let openBrackets = 0;
-      for (let i = 0; i <= lastValidCharIndex; i++) {
-        if (codeBlockContent[i] === '{') openBraces++;
-        else if (codeBlockContent[i] === '}') openBraces--;
-        else if (codeBlockContent[i] === '[') openBrackets++;
-        else if (codeBlockContent[i] === ']') openBrackets--;
-      }
-      if (openBraces >= 0 && openBrackets >= 0) {
-        codeBlockContent = codeBlockContent.substring(0, lastValidCharIndex + 1);
-      }
-    }
-
-    const cleanedJson = cleanPotentiallyInvalidJsonString(codeBlockContent)
-      .replace(/,\s*}/g, '}')
-      .replace(/,\s*\]/g, ']');
-    return JSON.parse(cleanedJson) as T;
-  } catch (e) {
-    console.log("Failed to parse JSON from potentially truncated code block, trying other methods:", e);
-    return null;
-  }
-}
-
-function tryParseEmbeddedJson<T>(responseContent: string): T | null {
-  const jsonMatches = [...responseContent.matchAll(/\{[\s\S]*\}|\[[\s\S]*\]/g)];
-  const jsonMatch = jsonMatches.length > 0
-    ? jsonMatches.reduce((longest, current) => (current[0].length > longest[0].length ? current : longest))
-    : null;
-
-  if (!jsonMatch) {
-    return null;
-  }
-
-  try {
-    const jsonString = jsonMatch[0];
-    const cleanedJson = cleanPotentiallyInvalidJsonString(jsonString)
-      .replace(/,\s*}/g, '}')
-      .replace(/,\s*\]/g, ']');
-    return JSON.parse(cleanedJson) as T;
-  } catch (e) {
-    console.log("Failed to parse JSON object, trying more specific extraction:", e);
-    return null;
-  }
-}
-
-function extractStructuredResponseFromContent<T>(responseContent: string): T {
-  try {
-    // Zeroth try: If the whole content is valid JSON, parse it directly
-    // This covers cases where the model returns plain JSON as the message content
-    const trimmed = responseContent.trim();
-    const directJson = tryParseDirectJson<T>(trimmed);
-    if (directJson) {
-      return directJson;
-    }
-
-    // First try: Extract JSON from within the <arguments> tags
-    const argumentsJson = tryParseArgumentsJson<T>(responseContent);
-    if (argumentsJson) {
-      return argumentsJson;
-    }
-
-    // Second try: Look for a JSON object
-    console.log("No <arguments> tags found or failed to parse, trying alternative extraction methods");
-
-    // Try to extract JSON from code blocks
-    // If multiple code blocks exist, try the last one first as it often contains the final data
-    const codeBlockJson = tryParseCodeBlockJson<T>(responseContent);
-    if (codeBlockJson) {
-      return codeBlockJson;
-    }
-
-    // Try to extract any JSON object/array in the response
-    // Prefer the largest balanced block rather than the smallest non-greedy match
-    const embeddedJson = tryParseEmbeddedJson<T>(responseContent);
-    if (embeddedJson) {
-      return embeddedJson;
-    }
-
-    // Specific handling for known structures (outline, directions, sortedItems)
-    // These might need cleaning too if they contain complex strings
-    // ... (existing specific handling logic - potentially add cleaning here if needed) ...
-
-    throw new Error("Could not find any valid structured data (JSON) in model response content after cleaning attempts");
-  } catch (error) {
-    // Ensure the error message reflects the broader scope
-    console.error("Failed to parse structured data from model response content:", error);
-    throw new Error("Invalid response format from AI model after cleaning attempts");
-  }
-}
-
-// Helper function to extract function response
-function extractFunctionResponse<T>(response: OpenAI.Chat.ChatCompletion): T {
-  // Check if the response contains structured data within the main content
-  if (response.choices[0].message.content) {
-    // Use the renamed function here
-    return extractStructuredResponseFromContent<T>(response.choices[0].message.content);
-  }
-
-  // Add checks for standard OpenAI function/tool calls if needed in the future
-  // else if (response.choices[0].message.function_call) { ... }
-  // else if (response.choices[0].message.tool_calls) { ... }
-
-  throw new Error("No structured data found in the response content or known function/tool call fields");
-}
-
-// Helper function to create messages array
-function createMessagesArray(systemPrompt: string, userContent: string): Array<OpenAI.ChatCompletionMessageParam> {
-  // Since o1-mini doesn't support system messages, include system content as part of user message
-  return [
-    { role: "user", content: `${systemPrompt}\n\n${userContent}` }
-  ];
-}
 
 function logPayload(
   operationName: string,
@@ -484,72 +225,9 @@ export async function createTranscription(file: File | Blob): Promise<string> {
   }
 }
 
-// Define the new return structure
-interface GenerateThoughtResult {
-  originalText: string;
-  formattedText: string | null; // Renamed from 'text'
-  tags: string[] | null;
-  meaningSuccessfullyPreserved: boolean;
-}
-
-interface ThoughtResponse {
-  originalText: string;
-  formattedText: string; // Renamed from 'text'
-  tags: string[];
-  meaningPreserved: boolean;
-}
-
-function buildFailedThoughtResult(content: string): GenerateThoughtResult {
-  return {
-    originalText: content,
-    formattedText: null,
-    tags: null,
-    meaningSuccessfullyPreserved: false,
-  };
-}
-
-function isValidThoughtResponse(result: ThoughtResponse | null | undefined): result is ThoughtResponse {
-  return Boolean(
-    result &&
-    typeof result.originalText === "string" &&
-    typeof result.formattedText === "string" &&
-    result.formattedText.trim() !== '' &&
-    Array.isArray(result.tags) &&
-    typeof result.meaningPreserved === "boolean"
-  );
-}
-
-function buildSuccessfulThoughtResult(
-  result: ThoughtResponse,
-  attempt: number,
-  forceTag?: string | null
-): GenerateThoughtResult {
-  logger.success('GenerateThought', `Success on attempt ${attempt}. Meaning preserved.`);
-  logger.info('GenerateThought', `Original: ${result.originalText.substring(0, 60)}${result.originalText.length > 60 ? "..." : ""}`);
-  logger.info('GenerateThought', `Formatted: ${result.formattedText.substring(0, 60)}${result.formattedText.length > 60 ? "..." : ""}`);
-  logger.info('GenerateThought', `Tags: ${result.tags.join(", ")}`);
-
-  let finalTags = result.tags;
-  if (forceTag) {
-    logger.info('GenerateThought', `Force tag "${forceTag}" applied. Overwriting tags: ${result.tags.join(", ")} -> [${forceTag}]`);
-    finalTags = [forceTag];
-  }
-
-  return {
-    originalText: result.originalText,
-    formattedText: result.formattedText,
-    tags: finalTags,
-    meaningSuccessfullyPreserved: true,
-  };
-}
-
-function delayBeforeRetry(attempt: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 500 * attempt));
-}
-
-// Generate a single thought from audio transcription or text, with retry logic
 /**
- * @deprecated Use generateThoughtStructured from @clients/thought.structured.ts instead
+ * Backward-compatible wrapper around the structured implementation.
+ * Kept to avoid breaking imports while removing legacy chat completion calls.
  */
 export async function generateThought(
   content: string,
@@ -557,74 +235,7 @@ export async function generateThought(
   availableTags: string[] = [],
   forceTag?: string | null
 ): Promise<GenerateThoughtResult> {
-  console.warn("generateThought is deprecated. Use generateThoughtStructured instead.");
-  const MAX_RETRIES = 3;
-
-  // Create user message, now passing sermon.thoughts
-  const userMessage = createThoughtUserMessage(content, sermon, availableTags, sermon.thoughts);
-
-  if (isDebugMode) {
-    logger.debug('GenerateThought', "Starting generation for content", content.substring(0, 300) + (content.length > 300 ? '...' : ''));
-    logger.debug('GenerateThought', "Available tags", availableTags);
-    if (forceTag) {
-      logger.debug('GenerateThought', "Force tag applied", forceTag);
-    }
-  }
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    logger.info('GenerateThought', `Attempt ${attempt}/${MAX_RETRIES}`);
-    try {
-      const xmlFunctionPrompt = `${thoughtSystemPrompt}\n\n${createXmlFunctionDefinition(thoughtFunctionSchema)}`;
-
-      const requestOptions = {
-        model: aiModel,
-        messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-      };
-
-      const inputInfo = {
-        contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-        sermonTitle: sermon.title,
-        availableTags,
-        attempt
-      };
-
-      const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-        () => aiAPI.chat.completions.create(requestOptions),
-        'Generate Thought',
-        requestOptions,
-        inputInfo
-      );
-
-      const result = extractFunctionResponse<ThoughtResponse>(response);
-
-      // **Validation and Meaning Check**
-      if (!isValidThoughtResponse(result)) {
-        // Invalid response structure
-        logger.warn('GenerateThought', `Attempt ${attempt} failed: Invalid response structure received.`, result);
-        // **Immediately return failure on invalid structure**
-        return buildFailedThoughtResult(content);
-      }
-
-      if (!result.meaningPreserved) {
-        // Valid response, but AI indicated meaning was NOT preserved
-        logger.warn('GenerateThought', `Attempt ${attempt} failed: AI indicated meaning not preserved. Retrying...`);
-        if (attempt < MAX_RETRIES) {
-          await delayBeforeRetry(attempt);
-        }
-        continue;
-      }
-
-      return buildSuccessfulThoughtResult(result, attempt, forceTag);
-    } catch (error) {
-      // **Immediately return failure on any exception**
-      logger.error('GenerateThought', `Attempt ${attempt} failed with error. Failing operation.`, error);
-      return buildFailedThoughtResult(content);
-    }
-  }
-
-  // If loop finishes without success (all attempts had meaningPreserved: false)
-  logger.error('GenerateThought', "Failed to generate thought with preserved meaning after all retries.");
-  return buildFailedThoughtResult(content);
+  return generateThoughtStructured(content, sermon, availableTags, { forceTag });
 }
 
 /**
@@ -633,41 +244,7 @@ export async function generateThought(
  * @returns Insights object with mainIdea, keyPoints, suggestedOutline, audienceTakeaways
  */
 export async function generateSermonInsights(sermon: Sermon): Promise<Insights | null> {
-  // Extract sermon content using our helper function
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createInsightsUserMessage(sermon, sermonContent);
-
-  if (isDebugMode) {
-    console.log("DEBUG: Generating insights for sermon:", sermon.id);
-  }
-
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${insightsSystemPrompt}\n\n${createXmlFunctionDefinition(insightsFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Insights',
-      requestOptions,
-      inputInfo
-    );
-
-    return extractFunctionResponse<Insights>(response);
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon insights:", error);
-    return null;
-  }
+  return generateSermonInsightsStructured(sermon);
 }
 
 /**
@@ -676,41 +253,7 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
  * @returns Array of topic strings
  */
 export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createTopicsUserMessage(sermon, sermonContent);
-
-  if (isDebugMode) {
-    console.log("DEBUG: Generating topics for sermon:", sermon.id);
-  }
-
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${topicsSystemPrompt}\n\n${createXmlFunctionDefinition(topicsFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Topics',
-      requestOptions,
-      inputInfo
-    );
-
-    const result = extractFunctionResponse<{ topics: string[] }>(response);
-    return result.topics || [];
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon topics:", error);
-    return [];
-  }
+  return generateSermonTopicsStructured(sermon);
 }
 
 /**
@@ -719,41 +262,7 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
  * @returns SectionHints object with structured plan
  */
 export async function generateSectionHints(sermon: Sermon): Promise<SectionHints | null> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
-
-  if (isDebugMode) {
-    console.log("DEBUG: Generating thoughts plan for sermon:", sermon.id);
-  }
-
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${planSystemPrompt}\n\n${createXmlFunctionDefinition(planFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Thoughts Plan',
-      requestOptions,
-      inputInfo
-    );
-
-    const result = extractFunctionResponse<SectionHints>(response);
-    return result || null;
-  } catch (error) {
-    console.error("ERROR: Failed to generate thoughts plan:", error);
-    return null;
-  }
+  return generateSectionHintsStructured(sermon);
 }
 
 /**
@@ -762,41 +271,7 @@ export async function generateSectionHints(sermon: Sermon): Promise<SectionHints
  * @returns Array of verse objects with reference and relevance
  */
 export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createVersesUserMessage(sermon, sermonContent);
-
-  if (isDebugMode) {
-    console.log("DEBUG: Generating verse suggestions for sermon:", sermon.id);
-  }
-
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${versesSystemPrompt}\n\n${createXmlFunctionDefinition(versesFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Verses',
-      requestOptions,
-      inputInfo
-    );
-
-    const result = extractFunctionResponse<{ verses: VerseWithRelevance[] }>(response);
-    return result.verses || [];
-  } catch (error) {
-    console.error("ERROR: Failed to generate sermon verses:", error);
-    return [];
-  }
+  return generateSermonVersesStructured(sermon);
 }
 
 type SortedItemResponse = { key: string; outlinePoint?: string; content?: string };
@@ -836,16 +311,6 @@ function logOriginalItemOrdering(items: ThoughtInStructure[]) {
   items.forEach((item, index) => {
     console.log(`  [${index}] ${item.id.slice(0, 4)}: "${item.content.substring(0, 30)}..."`);
   });
-}
-
-function parseSortItemsResponse(response: OpenAI.Chat.ChatCompletion): { sortedItems: SortedItemResponse[] } {
-  try {
-    const content = response.choices[0].message.content || '';
-    return extractStructuredResponseFromContent(content);
-  } catch (error) {
-    console.error("Failed to parse function response from model:", error);
-    throw new Error("Invalid response format from AI model");
-  }
 }
 
 function extractSortedKeysAndAssignments(
@@ -1007,14 +472,6 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       console.log("DEBUG MODE: User message for sorting:", userMessage);
     }
 
-    // For Claude models (o1-mini), use XML tags for function-like behavior
-    const xmlFunctionPrompt = createXmlFunctionDefinition(sortingFunctionSchema);
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
     const inputInfo = {
       columnId,
       itemCount: items.length,
@@ -1022,24 +479,25 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       outlinePointCount: outlinePoints.length
     };
 
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Sort Items',
-      requestOptions,
-      inputInfo
+    const result = await callWithStructuredOutput(
+      sortingSystemPrompt,
+      userMessage,
+      SortingResponseSchema,
+      {
+        formatName: 'sort_items',
+        model: aiModel,
+        logContext: inputInfo,
+      }
     );
 
-    // Extract the response
-    const sortedData = parseSortItemsResponse(response);
+    if (!result.success || !result.data) {
+      throw result.error || new Error(result.refusal || 'Failed to get sorting response');
+    }
+
+    const sortedData = result.data;
 
     // Log original item order for comparison
     logOriginalItemOrdering(items);
-
-    // Validate and extract keys from the AI response
-    if (!sortedData.sortedItems || !Array.isArray(sortedData.sortedItems)) {
-      console.error("Invalid response format from AI:", sortedData);
-      return items; // Return original order if malformed
-    }
 
     const { aiSortedKeys, outlinePointAssignments } = extractSortedKeysAndAssignments(sortedData.sortedItems, itemsMapByKey);
 
@@ -1094,27 +552,12 @@ export async function generatePlanForSection(sermon: Sermon, section: string, st
   }
 
   try {
-    // For Claude models
-    // Inject style instructions and structured blocks instructions
     const styleInstructions = getStyleInstructions(style);
     const blocksInstructions = getStructuredBlocksInstructions();
-
-    const xmlFunctionPrompt = `${planSystemPrompt}
-
-${styleInstructions}
-
-${blocksInstructions}
-
-${createXmlFunctionDefinition(planFunctionSchema)}`;
+    const systemPrompt = `${planSystemPrompt}\n\n${styleInstructions}\n\n${blocksInstructions}`;
 
     // Create user message
     const userMessage = createPlanUserMessage(sermon, section, sectionContent);
-
-    // Prepare request options
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
 
     // Log operation info
     const inputInfo = {
@@ -1129,29 +572,35 @@ ${createXmlFunctionDefinition(planFunctionSchema)}`;
         (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
     };
 
-    // Make API call
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Plan for Section',
-      requestOptions,
-      inputInfo
+    const result = await callWithStructuredOutput(
+      systemPrompt,
+      userMessage,
+      PlanSectionResponseSchema,
+      {
+        formatName: "plan_for_section",
+        model: aiModel,
+        logContext: inputInfo,
+      }
     );
 
-    // Extract response - AI returns full plan structure
-    const result = extractFunctionResponse<{ introduction: string; main: string; conclusion: string }>(response);
+    if (!result.success || !result.data) {
+      throw result.error || new Error(result.refusal || 'Failed to generate plan for section');
+    }
 
-    // Debug: Log the extracted result
-    console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result, null, 2));
+    if (isDebugMode) {
+      console.log(`DEBUG: Extracted result for ${section}:`, JSON.stringify(result.data, null, 2));
+    }
 
     // Format response to match SermonContent interface - ensure all values are strings
     const plan: SermonContent = {
-      introduction: { outline: result?.introduction || '' },
-      main: { outline: result?.main || '' },
-      conclusion: { outline: result?.conclusion || '' }
+      introduction: { outline: result.data.introduction || '' },
+      main: { outline: result.data.main || '' },
+      conclusion: { outline: result.data.conclusion || '' }
     };
 
-    // Debug: Log the formatted plan
-    console.log(`DEBUG: Formatted plan for ${section}:`, JSON.stringify(plan, null, 2));
+    if (isDebugMode) {
+      console.log(`DEBUG: Formatted plan for ${section}:`, JSON.stringify(plan, null, 2));
+    }
 
     // Validate that all outline values are strings
     if (typeof plan.introduction.outline !== 'string' ||
@@ -1227,31 +676,29 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
   }
 
   try {
-    // For Claude models
-    const xmlFunctionPrompt = `${directionsSystemPrompt}\n\n${createXmlFunctionDefinition(directionsFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
     const inputInfo = {
       sermonId: sermon.id,
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
 
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Sermon Directions',
-      requestOptions,
-      inputInfo
+    const result = await callWithStructuredOutput(
+      directionsSystemPrompt,
+      userMessage,
+      DirectionsResponseSchema,
+      {
+        formatName: "sermon_directions",
+        model: aiModel,
+        logContext: inputInfo,
+      }
     );
 
-    const result = extractFunctionResponse<{ directions: DirectionSuggestion[] }>(response);
+    if (!result.success || !result.data) {
+      return [];
+    }
 
     // Normalize the directions before returning
-    const normalizedDirections = normalizeDirectionSuggestions(result.directions || []);
+    const normalizedDirections = normalizeDirectionSuggestions(result.data.directions || []);
     // Return the normalized directions (could be an empty array)
     return normalizedDirections;
   } catch (error) {
@@ -1271,14 +718,6 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
  * @param keyFragments Array of key fragments to include in the prompt
  * @returns The generated content and success status
  */
-export type PlanStyle = 'memory' | 'narrative' | 'exegetical';
-
-export interface PlanContext {
-  previousPoint?: { text: string } | null;
-  nextPoint?: { text: string } | null;
-  section?: 'introduction' | 'main' | 'conclusion';
-}
-
 function getStyleInstructions(style: PlanStyle): string {
   switch (style) {
     case 'narrative':
@@ -1630,12 +1069,6 @@ export async function generatePlanPointContent(
       isCyrillic: languageInfo.isCyrillic
     });
 
-    // Prepare request options
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(systemPrompt, userMessage)
-    };
-
     // Log operation info
     const inputInfo = {
       sermonTitle,
@@ -1649,16 +1082,22 @@ export async function generatePlanPointContent(
       style
     };
 
-    // Make API call
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Plan Point ThoughtsBySection',
-      requestOptions,
-      inputInfo
+    const result = await callWithStructuredOutput(
+      systemPrompt,
+      userMessage,
+      PlanPointContentResponseSchema,
+      {
+        formatName: "plan_point_content",
+        model: aiModel,
+        logContext: inputInfo,
+      }
     );
 
-    // Extract the content from the response
-    let content = response.choices[0]?.message?.content?.trim() || "";
+    if (!result.success || !result.data) {
+      return { content: "", success: false };
+    }
+
+    let content = result.data.content.trim();
 
     // Post-process: limit the number of main headings (###) to the number of THOUGHTS
     // But if key fragments are present, allow more headings as AI may need them for better structure
@@ -1678,92 +1117,7 @@ export async function generatePlanPointContent(
  * @returns Array of generated outline points and success status
  */
 export async function generateSermonPoints(sermon: Sermon, section: string): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
-  // Extract only the content for the requested section
-  const sectionContent = extractSectionContent(sermon, section);
-
-  // Detect language - simple heuristic based on non-Latin characters
-  const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
-  const detectedLanguage = hasNonLatinChars ? "non-English (likely Russian/Ukrainian)" : "English";
-
-  if (isDebugMode) {
-    console.log(`DEBUG: Detected sermon language: ${detectedLanguage}`);
-    console.log(`DEBUG: Generating outline points for ${section} section`);
-  }
-
-  try {
-    // For Claude models
-    const systemPrompt = `You are a helpful assistant for sermon preparation.
-
-Your task is to generate a list of outline points for the ${section} section of a sermon, based on the content provided.
-
-IMPORTANT:
-1. Always generate the outline points in the SAME LANGUAGE as the input. Do not translate.
-2. Generate 3-5 clear, concise outline points that capture the key themes and ideas in the provided content.
-3. Each outline point should be a short phrase, not a complete sentence (10 words or less is ideal).
-4. The outline points should flow logically and build on each other.
-5. For the introduction section, focus on points that introduce the sermon theme and capture attention.
-6. For the main section, focus on the key theological points and arguments.
-7. For the conclusion section, focus on application points and closing thoughts.
-8. DO NOT include numbering or bullet points in your response, just the text of each point.
-9. Return EXACTLY 3-5 points, with each point on its own line.
-10. Maintain the theological perspective from the original content.`;
-
-    // Create user message
-    const userMessage = `Please generate 3-5 outline points for the ${section.toUpperCase()} section of my sermon based on the following content:
-
-SERMON TITLE: ${sermon.title}
-SCRIPTURE: ${sermon.verse}
-
-SECTION CONTENT:
-${sectionContent}
-
-Generate each outline point as a short, clear phrase (not a complete sentence). Make each point build logically on the previous ones.
-Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.
-DO NOT include numbers or bullets, just the text of each point on separate lines.
-DO NOT explain your choices, just provide the 3-5 outline points.`;
-
-    // Prepare request options
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(systemPrompt, userMessage)
-    };
-
-    // Log operation info
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      section,
-      contentLength: sectionContent.length,
-      detectedLanguage
-    };
-
-    // Make API call
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate SermonOutline Points',
-      requestOptions,
-      inputInfo
-    );
-
-    // Extract the content from the response
-    const content = response.choices[0]?.message?.content?.trim() || "";
-
-    if (!content) {
-      return { outlinePoints: [], success: false };
-    }
-
-    // Convert the content into outline points (one per line)
-    const lines = content.split('\n').filter(line => line.trim().length > 0);
-    const outlinePoints: SermonPoint[] = lines.map(line => ({
-      id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      text: line.trim()
-    }));
-
-    return { outlinePoints, success: outlinePoints.length > 0 };
-  } catch (error) {
-    console.error(`ERROR: Failed to generate outline points for ${section} section:`, error);
-    return { outlinePoints: [], success: false };
-  }
+  return generateSermonPointsStructured(sermon, section);
 }
 
 /**
@@ -1772,48 +1126,5 @@ DO NOT explain your choices, just provide the 3-5 outline points.`;
  * @returns A single brainstorm suggestion
  */
 export async function generateBrainstormSuggestion(sermon: Sermon): Promise<BrainstormSuggestion | null> {
-  // Extract sermon content using our helper function
-  const sermonContent = extractSermonContent(sermon);
-  const userMessage = createBrainstormUserMessage(sermon, sermonContent);
-
-  if (isDebugMode) {
-    console.log("DEBUG: Generating brainstorm suggestion for sermon:", sermon.id);
-  }
-
-  try {
-    // For Claude models
-    const xmlFunctionPrompt = `${brainstormSystemPrompt}\n\n${createXmlFunctionDefinition(brainstormFunctionSchema)}`;
-
-    const requestOptions = {
-      model: aiModel,
-      messages: createMessagesArray(xmlFunctionPrompt, userMessage)
-    };
-
-    const inputInfo = {
-      sermonId: sermon.id,
-      sermonTitle: sermon.title,
-      contentLength: sermonContent.length
-    };
-
-    const response = await withOpenAILogging<OpenAI.Chat.ChatCompletion>(
-      () => aiAPI.chat.completions.create(requestOptions),
-      'Generate Brainstorm Suggestion',
-      requestOptions,
-      inputInfo
-    );
-
-    const result = extractFunctionResponse<{ suggestion: BrainstormSuggestion }>(response);
-
-    // Add an ID to the suggestion and normalize the type to lowercase
-    const suggestion: BrainstormSuggestion = {
-      ...result.suggestion,
-      type: result.suggestion.type.toLowerCase() as BrainstormSuggestion['type'],
-      id: `bs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    };
-
-    return suggestion;
-  } catch (error) {
-    console.error("ERROR: Failed to generate brainstorm suggestion:", error);
-    return null;
-  }
+  return generateBrainstormSuggestionStructured(sermon);
 } 

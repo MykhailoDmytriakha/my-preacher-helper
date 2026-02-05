@@ -1,6 +1,6 @@
 IMPROTANT DO it ALWAYS on beggning: 
 - READ, and FOLLOW instruction and ROLE from `AGENTS.md` file, from the root folder of the project.
-- общайся с пользователем или на русском или на английском.
+- общайся с пользователем или на русском или на английском. НЕЛЬЗЯ на украинском.
 
 **Session Management (ОБЯЗАТЕЛЬНО):**
 - При любом НОВОМ запросе (≥70% уверенности) → автоматически создавай `.sessions/SESSION_[дата]-[описание].md`

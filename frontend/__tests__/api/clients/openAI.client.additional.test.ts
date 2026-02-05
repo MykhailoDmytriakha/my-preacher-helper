@@ -14,7 +14,7 @@ import {
   generateSermonVerses,
   sortItemsWithAI,
 } from '@clients/openAI.client';
-import { BrainstormSuggestion, Sermon, SermonPoint, ThoughtInStructure } from '@/models/models';
+import { Sermon, SermonPoint, ThoughtInStructure } from '@/models/models';
 import * as audioUtils from '@/utils/audioFormatUtils';
 
 jest.mock('openai', () => {
@@ -51,8 +51,36 @@ jest.mock('@/utils/audioFormatUtils', () => ({
   hasKnownIssues: jest.fn(() => false),
 }));
 
-const getMockCreateCompletion = () => (OpenAI as unknown as { mockCreateCompletion: jest.Mock }).mockCreateCompletion;
+jest.mock('@clients/sermon.structured', () => ({
+  generateSermonInsightsStructured: jest.fn(),
+  generateSermonTopicsStructured: jest.fn(),
+  generateSectionHintsStructured: jest.fn(),
+  generateSermonVersesStructured: jest.fn(),
+  generateSermonPointsStructured: jest.fn(),
+  generateBrainstormSuggestionStructured: jest.fn(),
+}));
+jest.mock('@clients/structuredOutput', () => ({
+  callWithStructuredOutput: jest.fn(),
+}));
+jest.mock('@clients/thought.structured', () => ({
+  generateThoughtStructured: jest.fn(),
+}));
+
 const getMockCreateTranscription = () => (OpenAI as unknown as { mockCreateTranscription: jest.Mock }).mockCreateTranscription;
+const getStructuredMocks = () => jest.requireMock('@clients/sermon.structured') as {
+  generateSermonInsightsStructured: jest.Mock;
+  generateSermonTopicsStructured: jest.Mock;
+  generateSectionHintsStructured: jest.Mock;
+  generateSermonVersesStructured: jest.Mock;
+  generateSermonPointsStructured: jest.Mock;
+  generateBrainstormSuggestionStructured: jest.Mock;
+};
+const getStructuredOutputMock = () => jest.requireMock('@clients/structuredOutput') as {
+  callWithStructuredOutput: jest.Mock;
+};
+const getThoughtStructuredMock = () => jest.requireMock('@clients/thought.structured') as {
+  generateThoughtStructured: jest.Mock;
+};
 
 const baseSermon: Sermon = {
   id: 'sermon-1',
@@ -66,8 +94,10 @@ const baseSermon: Sermon = {
 };
 
 describe('openAI.client additional coverage', () => {
-  let mockCreateCompletion: jest.Mock;
   let mockCreateTranscription: jest.Mock;
+  let mockStructured: ReturnType<typeof getStructuredMocks>;
+  let mockStructuredOutput: ReturnType<typeof getStructuredOutputMock>;
+  let mockThoughtStructured: ReturnType<typeof getThoughtStructuredMock>;
 
   beforeAll(async () => {
     try {
@@ -85,10 +115,19 @@ describe('openAI.client additional coverage', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCreateCompletion = getMockCreateCompletion();
     mockCreateTranscription = getMockCreateTranscription();
-    mockCreateCompletion.mockReset();
     mockCreateTranscription.mockReset();
+    mockStructured = getStructuredMocks();
+    mockStructured.generateSermonInsightsStructured.mockReset();
+    mockStructured.generateSermonTopicsStructured.mockReset();
+    mockStructured.generateSectionHintsStructured.mockReset();
+    mockStructured.generateSermonVersesStructured.mockReset();
+    mockStructured.generateSermonPointsStructured.mockReset();
+    mockStructured.generateBrainstormSuggestionStructured.mockReset();
+    mockStructuredOutput = getStructuredOutputMock();
+    mockStructuredOutput.callWithStructuredOutput.mockReset();
+    mockThoughtStructured = getThoughtStructuredMock();
+    mockThoughtStructured.generateThoughtStructured.mockReset();
   });
 
   describe('createTranscription', () => {
@@ -139,24 +178,22 @@ describe('openAI.client additional coverage', () => {
   });
 
   describe('generateThought', () => {
-    it('returns success and applies force tag when meaning is preserved', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                originalText: 'Original idea',
-                formattedText: 'Formatted idea',
-                tags: ['TagA', 'TagB'],
-                meaningPreserved: true,
-              }),
-            },
-          },
-        ],
+    it('delegates to structured thought client and passes forceTag', async () => {
+      mockThoughtStructured.generateThoughtStructured.mockResolvedValue({
+        originalText: 'Original idea',
+        formattedText: 'Formatted idea',
+        tags: ['Forced'],
+        meaningSuccessfullyPreserved: true,
       });
 
       const result = await generateThought('Original idea', baseSermon, ['TagA'], 'Forced');
 
+      expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
+        'Original idea',
+        baseSermon,
+        ['TagA'],
+        { forceTag: 'Forced' }
+      );
       expect(result).toEqual({
         originalText: 'Original idea',
         formattedText: 'Formatted idea',
@@ -165,24 +202,22 @@ describe('openAI.client additional coverage', () => {
       });
     });
 
-    it('returns failure when response structure is invalid', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                originalText: 'Original idea',
-                formattedText: '',
-                tags: ['TagA'],
-                meaningPreserved: true,
-              }),
-            },
-          },
-        ],
+    it('returns the structured client result without legacy retries', async () => {
+      mockThoughtStructured.generateThoughtStructured.mockResolvedValue({
+        originalText: 'Original idea',
+        formattedText: null,
+        tags: null,
+        meaningSuccessfullyPreserved: false,
       });
 
       const result = await generateThought('Original idea', baseSermon, ['TagA']);
 
+      expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
+        'Original idea',
+        baseSermon,
+        ['TagA'],
+        { forceTag: undefined }
+      );
       expect(result).toEqual({
         originalText: 'Original idea',
         formattedText: null,
@@ -190,83 +225,38 @@ describe('openAI.client additional coverage', () => {
         meaningSuccessfullyPreserved: false,
       });
     });
-
-    it('retries when meaning is not preserved and returns failure after max retries', async () => {
-      jest.useFakeTimers();
-      try {
-        mockCreateCompletion.mockResolvedValue({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  originalText: 'Original idea',
-                  formattedText: 'Formatted idea',
-                  tags: ['TagA'],
-                  meaningPreserved: false,
-                }),
-              },
-            },
-          ],
-        });
-
-        const promise = generateThought('Original idea', baseSermon, ['TagA']);
-        await jest.runAllTimersAsync();
-        const result = await promise;
-
-        expect(mockCreateCompletion).toHaveBeenCalledTimes(3);
-        expect(result).toEqual({
-          originalText: 'Original idea',
-          formattedText: null,
-          tags: null,
-          meaningSuccessfullyPreserved: false,
-        });
-      } finally {
-        jest.useRealTimers();
-      }
-    });
   });
 
   it('generates sermon insights from structured response', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              topics: ['Hope'],
-              relatedVerses: [],
-              possibleDirections: [],
-            }),
-          },
-        },
-      ],
+    mockStructured.generateSermonInsightsStructured.mockResolvedValue({
+      topics: ['Hope'],
+      relatedVerses: [],
+      possibleDirections: [],
     });
 
     const result = await generateSermonInsights(baseSermon);
 
     expect(result?.topics).toEqual(['Hope']);
+    expect(mockStructured.generateSermonInsightsStructured).toHaveBeenCalledWith(baseSermon);
   });
 
-  it('handles function_call responses in logging path', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '',
-            function_call: {
-              arguments: JSON.stringify({ directions: [] }),
-            },
-          },
-        },
-      ],
+  it('returns directions from structured output path', async () => {
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: {
+        directions: [{ title: 'Area', description: 'Suggestion' }],
+      },
+      refusal: null,
+      error: null,
     });
 
     const result = await generateSermonDirections(baseSermon);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual([{ area: 'Area', suggestion: 'Suggestion' }]);
   });
 
   it('returns null when insights generation fails', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+    mockStructured.generateSermonInsightsStructured.mockResolvedValue(null);
 
     const result = await generateSermonInsights(baseSermon);
 
@@ -274,71 +264,32 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('generates sermon topics list', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({ topics: ['Grace', 'Faith'] }),
-          },
-        },
-      ],
-    });
+    mockStructured.generateSermonTopicsStructured.mockResolvedValue(['Grace', 'Faith']);
 
     const result = await generateSermonTopics(baseSermon);
 
     expect(result).toEqual(['Grace', 'Faith']);
+    expect(mockStructured.generateSermonTopicsStructured).toHaveBeenCalledWith(baseSermon);
   });
 
-  it('parses topics from <arguments> tag responses', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '<arguments>{"topics":["Grace"]}</arguments>',
-          },
-        },
-      ],
-    });
+  it('returns topics from structured client fallback payload', async () => {
+    mockStructured.generateSermonTopicsStructured.mockResolvedValue(['Grace']);
 
     const result = await generateSermonTopics(baseSermon);
 
     expect(result).toEqual(['Grace']);
   });
 
-  it('falls back to code block JSON when <arguments> contains schema', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '<arguments>{"type":"object","properties":{"topics":{"type":"array"}}}</arguments>\n```json\n{"topics":["Faith"]}\n```',
-          },
-        },
-      ],
-    });
+  it('returns empty topics when structured client returns empty list', async () => {
+    mockStructured.generateSermonTopicsStructured.mockResolvedValue([]);
 
     const result = await generateSermonTopics(baseSermon);
 
-    expect(result).toEqual(['Faith']);
+    expect(result).toEqual([]);
   });
 
-  it('extracts embedded JSON when content includes surrounding text', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: 'Here is the result: {"topics":["Hope"]} Thanks!',
-          },
-        },
-      ],
-    });
-
-    const result = await generateSermonTopics(baseSermon);
-
-    expect(result).toEqual(['Hope']);
-  });
-
-  it('returns empty topics on error', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+  it('returns empty topics on structured error branch', async () => {
+    mockStructured.generateSermonTopicsStructured.mockResolvedValue([]);
 
     const result = await generateSermonTopics(baseSermon);
 
@@ -346,18 +297,10 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('generates section hints', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              introduction: 'Intro hint',
-              main: 'Main hint',
-              conclusion: 'Conclusion hint',
-            }),
-          },
-        },
-      ],
+    mockStructured.generateSectionHintsStructured.mockResolvedValue({
+      introduction: 'Intro hint',
+      main: 'Main hint',
+      conclusion: 'Conclusion hint',
     });
 
     const result = await generateSectionHints(baseSermon);
@@ -367,10 +310,11 @@ describe('openAI.client additional coverage', () => {
       main: 'Main hint',
       conclusion: 'Conclusion hint',
     });
+    expect(mockStructured.generateSectionHintsStructured).toHaveBeenCalledWith(baseSermon);
   });
 
   it('returns null when section hints generation fails', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+    mockStructured.generateSectionHintsStructured.mockResolvedValue(null);
 
     const result = await generateSectionHints(baseSermon);
 
@@ -378,25 +322,16 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('generates verse suggestions', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              verses: [{ reference: 'John 3:16', relevance: 'Love' }],
-            }),
-          },
-        },
-      ],
-    });
+    mockStructured.generateSermonVersesStructured.mockResolvedValue([{ reference: 'John 3:16', relevance: 'Love' }]);
 
     const result = await generateSermonVerses(baseSermon);
 
     expect(result).toEqual([{ reference: 'John 3:16', relevance: 'Love' }]);
+    expect(mockStructured.generateSermonVersesStructured).toHaveBeenCalledWith(baseSermon);
   });
 
   it('returns empty verses on error', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+    mockStructured.generateSermonVersesStructured.mockResolvedValue([]);
 
     const result = await generateSermonVerses(baseSermon);
 
@@ -412,19 +347,16 @@ describe('openAI.client additional coverage', () => {
     ];
 
     it('sorts items and assigns outline points when provided', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                sortedItems: [
-                  { key: 'efgh', outlinePoint: 'Main Point' },
-                  { key: 'abcd' },
-                ],
-              }),
-            },
-          },
-        ],
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [
+            { key: 'efgh', outlinePoint: 'Main Point' },
+            { key: 'abcd' },
+          ],
+        },
+        refusal: null,
+        error: null,
       });
 
       const result = await sortItemsWithAI('col-1', items, baseSermon, outlinePoints);
@@ -445,16 +377,13 @@ describe('openAI.client additional coverage', () => {
       ];
       const substringOutlinePoints: SermonPoint[] = [{ id: 'op-sub', text: 'Main Point' }];
 
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                sortedItems: [{ key: 'zzzz', outlinePoint: 'Main' }],
-              }),
-            },
-          },
-        ],
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [{ key: 'zzzz', outlinePoint: 'Main' }],
+        },
+        refusal: null,
+        error: null,
       });
 
       const result = await sortItemsWithAI('col-1', substringItems, baseSermon, substringOutlinePoints);
@@ -469,16 +398,13 @@ describe('openAI.client additional coverage', () => {
       ];
       const fuzzyOutlinePoints: SermonPoint[] = [{ id: 'op-fuzzy', text: 'Victory of Faith' }];
 
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                sortedItems: [{ key: 'yyyy', outlinePoint: 'Faith Victory' }],
-              }),
-            },
-          },
-        ],
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [{ key: 'yyyy', outlinePoint: 'Faith Victory' }],
+        },
+        refusal: null,
+        error: null,
       });
 
       const result = await sortItemsWithAI('col-1', fuzzyItems, baseSermon, fuzzyOutlinePoints);
@@ -487,15 +413,12 @@ describe('openAI.client additional coverage', () => {
       expect(result[0].outlinePoint?.text).toBe('Victory of Faith');
     });
 
-    it('returns original items when response is malformed', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({ sortedItems: 'invalid' }),
-            },
-          },
-        ],
+    it('returns original items when sorted items list is empty', async () => {
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { sortedItems: [] },
+        refusal: null,
+        error: null,
       });
 
       const result = await sortItemsWithAI('col-1', items, baseSermon, outlinePoints);
@@ -503,15 +426,12 @@ describe('openAI.client additional coverage', () => {
       expect(result).toEqual(items);
     });
 
-    it('throws when response JSON is invalid', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: 'not-json',
-            },
-          },
-        ],
+    it('throws when structured output call fails', async () => {
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: false,
+        data: null,
+        refusal: null,
+        error: new Error('Invalid response format from AI model'),
       });
 
       await expect(sortItemsWithAI('col-1', items, baseSermon, outlinePoints)).rejects.toThrow(
@@ -521,14 +441,11 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('generates plan point content', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '### Main Concept\n* Supporting detail',
-          },
-        },
-      ],
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: '### Main Concept\n* Supporting detail' },
+      refusal: null,
+      error: null,
     });
 
     const result = await generatePlanPointContent(
@@ -547,14 +464,11 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('generates plan point content for Cyrillic thoughts', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '### Заголовок\n* Деталь',
-          },
-        },
-      ],
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: '### Заголовок\n* Деталь' },
+      refusal: null,
+      error: null,
     });
 
     const result = await generatePlanPointContent(
@@ -570,18 +484,15 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('detects non-Latin content when generating plan section', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              introduction: 'Вступление',
-              main: 'Основная часть',
-              conclusion: 'Заключение',
-            }),
-          },
-        },
-      ],
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: {
+        introduction: 'Вступление',
+        main: 'Основная часть',
+        conclusion: 'Заключение',
+      },
+      refusal: null,
+      error: null,
     });
 
     const sermon = { ...baseSermon, title: 'Проповедь', verse: 'Иоанна 3:16' };
@@ -592,7 +503,12 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('returns failure when plan point content generation fails', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: false,
+      data: null,
+      refusal: null,
+      error: new Error('fail'),
+    });
 
     const result = await generatePlanPointContent(
       'Test Sermon',
@@ -607,14 +523,22 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('returns empty outline points when response is empty', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: '',
-          },
-        },
-      ],
+    mockStructured.generateSermonPointsStructured.mockResolvedValue({
+      success: false,
+      outlinePoints: [],
+    });
+
+    const result = await generateSermonPoints(baseSermon, 'main');
+
+    expect(result.success).toBe(false);
+    expect(result.outlinePoints).toEqual([]);
+    expect(mockStructured.generateSermonPointsStructured).toHaveBeenCalledWith(baseSermon, 'main');
+  });
+
+  it('returns failure when outline point generation throws', async () => {
+    mockStructured.generateSermonPointsStructured.mockResolvedValue({
+      success: false,
+      outlinePoints: [],
     });
 
     const result = await generateSermonPoints(baseSermon, 'main');
@@ -623,29 +547,11 @@ describe('openAI.client additional coverage', () => {
     expect(result.outlinePoints).toEqual([]);
   });
 
-  it('returns failure when outline point generation throws', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
-
-    const result = await generateSermonPoints(baseSermon, 'main');
-
-    expect(result.success).toBe(false);
-    expect(result.outlinePoints).toEqual([]);
-  });
-
   it('normalizes brainstorm suggestion type to lowercase', async () => {
-    mockCreateCompletion.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              suggestion: {
-                text: 'Try a different angle',
-                type: 'question',
-              } as Omit<BrainstormSuggestion, 'id'>,
-            }),
-          },
-        },
-      ],
+    mockStructured.generateBrainstormSuggestionStructured.mockResolvedValue({
+      id: 'bg-1',
+      text: 'Try a different angle',
+      type: 'question',
     });
 
     const result = await generateBrainstormSuggestion(baseSermon);
@@ -655,7 +561,7 @@ describe('openAI.client additional coverage', () => {
   });
 
   it('returns null when brainstorm suggestion fails', async () => {
-    mockCreateCompletion.mockRejectedValue(new Error('fail'));
+    mockStructured.generateBrainstormSuggestionStructured.mockResolvedValue(null);
 
     const result = await generateBrainstormSuggestion(baseSermon);
 
@@ -667,77 +573,44 @@ describe('openAI.client additional coverage', () => {
     process.env.DEBUG_MODE = 'true';
     jest.resetModules();
 
-    const openAIModule = await import('openai');
     const openAIClient = await import('@clients/openAI.client');
-    mockCreateCompletion = (openAIModule as unknown as { mockCreateCompletion: jest.Mock }).mockCreateCompletion;
-    mockCreateCompletion.mockReset();
+    const structuredClient = jest.requireMock('@clients/sermon.structured') as {
+      generateSermonTopicsStructured: jest.Mock;
+      generateSectionHintsStructured: jest.Mock;
+      generateSermonVersesStructured: jest.Mock;
+    };
+    const structuredOutput = jest.requireMock('@clients/structuredOutput') as {
+      callWithStructuredOutput: jest.Mock;
+    };
 
-    mockCreateCompletion
+    structuredClient.generateSermonTopicsStructured.mockResolvedValue(['Debug topic']);
+    structuredClient.generateSectionHintsStructured.mockResolvedValue({
+      introduction: 'Intro',
+      main: 'Main',
+      conclusion: 'End',
+    });
+    structuredClient.generateSermonVersesStructured.mockResolvedValue([
+      { reference: 'John 3:16', relevance: 'Love' },
+    ]);
+
+    structuredOutput.callWithStructuredOutput
       .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({ topics: ['Debug topic'] }),
-            },
-          },
-        ],
+        success: true,
+        data: { sortedItems: [{ key: 'efgh', outlinePoint: 'Main Point' }] },
+        refusal: null,
+        error: null,
       })
       .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                introduction: 'Intro',
-                main: 'Main',
-                conclusion: 'End',
-              }),
-            },
-          },
-        ],
+        success: true,
+        data: { introduction: 'Intro', main: 'Main', conclusion: 'End' },
+        refusal: null,
+        error: null,
       })
       .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                verses: [{ reference: 'John 3:16', relevance: 'Love' }],
-              }),
-            },
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                sortedItems: [{ key: 'efgh', outlinePoint: 'Main Point' }],
-              }),
-            },
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                introduction: 'Intro',
-                main: 'Main',
-                conclusion: 'End',
-              }),
-            },
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: '### Debug Heading\n* detail',
-            },
-          },
-        ],
+        success: true,
+        data: { content: '### Debug Heading\n* detail' },
+        refusal: null,
+        error: null,
       });
 
     await openAIClient.generateSermonTopics(baseSermon);

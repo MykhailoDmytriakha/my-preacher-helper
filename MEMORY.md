@@ -26,6 +26,7 @@
 *   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
 *   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
+*   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
 
 ### ⚖️ Domain Axioms (The "Why")
 *   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.

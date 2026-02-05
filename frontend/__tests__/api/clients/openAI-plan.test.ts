@@ -1,40 +1,21 @@
-import OpenAI from 'openai';
-
 import { generatePlanForSection } from '@/api/clients/openAI.client';
 import { Sermon } from '@/models/models';
 
-// Mock the OpenAI library
-jest.mock('openai', () => {
-  const mockCreateCompletion = jest.fn();
-  
-  const mockConstructor = jest.fn().mockImplementation(() => {
-    return {
-      chat: {
-        completions: {
-          create: mockCreateCompletion
-        }
-      }
-    };
-  });
+jest.mock('@clients/structuredOutput', () => ({
+  callWithStructuredOutput: jest.fn(),
+}));
 
-  (mockConstructor as any).mockCreateCompletion = mockCreateCompletion;
-  return mockConstructor;
-});
-
-// Mock console methods to avoid noise in tests
-const originalConsoleLog = console.log;
-const originalConsoleError = console.error;
+const getStructuredOutputMock = () => jest.requireMock('@clients/structuredOutput') as {
+  callWithStructuredOutput: jest.Mock;
+};
 
 describe('generatePlanForSection', () => {
   let mockSermon: Sermon;
-  const mockCreateCompletion = (OpenAI as unknown as { mockCreateCompletion: jest.Mock }).mockCreateCompletion;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    console.log = jest.fn();
-    console.error = jest.fn();
+    getStructuredOutputMock().callWithStructuredOutput.mockReset();
 
-    // Mock sermon data
     mockSermon = {
       id: 'test-sermon-123',
       title: 'Test Sermon',
@@ -42,233 +23,80 @@ describe('generatePlanForSection', () => {
       verse: 'John 3:16',
       thoughts: [
         { id: '1', text: 'Thought 1', tags: [], date: '2023-01-01' },
-        { id: '2', text: 'Thought 2', tags: [], date: '2023-01-01' }
+        { id: '2', text: 'Thought 2', tags: [], date: '2023-01-01' },
       ],
-      date: '2023-01-01'
+      date: '2023-01-01',
     };
   });
 
-  afterEach(() => {
-    console.log = originalConsoleLog;
-    console.error = originalConsoleError;
+  it('returns generated plan on success', async () => {
+    getStructuredOutputMock().callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: {
+        introduction: 'Introduction content',
+        main: 'Main content',
+        conclusion: 'Conclusion content',
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await generatePlanForSection(mockSermon, 'introduction');
+
+    expect(result.success).toBe(true);
+    expect(result.plan.introduction.outline).toBe('Introduction content');
+    expect(result.plan.main.outline).toBe('Main content');
+    expect(result.plan.conclusion.outline).toBe('Conclusion content');
   });
 
-  describe('Plan ThoughtsBySection Validation', () => {
-    it('should handle undefined values in plan structure', async () => {
-      // Mock the actual function to test the validation logic
-      // Mock the OpenAI response with undefined values
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: undefined,
-              main: null,
-              conclusion: ''
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
+  it('returns empty plan when structured output fails', async () => {
+    getStructuredOutputMock().callWithStructuredOutput.mockResolvedValue({
+      success: false,
+      data: null,
+      refusal: null,
+      error: new Error('AI API failed'),
     });
 
-    it('should handle non-string values in plan structure', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 123,
-              main: true,
-              conclusion: {}
-            })
-          }
-        }]
-      });
+    const result = await generatePlanForSection(mockSermon, 'main');
 
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(false);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
-
-    it('should handle valid string values correctly', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 'Introduction content',
-              main: 'Main content',
-              conclusion: 'Conclusion content'
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.introduction.outline).toBe('Introduction content');
-      expect(result.plan.main.outline).toBe('Main content');
-      expect(result.plan.conclusion.outline).toBe('Conclusion content');
-    });
-
-    it('should handle empty string values correctly', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: '',
-              main: '',
-              conclusion: ''
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
-
-    it('should handle missing properties in AI response', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 'Only introduction provided'
-              // Missing main and conclusion
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.introduction.outline).toBe('Only introduction provided');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
-
-    it('should handle malformed JSON in AI response', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: 'This is not valid JSON'
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(false);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
-
-    it('should handle AI API errors', async () => {
-      mockCreateCompletion.mockRejectedValue(new Error('AI API failed'));
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(false);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
+    expect(result.success).toBe(false);
+    expect(result.plan.introduction.outline).toBe('');
+    expect(result.plan.main.outline).toBe('');
+    expect(result.plan.conclusion.outline).toBe('');
   });
 
-  describe('Section-Specific Generation', () => {
-    it('should generate plan for introduction section', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 'Introduction content',
-              main: 'Main content',
-              conclusion: 'Conclusion content'
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.introduction.outline).toBe('Introduction content');
+  it('returns empty plan when structured output refuses', async () => {
+    getStructuredOutputMock().callWithStructuredOutput.mockResolvedValue({
+      success: false,
+      data: null,
+      refusal: 'refused',
+      error: null,
     });
 
-    it('should generate plan for main section', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 'Introduction content',
-              main: 'Main content',
-              conclusion: 'Conclusion content'
-            })
-          }
-        }]
-      });
+    const result = await generatePlanForSection(mockSermon, 'conclusion');
 
-      const result = await generatePlanForSection(mockSermon, 'main');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.main.outline).toBe('Main content');
-    });
-
-    it('should generate plan for conclusion section', async () => {
-      mockCreateCompletion.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              introduction: 'Introduction content',
-              main: 'Main content',
-              conclusion: 'Conclusion content'
-            })
-          }
-        }]
-      });
-
-      const result = await generatePlanForSection(mockSermon, 'conclusion');
-
-      expect(result.success).toBe(true);
-      expect(result.plan.conclusion.outline).toBe('Conclusion content');
-    });
+    expect(result.success).toBe(false);
+    expect(result.plan.introduction.outline).toBe('');
+    expect(result.plan.main.outline).toBe('');
+    expect(result.plan.conclusion.outline).toBe('');
   });
 
-  describe('Error Handling', () => {
-    it('should handle network errors gracefully', async () => {
-      mockCreateCompletion.mockRejectedValue(new Error('Network error'));
-
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(false);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
+  it('keeps cyrillic content when returned by model', async () => {
+    const cyrillicSermon = { ...mockSermon, title: 'Проповедь', verse: 'Иоанна 3:16' };
+    getStructuredOutputMock().callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: {
+        introduction: 'Вступление',
+        main: 'Основная часть',
+        conclusion: 'Заключение',
+      },
+      refusal: null,
+      error: null,
     });
 
-    it('should handle timeout errors', async () => {
-      mockCreateCompletion.mockRejectedValue(new Error('Request timeout'));
+    const result = await generatePlanForSection(cyrillicSermon, 'main');
 
-      const result = await generatePlanForSection(mockSermon, 'introduction');
-
-      expect(result.success).toBe(false);
-      expect(result.plan.introduction.outline).toBe('');
-      expect(result.plan.main.outline).toBe('');
-      expect(result.plan.conclusion.outline).toBe('');
-    });
+    expect(result.success).toBe(true);
+    expect(result.plan.main.outline).toBe('Основная часть');
   });
-}); 
+});
