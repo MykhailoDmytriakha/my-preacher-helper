@@ -29,6 +29,7 @@ import {
 import { Sermon, Insights, VerseWithRelevance, SermonPoint, BrainstormSuggestion, SectionHints } from "@/models/models";
 
 import { extractSectionContent, extractSermonContent } from "./openAIHelpers";
+import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
@@ -45,17 +46,29 @@ const isDebugMode = process.env.DEBUG_MODE === 'true';
 export async function generateSermonInsightsStructured(sermon: Sermon): Promise<Insights | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createInsightsUserMessage(sermon, sermonContent);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "sermon_insights",
+        promptVersion: "v1",
+        systemPrompt: insightsSystemPrompt,
+        userMessage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            contentLength: sermonContent.length,
+        },
+    });
 
     if (isDebugMode) {
         console.log("DEBUG: Generating insights for sermon (structured):", sermon.id);
     }
 
     const result = await callWithStructuredOutput(
-        insightsSystemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         InsightsResponseSchema,
         {
             formatName: "sermon_insights",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -80,17 +93,29 @@ export async function generateSermonInsightsStructured(sermon: Sermon): Promise<
 export async function generateSermonTopicsStructured(sermon: Sermon): Promise<string[]> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createTopicsUserMessage(sermon, sermonContent);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "sermon_topics",
+        promptVersion: "v1",
+        systemPrompt: topicsSystemPrompt,
+        userMessage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            contentLength: sermonContent.length,
+        },
+    });
 
     if (isDebugMode) {
         console.log("DEBUG: Generating topics for sermon (structured):", sermon.id);
     }
 
     const result = await callWithStructuredOutput(
-        topicsSystemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         TopicsResponseSchema,
         {
             formatName: "sermon_topics",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -115,17 +140,29 @@ export async function generateSermonTopicsStructured(sermon: Sermon): Promise<st
 export async function generateSermonVersesStructured(sermon: Sermon): Promise<VerseWithRelevance[]> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createVersesUserMessage(sermon, sermonContent);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "sermon_verses",
+        promptVersion: "v1",
+        systemPrompt: versesSystemPrompt,
+        userMessage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            contentLength: sermonContent.length,
+        },
+    });
 
     if (isDebugMode) {
         console.log("DEBUG: Generating verse suggestions for sermon (structured):", sermon.id);
     }
 
     const result = await callWithStructuredOutput(
-        versesSystemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         VersesResponseSchema,
         {
             formatName: "sermon_verses",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -150,17 +187,29 @@ export async function generateSermonVersesStructured(sermon: Sermon): Promise<Ve
 export async function generateSectionHintsStructured(sermon: Sermon): Promise<SectionHints | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "section_hints",
+        promptVersion: "v1",
+        systemPrompt: planSystemPrompt,
+        userMessage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            contentLength: sermonContent.length,
+        },
+    });
 
     if (isDebugMode) {
         console.log("DEBUG: Generating section hints for sermon (structured):", sermon.id);
     }
 
     const result = await callWithStructuredOutput(
-        planSystemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         SectionHintsResponseSchema,
         {
             formatName: "section_hints",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -220,13 +269,40 @@ ${sectionContent}
 
 Generate each outline point as a short, clear phrase (not a complete sentence). Make each point build logically on the previous ones.
 Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.`;
+    const promptBlueprint = buildPromptBlueprint({
+        promptName: "sermon_points",
+        promptVersion: "v1",
+        expectedLanguage: hasNonLatinChars ? "non-english" : "en",
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            section,
+            contentLength: sectionContent.length,
+            detectedLanguage,
+        },
+        systemBlocks: [
+            {
+                blockId: "sermon_points.role_task",
+                category: "task",
+                content: systemPrompt,
+            },
+        ],
+        userBlocks: [
+            {
+                blockId: "sermon_points.request_context",
+                category: "context",
+                content: userMessage,
+            },
+        ],
+    });
 
     const result = await callWithStructuredOutput(
-        systemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         SermonPointsResponseSchema,
         {
             formatName: "sermon_points",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -258,17 +334,29 @@ Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'Englis
 export async function generateBrainstormSuggestionStructured(sermon: Sermon): Promise<BrainstormSuggestion | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createBrainstormUserMessage(sermon, sermonContent);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "brainstorm_suggestion",
+        promptVersion: "v1",
+        systemPrompt: brainstormSystemPrompt,
+        userMessage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            contentLength: sermonContent.length,
+        },
+    });
 
     if (isDebugMode) {
         console.log("DEBUG: Generating brainstorm suggestion for sermon (structured):", sermon.id);
     }
 
     const result = await callWithStructuredOutput(
-        brainstormSystemPrompt,
-        userMessage,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         BrainstormSuggestionSchema,
         {
             formatName: "brainstorm_suggestion",
+            promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,

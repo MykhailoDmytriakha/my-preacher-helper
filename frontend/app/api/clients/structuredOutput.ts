@@ -15,7 +15,9 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
+import { emitStructuredTelemetryEvent } from "./aiTelemetry";
 import { logger, formatDuration } from "./openAIHelpers";
+import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
 // Environment configuration
 const gptModel = process.env.OPENAI_GPT_MODEL as string;
@@ -60,6 +62,14 @@ export interface StructuredOutputOptions {
   logContext?: Record<string, unknown>;
   /** Optional model override */
   model?: string;
+  /** Optional explicit prompt name for analytics tracking */
+  promptName?: string;
+  /** Optional prompt version (default: v1) */
+  promptVersion?: string;
+  /** Optional expected language label for quality analysis */
+  expectedLanguage?: string | null;
+  /** Optional prebuilt prompt blueprint (modular prompt metadata) */
+  promptBlueprint?: PromptBlueprint;
 }
 
 /**
@@ -96,8 +106,19 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 ): Promise<StructuredOutputResult<z.infer<T>>> {
   const { formatName, logContext = {} } = options;
   const operationName = `StructuredOutput:${formatName}`;
+  const model = options.model || aiModel;
+  const promptBlueprint = options.promptBlueprint || buildSimplePromptBlueprint({
+    promptName: options.promptName || formatName,
+    promptVersion: options.promptVersion,
+    expectedLanguage: options.expectedLanguage,
+    context: logContext,
+    systemPrompt,
+    userMessage,
+  });
+  const combinedUserContent = `${promptBlueprint.systemPrompt}\n\n${promptBlueprint.userMessage}`;
+  const provider = getCurrentAIProvider();
 
-  logger.info(operationName, `Starting structured output call using model: ${options.model || aiModel}`);
+  logger.info(operationName, `Starting structured output call using model: ${model}`);
 
   if (isDebugMode) {
     logger.debug(operationName, "Input context", logContext);
@@ -109,12 +130,12 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     // Combine system and user messages
     // Note: Some models don't support separate system messages
     const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: "user", content: `${systemPrompt}\n\n${userMessage}` }
+      { role: "user", content: combinedUserContent }
     ];
 
     // Make API call with structured output
     const completion = await aiAPI.beta.chat.completions.parse({
-      model: options.model || aiModel,
+      model,
       messages,
       response_format: zodResponseFormat(schema, formatName),
     });
@@ -130,6 +151,17 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       logger.warn(operationName, `Model refused to respond after ${formattedDuration}`, {
         refusal: message.refusal
       });
+      emitStructuredTelemetryEvent({
+        provider,
+        model,
+        formatName,
+        promptBlueprint,
+        logContext,
+        latencyMs: durationMs,
+        status: "refusal",
+        refusal: message.refusal,
+        rawMessage: message.content || null,
+      });
 
       return {
         success: false,
@@ -144,6 +176,17 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     if (!parsed) {
       logger.error(operationName, `No parsed data in response after ${formattedDuration}`);
+      emitStructuredTelemetryEvent({
+        provider,
+        model,
+        formatName,
+        promptBlueprint,
+        logContext,
+        latencyMs: durationMs,
+        status: "invalid_response",
+        rawMessage: message?.content || null,
+        errorMessage: "No parsed data in response",
+      });
 
       return {
         success: false,
@@ -158,6 +201,17 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     if (isDebugMode) {
       logger.debug(operationName, "Parsed response", parsed);
     }
+    emitStructuredTelemetryEvent({
+      provider,
+      model,
+      formatName,
+      promptBlueprint,
+      logContext,
+      latencyMs: durationMs,
+      status: "success",
+      parsedOutput: parsed,
+      rawMessage: message?.content || null,
+    });
 
     return {
       success: true,
@@ -172,6 +226,16 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     const formattedDuration = formatDuration(durationMs);
 
     logger.error(operationName, `Failed after ${formattedDuration}`, error);
+    emitStructuredTelemetryEvent({
+      provider,
+      model,
+      formatName,
+      promptBlueprint,
+      logContext,
+      latencyMs: durationMs,
+      status: "error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
 
     return {
       success: false,
@@ -196,4 +260,3 @@ export function getCurrentAIModel(): string {
 export function getCurrentAIProvider(): 'GEMINI' | 'OPENAI' {
   return process.env.AI_MODEL_TO_USE === 'GEMINI' ? 'GEMINI' : 'OPENAI';
 }
-

@@ -16,6 +16,7 @@ import { ThoughtResponseSchema, ThoughtResponse } from "@/config/schemas/zod";
 import { Sermon } from "@/models/models";
 
 import { logger } from "./openAIHelpers";
+import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
@@ -132,12 +133,25 @@ async function runThoughtAttempt(params: {
   const { content, sermon, userMessage, forceTag, attempt } = params;
 
   try {
-    const result: StructuredOutputResult<ThoughtResponse> = await callWithStructuredOutput(
-      thoughtSystemPrompt,
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "thought",
+      promptVersion: "v1",
+      systemPrompt: thoughtSystemPrompt,
       userMessage,
+      context: {
+        sermonId: sermon.id,
+        sermonTitle: sermon.title,
+        attempt,
+      },
+    });
+
+    const result: StructuredOutputResult<ThoughtResponse> = await callWithStructuredOutput(
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       ThoughtResponseSchema,
       {
         formatName: "thought",
+        promptBlueprint,
         logContext: {
           sermonTitle: sermon.title,
           contentLength: content.length,

@@ -8,6 +8,7 @@
 
 import { SpeechOptimizationResponseSchema } from "@/config/schemas/zod";
 
+import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { Sermon } from '@/models/models';
@@ -53,6 +54,19 @@ export async function optimizeTextForSpeech(
     options: SpeechOptimizationOptions
 ): Promise<SpeechOptimizationResult> {
     const userPrompt = buildOptimizationPrompt(rawText, options);
+    const promptBlueprint = buildSimplePromptBlueprint({
+        promptName: "speech_optimization",
+        promptVersion: "v1",
+        systemPrompt: SPEECH_OPTIMIZATION_SYSTEM_PROMPT,
+        userMessage: userPrompt,
+        context: {
+            sermonTitle: options.sermonTitle,
+            scriptureVerse: options.scriptureVerse || null,
+            section: options.sections,
+            previousContextLength: options.previousContext?.length || 0,
+            inputTextLength: rawText.length,
+        },
+    });
 
     // LOGGING: Detailed logs for user verification of Context-Aware Generation
     console.log('\n--- [Speech Optimization] Request ---');
@@ -66,12 +80,13 @@ export async function optimizeTextForSpeech(
     console.log('-------------------------------------\n');
 
     const result = await callWithStructuredOutput(
-        SPEECH_OPTIMIZATION_SYSTEM_PROMPT,
-        userPrompt,
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
         SpeechOptimizationResponseSchema,
         {
             formatName: "speech_optimization",
             model: OPTIMIZATION_MODEL,
+            promptBlueprint,
             logContext: {
                 sermonTitle: options.sermonTitle,
                 textLength: rawText.length,

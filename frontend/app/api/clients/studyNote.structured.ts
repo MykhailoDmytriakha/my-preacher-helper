@@ -11,6 +11,7 @@
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
 
 import { logger } from "./openAIHelpers";
+import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 /**
@@ -372,13 +373,26 @@ export async function analyzeStudyNote(
   try {
     const systemPrompt = buildSystemPrompt(languageHint);
     const userMessage = buildUserMessage(noteContent, existingTags);
-
-    const result: StructuredOutputResult<StudyNoteAnalysis> = await callWithStructuredOutput(
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "studyNoteAnalysis",
+      promptVersion: "v1",
+      expectedLanguage: languageHint,
       systemPrompt,
       userMessage,
+      context: {
+        contentLength: noteContent.length,
+        languageHint,
+        existingTagsCount: existingTags?.length ?? 0,
+      },
+    });
+
+    const result: StructuredOutputResult<StudyNoteAnalysis> = await callWithStructuredOutput(
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       StudyNoteAnalysisSchema,
       {
         formatName: "studyNoteAnalysis",
+        promptBlueprint,
         logContext: {
           contentLength: noteContent.length,
           languageHint,
@@ -506,4 +520,3 @@ export async function analyzeStudyNote(
     };
   }
 }
-

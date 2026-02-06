@@ -11,6 +11,7 @@
 import { PolishTranscriptionSchema, PolishTranscription } from "@/config/schemas/zod";
 
 import { logger } from "./openAIHelpers";
+import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
@@ -114,13 +115,23 @@ export async function polishTranscription(
 
     try {
         const userMessage = `Clean up this voice transcription:\n\n${trimmed}`;
+        const promptBlueprint = buildSimplePromptBlueprint({
+            promptName: "polishTranscription",
+            promptVersion: "v1",
+            systemPrompt: POLISH_SYSTEM_PROMPT,
+            userMessage,
+            context: {
+                transcriptionLength: trimmed.length,
+            },
+        });
 
         const result: StructuredOutputResult<PolishTranscription> = await callWithStructuredOutput(
-            POLISH_SYSTEM_PROMPT,
-            userMessage,
+            promptBlueprint.systemPrompt,
+            promptBlueprint.userMessage,
             PolishTranscriptionSchema,
             {
                 formatName: "polishTranscription",
+                promptBlueprint,
                 logContext: {
                     transcriptionLength: trimmed.length,
                 },

@@ -17,6 +17,7 @@ import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, 
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
+import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
 import {
   generateSermonInsightsStructured,
   generateSermonTopicsStructured,
@@ -478,14 +479,22 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       sermonTitle: sermon.title,
       outlinePointCount: outlinePoints.length
     };
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "sort_items",
+      promptVersion: "v1",
+      systemPrompt: sortingSystemPrompt,
+      userMessage,
+      context: inputInfo,
+    });
 
     const result = await callWithStructuredOutput(
-      sortingSystemPrompt,
-      userMessage,
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       SortingResponseSchema,
       {
         formatName: 'sort_items',
         model: aiModel,
+        promptBlueprint,
         logContext: inputInfo,
       }
     );
@@ -554,7 +563,6 @@ export async function generatePlanForSection(sermon: Sermon, section: string, st
   try {
     const styleInstructions = getStyleInstructions(style);
     const blocksInstructions = getStructuredBlocksInstructions();
-    const systemPrompt = `${planSystemPrompt}\n\n${styleInstructions}\n\n${blocksInstructions}`;
 
     // Create user message
     const userMessage = createPlanUserMessage(sermon, section, sectionContent);
@@ -571,14 +579,29 @@ export async function generatePlanForSection(sermon: Sermon, section: string, st
         sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] &&
         (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
     };
+    const promptBlueprint = buildPromptBlueprint({
+      promptName: "plan_for_section",
+      promptVersion: "v1",
+      expectedLanguage: detectedLanguage,
+      context: inputInfo,
+      systemBlocks: [
+        { blockId: "plan_for_section.system.base", category: "task", content: planSystemPrompt },
+        { blockId: `plan_for_section.system.style.${style}`, category: "style", content: styleInstructions },
+        { blockId: "plan_for_section.system.structured_blocks", category: "format", content: blocksInstructions },
+      ],
+      userBlocks: [
+        { blockId: "plan_for_section.user.request", category: "context", content: userMessage },
+      ],
+    });
 
     const result = await callWithStructuredOutput(
-      systemPrompt,
-      userMessage,
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       PlanSectionResponseSchema,
       {
         formatName: "plan_for_section",
         model: aiModel,
+        promptBlueprint,
         logContext: inputInfo,
       }
     );
@@ -681,14 +704,22 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
       sermonTitle: sermon.title,
       contentLength: sermonContent.length
     };
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "sermon_directions",
+      promptVersion: "v1",
+      systemPrompt: directionsSystemPrompt,
+      userMessage,
+      context: inputInfo,
+    });
 
     const result = await callWithStructuredOutput(
-      directionsSystemPrompt,
-      userMessage,
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       DirectionsResponseSchema,
       {
         formatName: "sermon_directions",
         model: aiModel,
+        promptBlueprint,
         logContext: inputInfo,
       }
     );
@@ -1081,14 +1112,23 @@ export async function generatePlanPointContent(
       hasContext: !!context,
       style
     };
-
-    const result = await callWithStructuredOutput(
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "plan_point_content",
+      promptVersion: "v1",
+      expectedLanguage: languageInfo.languageRequirementLabel,
       systemPrompt,
       userMessage,
+      context: inputInfo,
+    });
+
+    const result = await callWithStructuredOutput(
+      promptBlueprint.systemPrompt,
+      promptBlueprint.userMessage,
       PlanPointContentResponseSchema,
       {
         formatName: "plan_point_content",
         model: aiModel,
+        promptBlueprint,
         logContext: inputInfo,
       }
     );
