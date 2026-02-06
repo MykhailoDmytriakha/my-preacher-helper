@@ -27,6 +27,7 @@
 *   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
 *   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
 *   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
+*   **AI Telemetry Join Point:** Structured text AI calls must go through `callWithStructuredOutput` and emit telemetry as non-blocking side effects.
 
 ### ⚖️ Domain Axioms (The "Why")
 *   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
@@ -43,6 +44,13 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-06 Structured Prompt Telemetry Join Point
+**Problem:** Prompt quality was hard to improve systematically because AI calls were a black box: no consistent record of prompt blocks, context, model, or outputs per run.
+**Attempts:** Partial migration to structured output without unified analytics capture was not enough for post-hoc diagnosis.
+**Solution:** Introduced a modular `promptBuilder` + centralized `aiTelemetry` at the structured join point (`callWithStructuredOutput`) with non-blocking Firestore writes.
+**Why it worked:** Every structured call now produces comparable, queryable artifacts (input blueprint + output envelope + latency/provider/model), enabling block-level prompt tuning without changing user-facing flow.
+**Principle:** For prompt optimization, treat each AI call as an observable transaction at one join point: modular input blueprint in, normalized telemetry envelope out.
 
 ### 2026-02-03 Jest Fake Timers Cleanup
 **Problem:** Timer-based hooks (with `setInterval`) can leak fake timers across tests and cause flaky behavior.
@@ -777,6 +785,16 @@
 *   **Protocol:** Использовать только `zodResponseFormat` + `beta.chat.completions.parse()`.
 *   **Reasoning:** Regex/JSON parsing из текста ненадежны. Zod гарантирует схему.
 
+**Prompt Blueprint Modularity**
+*   **Context:** Анализ и улучшение промптов по блокам (language/context/style/instructions).
+*   **Protocol:** Собирать system/user prompt как blueprint из именованных блоков (`blockId`, `category`, `source`, `hash`, `length`) и передавать в join point.
+*   **Reasoning:** Блочная структура делает качество промпта измеряемым и позволяет улучшать конкретные модули без полной переписи.
+
+**Non-Blocking Telemetry Sidecar**
+*   **Context:** Логирование AI telemetry не должно ломать пользовательский флоу.
+*   **Protocol:** Писать telemetry в Firestore асинхронно (best-effort); любые ошибки persistence не влияют на основной AI response path.
+*   **Reasoning:** Observability полезна только если не деградирует reliability и latency основного функционала.
+
 **Scripture Reference Handling**
 *   **Context:** Парсинг библейских ссылок.
 *   **Protocol:** Запрашивать названия книг **НА АНГЛИЙСКОМ** в промптах.
@@ -881,6 +899,7 @@
 - Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
 - Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
 - Audio Generation Workflow: Sequential optimization in `api/sermons/[id]/audio/optimize/route.ts` using "tail context" for coherent transitions. Unified Batch Pattern (single request from client) prevents data duplication. Final TTS generation (parallel) in `api/sermons/[id]/audio/generate/route.ts`.
+- AI Prompt Analytics: `app/api/clients/promptBuilder.ts` builds modular prompt blueprints; `app/api/clients/structuredOutput.ts` is the canonical structured join point; `app/api/clients/aiTelemetry.ts` persists normalized input/output envelopes in Firestore (`ai_prompt_telemetry`) as best-effort non-blocking sidecar.
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
 - Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
 - Comments: English only in code

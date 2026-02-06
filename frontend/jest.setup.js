@@ -15,8 +15,13 @@ if (process.env.NODE_ENV === 'test') {
   fetchMock.enableMocks();
 }
 
-// Set React to development mode for better error messages
-process.env.NODE_ENV = 'development';
+// Keep test mode so server-side guards (telemetry, side-effects) remain disabled in Jest
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
+// Some CI/jsdom environments do not expose setImmediate
+if (typeof globalThis.setImmediate === 'undefined') {
+  globalThis.setImmediate = (callback, ...args) => setTimeout(callback, 0, ...args);
+}
 
 // Constants for duplicate strings to satisfy SonarJS
 const REACT_DOM_CLIENT = 'react-dom/client';

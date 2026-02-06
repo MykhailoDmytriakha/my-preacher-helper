@@ -34,6 +34,11 @@ jest.mock('react-i18next', () => ({
 // Mock the process.env.NODE_ENV check used in the component
 
 describe('LoginOptions Component', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const setNodeEnv = (value: string) => {
+    (process.env as unknown as { NODE_ENV?: string }).NODE_ENV = value;
+  };
+
   // Default props with mock functions
   const defaultProps = {
     onGoogleLogin: jest.fn(),
@@ -43,6 +48,10 @@ describe('LoginOptions Component', () => {
   
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    setNodeEnv(originalNodeEnv ?? 'test');
   });
   
   it('renders the heading correctly', () => {
@@ -73,25 +82,18 @@ describe('LoginOptions Component', () => {
     expect(defaultProps.onGoogleLogin).toHaveBeenCalledTimes(1);
   });
   
-  // Since we can't directly modify NODE_ENV, we'll just test the component
-  // as it behaves in the current environment
   it('conditionally renders test login button based on NODE_ENV', () => {
-    render(<LoginOptions {...defaultProps} />);
-    
-    // In test environment, the button should be rendered
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
-      expect(screen.getByText('Test Login (Dev Only)')).toBeInTheDocument();
-    } else {
-      expect(screen.queryByText('Test Login (Dev Only)')).not.toBeInTheDocument();
-    }
+    setNodeEnv('production');
+    const { rerender } = render(<LoginOptions {...defaultProps} />);
+    expect(screen.queryByText('Test Login (Dev Only)')).not.toBeInTheDocument();
+
+    setNodeEnv('development');
+    rerender(<LoginOptions {...defaultProps} />);
+    expect(screen.getByText('Test Login (Dev Only)')).toBeInTheDocument();
   });
   
   it('calls onTestLogin when Test login button is clicked', () => {
-    // Skip this test if not in development or test environment
-    if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
-      return;
-    }
-    
+    setNodeEnv('development');
     render(<LoginOptions {...defaultProps} />);
     
     // Find and click the Test login button
@@ -115,11 +117,7 @@ describe('LoginOptions Component', () => {
   });
   
   it('renders buttons with their respective styling', () => {
-    // Skip this test if not in development or test environment
-    if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
-      return;
-    }
-    
+    setNodeEnv('development');
     render(<LoginOptions {...defaultProps} />);
     
     // Check Google button styling
