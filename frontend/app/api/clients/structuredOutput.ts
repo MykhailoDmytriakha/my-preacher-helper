@@ -15,7 +15,7 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
-import { emitStructuredTelemetryEvent } from "./aiTelemetry";
+import { emitStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
@@ -144,6 +144,22 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     const durationMs = endTime - startTime;
     const formattedDuration = formatDuration(durationMs);
 
+    // Extract usage if available
+    let usage: TokenUsage | null = null;
+
+    if (completion.usage) {
+      usage = {
+        promptTokens: completion.usage.prompt_tokens,
+        completionTokens: completion.usage.completion_tokens,
+        totalTokens: completion.usage.total_tokens,
+      };
+
+      // Try to extract cost if provided by an aggregator (like OpenRouter)
+      const rawResponse = completion as any;
+
+      logger.info(operationName, `Usage: ${usage.totalTokens} tokens (In: ${usage.promptTokens}, Out: ${usage.completionTokens})`);
+    }
+
     // Check for refusal (model declined to respond)
     const message = completion.choices[0]?.message;
 
@@ -160,6 +176,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         latencyMs: durationMs,
         status: "refusal",
         refusal: message.refusal,
+        usage,
         rawMessage: message.content || null,
       });
 
@@ -185,6 +202,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         latencyMs: durationMs,
         status: "invalid_response",
         rawMessage: message?.content || null,
+        usage,
         errorMessage: "No parsed data in response",
       });
 
@@ -210,6 +228,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       latencyMs: durationMs,
       status: "success",
       parsedOutput: parsed,
+      usage,
       rawMessage: message?.content || null,
     });
 

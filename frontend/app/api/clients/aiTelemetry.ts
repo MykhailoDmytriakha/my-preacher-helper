@@ -12,6 +12,12 @@ export interface CapturedText {
   truncated: boolean;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface StructuredTelemetryEvent {
   eventId: string;
   correlationId: string;
@@ -29,6 +35,7 @@ export interface StructuredTelemetryEvent {
     expected: string | null;
     detectedOutput: string | null;
   };
+  usage: TokenUsage | null;
   request: {
     systemPrompt: CapturedText;
     userMessage: CapturedText;
@@ -54,6 +61,7 @@ export interface StructuredTelemetryEventInput {
   refusal?: string | null;
   parsedOutput?: unknown;
   rawMessage?: unknown;
+  usage?: TokenUsage | null;
   errorMessage?: string | null;
 }
 
@@ -142,6 +150,7 @@ export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInp
       expected: input.promptBlueprint.expectedLanguage,
       detectedOutput: detectOutputLanguage(input.parsedOutput),
     },
+    usage: input.usage || null,
     request: {
       systemPrompt,
       userMessage,
