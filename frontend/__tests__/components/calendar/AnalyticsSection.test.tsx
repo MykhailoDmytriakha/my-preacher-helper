@@ -204,6 +204,7 @@ describe('AnalyticsSection', () => {
                 {
                     id: 'pd1',
                     date: '2024-01-10',
+                    status: 'preached',
                     church: { id: 'c1', name: 'Alpha Church', city: 'City A' },
                     audience: '',
                     createdAt: '2024-01-01',
@@ -221,6 +222,7 @@ describe('AnalyticsSection', () => {
                 {
                     id: 'pd2',
                     date: '2024-01-15',
+                    status: 'preached',
                     church: { id: 'c1', name: 'Alpha Church', city: 'City A' },
                     audience: '',
                     createdAt: '2024-01-01',
@@ -238,6 +240,7 @@ describe('AnalyticsSection', () => {
                 {
                     id: 'pd3',
                     date: '2024-01-20',
+                    status: 'preached',
                     church: { id: 'c2', name: 'Beta Church', city: 'City B' },
                     audience: '',
                     createdAt: '2024-01-01',
@@ -565,7 +568,7 @@ describe('AnalyticsSection', () => {
     });
 
     it('returns raw month key for invalid dates when viewing all years', () => {
-        const sermonsByDateInvalid = {
+        const sermonsByDateInvalid: Record<string, Sermon[]> = {
             '2024-13-40': [
                 {
                     ...mockSermons[0],
@@ -575,6 +578,7 @@ describe('AnalyticsSection', () => {
                         {
                             id: 'pd-invalid',
                             date: '2024-13-40',
+                            status: 'preached',
                             church: { id: 'c-invalid', name: 'Gamma Church', city: 'City C' },
                             audience: '',
                             createdAt: '2024-01-01',

@@ -25,6 +25,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import { useAuth } from '@/providers/AuthProvider';
 import { debugLog } from '@/utils/debugMode';
+import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 
 type ModalState = 'add-sermon' | 'add-group' | 'create-new-sermon' | null;
 
@@ -167,7 +168,7 @@ export default function SeriesDetailPage() {
     const sermonsCount = items.filter((entry) => entry.item.type === 'sermon').length;
     const groupsCount = items.filter((entry) => entry.item.type === 'group').length;
     const completedSermons = items.filter(
-      (entry) => entry.item.type === 'sermon' && Boolean(entry.sermon?.isPreached)
+      (entry) => entry.item.type === 'sermon' && Boolean(entry.sermon && getEffectiveIsPreached(entry.sermon))
     ).length;
     const conductedGroups = items.filter(
       (entry) => entry.item.type === 'group' && (entry.group?.meetingDates || []).length > 0

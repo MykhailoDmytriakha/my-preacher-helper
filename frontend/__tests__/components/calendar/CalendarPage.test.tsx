@@ -38,9 +38,12 @@ jest.mock('@/components/calendar/CalendarHeader', () => {
 });
 
 jest.mock('@/components/calendar/PreachCalendar', () => {
-  return function MockPreachCalendar({ onDateSelect }: any) {
+  return function MockPreachCalendar({ onDateSelect, sermonStatusByDate }: any) {
     return (
-      <div data-testid="preach-calendar">
+      <div
+        data-testid="preach-calendar"
+        data-sermon-status-keys={Object.keys(sermonStatusByDate || {}).join(',')}
+      >
         <button onClick={() => onDateSelect(new Date('2024-01-15'))}>
           Select Date
         </button>
@@ -201,12 +204,70 @@ describe('CalendarPage', () => {
     expect(screen.getByTestId('date-event-list')).toBeInTheDocument();
   });
 
-  it('displays Quick Summary with total preachings count', () => {
+  it('normalizes sermon status date keys to date-only format', () => {
+    const sermonWithTimestampDate: Sermon = {
+      ...mockSermon,
+      preachDates: [
+        {
+          ...mockSermon.preachDates![0],
+          date: '2024-01-15T00:00:00.000Z',
+          status: 'planned'
+        }
+      ]
+    };
+
     mockUseCalendarSermons.mockReturnValue({
-      sermons: [mockSermon],
+      sermons: [sermonWithTimestampDate],
       sermonsByDate: {
         '2024-01-15': [
-          { ...mockSermon, currentPreachDate: mockSermon.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+          { ...sermonWithTimestampDate, currentPreachDate: sermonWithTimestampDate.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
+        ]
+      },
+      pendingSermons: [],
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    mockUseSeries.mockReturnValue({
+      series: [],
+      loading: false,
+      error: null,
+      refreshSeries: jest.fn(),
+      createNewSeries: jest.fn(),
+      updateExistingSeries: jest.fn(),
+      deleteExistingSeries: jest.fn(),
+      addSermon: jest.fn(),
+      removeSermon: jest.fn(),
+      reorderSeriesSermons: jest.fn(),
+    });
+
+    render(<CalendarPage />);
+
+    expect(screen.getByTestId('preach-calendar')).toHaveAttribute(
+      'data-sermon-status-keys',
+      '2024-01-15'
+    );
+  });
+
+  it('displays Quick Summary with total preachings count', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const sermonForCurrentMonth: Sermon = {
+      ...mockSermon,
+      preachDates: [
+        {
+          ...mockSermon.preachDates![0],
+          date: today,
+          status: 'preached',
+        }
+      ]
+    };
+
+    mockUseCalendarSermons.mockReturnValue({
+      sermons: [sermonForCurrentMonth],
+      sermonsByDate: {
+        [today]: [
+          { ...sermonForCurrentMonth, currentPreachDate: sermonForCurrentMonth.preachDates![0] } as Sermon & { currentPreachDate: PreachDate }
         ]
       },
       pendingSermons: [],

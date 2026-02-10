@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { formatDate } from '@utils/dateFormatter';
 
@@ -154,7 +155,7 @@ export default function AddSermonToSeriesModal({
                             <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
                               {sermon.title}
                             </h3>
-                            {sermon.isPreached && (
+                            {getEffectiveIsPreached(sermon) && (
                               <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
                                 {t('dashboard.preached')}
                               </span>

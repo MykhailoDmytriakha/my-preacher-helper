@@ -2,6 +2,7 @@ import { TFunction } from 'i18next';
 import { useMemo } from 'react';
 
 import { Sermon } from '@/models/models';
+import { getEffectiveIsPreached, getLatestPreachedDate } from '@/utils/preachDateStatus';
 import { getThoughtSnippets, matchesSermonQuery, tokenizeQuery, ThoughtSnippet } from '@/utils/sermonSearch';
 
 type FilterOptions = {
@@ -14,19 +15,17 @@ type FilterOptions = {
 };
 
 const getLatestPreachTimestamp = (sermon: Sermon) => {
-    if (!sermon.isPreached || !sermon.preachDates || sermon.preachDates.length === 0) {
+    const latestPreachedDate = getLatestPreachedDate(sermon);
+    if (!latestPreachedDate?.date) {
         return null;
     }
 
-    const timestamps = sermon.preachDates
-        .map((preachDate) => new Date(preachDate.date).getTime())
-        .filter((timestamp) => !Number.isNaN(timestamp));
-
-    if (timestamps.length === 0) {
+    const timestamp = new Date(latestPreachedDate.date).getTime();
+    if (Number.isNaN(timestamp)) {
         return null;
     }
 
-    return Math.max(...timestamps);
+    return timestamp;
 };
 
 const getSortTimestamp = (sermon: Sermon) => {
@@ -68,9 +67,9 @@ export function useFilteredSermons(
 
         // Tab filter (Active vs Preached vs All)
         if (activeTab === "active") {
-            filtered = filtered.filter((s) => !s.isPreached);
+            filtered = filtered.filter((sermon) => !getEffectiveIsPreached(sermon));
         } else if (activeTab === "preached") {
-            filtered = filtered.filter((s) => s.isPreached);
+            filtered = filtered.filter((sermon) => getEffectiveIsPreached(sermon));
         }
 
         // Search filter

@@ -1,5 +1,6 @@
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
+import { toDateOnlyKey } from '@/utils/dateOnly';
 
 // Error message constants
 const ERROR_MESSAGES = {
@@ -241,8 +242,15 @@ export class SermonsRepository {
     console.log(`Firestore: adding preach date to sermon ${sermonId}`);
     try {
       const docRef = adminDb.collection(this.collection).doc(sermonId);
+      const normalizedDate = toDateOnlyKey(preachDate.date);
+      if (!normalizedDate) {
+        throw new Error("Invalid preach date format");
+      }
+
       const newPreachDate: PreachDate = {
         ...preachDate,
+        date: normalizedDate,
+        status: preachDate.status || 'planned',
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString()
       };
@@ -277,9 +285,15 @@ export class SermonsRepository {
         throw new Error("Preach date not found");
       }
 
+      const normalizedDate = updates.date === undefined ? undefined : toDateOnlyKey(updates.date);
+      if (updates.date !== undefined && !normalizedDate) {
+        throw new Error("Invalid preach date format");
+      }
+
       const updatedPreachDate: PreachDate = {
         ...preachDates[index],
         ...updates,
+        ...(normalizedDate ? { date: normalizedDate } : {}),
         id: preachDates[index].id, // Ensure ID and createdAt are not changed
         createdAt: preachDates[index].createdAt
       };
@@ -348,12 +362,15 @@ export class SermonsRepository {
       // Simple filtering in memory for now because Firestore array filtering is limited
       // and we expect small number of sermons per user
       if (startDate || endDate) {
+        const normalizedStartDate = toDateOnlyKey(startDate);
+        const normalizedEndDate = toDateOnlyKey(endDate);
         sermons = sermons.filter(s => {
           if (!s.preachDates?.length) return false;
           return s.preachDates.some(pd => {
-            const date = pd.date; // YYYY-MM-DD
-            if (startDate && date < startDate) return false;
-            if (endDate && date > endDate) return false;
+            const date = toDateOnlyKey(pd.date);
+            if (!date) return false;
+            if (normalizedStartDate && date < normalizedStartDate) return false;
+            if (normalizedEndDate && date > normalizedEndDate) return false;
             return true;
           });
         });

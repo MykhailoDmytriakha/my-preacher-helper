@@ -3,6 +3,7 @@ import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
 import { auth } from '@/services/firebaseAuth.service';
+import { addPreachDate } from '@/services/preachDates.service';
 import { createSermon } from '@/services/sermon.service';
 
 import { TestProviders } from '../../test-utils/test-providers';
@@ -20,6 +21,16 @@ jest.mock('@/services/sermon.service', () => ({
     date: '2023-05-01T12:00:00Z',
     thoughts: [],
     userId: 'test-user-id'
+  })
+}));
+
+jest.mock('@/services/preachDates.service', () => ({
+  addPreachDate: jest.fn().mockResolvedValue({
+    id: 'pd-1',
+    date: '2026-04-10',
+    status: 'planned',
+    church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+    createdAt: '2026-01-01T00:00:00.000Z'
   })
 }));
 
@@ -58,8 +69,11 @@ jest.mock('react-i18next', () => ({
           'addSermon.verseLabel': 'Scripture Reference',
           'addSermon.versePlaceholder': 'Enter scripture reference',
           'addSermon.verseExample': 'Example: John 3:16-17',
+          'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
+          'addSermon.plannedDateHint': 'You can add church details later in Calendar',
           'addSermon.save': 'Save',
           'addSermon.cancel': 'Cancel',
+          'calendar.unspecifiedChurch': 'Church not specified',
         };
         return translations[key] || key;
       }
@@ -203,6 +217,46 @@ describe('AddSermonModal Component', () => {
           userId: 'test-user-id',
           thoughts: [],
           date: expect.any(String),
+        })
+      );
+    });
+    expect(addPreachDate).not.toHaveBeenCalled();
+  });
+
+  test('creates planned preach date when optional planned date is filled', async () => {
+    render(
+      <TestProviders>
+        <AddSermonModal allowPlannedDate />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('New Sermon'));
+
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
+      target: { value: 'Planned Sermon Title' }
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'Matt 5:1-2' }
+    });
+
+    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
+      target: { value: '2026-04-10' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createSermon).toHaveBeenCalled();
+      expect(addPreachDate).toHaveBeenCalledWith(
+        'mocked-sermon-id',
+        expect.objectContaining({
+          date: '2026-04-10',
+          status: 'planned',
+          church: expect.objectContaining({
+            id: 'church-unspecified',
+            name: 'Church not specified'
+          })
         })
       );
     });

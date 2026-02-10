@@ -1,5 +1,6 @@
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group, GroupMeetingDate } from '@/models/models';
+import { toDateOnlyKey } from '@/utils/dateOnly';
 import * as groupsService from '@services/groups.service';
 
 import { useAuth } from './useAuth';
@@ -24,13 +25,21 @@ export function useCalendarGroups(startDate?: Date, endDate?: Date) {
 
   const groupsByDate = groups.reduce((acc, group) => {
     (group.meetingDates || []).forEach((meetingDate) => {
-      if (!acc[meetingDate.date]) {
-        acc[meetingDate.date] = [];
+      const dateKey = toDateOnlyKey(meetingDate.date);
+      if (!dateKey) {
+        return;
       }
 
-      acc[meetingDate.date].push({
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+
+      acc[dateKey].push({
         ...group,
-        currentMeetingDate: meetingDate,
+        currentMeetingDate: {
+          ...meetingDate,
+          date: dateKey,
+        },
       });
     });
 

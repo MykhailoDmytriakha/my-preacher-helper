@@ -47,6 +47,7 @@ jest.mock('react-i18next', () => ({
 // Mock dateFormatter
 jest.mock('@utils/dateFormatter', () => ({
   formatDate: jest.fn(() => '18.02.2025, 11:24'),
+  formatDateOnly: jest.fn(() => '18.02.2025'),
 }));
 
 // Mock exportContent

@@ -6,6 +6,11 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Sermon, PreachDate } from "@/models/models";
+import {
+  getEffectiveIsPreached,
+  getPreachDatesByStatus,
+  getPreferredDateToMarkAsPreached
+} from "@/utils/preachDateStatus";
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
@@ -21,11 +26,16 @@ interface OptionMenuProps {
   onUpdate?: (updatedSermon: Sermon) => void;
 }
 
+const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
+
 export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPreachModal, setShowPreachModal] = useState(false);
+  const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
+  const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
+  const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -86,38 +96,85 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
     }
   };
 
+  const invalidateCalendarCache = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['calendarSermons'],
+      exact: false
+    });
+
+  const requiresPreachedDetails = (preachDate: PreachDate): boolean => {
+    const churchName = preachDate.church?.name?.trim();
+    if (!churchName) {
+      return true;
+    }
+    return preachDate.church?.id === UNSPECIFIED_CHURCH_ID;
+  };
+
   const handleTogglePreached = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // If marking as preached, open the modal
-    if (!sermon.isPreached) {
-      setShowPreachModal(true);
-      setOpen(false);
-      return;
-    }
-
-    // Otherwise (unmarking), remove all preach dates and set isPreached to false
     try {
-      // First, delete all preach dates
-      if (sermon.preachDates && sermon.preachDates.length > 0) {
+      if (!effectiveIsPreached) {
+        const preferredDate = getPreferredDateToMarkAsPreached(sermon);
+
+        if (preferredDate) {
+          if (requiresPreachedDetails(preferredDate)) {
+            setPreachDateToMark(preferredDate);
+            setPreachModalInitialData({
+              ...preferredDate,
+              status: 'preached',
+              church:
+                preferredDate.church?.id === UNSPECIFIED_CHURCH_ID
+                  ? { id: '', name: '', city: '' }
+                  : preferredDate.church
+            });
+            setShowPreachModal(true);
+            setOpen(false);
+            return;
+          }
+
+          await preachDatesService.updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
+
+          const updated = await updateSermon({
+            ...sermon,
+            isPreached: true
+          });
+
+          invalidateCalendarCache();
+
+          if (updated && onUpdate) {
+            onUpdate(updated);
+          } else if (!onUpdate) {
+            router.refresh();
+          }
+          setOpen(false);
+          return;
+        }
+
+        setPreachDateToMark(null);
+        setPreachModalInitialData(undefined);
+        setShowPreachModal(true);
+        setOpen(false);
+        return;
+      }
+
+      // Unmark as preached but keep dates: convert factual dates back to planned.
+      const preachedDates = getPreachDatesByStatus(sermon, 'preached');
+      if (preachedDates.length > 0) {
         await Promise.all(
-          sermon.preachDates.map(pd => preachDatesService.deletePreachDate(sermon.id, pd.id))
+          preachedDates.map((preachDate) =>
+            preachDatesService.updatePreachDate(sermon.id, preachDate.id, { status: 'planned' })
+          )
         );
       }
 
-      // Then update the sermon to mark as not preached
       const updated = await updateSermon({
         ...sermon,
-        isPreached: false,
-        preachDates: [] // Clear preach dates in local state
+        isPreached: false
       });
 
-      // Invalidate calendar cache to reflect changes in calendar tab
-      queryClient.invalidateQueries({
-        queryKey: ['calendarSermons'],
-        exact: false // Match all calendarSermons queries regardless of parameters
-      });
+      invalidateCalendarCache();
 
       if (updated && onUpdate) {
         onUpdate(updated);
@@ -133,22 +190,24 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
 
   const handleSavePreachDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
     try {
-      // 1. Add the preach date
-      await preachDatesService.addPreachDate(sermon.id, data);
+      if (preachDateToMark) {
+        await preachDatesService.updatePreachDate(sermon.id, preachDateToMark.id, {
+          ...data,
+          status: 'preached'
+        });
+      } else {
+        await preachDatesService.addPreachDate(sermon.id, {
+          ...data,
+          status: data.status || 'preached'
+        });
+      }
 
-      // 2. Mark as preached (if not already, although it should be true now)
-      // Actually, the server might already handle setting isPreached: true when a date is added.
-      // Let's be explicit to be safe.
       const updated = await updateSermon({
         ...sermon,
         isPreached: true
       });
 
-      // Invalidate calendar cache to reflect changes in calendar tab
-      queryClient.invalidateQueries({
-        queryKey: ['calendarSermons'],
-        exact: false // Match all calendarSermons queries regardless of parameters
-      });
+      invalidateCalendarCache();
 
       if (updated && onUpdate) {
         onUpdate(updated);
@@ -156,6 +215,8 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
         router.refresh();
       }
 
+      setPreachDateToMark(null);
+      setPreachModalInitialData(undefined);
       setShowPreachModal(false);
     } catch (err) {
       console.error("Failed to save preach date:", err);
@@ -189,7 +250,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               role="menuitem"
             >
               <span>
-                {sermon.isPreached
+                {effectiveIsPreached
                   ? t('optionMenu.markAsNotPreached')
                   : t('optionMenu.markAsPreached')}
               </span>
@@ -215,8 +276,14 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
 
       <PreachDateModal
         isOpen={showPreachModal}
-        onClose={() => setShowPreachModal(false)}
+        onClose={() => {
+          setPreachDateToMark(null);
+          setPreachModalInitialData(undefined);
+          setShowPreachModal(false);
+        }}
         onSave={handleSavePreachDate}
+        initialData={preachModalInitialData}
+        defaultStatus="preached"
       />
     </div>
   );

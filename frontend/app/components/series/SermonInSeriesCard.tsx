@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { Sermon } from "@/models/models";
 import { formatDate } from "@utils/dateFormatter";
+import { getEffectiveIsPreached } from "@utils/preachDateStatus";
 
 import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 
@@ -36,6 +37,7 @@ export default function SermonInSeriesCard({
 }: SermonInSeriesCardProps) {
   const { t } = useTranslation();
   const preview = buildPreview(sermon);
+  const isPreached = getEffectiveIsPreached(sermon);
 
   return (
     <div
@@ -78,7 +80,7 @@ export default function SermonInSeriesCard({
           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
             {sermon.thoughts?.length || 0} thoughts
           </span>
-          {sermon.isPreached && (
+          {isPreached && (
             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
               {t("dashboard.preached")}
             </span>

@@ -7,7 +7,10 @@ import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { Sermon } from '@/models/models';
+import { Church, PreachDate, Sermon } from '@/models/models';
+import { toDateOnlyKey } from '@/utils/dateOnly';
+import { getNextPlannedDate } from '@/utils/preachDateStatus';
+import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
 import { updateSermon } from '@services/sermon.service';
 
 interface EditSermonModalProps {
@@ -20,17 +23,46 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
   const isReadOnly = !isOnline;
+  const resolveInitialPlannedDate = (source: Sermon): string =>
+    toDateOnlyKey(getNextPlannedDate(source)?.date) || '';
+  const initialPlannedDate = resolveInitialPlannedDate(sermon);
   const [title, setTitle] = useState(sermon.title);
   const [verse, setVerse] = useState(sermon.verse);
+  const [plannedDate, setPlannedDate] = useState(initialPlannedDate);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const hasChanges = title !== sermon.title || verse !== sermon.verse;
+  const hasChanges = title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate;
+
+  const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
+    const preachDates = baseSermon.preachDates || [];
+    const existingIndex = preachDates.findIndex((pd) => pd.id === preachDate.id);
+
+    if (existingIndex === -1) {
+      return { ...baseSermon, preachDates: [...preachDates, preachDate] };
+    }
+
+    const nextPreachDates = [...preachDates];
+    nextPreachDates[existingIndex] = preachDate;
+    return { ...baseSermon, preachDates: nextPreachDates };
+  };
+
+  const getUnspecifiedChurch = (): Church => ({
+    id: 'church-unspecified',
+    name: t('calendar.unspecifiedChurch', { defaultValue: 'Church not specified' }),
+    city: ''
+  });
 
   // При монтировании устанавливаем флаг, чтобы использовать портал
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
+
+  useEffect(() => {
+    setTitle(sermon.title);
+    setVerse(sermon.verse);
+    setPlannedDate(resolveInitialPlannedDate(sermon));
+  }, [sermon]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +80,35 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
         throw new Error('Failed to update sermon');
       }
 
-      onUpdate(data);
+      let updatedSermon = data;
+      const existingPlannedDate = getNextPlannedDate(sermon);
+
+      if (plannedDate !== initialPlannedDate) {
+        if (plannedDate) {
+          if (existingPlannedDate) {
+            const syncedPlannedDate = await updatePreachDate(sermon.id, existingPlannedDate.id, {
+              date: plannedDate,
+              status: 'planned'
+            });
+            updatedSermon = mergePreachDate(updatedSermon, syncedPlannedDate);
+          } else {
+            const createdPlannedDate = await addPreachDate(sermon.id, {
+              date: plannedDate,
+              status: 'planned',
+              church: getUnspecifiedChurch()
+            });
+            updatedSermon = mergePreachDate(updatedSermon, createdPlannedDate);
+          }
+        } else if (existingPlannedDate) {
+          await deletePreachDate(sermon.id, existingPlannedDate.id);
+          updatedSermon = {
+            ...updatedSermon,
+            preachDates: (updatedSermon.preachDates || []).filter((pd) => pd.id !== existingPlannedDate.id)
+          };
+        }
+      }
+
+      onUpdate(updatedSermon);
       onClose();
     } catch (error) {
       console.error("Error updating sermon:", error);
@@ -101,6 +161,32 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
               required
               disabled={isSubmitting || isReadOnly}
             />
+          </div>
+          <div className="mb-6">
+            <label htmlFor="plannedDate" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+              {t('editSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
+            </label>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="plannedDate"
+                type="date"
+                value={plannedDate}
+                onChange={(e) => setPlannedDate(e.target.value)}
+                className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+                disabled={isSubmitting || isReadOnly}
+              />
+              <button
+                type="button"
+                onClick={() => setPlannedDate('')}
+                disabled={isSubmitting || isReadOnly || !plannedDate}
+                className="px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('editSermon.clearPlannedDate', { defaultValue: 'Clear' })}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
+            </p>
           </div>
           <div className="flex justify-end gap-3 mt-auto">
             <button 

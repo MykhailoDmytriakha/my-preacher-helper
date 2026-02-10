@@ -1,7 +1,12 @@
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-import { formatDate } from '@utils/dateFormatter';
+import {
+  formatDate,
+  formatDateOnly,
+  getTodayDateOnlyKey,
+  toDateOnlyKey
+} from '@utils/dateFormatter';
 
 // Mock date-fns to control its behavior
 jest.mock('date-fns', () => ({
@@ -22,7 +27,7 @@ describe('Date Formatter Utilities', () => {
     test('formats date correctly', () => {
       const dateStr = '2023-01-01T12:00:00Z';
       const result = formatDate(dateStr);
-      
+
       expect(format).toHaveBeenCalledWith(
         expect.any(Date),
         'dd.MM.yyyy, HH:mm',
@@ -36,13 +41,41 @@ describe('Date Formatter Utilities', () => {
       const result = formatDate('invalid-date');
 
       expect(result).toBe('Invalid date');
-      // format should not be called for invalid dates due to our new validation
       expect(format).not.toHaveBeenCalled();
       expect(console.error).toHaveBeenCalledWith(
         'formatDate received invalid date string:',
         'invalid-date'
       );
       (console.error as jest.Mock).mockRestore();
+    });
+
+    test('handles whitespace-only input as invalid value', () => {
+      jest.spyOn(console, 'error').mockImplementation();
+
+      const result = formatDate('   ');
+
+      expect(result).toBe('Invalid date');
+      expect(format).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith(
+        'formatDate received invalid date string:',
+        '   '
+      );
+      (console.error as jest.Mock).mockRestore();
+    });
+
+    test('uses local date-only parser branch for YYYY-MM-DD input', () => {
+      const result = formatDate('2026-02-15');
+
+      expect(result).toBe('formatted-date');
+      expect(format).toHaveBeenCalledWith(
+        expect.any(Date),
+        'dd.MM.yyyy, HH:mm',
+        { locale: ru }
+      );
+      const usedDate = (format as jest.Mock).mock.calls[0][0] as Date;
+      expect(usedDate.getFullYear()).toBe(2026);
+      expect(usedDate.getMonth()).toBe(1);
+      expect(usedDate.getDate()).toBe(15);
     });
 
     test('passes the correct date object to format', () => {
@@ -90,20 +123,6 @@ describe('Date Formatter Utilities', () => {
       (console.warn as jest.Mock).mockRestore();
     });
 
-    test('handles NaN date object', () => {
-      jest.spyOn(console, 'error').mockImplementation();
-      // This creates an Invalid Date object
-      const invalidDate = new Date('invalid');
-      const result = formatDate(invalidDate.toString());
-      expect(result).toBe('Invalid date');
-      expect(format).not.toHaveBeenCalled();
-      expect(console.error).toHaveBeenCalledWith(
-        'formatDate received invalid date string:',
-        'Invalid Date'
-      );
-      (console.error as jest.Mock).mockRestore();
-    });
-
     test('handles errors thrown by format', () => {
       jest.spyOn(console, 'error').mockImplementation();
       (format as jest.Mock).mockImplementationOnce(() => {
@@ -122,4 +141,76 @@ describe('Date Formatter Utilities', () => {
       (console.error as jest.Mock).mockRestore();
     });
   });
-}); 
+
+  describe('formatDateOnly', () => {
+    test('formats date-only correctly', () => {
+      (format as jest.Mock).mockImplementationOnce(() => 'formatted-date-only');
+
+      const result = formatDateOnly('2026-02-15T00:00:00.000Z');
+
+      expect(format).toHaveBeenCalledWith(
+        expect.any(Date),
+        'dd.MM.yyyy',
+        { locale: ru }
+      );
+      expect(result).toBe('formatted-date-only');
+    });
+
+    test('returns invalid for bad input', () => {
+      jest.spyOn(console, 'error').mockImplementation();
+
+      const result = formatDateOnly('not-a-date');
+
+      expect(result).toBe('Invalid date');
+      expect(console.error).toHaveBeenCalledWith(
+        'formatDateOnly received invalid date string:',
+        'not-a-date'
+      );
+      (console.error as jest.Mock).mockRestore();
+    });
+
+    test('returns no date for empty and catches thrown formatter errors', () => {
+      jest.spyOn(console, 'warn').mockImplementation();
+      jest.spyOn(console, 'error').mockImplementation();
+
+      expect(formatDateOnly('')).toBe('No date');
+
+      (format as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('format-only failed');
+      });
+      expect(formatDateOnly('2026-02-15')).toBe('Invalid date');
+
+      expect(console.error).toHaveBeenCalledWith(
+        'Error formatting date-only value:',
+        expect.any(Error),
+        'for input:',
+        '2026-02-15'
+      );
+
+      (console.warn as jest.Mock).mockRestore();
+      (console.error as jest.Mock).mockRestore();
+    });
+  });
+
+  describe('toDateOnlyKey', () => {
+    test('keeps ISO date-only values untouched', () => {
+      expect(toDateOnlyKey('2026-02-15')).toBe('2026-02-15');
+    });
+
+    test('normalizes ISO timestamps to date-only key', () => {
+      expect(toDateOnlyKey('2026-02-15T00:00:00.000Z')).toBe('2026-02-15');
+    });
+
+    test('returns null for invalid values', () => {
+      expect(toDateOnlyKey('invalid-date')).toBeNull();
+      expect(toDateOnlyKey(undefined)).toBeNull();
+    });
+  });
+
+  describe('getTodayDateOnlyKey', () => {
+    test('formats provided date as local ymd', () => {
+      const referenceDate = new Date(2026, 1, 15, 13, 30, 0);
+      expect(getTodayDateOnlyKey(referenceDate)).toBe('2026-02-15');
+    });
+  });
+});

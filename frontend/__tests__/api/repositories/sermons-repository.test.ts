@@ -1,23 +1,12 @@
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
-import { adminDb } from '@/config/firebaseAdminConfig';
+import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 
 import { runScenarios } from '../../../test-utils/scenarioRunner';
 
-// Mock Firestore admin with proper module path
-jest.mock('@/config/firebaseAdminConfig', () => ({
-  adminDb: {
-    collection: jest.fn().mockReturnValue({
-      doc: jest.fn().mockReturnValue({
-        get: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn()
-      })
-    })
-  }
-}));
-
-// Mock the firebaseAdminConfig initialization
 jest.mock('@/config/firebaseAdminConfig', () => {
+  const mockArrayUnion = jest.fn().mockImplementation((value: unknown) => ({
+    __arrayUnion: value,
+  }));
   const mockAdminDb = {
     collection: jest.fn().mockReturnValue({
       doc: jest.fn().mockReturnValue({
@@ -30,7 +19,8 @@ jest.mock('@/config/firebaseAdminConfig', () => {
 
   return {
     adminDb: mockAdminDb,
-    initAdmin: jest.fn().mockResolvedValue(mockAdminDb)
+    initAdmin: jest.fn().mockResolvedValue(mockAdminDb),
+    FieldValue: { arrayUnion: mockArrayUnion },
   };
 });
 
@@ -327,6 +317,175 @@ describe('SermonsRepository', () => {
         ],
         { beforeEachScenario: seedOutlineSuccess }
       );
+    });
+  });
+
+  describe('preach dates repository methods', () => {
+    it('addPreachDate normalizes date and defaults status to planned', async () => {
+      mockUpdate.mockResolvedValueOnce(undefined);
+      const originalCrypto = global.crypto;
+      Object.defineProperty(global, 'crypto', {
+        value: { randomUUID: jest.fn().mockReturnValue('uuid-1') },
+        configurable: true,
+      });
+
+      try {
+        const result = await sermonsRepository.addPreachDate('sermon-1', {
+          date: '2026-02-15T16:00:00.000Z',
+          church: { id: 'c1', name: 'Church 1' },
+        });
+
+        expect(FieldValue.arrayUnion).toHaveBeenCalledWith(
+          expect.objectContaining({
+            date: '2026-02-15',
+            status: 'planned',
+            church: expect.objectContaining({ name: 'Church 1' }),
+          })
+        );
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            preachDates: expect.objectContaining({
+              __arrayUnion: expect.objectContaining({ id: result.id }),
+            }),
+          }),
+        );
+        expect(result.date).toBe('2026-02-15');
+        expect(result.status).toBe('planned');
+      } finally {
+        Object.defineProperty(global, 'crypto', {
+          value: originalCrypto,
+          configurable: true,
+        });
+      }
+    });
+
+    it('addPreachDate rejects invalid date format', async () => {
+      await expect(
+        sermonsRepository.addPreachDate('sermon-1', {
+          date: 'bad-date',
+          church: { id: 'c1', name: 'Church 1' },
+        })
+      ).rejects.toThrow('Invalid preach date format');
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('updatePreachDate normalizes date and preserves id/createdAt', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          preachDates: [
+            {
+              id: 'pd-1',
+              date: '2026-02-01',
+              status: 'planned',
+              church: { id: 'c1', name: 'Church' },
+              createdAt: '2026-02-01T00:00:00.000Z',
+            },
+          ],
+        }),
+      });
+      mockUpdate.mockResolvedValueOnce(undefined);
+
+      const result = await sermonsRepository.updatePreachDate('sermon-1', 'pd-1', {
+        id: 'hack-id' as any,
+        createdAt: 'hack-created-at' as any,
+        date: '2026-02-20T10:20:00.000Z',
+        status: 'preached',
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith({
+        preachDates: [
+          expect.objectContaining({
+            id: 'pd-1',
+            createdAt: '2026-02-01T00:00:00.000Z',
+            date: '2026-02-20',
+            status: 'preached',
+          }),
+        ],
+      });
+      expect(result.id).toBe('pd-1');
+      expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z');
+      expect(result.date).toBe('2026-02-20');
+    });
+
+    it('updatePreachDate rejects invalid update date', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          preachDates: [
+            {
+              id: 'pd-1',
+              date: '2026-02-01',
+              church: { id: 'c1', name: 'Church' },
+              createdAt: '2026-02-01T00:00:00.000Z',
+            },
+          ],
+        }),
+      });
+
+      await expect(
+        sermonsRepository.updatePreachDate('sermon-1', 'pd-1', { date: 'bad-date' })
+      ).rejects.toThrow('Invalid preach date format');
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('updatePreachDate throws when preach date id is missing', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ preachDates: [] }),
+      });
+
+      await expect(
+        sermonsRepository.updatePreachDate('sermon-1', 'missing-date', { status: 'planned' })
+      ).rejects.toThrow('Preach date not found');
+    });
+
+    it('fetchSermonsWithPreachDates filters using normalized date-only boundaries', async () => {
+      const mockQueryGet = jest.fn().mockResolvedValue({
+        docs: [
+          {
+            id: 's-in-range',
+            data: () => ({
+              userId: 'user-1',
+              preachDates: [
+                { id: 'd1', date: '2026-02-16T10:00:00.000Z', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+              ],
+            }),
+          },
+          {
+            id: 's-out-of-range',
+            data: () => ({
+              userId: 'user-1',
+              preachDates: [
+                { id: 'd2', date: '2026-03-20', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+              ],
+            }),
+          },
+          {
+            id: 's-invalid-date',
+            data: () => ({
+              userId: 'user-1',
+              preachDates: [
+                { id: 'd3', date: 'not-a-date', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+              ],
+            }),
+          },
+        ],
+      });
+
+      const mockedAdminDb = adminDb as unknown as { collection: jest.Mock };
+      mockedAdminDb.collection.mockReturnValue({
+        where: jest.fn().mockReturnValue({ get: mockQueryGet }),
+      });
+
+      const result = await sermonsRepository.fetchSermonsWithPreachDates(
+        'user-1',
+        '2026-02-15T00:00:00.000Z',
+        '2026-02-20'
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('s-in-range');
     });
   });
 });

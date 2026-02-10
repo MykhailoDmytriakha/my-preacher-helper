@@ -132,6 +132,8 @@
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
     "verseExample": "Example:\nEph 1:15: \"For this reason, ever since I heard about your faith in Christ Jesus...\"",
+    "plannedDateLabel": "Planned preaching date (optional)",
+    "plannedDateHint": "You can add church details later in Calendar",
     "seriesLabel": "Add to Series (Optional)",
     "seriesPlaceholder": "Select a series...",
     "noSeriesOption": "No series",
@@ -157,6 +159,9 @@
     "titlePlaceholder": "Enter sermon title",
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
+    "plannedDateLabel": "Planned preaching date (optional)",
+    "clearPlannedDate": "Clear",
+    "plannedDateHint": "Leave empty if you do not want a planned date",
     "updateError": "Error updating sermon"
   },
   "buttons": {
@@ -841,11 +846,16 @@
     "deletePreachDate": "Delete Preach Date",
     "deleteConfirm": "Are you sure you want to delete this preach date?",
     "church": "Church",
+    "unspecifiedChurch": "Church not specified",
     "city": "City",
     "date": "Date",
     "audience": "Audience",
     "notes": "Notes",
     "outcome": "Outcome",
+    "status": {
+      "planned": "Planned",
+      "preached": "Preached"
+    },
     "missingDateWarning": "This sermon is marked as preached but missing date information",
     "missingDateWarningTitle": "Legacy Preaching Data",
     "missingDateWarningDesc": "Some of your older sermons are marked as \"preached\", but do not have specific dates and churches assigned in the new calendar system.",
@@ -871,6 +881,7 @@
       "totalPreachings": "Total Preachings",
       "quickSummary": "Quick Summary",
       "pendingDateEntry": "Pending Date Entry",
+      "plannedPreachings": "Planned preachings",
       "lastPreaching": "Last Preaching",
       "averagePreparation": "Avg Prep Time",
       "avgPrepTime": "Avg Prep Time",

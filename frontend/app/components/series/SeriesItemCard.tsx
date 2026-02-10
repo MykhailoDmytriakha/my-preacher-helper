@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
 import { formatDate } from '@utils/dateFormatter';
+import { getEffectiveIsPreached } from '@utils/preachDateStatus';
 
 import type { Group, SeriesItem, Sermon } from '@/models/models';
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
@@ -37,6 +38,7 @@ export default function SeriesItemCard({
   const { item, sermon, group } = resolvedItem;
 
   const isSermon = item.type === 'sermon';
+  const sermonIsPreached = sermon ? getEffectiveIsPreached(sermon) : false;
   const title = isSermon ? sermon?.title : group?.title;
   const href = isSermon ? `/sermons/${item.refId}` : `/groups/${item.refId}`;
   const subtitle = isSermon ? sermon?.verse : group?.description;
@@ -73,7 +75,7 @@ export default function SeriesItemCard({
             {isSermon ? <BookOpenIcon className="h-3.5 w-3.5" /> : <UserGroupIcon className="h-3.5 w-3.5" />}
             {isSermon ? t('navigation.sermons', { defaultValue: 'Sermons' }) : t('navigation.groups', { defaultValue: 'Groups' })}
           </span>
-          {isSermon && sermon?.isPreached && (
+          {isSermon && sermonIsPreached && (
             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
               {t('dashboard.preached')}
             </span>

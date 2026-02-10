@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import AgendaView from "@/components/calendar/AgendaView";
@@ -17,6 +17,12 @@ import { useSeries } from "@/hooks/useSeries";
 import { Sermon, PreachDate } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
 import * as preachDatesService from "@/services/preachDates.service";
+import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
+import { debugLog } from "@/utils/debugMode";
+import {
+    getEffectiveIsPreached,
+    getEffectivePreachDateStatus
+} from "@/utils/preachDateStatus";
 
 export default function CalendarPage() {
     const { t } = useTranslation();
@@ -29,7 +35,7 @@ export default function CalendarPage() {
 
     // We fetch a wide range for the calendar, or just let the hook handle it
     // For now, let's fetch everything the hook provides
-    const { sermons, sermonsByDate, pendingSermons, isLoading, error, refetch } = useCalendarSermons();
+    const { sermons, pendingSermons, isLoading, error, refetch } = useCalendarSermons();
     const {
         groups,
         groupsByDate,
@@ -41,23 +47,104 @@ export default function CalendarPage() {
     // Fetch series data for series color indicators
     const { series: allSeries } = useSeries(user?.uid || null);
 
+    const normalizedSermonsByDate = useMemo(
+        () => sermons.reduce((acc, sermon) => {
+            (sermon.preachDates || []).forEach((preachDate) => {
+                const dateKey = toDateOnlyKey(preachDate.date);
+                if (!dateKey) {
+                    return;
+                }
+
+                if (!acc[dateKey]) {
+                    acc[dateKey] = [];
+                }
+
+                acc[dateKey].push({
+                    ...sermon,
+                    currentPreachDate: {
+                        ...preachDate,
+                        date: dateKey
+                    }
+                });
+            });
+            return acc;
+        }, {} as Record<string, (Sermon & { currentPreachDate?: PreachDate })[]>),
+        [sermons]
+    );
+
     const selectedMonth = format(currentMonth, 'yyyy-MM');
-    const sermonsForSelectedMonth = Object.entries(sermonsByDate)
+    const sermonsForSelectedMonth = Object.entries(normalizedSermonsByDate)
         .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
         .flatMap(([, sermons]) => sermons);
     const groupsForSelectedMonth = Object.entries(groupsByDate)
         .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
         .flatMap(([, groupsList]) => groupsList);
 
-    const calendarEventsByDate = {
-        ...sermonsByDate,
-        ...Object.fromEntries(
-            Object.entries(groupsByDate).map(([date, groupEvents]) => [
-                date,
-                [...(sermonsByDate[date] || []), ...groupEvents]
-            ])
-        )
-    };
+    const calendarEventsByDate = useMemo(
+        () => ({
+            ...normalizedSermonsByDate,
+            ...Object.fromEntries(
+                Object.entries(groupsByDate).map(([date, groupEvents]) => [
+                    date,
+                    [...(normalizedSermonsByDate[date] || []), ...groupEvents]
+                ])
+            )
+        }),
+        [normalizedSermonsByDate, groupsByDate]
+    );
+    const sermonStatusByDate = sermons.reduce((acc, sermon) => {
+        (sermon.preachDates || []).forEach((preachDate) => {
+            const dateKey = toDateOnlyKey(preachDate.date);
+            if (!dateKey) {
+                return;
+            }
+            if (!acc[dateKey]) {
+                acc[dateKey] = { planned: 0, preached: 0 };
+            }
+            const status = getEffectivePreachDateStatus(preachDate, Boolean(sermon.isPreached));
+            acc[dateKey][status] += 1;
+        });
+        return acc;
+    }, {} as Record<string, { planned: number; preached: number }>);
+    const { preachedSermonsCount, plannedSermonsCount } = Object.entries(sermonStatusByDate).reduce(
+        (acc, [dateKey, statusCounts]) => {
+            if (!dateKey.startsWith(selectedMonth)) {
+                return acc;
+            }
+            return {
+                preachedSermonsCount: acc.preachedSermonsCount + statusCounts.preached,
+                plannedSermonsCount: acc.plannedSermonsCount + statusCounts.planned
+            };
+        },
+        { preachedSermonsCount: 0, plannedSermonsCount: 0 }
+    );
+
+    useEffect(() => {
+        debugLog('[calendar][page] normalized pipelines', {
+            selectedMonth,
+            selectedDate: format(selectedDate, 'yyyy-MM-dd'),
+            normalizedSermonsByDateKeys: Object.keys(normalizedSermonsByDate).sort(),
+            sermonStatusByDateKeys: Object.keys(sermonStatusByDate).sort(),
+            calendarEventKeys: Object.keys(calendarEventsByDate).sort(),
+            sermonsForSelectedMonthCount: sermonsForSelectedMonth.length,
+            sermonsForSelectedMonthRawDates: sermonsForSelectedMonth.map((sermon) => ({
+                sermonId: sermon.id,
+                currentPreachDate: sermon.currentPreachDate?.date,
+                allPreachDates: (sermon.preachDates || []).map((preachDate) => preachDate.date)
+            })),
+            preachedSermonsCount,
+            plannedSermonsCount,
+        });
+    }, [
+        selectedMonth,
+        selectedDate,
+        normalizedSermonsByDate,
+        sermonStatusByDate,
+        calendarEventsByDate,
+        sermonsForSelectedMonth,
+        preachedSermonsCount,
+        plannedSermonsCount,
+    ]);
 
     const handleAddDate = (sermon: Sermon & { currentPreachDate?: PreachDate }) => {
         setSelectedSermon(sermon);
@@ -77,7 +164,10 @@ export default function CalendarPage() {
     const handleSaveDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
         if (!selectedSermon) return;
         try {
-            await preachDatesService.addPreachDate(selectedSermon.id, data);
+            await preachDatesService.addPreachDate(selectedSermon.id, {
+                ...data,
+                status: getEffectiveIsPreached(selectedSermon) ? 'preached' : (data.status || 'planned')
+            });
             setIsModalOpen(false);
             setSelectedSermon(null);
             await Promise.all([refetch(), refetchGroups()]);
@@ -124,6 +214,7 @@ export default function CalendarPage() {
                         ) : (
                             <PreachCalendar
                                 eventsByDate={calendarEventsByDate}
+                                sermonStatusByDate={sermonStatusByDate}
                                 selectedDate={selectedDate}
                                 onDateSelect={setSelectedDate}
                                 currentMonth={currentMonth}
@@ -141,9 +232,19 @@ export default function CalendarPage() {
                                     <div className="flex justify-between text-xs">
                                         <span className="text-blue-600 dark:text-blue-400">{t('calendar.analytics.totalPreachings')}</span>
                                         <span className="font-bold text-blue-900 dark:text-blue-100">
-                                            {sermons.flatMap(s => s.preachDates || []).length + groups.flatMap(g => g.meetingDates || []).length}
+                                            {preachedSermonsCount}
                                         </span>
                                     </div>
+                                    {plannedSermonsCount > 0 && (
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-amber-600 dark:text-amber-400">
+                                                {t('calendar.analytics.plannedPreachings', { defaultValue: 'Planned preachings' })}
+                                            </span>
+                                            <span className="font-bold text-amber-900 dark:text-amber-100">
+                                                {plannedSermonsCount}
+                                            </span>
+                                        </div>
+                                    )}
                                     {pendingSermons.length > 0 && (
                                         <div className="flex justify-between text-xs">
                                             <span className="text-amber-600 dark:text-amber-400">{t('calendar.analytics.pendingDateEntry')}</span>
@@ -177,7 +278,7 @@ export default function CalendarPage() {
             ) : view === 'agenda' ? (
                 <AgendaView sermons={sermons} groups={groups} series={allSeries} />
             ) : (
-                <AnalyticsSection sermonsByDate={sermonsByDate} />
+                <AnalyticsSection sermonsByDate={normalizedSermonsByDate} />
             )}
 
             <PreachDateModal
@@ -189,10 +290,12 @@ export default function CalendarPage() {
                 onSave={handleSaveDate}
                 initialData={selectedSermon?.currentPreachDate || (selectedSermon ? {
                     id: '',
-                    date: new Date().toISOString().split('T')[0],
+                    date: getTodayDateOnlyKey(),
+                    status: getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned',
                     church: { id: '', name: '', city: '' },
                     createdAt: new Date().toISOString()
                 } : undefined)}
+                defaultStatus={selectedSermon && getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned'}
             />
         </div>
     );

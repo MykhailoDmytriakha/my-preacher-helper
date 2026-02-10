@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next";
 
 import { usePreachDates } from "@/hooks/usePreachDates";
 import { PreachDate } from "@/models/models";
+import { parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
+import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
 
 import PreachDateModal from "./PreachDateModal";
 
@@ -93,7 +95,14 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                 </p>
             ) : (
                 <div className="space-y-2">
-                    {preachDates.sort((a, b) => b.date.localeCompare(a.date)).map((pd) => (
+                    {preachDates.sort((a, b) => b.date.localeCompare(a.date)).map((pd) => {
+                        const status = getEffectivePreachDateStatus(pd, false);
+                        const isPreached = status === 'preached';
+                        const statusClasses = isPreached
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+
+                        return (
                         <div
                             key={pd.id}
                             className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50"
@@ -101,7 +110,18 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                             <div className="flex flex-col min-w-0 pr-4">
                                 <div className="flex items-center gap-2 mb-0.5">
                                     <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                                        {format(new Date(pd.date), 'PP', { locale: getDateLocale() })}
+                                        {(() => {
+                                            const parsedDate = parseDateOnlyAsLocalDate(pd.date);
+                                            if (!parsedDate) {
+                                                return pd.date;
+                                            }
+                                            return format(parsedDate, 'PP', { locale: getDateLocale() });
+                                        })()}
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${statusClasses}`}>
+                                        {isPreached
+                                            ? t('calendar.status.preached', { defaultValue: 'Preached' })
+                                            : t('calendar.status.planned', { defaultValue: 'Planned' })}
                                     </span>
                                     {pd.outcome && (
                                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${pd.outcome === 'excellent' ? 'bg-green-100 text-green-700 dark:bg-green-900/30' :
@@ -144,7 +164,8 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                                 </button>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
@@ -153,6 +174,7 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                 onClose={() => setIsModalOpen(false)}
                 onSave={handleSave}
                 initialData={editingDate}
+                defaultStatus="planned"
             />
         </div>
     );

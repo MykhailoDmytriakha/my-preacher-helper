@@ -15,6 +15,8 @@ import { useTranslation } from 'react-i18next';
 
 import { Group, GroupMeetingDate, Sermon, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
+import { toDateOnlyKey } from '@/utils/dateOnly';
+import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 
 interface AgendaViewProps {
   sermons: Sermon[];
@@ -69,23 +71,43 @@ export default function AgendaView({ sermons, groups = [], series = [] }: Agenda
   };
 
   const sermonEvents: SermonEvent[] = sermons.flatMap((sermon) =>
-    (sermon.preachDates || []).map((preachDate) => ({
-      kind: 'sermon',
-      id: `sermon-${sermon.id}-${preachDate.id}`,
-      date: preachDate.date,
-      sermon,
-      preachDate,
-    }))
+    (sermon.preachDates || []).flatMap((preachDate) => {
+      const dateKey = toDateOnlyKey(preachDate.date);
+      if (!dateKey) {
+        return [];
+      }
+
+      return [{
+        kind: 'sermon' as const,
+        id: `sermon-${sermon.id}-${preachDate.id}`,
+        date: dateKey,
+        sermon,
+        preachDate: {
+          ...preachDate,
+          date: dateKey,
+        },
+      }];
+    })
   );
 
   const groupEvents: GroupEvent[] = groups.flatMap((group) =>
-    (group.meetingDates || []).map((meetingDate) => ({
-      kind: 'group',
-      id: `group-${group.id}-${meetingDate.id}`,
-      date: meetingDate.date,
-      group,
-      meetingDate,
-    }))
+    (group.meetingDates || []).flatMap((meetingDate) => {
+      const dateKey = toDateOnlyKey(meetingDate.date);
+      if (!dateKey) {
+        return [];
+      }
+
+      return [{
+        kind: 'group' as const,
+        id: `group-${group.id}-${meetingDate.id}`,
+        date: dateKey,
+        group,
+        meetingDate: {
+          ...meetingDate,
+          date: dateKey,
+        },
+      }];
+    })
   );
 
   const allEvents = [...sermonEvents, ...groupEvents].sort((a, b) => b.date.localeCompare(a.date));
@@ -117,6 +139,10 @@ export default function AgendaView({ sermons, groups = [], series = [] }: Agenda
             : event.meetingDate.location;
           const audience = isSermon ? event.preachDate.audience : event.meetingDate.audience;
           const outcome = isSermon ? event.preachDate.outcome : event.meetingDate.outcome;
+          const sermonDateStatus = isSermon
+            ? getEffectivePreachDateStatus(event.preachDate, Boolean(event.sermon.isPreached))
+            : null;
+          const isPlannedSermon = sermonDateStatus === 'planned';
           const linkedSeries = isSermon ? getSermonSeries(event.sermon) : getGroupSeries(event.group);
 
           return (
@@ -150,6 +176,18 @@ export default function AgendaView({ sermons, groups = [], series = [] }: Agenda
                   {outcome && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                       {t(`calendar.outcomes.${outcome}`)}
+                    </span>
+                  )}
+                  {isSermon && (
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${isPlannedSermon
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        }`}
+                    >
+                      {isPlannedSermon
+                        ? t('calendar.status.planned', { defaultValue: 'Planned' })
+                        : t('calendar.status.preached', { defaultValue: 'Preached' })}
                     </span>
                   )}
                 </div>

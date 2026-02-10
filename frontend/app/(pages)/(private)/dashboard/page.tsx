@@ -12,6 +12,7 @@ import { useFilteredSermons } from "@/hooks/useFilteredSermons";
 import { useSeries } from "@/hooks/useSeries";
 import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
+import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import AddSermonModal from "@components/AddSermonModal";
 import { ChevronIcon } from "@components/Icons";
 
@@ -107,7 +108,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
-          <AddSermonModal onNewSermonCreated={handleNewSermon} />
+          <AddSermonModal onNewSermonCreated={handleNewSermon} allowPlannedDate />
         </div>
       </div>
 
@@ -140,7 +141,7 @@ export default function DashboardPage() {
               ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
               : BADGE_INACTIVE_CLASSES
               }`}>
-              {loading ? "-" : sermons.filter(s => !s.isPreached).length}
+              {loading ? "-" : sermons.filter((sermon) => !getEffectiveIsPreached(sermon)).length}
             </span>
           </button>
           <button
@@ -158,7 +159,7 @@ export default function DashboardPage() {
               ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
               : BADGE_INACTIVE_CLASSES
               }`}>
-              {loading ? "-" : sermons.filter(s => s.isPreached).length}
+              {loading ? "-" : sermons.filter((sermon) => getEffectiveIsPreached(sermon)).length}
             </span>
           </button>
           <button

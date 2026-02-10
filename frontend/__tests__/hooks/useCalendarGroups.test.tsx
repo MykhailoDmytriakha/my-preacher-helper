@@ -42,7 +42,7 @@ describe('useCalendarGroups', () => {
         id: 'g1',
         title: 'Group 1',
         meetingDates: [
-          { id: 'd1', date: '2026-02-11', createdAt: 'x' },
+          { id: 'd1', date: '2026-02-11T00:00:00.000Z', createdAt: 'x' },
           { id: 'd2', date: '2026-02-11', createdAt: 'x' },
         ],
       },
@@ -64,6 +64,7 @@ describe('useCalendarGroups', () => {
     expect(result.current.groups).toHaveLength(2);
     expect(result.current.groupsByDate['2026-02-11']).toHaveLength(2);
     expect(result.current.groupsByDate['2026-02-12']).toHaveLength(1);
+    expect(result.current.groupsByDate['2026-02-11T00:00:00.000Z']).toBeUndefined();
     expect(capturedOptions.enabled).toBe(true);
 
     mockFetchCalendarGroups.mockResolvedValue([]);

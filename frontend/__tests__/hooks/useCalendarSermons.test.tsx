@@ -81,7 +81,7 @@ describe('useCalendarSermons', () => {
         preachDates: [
           {
             id: 'pd-2',
-            date: '2024-01-07',
+            date: '2024-01-07T00:00:00.000Z',
             createdAt: '2024-01-02T00:00:00Z',
             church: { id: 'church-2', name: 'Second', city: 'City' },
           },
@@ -108,6 +108,7 @@ describe('useCalendarSermons', () => {
 
     expect(result.current.sermonsByDate['2024-01-07']).toHaveLength(2);
     expect(result.current.sermonsByDate['2024-01-08']).toHaveLength(1);
+    expect(result.current.sermonsByDate['2024-01-07T00:00:00.000Z']).toBeUndefined();
 
     mockFetchCalendarSermons.mockResolvedValue([]);
     await capturedOptions.queryFn();

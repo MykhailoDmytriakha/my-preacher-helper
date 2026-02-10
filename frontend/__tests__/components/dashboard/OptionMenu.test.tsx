@@ -14,12 +14,15 @@ jest.mock('@services/sermon.service', () => ({
 }));
 
 jest.mock('@services/preachDates.service', () => ({
+  addPreachDate: jest.fn().mockResolvedValue({}),
+  updatePreachDate: jest.fn().mockResolvedValue({}),
   deletePreachDate: jest.fn().mockResolvedValue({}),
 }));
 
+const mockRouterRefresh = jest.fn();
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    refresh: jest.fn(),
+    refresh: mockRouterRefresh,
   }),
 }));
 
@@ -55,6 +58,42 @@ jest.mock('@components/EditSermonModal', () => {
       <div data-testid="edit-sermon-modal">
         <button onClick={() => onClose()}>Close</button>
         <button onClick={() => onUpdate({ ...sermon, title: 'Updated Sermon' })}>Update</button>
+      </div>
+    );
+  };
+});
+
+jest.mock('@components/calendar/PreachDateModal', () => {
+  return function MockPreachDateModal({
+    isOpen,
+    onClose,
+    onSave,
+    initialData,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (data: any) => Promise<void>;
+    initialData?: any;
+  }) {
+    if (!isOpen) return null;
+    return (
+      <div
+        data-testid="preach-date-modal"
+        data-initial-church-id={initialData?.church?.id || ''}
+        data-initial-church-name={initialData?.church?.name || ''}
+      >
+        <button
+          onClick={() =>
+            onSave({
+              date: '2024-01-21',
+              church: { id: 'c1', name: 'Test Church', city: 'City' },
+              audience: 'Youth'
+            })
+          }
+        >
+          Save Date
+        </button>
+        <button onClick={onClose}>Close Date</button>
       </div>
     );
   };
@@ -101,6 +140,7 @@ describe('OptionMenu Component', () => {
     jest.clearAllMocks();
     // Mock window.confirm to always return true
     window.confirm = jest.fn().mockImplementation(() => true);
+    mockRouterRefresh.mockReset();
   });
   
   it('renders correctly with the menu button', () => {
@@ -221,7 +261,7 @@ describe('OptionMenu Component', () => {
     expect(defaultProps.onDelete).toHaveBeenCalledWith('sermon-1');
   });
   
-  it('removes all preach dates when unmarking preached sermon', async () => {
+  it('keeps dates but downgrades them to planned when unmarking preached sermon', async () => {
     const mockOnDelete = jest.fn();
     const mockOnUpdate = jest.fn();
 
@@ -249,18 +289,17 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByRole('button'));
     fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
 
-    // Verify preach dates were deleted
+    // Verify preached dates were downgraded (not deleted)
     await waitFor(() => {
-      expect(preachDatesService.deletePreachDate).toHaveBeenCalledWith('sermon-1', 'pd1');
-      expect(preachDatesService.deletePreachDate).toHaveBeenCalledWith('sermon-1', 'pd2');
+      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd1', { status: 'planned' });
+      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd2', { status: 'planned' });
     });
 
-    // Verify sermon was updated with isPreached: false and empty preachDates
+    // Verify sermon was updated with isPreached: false (dates stay in DB)
     await waitFor(() => {
       expect(updateSermon).toHaveBeenCalledWith({
         ...preachedSermon,
-        isPreached: false,
-        preachDates: []
+        isPreached: false
       });
     });
 
@@ -273,15 +312,26 @@ describe('OptionMenu Component', () => {
     });
   });
 
-  it('invalidates calendar cache when marking sermon as preached', async () => {
-    const mockOnDelete = jest.fn();
-    const mockOnUpdate = jest.fn();
+  it('marks sermon as preached using existing planned date without opening modal', async () => {
+    const plannedSermon: Sermon = {
+      ...mockSermon,
+      isPreached: false,
+      preachDates: [
+        {
+          id: 'pd-plan',
+          date: '2026-03-10',
+          status: 'planned',
+          church: { id: 'c1', name: 'Test Church', city: 'City' },
+          createdAt: '2026-02-01T00:00:00Z'
+        }
+      ]
+    };
 
     render(
       <OptionMenu
-        sermon={mockSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
+        sermon={plannedSermon}
+        onDelete={jest.fn()}
+        onUpdate={jest.fn()}
       />
     );
 
@@ -289,12 +339,150 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByRole('button'));
     fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
 
-    // Verify cache invalidation happens (this is called in handleSavePreachDate)
-    // We can't fully test the modal flow here, but we verify the pattern exists
-    expect(mockInvalidateQueries).not.toHaveBeenCalled(); // Not yet called
+    await waitFor(() => {
+      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd-plan', { status: 'preached' });
+      expect(updateSermon).toHaveBeenCalledWith({
+        ...plannedSermon,
+        isPreached: true
+      });
+    });
 
-    // In a real scenario, handleSavePreachDate would be called by PreachDateModal
-    // and it would invalidate the cache. This test ensures the infrastructure is in place.
+    expect(screen.queryByTestId('preach-date-modal')).not.toBeInTheDocument();
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['calendarSermons'],
+      exact: false
+    });
+  });
+
+  it('opens modal to collect details when planned date has unspecified church', async () => {
+    const plannedSermon: Sermon = {
+      ...mockSermon,
+      isPreached: false,
+      preachDates: [
+        {
+          id: 'pd-plan-unspecified',
+          date: '2026-03-10',
+          status: 'planned',
+          church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+          createdAt: '2026-02-01T00:00:00Z'
+        }
+      ]
+    };
+
+    render(
+      <OptionMenu
+        sermon={plannedSermon}
+        onDelete={jest.fn()}
+        onUpdate={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', '');
+    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-name', '');
+
+    fireEvent.click(screen.getByText('Save Date'));
+
+    await waitFor(() => {
+      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith(
+        'sermon-1',
+        'pd-plan-unspecified',
+        expect.objectContaining({
+          status: 'preached',
+          church: expect.objectContaining({ name: 'Test Church' }),
+          audience: 'Youth'
+        })
+      );
+      expect(preachDatesService.addPreachDate).not.toHaveBeenCalled();
+      expect(updateSermon).toHaveBeenCalledWith({
+        ...plannedSermon,
+        isPreached: true
+      });
+    });
+  });
+
+  it('opens preached modal when preferred date has empty church name', async () => {
+    const sermonWithMissingChurchName: Sermon = {
+      ...mockSermon,
+      preachDates: [
+        {
+          id: 'pd-empty-name',
+          date: '2026-03-11',
+          status: 'planned',
+          church: { id: 'c1', name: '   ', city: '' },
+          createdAt: '2026-02-01T00:00:00Z',
+        },
+      ],
+    };
+
+    render(
+      <OptionMenu
+        sermon={sermonWithMissingChurchName}
+        onDelete={jest.fn()}
+        onUpdate={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', 'c1');
+  });
+
+  it('uses router refresh when onUpdate is not provided', async () => {
+    const plannedSermon: Sermon = {
+      ...mockSermon,
+      isPreached: false,
+      preachDates: [
+        {
+          id: 'pd-plan',
+          date: '2026-03-10',
+          status: 'planned',
+          church: { id: 'c1', name: 'Test Church', city: 'City' },
+          createdAt: '2026-02-01T00:00:00Z'
+        }
+      ]
+    };
+
+    render(<OptionMenu sermon={plannedSermon} />);
+
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    await waitFor(() => {
+      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd-plan', { status: 'preached' });
+      expect(mockRouterRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it('opens modal and adds preached date when no date exists', async () => {
+    render(
+      <OptionMenu
+        sermon={mockSermon}
+        onDelete={jest.fn()}
+        onUpdate={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Save Date'));
+
+    await waitFor(() => {
+      expect(preachDatesService.addPreachDate).toHaveBeenCalledWith('sermon-1', expect.objectContaining({
+        status: 'preached'
+      }));
+      expect(updateSermon).toHaveBeenCalledWith({
+        ...mockSermon,
+        isPreached: true
+      });
+    });
   });
 
   it('does not delete sermon when confirmation is canceled', async () => {

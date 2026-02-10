@@ -59,7 +59,7 @@ describe('DateEventList', () => {
         preachDates: [
             {
                 id: 'pd-1',
-                date: '2024-01-15',
+                date: '2024-01-15T00:00:00.000Z',
                 church: { id: 'c1', name: 'Test Church', city: 'Test City' },
                 audience: '100 people',
                 notes: 'Great sermon',

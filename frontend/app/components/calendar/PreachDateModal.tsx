@@ -4,7 +4,8 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { PreachDate, Church } from "@/models/models";
+import { PreachDate, Church, PreachDateStatus } from "@/models/models";
+import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
 
 import ChurchAutocomplete from "./ChurchAutocomplete";
 
@@ -13,16 +14,18 @@ interface PreachDateModalProps {
     onClose: () => void;
     onSave: (data: Omit<PreachDate, 'id' | 'createdAt'>) => Promise<void>;
     initialData?: PreachDate;
+    defaultStatus?: PreachDateStatus;
 }
 
 export default function PreachDateModal({
     isOpen,
     onClose,
     onSave,
-    initialData
+    initialData,
+    defaultStatus
 }: PreachDateModalProps) {
     const { t } = useTranslation();
-    const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(toDateOnlyKey(initialData?.date) || getTodayDateOnlyKey());
     const [church, setChurch] = useState<Church>(initialData?.church || { id: "", name: "", city: "" });
     const [audience, setAudience] = useState(initialData?.audience || "");
     const [notes, setNotes] = useState(initialData?.notes || "");
@@ -30,12 +33,12 @@ export default function PreachDateModal({
 
     useEffect(() => {
         if (initialData) {
-            setDate(initialData.date);
+            setDate(toDateOnlyKey(initialData.date) || getTodayDateOnlyKey());
             setChurch(initialData.church);
             setAudience(initialData.audience || "");
             setNotes(initialData.notes || "");
         } else {
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(getTodayDateOnlyKey());
             setChurch({ id: "", name: "", city: "" });
             setAudience("");
             setNotes("");
@@ -48,10 +51,13 @@ export default function PreachDateModal({
         e.preventDefault();
         if (!church.name) return;
 
+        const resolvedStatus = initialData ? initialData.status : defaultStatus;
+
         setIsSaving(true);
         try {
             await onSave({
                 date,
+                status: resolvedStatus,
                 church,
                 audience: audience.trim() || undefined,
                 notes: notes.trim() || undefined,

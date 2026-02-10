@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 import type { PreachDate } from '@/models/models';
@@ -15,6 +16,21 @@ export async function PUT(
 
         // Basic validation to prevent updating id or createdAt
         const { id: _id, createdAt: _createdAt, ...safeUpdates } = updates;
+        if (
+            safeUpdates.status &&
+            safeUpdates.status !== 'planned' &&
+            safeUpdates.status !== 'preached'
+        ) {
+            return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
+        }
+
+        if (safeUpdates.date !== undefined) {
+            const normalizedDate = toDateOnlyKey(safeUpdates.date);
+            if (!normalizedDate) {
+                return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+            }
+            safeUpdates.date = normalizedDate;
+        }
 
         const preachDate = await sermonsRepository.updatePreachDate(id, dateId, safeUpdates);
         return NextResponse.json({ preachDate });

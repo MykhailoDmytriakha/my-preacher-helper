@@ -3,12 +3,19 @@ import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
 import { Sermon } from '@/models/models';
+import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
 import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
   updateSermon: jest.fn()
+}));
+
+jest.mock('@/services/preachDates.service', () => ({
+  addPreachDate: jest.fn(),
+  updatePreachDate: jest.fn(),
+  deletePreachDate: jest.fn(),
 }));
 
 jest.mock('next/navigation', () => ({
@@ -36,10 +43,14 @@ jest.mock('react-i18next', () => ({
           'editSermon.titlePlaceholder': 'Enter sermon title',
           'editSermon.verseLabel': 'Scripture Reference',
           'editSermon.versePlaceholder': 'Enter scripture reference',
+          'editSermon.plannedDateLabel': 'Planned preaching date (optional)',
+          'editSermon.clearPlannedDate': 'Clear',
+          'editSermon.plannedDateHint': 'Leave empty if you do not want a planned date',
           'editSermon.updateError': 'Failed to update sermon',
           'buttons.cancel': 'Cancel',
           'buttons.save': 'Save',
           'buttons.saving': 'Saving',
+          'calendar.unspecifiedChurch': 'Church not specified',
         };
         return translations[key] || key;
       }
@@ -63,6 +74,25 @@ describe('EditSermonModal Component', () => {
     verse: 'Romans 8:28'
   };
 
+  const mockSermonWithPlannedDate: Sermon = {
+    ...mockSermon,
+    preachDates: [
+      {
+        id: 'pd-existing',
+        date: '2099-04-10',
+        status: 'planned',
+        church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+        createdAt: '2099-01-01T00:00:00.000Z'
+      }
+    ]
+  };
+
+  const mockSermonWithPlannedDateInPayload: Sermon = {
+    ...mockSermonWithPlannedDate,
+    title: 'Updated Sermon Title',
+    verse: 'Romans 8:28',
+  };
+
   const mockProps = {
     sermon: mockSermon,
     onClose: jest.fn(),
@@ -72,6 +102,21 @@ describe('EditSermonModal Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (updateSermon as jest.Mock).mockResolvedValue(mockUpdatedSermon);
+    (addPreachDate as jest.Mock).mockResolvedValue({
+      id: 'pd-added',
+      date: '2026-04-10',
+      status: 'planned',
+      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+      createdAt: '2026-01-01T00:00:00.000Z'
+    });
+    (updatePreachDate as jest.Mock).mockResolvedValue({
+      id: 'pd-updated',
+      date: '2026-04-11',
+      status: 'planned',
+      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+      createdAt: '2026-01-01T00:00:00.000Z'
+    });
+    (deletePreachDate as jest.Mock).mockResolvedValue(undefined);
     
     // Mock the useEffect hook that sets mounted to true
     jest.spyOn(React, 'useEffect').mockImplementation(f => f());
@@ -86,6 +131,7 @@ describe('EditSermonModal Component', () => {
     // Check form fields
     expect(screen.getByLabelText('Title')).toHaveValue('Test Sermon');
     expect(screen.getByLabelText('Scripture Reference')).toHaveValue('John 3:16');
+    expect(screen.getByLabelText('Planned preaching date (optional)')).toHaveValue('');
     
     // Check buttons
     expect(screen.getByText('Cancel')).toBeInTheDocument();
@@ -143,6 +189,31 @@ describe('EditSermonModal Component', () => {
     (console.error as jest.Mock).mockRestore();
   });
 
+  test('creates planned date when user sets planned date and saves', async () => {
+    render(<EditSermonModal {...mockProps} />);
+
+    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
+      target: { value: '2026-04-10' }
+    });
+
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(updateSermon).toHaveBeenCalled();
+      expect(addPreachDate).toHaveBeenCalledWith(
+        'test-sermon-id',
+        expect.objectContaining({
+          date: '2026-04-10',
+          status: 'planned'
+        })
+      );
+      expect(updatePreachDate).not.toHaveBeenCalled();
+      expect(deletePreachDate).not.toHaveBeenCalled();
+      expect(mockProps.onUpdate).toHaveBeenCalled();
+      expect(mockProps.onClose).toHaveBeenCalled();
+    });
+  });
+
   test('disables buttons during submission', async () => {
     // Mock implementation with delay to check disabled state
     (updateSermon as jest.Mock).mockImplementationOnce(() => {
@@ -168,6 +239,88 @@ describe('EditSermonModal Component', () => {
     // After the promise resolves, buttons should be enabled again
     await waitFor(() => {
       expect(screen.getByText('Cancel')).toBeEnabled();
+    });
+  });
+
+  test('clears existing planned date and deletes it on save', async () => {
+    render(
+      <EditSermonModal
+        sermon={mockSermonWithPlannedDate}
+        onClose={mockProps.onClose}
+        onUpdate={mockProps.onUpdate}
+      />
+    );
+
+    const dateInput = screen.getByLabelText('Planned preaching date (optional)');
+    expect(dateInput).toHaveValue('2099-04-10');
+
+    fireEvent.click(screen.getByText('Clear'));
+    expect(dateInput).toHaveValue('');
+
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(updateSermon).toHaveBeenCalled();
+      expect(deletePreachDate).toHaveBeenCalledWith('test-sermon-id', 'pd-existing');
+      expect(addPreachDate).not.toHaveBeenCalled();
+      expect(updatePreachDate).not.toHaveBeenCalled();
+      expect(mockProps.onUpdate).toHaveBeenCalled();
+      expect(mockProps.onClose).toHaveBeenCalled();
+    });
+  });
+
+  test('updates existing planned date and preserves preach date identity in merged sermon', async () => {
+    (updateSermon as jest.Mock).mockResolvedValueOnce({
+      ...mockSermonWithPlannedDateInPayload,
+      preachDates: [
+        {
+          id: 'pd-existing',
+          date: '2099-04-10',
+          status: 'planned',
+          church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+          createdAt: '2099-01-01T00:00:00.000Z'
+        }
+      ]
+    });
+    (updatePreachDate as jest.Mock).mockResolvedValueOnce({
+      id: 'pd-existing',
+      date: '2099-04-20',
+      status: 'planned',
+      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
+      createdAt: '2099-01-01T00:00:00.000Z'
+    });
+
+    render(
+      <EditSermonModal
+        sermon={mockSermonWithPlannedDate}
+        onClose={mockProps.onClose}
+        onUpdate={mockProps.onUpdate}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
+      target: { value: '2099-04-20' }
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(updatePreachDate).toHaveBeenCalledWith('test-sermon-id', 'pd-existing', {
+        date: '2099-04-20',
+        status: 'planned'
+      });
+      expect(addPreachDate).not.toHaveBeenCalled();
+      expect(deletePreachDate).not.toHaveBeenCalled();
+      expect(mockProps.onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preachDates: [
+            expect.objectContaining({
+              id: 'pd-existing',
+              date: '2099-04-20',
+              createdAt: '2099-01-01T00:00:00.000Z'
+            })
+          ]
+        })
+      );
     });
   });
 }); 

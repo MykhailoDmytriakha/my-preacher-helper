@@ -123,4 +123,78 @@ describe('PreachCalendar', () => {
     expect(props.modifiers.hasEvent(new Date(2024, 0, 15))).toBe(true);
     expect(props.modifiers.hasEvent(new Date(2024, 0, 16))).toBeFalsy();
   });
+
+  it('suppresses generic event marker when sermon status marker exists', () => {
+    const selectedDate = new Date(2024, 0, 15);
+
+    render(
+      <PreachCalendar
+        eventsByDate={sermonsByDate}
+        sermonStatusByDate={{
+          '2024-01-15': { planned: 1, preached: 0 }
+        }}
+        selectedDate={selectedDate}
+        onDateSelect={jest.fn()}
+      />
+    );
+
+    const props = mockDayPicker.mock.calls[0][0];
+    expect(props.modifiers.hasEvent(new Date(2024, 0, 15))).toBe(false);
+    expect(props.modifiers.hasPlanned(new Date(2024, 0, 15))).toBe(true);
+    expect(props.modifiers.hasPreached(new Date(2024, 0, 15))).toBe(false);
+  });
+
+  it('uses event-derived sermon status as source of truth when external map conflicts', () => {
+    const selectedDate = new Date(2026, 1, 10);
+    const eventsWithCurrentPreachDate = {
+      '2026-02-15': [
+        {
+          id: 'sermon-1',
+          title: 'Planned Sermon',
+          verse: 'John 3:16',
+          date: '2026-01-30',
+          thoughts: [],
+          userId: 'user-1',
+          isPreached: false,
+          currentPreachDate: {
+            id: 'pd-1',
+            date: '2026-02-15',
+            status: 'planned',
+            church: { id: 'c1', name: 'Church', city: 'City' },
+            createdAt: '2026-01-30T00:00:00Z'
+          }
+        }
+      ]
+    } as Record<string, unknown[]>;
+
+    render(
+      <PreachCalendar
+        eventsByDate={eventsWithCurrentPreachDate}
+        sermonStatusByDate={{
+          '2026-02-26': { planned: 1, preached: 0 }
+        }}
+        selectedDate={selectedDate}
+        onDateSelect={jest.fn()}
+      />
+    );
+
+    const props = mockDayPicker.mock.calls[0][0];
+    expect(props.modifiers.hasPlanned(new Date(2026, 1, 15))).toBe(true);
+    expect(props.modifiers.hasPlanned(new Date(2026, 1, 26))).toBe(false);
+  });
+
+  it('renders status markers on day button instead of table cell pseudo-elements', () => {
+    const selectedDate = new Date(2026, 1, 10);
+    const { container } = render(
+      <PreachCalendar
+        eventsByDate={sermonsByDate}
+        selectedDate={selectedDate}
+        onDateSelect={jest.fn()}
+      />
+    );
+
+    const styleTag = container.querySelector('style');
+    expect(styleTag?.textContent).toContain('.has-planned .rdp-day_button::before');
+    expect(styleTag?.textContent).toContain('.has-preached .rdp-day_button::after');
+  });
 });

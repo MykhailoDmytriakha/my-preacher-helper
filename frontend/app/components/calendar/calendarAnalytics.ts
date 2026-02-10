@@ -1,5 +1,7 @@
 import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages)/(private)/studies/bibleData";
 import { PreachDate, Sermon } from "@/models/models";
+import { toDateOnlyKey } from "@/utils/dateOnly";
+import { isPreachDatePreached } from "@/utils/preachDateStatus";
 
 export type SermonsByDate = Record<string, Sermon[]>;
 export type BookPreachEntry = { sermon: Sermon; preachDate: PreachDate };
@@ -64,10 +66,23 @@ const buildAllPreachDates = (sermonsByDate: SermonsByDate): PreachDateEntry[] =>
     const allPreachDates: PreachDateEntry[] = [];
 
     Object.entries(sermonsByDate).forEach(([dateStr, sermonsForDate]) => {
+        const dateKey = toDateOnlyKey(dateStr) || dateStr;
         sermonsForDate.forEach(sermon => {
-            const pd = sermon.preachDates?.find(p => p.date === dateStr);
-            if (pd) {
-                allPreachDates.push({ pd, sermon });
+            const currentPreachDate = (sermon as Sermon & { currentPreachDate?: PreachDate }).currentPreachDate;
+            const currentPreachDateKey = currentPreachDate ? toDateOnlyKey(currentPreachDate.date) : null;
+            const matchedPreachDate =
+                currentPreachDate && (currentPreachDateKey === dateKey || currentPreachDate.date === dateStr)
+                    ? currentPreachDate
+                    : sermon.preachDates?.find((preachDate) => {
+                        const preachDateKey = toDateOnlyKey(preachDate.date);
+                        if (preachDateKey) {
+                            return preachDateKey === dateKey;
+                        }
+                        return preachDate.date === dateStr;
+                    });
+
+            if (matchedPreachDate && isPreachDatePreached(matchedPreachDate, Boolean(sermon.isPreached))) {
+                allPreachDates.push({ pd: matchedPreachDate, sermon });
             }
         });
     });
@@ -341,7 +356,11 @@ export const computeAnalyticsStats = ({
 
         if (sermon.date && pd.date) {
             const start = new Date(sermon.date).getTime();
-            const end = new Date(pd.date).getTime();
+            const preachDateKey = toDateOnlyKey(pd.date);
+            const end = preachDateKey ? new Date(`${preachDateKey}T00:00:00`).getTime() : new Date(pd.date).getTime();
+            if (Number.isNaN(start) || Number.isNaN(end)) {
+                return;
+            }
             const diffDays = Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
             totalPrepDays += diffDays;
             preachingsWithDates++;

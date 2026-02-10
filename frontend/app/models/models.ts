@@ -76,9 +76,12 @@ export interface Church {
   city?: string;
 }
 
+export type PreachDateStatus = 'planned' | 'preached';
+
 export interface PreachDate {
   id: string;
   date: string;                    // ISO date string (YYYY-MM-DD)
+  status?: PreachDateStatus;       // planned (scheduled) vs preached (fact)
   church: Church;                  // Required: church name and city
   audience?: string;                // Optional: audience description
   notes?: string;                  // Optional: notes about the preaching

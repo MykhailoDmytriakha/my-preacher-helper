@@ -6,10 +6,11 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { useSeries } from '@/hooks/useSeries';
-import { Sermon } from '@/models/models';
+import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PlusIcon } from "@components/Icons";
 import { auth } from '@services/firebaseAuth.service';
+import { addPreachDate } from '@services/preachDates.service';
 import { createSermon } from '@services/sermon.service';
 
 interface AddSermonModalProps {
@@ -19,6 +20,7 @@ interface AddSermonModalProps {
   isOpen?: boolean;
   onClose?: () => void;
   showTriggerButton?: boolean;
+  allowPlannedDate?: boolean;
 }
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
@@ -29,7 +31,8 @@ export default function AddSermonModal({
   preSelectedSeriesId,
   isOpen,
   onClose,
-  showTriggerButton = true
+  showTriggerButton = true,
+  allowPlannedDate = false
 }: AddSermonModalProps) {
   // showTriggerButton is used to conditionally render the trigger button
   const { t } = useTranslation();
@@ -41,6 +44,13 @@ export default function AddSermonModal({
   const [title, setTitle] = useState('');
   const [verse, setVerse] = useState('');
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
+  const [plannedDate, setPlannedDate] = useState('');
+
+  const getUnspecifiedChurch = (): Church => ({
+    id: 'church-unspecified',
+    name: t('calendar.unspecifiedChurch', { defaultValue: 'Church not specified' }),
+    city: ''
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,12 +74,30 @@ export default function AddSermonModal({
     try {
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
       console.log('Created sermon returned from server:', createdSermon);
+      let sermonForCallback = createdSermon;
+
+      if (allowPlannedDate && plannedDate) {
+        try {
+          const createdPlannedDate = await addPreachDate(createdSermon.id, {
+            date: plannedDate,
+            status: 'planned',
+            church: getUnspecifiedChurch()
+          });
+
+          sermonForCallback = {
+            ...createdSermon,
+            preachDates: [...(createdSermon.preachDates || []), createdPlannedDate]
+          };
+        } catch (plannedDateError) {
+          console.error('Error creating planned preach date for new sermon:', plannedDateError);
+        }
+      }
 
       // Note: Series assignment is now handled by the parent component
       // to avoid duplicate operations in the sequential modal flow
 
       if (onNewSermonCreated) {
-        onNewSermonCreated(createdSermon);
+        onNewSermonCreated(sermonForCallback);
       }
       // Note: router.refresh() moved to parent component to avoid modal flickering
     } catch (error) {
@@ -79,6 +107,7 @@ export default function AddSermonModal({
     setTitle('');
     setVerse('');
     setSelectedSeriesId('');
+    setPlannedDate('');
     handleClose();
 
   };
@@ -144,6 +173,23 @@ export default function AddSermonModal({
               ))}
             </select>
           </div>
+          {allowPlannedDate && (
+            <div className="mb-6">
+              <label htmlFor="plannedDate" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                {t('addSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
+              </label>
+              <input
+                id="plannedDate"
+                type="date"
+                value={plannedDate}
+                onChange={(e) => setPlannedDate(e.target.value)}
+                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {t('addSermon.plannedDateHint', { defaultValue: 'You can set church details later in Calendar.' })}
+              </p>
+            </div>
+          )}
           <div className="flex justify-end gap-3 mt-auto">
             <button
               type="button"

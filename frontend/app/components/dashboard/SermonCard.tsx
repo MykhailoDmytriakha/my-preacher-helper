@@ -7,11 +7,17 @@ import { useTranslation } from "react-i18next";
 import OptionMenu from "@/components/dashboard/OptionMenu";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
+import {
+  countPreachDatesByStatus,
+  getEffectiveIsPreached,
+  getLatestPreachedDate,
+  getNextPlannedDate
+} from "@/utils/preachDateStatus";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
 import { getContrastColor } from "@utils/color";
-import { formatDate } from "@utils/dateFormatter";
+import { formatDate, formatDateOnly } from "@utils/dateFormatter";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
 
 import HighlightedText from "../HighlightedText";
@@ -22,6 +28,7 @@ import type { TFunction } from "i18next";
 
 const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
 const DASHBOARD_PREACHED_KEY = "dashboard.preached";
+const CALENDAR_STATUS_PLANNED_KEY = "calendar.status.planned";
 
 interface SermonCardProps {
   sermon: Sermon;
@@ -36,6 +43,7 @@ interface SermonCardHeaderProps {
   sermon: Sermon;
   formattedCreatedDate: string;
   formattedPreachedDate: string | null;
+  formattedPlannedDate: string | null;
   onDelete: (id: string) => void;
   onUpdate: (updatedSermon: Sermon) => void;
   t: TFunction;
@@ -43,6 +51,7 @@ interface SermonCardHeaderProps {
 
 interface SermonCardTitleVerseProps {
   sermon: Sermon;
+  effectiveIsPreached: boolean;
   searchQuery: string;
 }
 
@@ -53,15 +62,18 @@ interface SermonCardSnippetsProps {
 }
 
 interface SermonCardBadgesProps {
-  sermon: Sermon;
   sermonSeries?: Series;
   thoughtCount: number;
   hasOutline: number | undefined;
+  effectiveIsPreached: boolean;
+  preachedDatesCount: number;
+  plannedDatesCount: number;
   t: TFunction;
 }
 
 interface SermonCardFooterProps {
   sermon: Sermon;
+  effectiveIsPreached: boolean;
   t: TFunction;
 }
 
@@ -69,10 +81,25 @@ function SermonCardHeader({
   sermon,
   formattedCreatedDate,
   formattedPreachedDate,
+  formattedPlannedDate,
   onDelete,
   onUpdate,
   t,
 }: SermonCardHeaderProps) {
+  const hasPreachedDate = Boolean(formattedPreachedDate);
+  const hasPlannedDate = !hasPreachedDate && Boolean(formattedPlannedDate);
+  const statusDateText = formattedPreachedDate ?? formattedPlannedDate ?? '-';
+  const statusLabel = hasPreachedDate
+    ? t(DASHBOARD_PREACHED_KEY)
+    : hasPlannedDate
+    ? t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })
+    : t(DASHBOARD_PREACHED_KEY);
+  const statusClasses = hasPreachedDate
+    ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+    : hasPlannedDate
+    ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+    : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500';
+
   return (
     <div className="flex items-start justify-between mb-2">
       <div className="flex flex-col gap-1.5">
@@ -81,16 +108,11 @@ function SermonCardHeader({
           <span className="uppercase tracking-wide text-[10px]">{t('dashboard.created')}</span>
           <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
         </div>
-        <div
-          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${formattedPreachedDate
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
-              : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
-            }`}
-        >
+        <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses}`}>
           <CheckCircle2 className="w-3 h-3" />
-          <span className="uppercase tracking-wide text-[10px]">{t(DASHBOARD_PREACHED_KEY)}</span>
-          <span className={formattedPreachedDate ? TEXT_PRIMARY_CLASSES : ''}>
-            {formattedPreachedDate ?? '-'}
+          <span className="uppercase tracking-wide text-[10px]">{statusLabel}</span>
+          <span className={hasPreachedDate || hasPlannedDate ? TEXT_PRIMARY_CLASSES : ''}>
+            {statusDateText}
           </span>
         </div>
       </div>
@@ -106,12 +128,12 @@ function SermonCardHeader({
   );
 }
 
-function SermonCardTitleVerse({ sermon, searchQuery }: SermonCardTitleVerseProps) {
+function SermonCardTitleVerse({ sermon, effectiveIsPreached, searchQuery }: SermonCardTitleVerseProps) {
   return (
     <>
       <Link href={`/sermons/${sermon.id}`} className="group/title block mb-2">
         <h3
-          className={`text-lg font-bold leading-tight transition-colors ${sermon.isPreached
+          className={`text-lg font-bold leading-tight transition-colors ${effectiveIsPreached
             ? `${TEXT_PRIMARY_CLASSES} group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400`
             : 'text-gray-900 dark:text-white group-hover/title:text-blue-600 dark:group-hover/title:text-blue-400'
             }`}
@@ -178,10 +200,12 @@ function SermonCardSnippets({ sermonId, searchQuery, searchSnippets }: SermonCar
 }
 
 function SermonCardBadges({
-  sermon,
   sermonSeries,
   thoughtCount,
   hasOutline,
+  effectiveIsPreached,
+  preachedDatesCount,
+  plannedDatesCount,
   t,
 }: SermonCardBadgesProps) {
   return (
@@ -219,15 +243,22 @@ function SermonCardBadges({
       )}
 
       {/* Preached Status (Icon only) */}
-      {sermon.isPreached && (
+      {effectiveIsPreached && (
         <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t(DASHBOARD_PREACHED_KEY)}>
           <CheckCircle2 className="w-3 h-3 mr-1.5" />
           <span>{t(DASHBOARD_PREACHED_KEY)}</span>
         </div>
       )}
 
+      {!effectiveIsPreached && plannedDatesCount > 0 && (
+        <div className="flex items-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30" title={t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })}>
+          <Calendar className="w-3 h-3 mr-1.5" />
+          <span>{t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })}</span>
+        </div>
+      )}
+
       {/* Missing Preach Dates Warning */}
-      {sermon.isPreached && (!sermon.preachDates || sermon.preachDates.length === 0) && (
+      {effectiveIsPreached && preachedDatesCount === 0 && (
         <div className="flex items-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 animate-pulse" title={t('calendar.noPreachDatesWarning')}>
           <AlertCircle className="w-3 h-3 mr-1.5" />
           <span>{t('calendar.noPreachDatesWarning')}</span>
@@ -237,13 +268,13 @@ function SermonCardBadges({
   );
 }
 
-function SermonCardFooter({ sermon, t }: SermonCardFooterProps) {
+function SermonCardFooter({ sermon, effectiveIsPreached, t }: SermonCardFooterProps) {
   const planData = getSermonPlanData(sermon);
 
   return (
     <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
       <div className="flex-grow">
-        <QuickPlanAccessButton sermon={sermon} t={t} isPreached={sermon.isPreached} />
+        <QuickPlanAccessButton sermon={sermon} t={t} isPreached={effectiveIsPreached} />
       </div>
 
       <div className="flex-shrink-0 border-l border-gray-200 dark:border-gray-700 pl-3">
@@ -252,7 +283,7 @@ function SermonCardFooter({ sermon, t }: SermonCardFooterProps) {
           orientation="horizontal"
           getExportContent={(format, options) => getExportContent(sermon, undefined, { format, includeTags: options?.includeTags })}
           className=""
-          isPreached={sermon.isPreached}
+          isPreached={effectiveIsPreached}
           variant="icon"
           planData={planData}
           sermonTitle={sermon.title}
@@ -271,16 +302,16 @@ export default function SermonCard({
   searchSnippets = []
 }: SermonCardProps) {
   const { t } = useTranslation();
+  const effectiveIsPreached = getEffectiveIsPreached(sermon);
+  const latestPreachedDate = getLatestPreachedDate(sermon);
+  const nextPlannedDate = getNextPlannedDate(sermon);
+  const preachedDatesCount = countPreachDatesByStatus(sermon, 'preached');
+  const plannedDatesCount = countPreachDatesByStatus(sermon, 'planned');
 
   const formattedCreatedDate = formatDate(sermon.date);
-  const latestPreachDate = sermon.isPreached
-    ? sermon.preachDates?.reduce<string | null>((latest, preachDate) => {
-      if (!preachDate.date) return latest;
-      if (!latest) return preachDate.date;
-      return new Date(preachDate.date) > new Date(latest) ? preachDate.date : latest;
-    }, null) ?? null
-    : null;
-  const formattedPreachedDate = latestPreachDate ? formatDate(latestPreachDate) : null;
+  const formattedPreachedDate = latestPreachedDate?.date ? formatDateOnly(latestPreachedDate.date) : null;
+  const formattedPlannedDate =
+    !formattedPreachedDate && nextPlannedDate?.date ? formatDateOnly(nextPlannedDate.date) : null;
   const thoughtCount = sermon.thoughts?.length || 0;
   const hasOutline = sermon.outline?.introduction?.length ||
     sermon.outline?.main?.length ||
@@ -313,12 +344,17 @@ export default function SermonCard({
             sermon={sermon}
             formattedCreatedDate={formattedCreatedDate}
             formattedPreachedDate={formattedPreachedDate}
+            formattedPlannedDate={formattedPlannedDate}
             onDelete={onDelete}
             onUpdate={onUpdate}
             t={t}
           />
 
-          <SermonCardTitleVerse sermon={sermon} searchQuery={searchQuery} />
+          <SermonCardTitleVerse
+            sermon={sermon}
+            effectiveIsPreached={effectiveIsPreached}
+            searchQuery={searchQuery}
+          />
 
           <SermonCardSnippets
             sermonId={sermon.id}
@@ -328,16 +364,18 @@ export default function SermonCard({
 
           {/* Badges & Metadata */}
           <SermonCardBadges
-            sermon={sermon}
             sermonSeries={sermonSeries}
             thoughtCount={thoughtCount}
             hasOutline={hasOutline}
+            effectiveIsPreached={effectiveIsPreached}
+            preachedDatesCount={preachedDatesCount}
+            plannedDatesCount={plannedDatesCount}
             t={t}
           />
         </div>
 
         {/* Footer Actions */}
-        <SermonCardFooter sermon={sermon} t={t} />
+        <SermonCardFooter sermon={sermon} effectiveIsPreached={effectiveIsPreached} t={t} />
       </div>
     </div>
   );
