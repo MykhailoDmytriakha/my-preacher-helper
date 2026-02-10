@@ -57,6 +57,7 @@ const setupFirestoreMocks = () => {
       update: mockUpdate.mockResolvedValue(undefined),
       delete: mockDelete.mockResolvedValue(undefined),
     }),
+    get: mockGet,
     where: mockWhere.mockReturnValue({
       get: mockGet,
     }),
@@ -106,18 +107,26 @@ describe('SeriesRepository', () => {
       const result = await repository.createSeries(mockSeries);
 
       expect(mockCollection).toHaveBeenCalledWith('series');
-      expect(mockAdd).toHaveBeenCalledWith({
+      expect(mockAdd).toHaveBeenCalledWith(expect.objectContaining({
         ...mockSeries,
         createdAt: '2024-01-01T12:00:00.000Z',
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+        sermonIds: ['sermon-1', 'sermon-2'],
+      }));
+      const createPayload = mockAdd.mock.calls[0][0] as { items?: unknown[] };
+      expect(Array.isArray(createPayload.items)).toBe(true);
+      expect(createPayload.items).toHaveLength(2);
 
-      expect(result).toEqual({
+      expect(result).toEqual(expect.objectContaining({
         ...mockSeries,
         id: 'new-series-id',
         createdAt: '2024-01-01T12:00:00.000Z',
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+        sermonIds: ['sermon-1', 'sermon-2'],
+      }));
+      expect(result.items).toHaveLength(2);
     });
 
     it('should filter undefined values before saving', async () => {
@@ -255,14 +264,16 @@ describe('SeriesRepository', () => {
 
       await repository.removeSermonFromAllSeries('sermon-1');
 
-      expect(docUpdate).toHaveBeenCalledWith({
+      expect(docUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({
         sermonIds: ['sermon-2'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
-      expect(docUpdate).toHaveBeenCalledWith({
+        seriesKind: 'sermon',
+      }));
+      expect(docUpdate).toHaveBeenNthCalledWith(2, expect.objectContaining({
         sermonIds: [],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
       logSpy.mockRestore();
     });
 
@@ -282,10 +293,12 @@ describe('SeriesRepository', () => {
 
       expect(mockCollection).toHaveBeenCalledWith('series');
       expect(mockDoc).toHaveBeenCalledWith('series-1');
-      expect(result).toEqual({
+      expect(result).toEqual(expect.objectContaining({
         id: 'series-1',
         ...mockSeriesDoc.data(),
-      });
+        seriesKind: 'sermon',
+      }));
+      expect(result?.items).toHaveLength(2);
     });
 
     it('should return null when series not found', async () => {
@@ -340,6 +353,40 @@ describe('SeriesRepository', () => {
 
       await expect(repository.updateSeries('series-1', { title: 'Updated' })).rejects.toThrow('Firestore error');
     });
+
+    it('should update mixed items and derived fields when item-level updates are provided', async () => {
+      const updates = {
+        items: [
+          { id: 'item-group', type: 'group', refId: 'group-1', position: 1 },
+          { id: 'item-sermon', type: 'sermon', refId: 'sermon-2', position: 2 },
+        ],
+      } as any;
+
+      await repository.updateSeries('series-1', updates);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({ type: 'group', refId: 'group-1' }),
+            expect.objectContaining({ type: 'sermon', refId: 'sermon-2' }),
+          ]),
+          sermonIds: ['sermon-2'],
+          seriesKind: 'mixed',
+        })
+      );
+    });
+
+    it('should throw explicit error when updating non-existing series', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: false,
+        id: 'missing',
+        data: () => null,
+      });
+
+      await expect(repository.updateSeries('missing', { title: 'Updated' })).rejects.toThrow(
+        'Series missing not found'
+      );
+    });
   });
 
   describe('deleteSeries', () => {
@@ -363,37 +410,41 @@ describe('SeriesRepository', () => {
     it('should add sermon at the end when no position specified', async () => {
       await repository.addSermonToSeries('series-1', 'sermon-3');
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-1', 'sermon-2', 'sermon-3'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should add sermon at specific position', async () => {
       await repository.addSermonToSeries('series-1', 'sermon-3', 1);
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-1', 'sermon-3', 'sermon-2'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should move existing sermon to new position', async () => {
       await repository.addSermonToSeries('series-1', 'sermon-1', 1);
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-2', 'sermon-1'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should handle position beyond array length', async () => {
       await repository.addSermonToSeries('series-1', 'sermon-3', 10);
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-1', 'sermon-2', 'sermon-3'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should throw error when series not found', async () => {
@@ -417,19 +468,21 @@ describe('SeriesRepository', () => {
     it('should remove sermon from series', async () => {
       await repository.removeSermonFromSeries('series-1', 'sermon-1');
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-2'],
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should handle removing non-existent sermon', async () => {
       await repository.removeSermonFromSeries('series-1', 'non-existent');
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: ['sermon-1', 'sermon-2'], // unchanged
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should throw error when series not found', async () => {
@@ -455,10 +508,11 @@ describe('SeriesRepository', () => {
 
       await repository.reorderSermonsInSeries('series-1', newOrder);
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         sermonIds: newOrder,
         updatedAt: '2024-01-01T12:00:00.000Z',
-      });
+        seriesKind: 'sermon',
+      }));
     });
 
     it('should throw error for invalid sermonIds array', async () => {
@@ -474,6 +528,116 @@ describe('SeriesRepository', () => {
       mockUpdate.mockRejectedValue(error);
 
       await expect(repository.reorderSermonsInSeries('series-1', ['sermon-1'])).rejects.toThrow('Firestore error');
+    });
+  });
+
+  describe('mixed item management', () => {
+    it('adds and removes group items in series', async () => {
+      await repository.addGroupToSeries('series-1', 'group-1');
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([expect.objectContaining({ type: 'group', refId: 'group-1' })]),
+          seriesKind: 'mixed',
+        })
+      );
+
+      await repository.removeGroupFromSeries('series-1', 'group-1');
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.not.arrayContaining([expect.objectContaining({ type: 'group', refId: 'group-1' })]),
+        })
+      );
+    });
+
+    it('reorders mixed items by id', async () => {
+      const mixedSeriesDoc = {
+        exists: true,
+        id: 'series-1',
+        data: () => ({
+          ...mockSeriesData,
+          items: [
+            { id: 'item-sermon-1', type: 'sermon', refId: 'sermon-1', position: 1 },
+            { id: 'item-group-1', type: 'group', refId: 'group-1', position: 2 },
+          ],
+          sermonIds: ['sermon-1'],
+          seriesKind: 'mixed',
+        }),
+      };
+      mockGet.mockResolvedValueOnce(mixedSeriesDoc);
+
+      await repository.reorderSeriesItems('series-1', ['item-group-1', 'item-sermon-1']);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({ id: 'item-group-1', position: 1 }),
+            expect.objectContaining({ id: 'item-sermon-1', position: 2 }),
+          ]),
+          sermonIds: ['sermon-1'],
+          seriesKind: 'mixed',
+        })
+      );
+    });
+
+    it('throws on missing series in mixed operations', async () => {
+      mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
+      await expect(repository.addGroupToSeries('missing', 'group-1')).rejects.toThrow('Series missing not found');
+
+      mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
+      await expect(repository.removeGroupFromSeries('missing', 'group-1')).rejects.toThrow('Series missing not found');
+
+      mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
+      await expect(repository.reorderSeriesItems('missing', ['item-1'])).rejects.toThrow('Series missing not found');
+    });
+  });
+
+  describe('removeGroupFromAllSeries', () => {
+    it('returns early when no series contain the group', async () => {
+      mockGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'series-1',
+            data: () => ({ ...mockSeriesData, items: [] }),
+            ref: { update: jest.fn() },
+          },
+        ],
+      });
+
+      await repository.removeGroupFromAllSeries('group-1');
+      // no candidate update should run
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('removes group from all matching series', async () => {
+      const refUpdate = jest.fn().mockResolvedValue(undefined);
+      mockGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'series-1',
+            data: () => ({
+              ...mockSeriesData,
+              items: [
+                { id: 'item-group', type: 'group', refId: 'group-1', position: 1 },
+                { id: 'item-sermon', type: 'sermon', refId: 'sermon-1', position: 2 },
+              ],
+              sermonIds: ['sermon-1'],
+              seriesKind: 'mixed',
+            }),
+            ref: { update: refUpdate },
+          },
+        ],
+      });
+
+      await repository.removeGroupFromAllSeries('group-1');
+
+      expect(refUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: expect.arrayContaining([expect.objectContaining({ type: 'sermon', refId: 'sermon-1' })]),
+          sermonIds: ['sermon-1'],
+          seriesKind: 'sermon',
+          updatedAt: '2024-01-01T12:00:00.000Z',
+        })
+      );
     });
   });
 });

@@ -1,315 +1,235 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
 
-import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
-import { getSeriesById } from "@services/series.service";
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { normalizeSeriesItems } from '@/utils/seriesItems';
+import { getGroupById } from '@services/groups.service';
 import {
+  addGroupToSeries,
   addSermonToSeries,
-  removeSermonFromSeries,
-  reorderSermons as reorderSermonsAPI,
+  getSeriesById,
+  removeSeriesItem,
+  reorderSeriesItems,
   updateSeries,
-} from "@services/series.service";
-import { getSermonById } from "@services/sermon.service";
+} from '@services/series.service';
+import { getSermonById } from '@services/sermon.service';
 
-import type { Series, Sermon } from "@/models/models";
+import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
+
+type ResolvedSeriesItem = {
+  item: SeriesItem;
+  sermon?: Sermon;
+  group?: Group;
+};
 
 type SeriesDetailPayload = {
   series: Series;
+  items: ResolvedSeriesItem[];
   sermons: Sermon[];
+  groups: Group[];
 };
 
-// Query key constants
 const QUERY_KEYS = {
-  SERIES_DETAIL: "series-detail",
+  SERIES_DETAIL: 'series-detail',
 } as const;
+
+const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> => {
+  const normalizedItems = normalizeSeriesItems(seriesData.items, seriesData.sermonIds || []);
+  const sermonIds = Array.from(
+    new Set(normalizedItems.filter((entry) => entry.type === 'sermon').map((entry) => entry.refId))
+  );
+  const groupIds = Array.from(
+    new Set(normalizedItems.filter((entry) => entry.type === 'group').map((entry) => entry.refId))
+  );
+
+  const [sermonResults, groupResults] = await Promise.all([
+    Promise.all(sermonIds.map((id) => getSermonById(id))),
+    Promise.all(groupIds.map((id) => getGroupById(id))),
+  ]);
+
+  const sermons = sermonResults.filter((sermon): sermon is Sermon => Boolean(sermon));
+  const groups = groupResults.filter((group): group is Group => Boolean(group));
+
+  const sermonById = new Map(sermons.map((sermon) => [sermon.id, sermon]));
+  const groupById = new Map(groups.map((group) => [group.id, group]));
+
+  const items = normalizedItems
+    .map((item) => ({
+      item,
+      sermon: item.type === 'sermon' ? sermonById.get(item.refId) : undefined,
+      group: item.type === 'group' ? groupById.get(item.refId) : undefined,
+    }))
+    .filter((entry) => (entry.item.type === 'sermon' ? Boolean(entry.sermon) : Boolean(entry.group)));
+
+  return {
+    series: { ...seriesData, items: normalizedItems, sermonIds: sermonIds },
+    items,
+    sermons,
+    groups,
+  };
+};
 
 export function useSeriesDetail(seriesId: string) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
-  const {
-    data,
-    isLoading,
-    isFetching,
-    error,
-    refetch,
-  } = useServerFirstQuery<SeriesDetailPayload | null>({
+
+  const { data, isLoading, isFetching, error, refetch } = useServerFirstQuery<SeriesDetailPayload | null>({
     queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId],
     enabled: !!seriesId,
     queryFn: async () => {
       if (!seriesId) return null;
-
       const seriesData = await getSeriesById(seriesId);
       if (!seriesData) {
-        throw new Error("Series not found");
+        throw new Error('Series not found');
       }
 
-      const sermonsData = await Promise.all(seriesData.sermonIds.map((id) => getSermonById(id)));
-
-      // Filter out sermons that couldn't be found (were deleted)
-      // This handles the case where sermons were deleted but their IDs still exist in series
-      const validSermons = sermonsData
-        .filter((sermon): sermon is Sermon => sermon !== undefined)
-        .sort((a, b) => (a.seriesPosition || 0) - (b.seriesPosition || 0));
-
-      // Log if there were invalid sermon IDs for debugging
-      const validSermonIds = validSermons.map(s => s.id);
-      const invalidCount = seriesData.sermonIds.length - validSermonIds.length;
-      if (invalidCount > 0) {
-        console.log(`Series ${seriesId} contains ${invalidCount} invalid sermon IDs that were filtered out`);
-      }
-
-      return { series: seriesData, sermons: validSermons };
+      return buildPayload(seriesData);
     },
   });
 
   const series = data?.series ?? null;
+  const items = data?.items ?? [];
   const sermons = data?.sermons ?? [];
+  const groups = data?.groups ?? [];
 
   const refreshSeriesDetail = useCallback(async () => {
     await refetch();
   }, [refetch]);
 
-  const updateDetailCache = useCallback(
-    (updater: (payload: SeriesDetailPayload) => SeriesDetailPayload) => {
-      queryClient.setQueryData<SeriesDetailPayload | null>([QUERY_KEYS.SERIES_DETAIL, seriesId], (old) =>
-        old ? updater(old) : old
-      );
-    },
-    [queryClient, seriesId]
-  );
+  const withMutationGuard = useCallback(async (action: () => Promise<void>) => {
+    setMutationError(null);
+    try {
+      await action();
+      await refetch();
+    } catch (errorValue: unknown) {
+      const normalized = errorValue instanceof Error ? errorValue : new Error(String(errorValue));
+      setMutationError(normalized);
+      throw normalized;
+    }
+  }, [refetch]);
 
   const addSermon = useCallback(
     async (sermonId: string, position?: number) => {
       if (!series) return;
-      setMutationError(null);
-      try {
+      await withMutationGuard(async () => {
         await addSermonToSeries(series.id, sermonId, position);
-        await refreshSeriesDetail();
-        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-      } catch (e: unknown) {
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        setMutationError(errorObj);
-        throw errorObj;
-      }
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+      });
     },
-    [series, refreshSeriesDetail, queryClient, seriesId]
+    [series, withMutationGuard, queryClient]
   );
 
   const addSermons = useCallback(
     async (sermonIds: string[]) => {
       if (!series) return;
-      setMutationError(null);
-      const previous = data;
-
-      try {
-        updateDetailCache((payload) => {
-          if (!payload) return payload;
-
-          const existingIds = new Set(payload.series.sermonIds);
-          const optimisticSermons = [...payload.sermons];
-
-          sermonIds.forEach((id, index) => {
-            if (optimisticSermons.some((s) => s.id === id)) return;
-            const basePosition = optimisticSermons.length + 1;
-            optimisticSermons.push({
-              id,
-              title: "Loading…",
-              verse: "",
-              date: "",
-              userId: payload.series.userId,
-              thoughts: [],
-              outline: {
-                introduction: [],
-                main: [],
-                conclusion: [],
-              },
-              isPreached: false,
-              seriesId: payload.series.id,
-              seriesPosition: basePosition + index,
-            } as Sermon);
-            existingIds.add(id);
-          });
-
-          return {
-            ...payload,
-            series: { ...payload.series, sermonIds: Array.from(existingIds) },
-            sermons: optimisticSermons,
-          };
-        });
-
+      await withMutationGuard(async () => {
         await Promise.all(
-          sermonIds.map((id, idx) =>
-            addSermonToSeries(series.id, id, (data?.sermons?.length || 0) + idx + 1)
+          sermonIds.map((sermonId, index) =>
+            addSermonToSeries(series.id, sermonId, (series.items?.length || 0) + index)
           )
         );
-
-        const fetchedSermons = await Promise.all(sermonIds.map((id) => getSermonById(id)));
-
-        updateDetailCache((payload) => {
-          if (!payload) return payload;
-
-          const existing = payload.sermons.filter((s) => !sermonIds.includes(s.id));
-          const basePosition = existing.length;
-
-          const hydrated = fetchedSermons.map((sermon, idx) => {
-            const fallback: Sermon = {
-              id: sermonIds[idx],
-              title: "New Sermon",
-              verse: "",
-              date: "",
-              userId: payload.series.userId,
-              thoughts: [],
-              outline: {
-                introduction: [],
-                main: [],
-                conclusion: []
-              },
-              isPreached: false,
-              seriesId: payload.series.id,
-              seriesPosition: basePosition + idx + 1,
-            };
-
-            const merged = {
-              ...fallback,
-              ...(sermon ?? {}),
-              thoughts: sermon?.thoughts ?? fallback.thoughts,
-              outline: sermon?.outline ?? fallback.outline,
-              seriesId: sermon?.seriesId ?? fallback.seriesId,
-              seriesPosition: sermon?.seriesPosition ?? fallback.seriesPosition,
-            };
-
-            return merged;
-          });
-
-          const mergedSermons = [...existing, ...hydrated].sort(
-            (a, b) => (a.seriesPosition || 0) - (b.seriesPosition || 0)
-          );
-
-          const mergedIds = Array.from(new Set([...payload.series.sermonIds, ...sermonIds]));
-
-          return {
-            ...payload,
-            series: { ...payload.series, sermonIds: mergedIds },
-            sermons: mergedSermons,
-          };
-        });
-
-        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-      } catch (e: unknown) {
-        if (previous) {
-          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
-        }
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        setMutationError(errorObj);
-        throw errorObj;
-      }
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+      });
     },
-    [series, data, updateDetailCache, queryClient, seriesId]
+    [series, withMutationGuard, queryClient]
+  );
+
+  const addGroup = useCallback(
+    async (groupId: string, position?: number) => {
+      if (!series) return;
+      await withMutationGuard(async () => {
+        await addGroupToSeries(series.id, groupId, position);
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+        await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
+      });
+    },
+    [series, withMutationGuard, queryClient]
+  );
+
+  const removeItem = useCallback(
+    async (type: 'sermon' | 'group', refId: string) => {
+      if (!series) return;
+      await withMutationGuard(async () => {
+        await removeSeriesItem(series.id, type, refId);
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+        if (type === 'group') {
+          await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
+        }
+      });
+    },
+    [series, withMutationGuard, queryClient]
   );
 
   const removeSermon = useCallback(
-    async (sermonId: string) => {
-      if (!series) return;
-      setMutationError(null);
-      const previous = data;
-      try {
-        updateDetailCache((payload) =>
-          payload
-            ? {
-                ...payload,
-                series: {
-                  ...payload.series,
-                  sermonIds: payload.series.sermonIds.filter((id) => id !== sermonId),
-                },
-                sermons: payload.sermons.filter((sermon) => sermon.id !== sermonId),
-              }
-            : payload
-        );
-
-        await removeSermonFromSeries(series.id, sermonId);
-        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-      } catch (e: unknown) {
-        if (previous) {
-          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
-        }
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        setMutationError(errorObj);
-        throw errorObj;
-      }
-    },
-    [series, data, updateDetailCache, queryClient, seriesId]
+    async (sermonId: string) => removeItem('sermon', sermonId),
+    [removeItem]
   );
 
   const reorderSeriesSermons = useCallback(
     async (sermonIds: string[]) => {
       if (!series) return;
-      setMutationError(null);
+      const currentItems = normalizeSeriesItems(series.items, series.sermonIds || []);
+      const orderedSermonItems = sermonIds
+        .map((sermonId) => currentItems.find((item) => item.type === 'sermon' && item.refId === sermonId))
+        .filter((entry): entry is SeriesItem => Boolean(entry));
 
-      const previous = data;
+      const missingSermons = currentItems.filter(
+        (item) => item.type === 'sermon' && !orderedSermonItems.find((entry) => entry.id === item.id)
+      );
+      const finalSermonItems = [...orderedSermonItems, ...missingSermons];
 
-      // Optimistic UI update
-      updateDetailCache((payload) => {
-        const reordered = sermonIds.map((sermonId, index) => {
-          const sermon = payload.sermons.find((s) => s.id === sermonId);
-          if (!sermon) {
-            throw new Error(`Sermon with id ${sermonId} not found`);
-          }
-          return { ...sermon, seriesPosition: index + 1 };
+      let cursor = 0;
+      const nextItemIds = currentItems
+        .map((item) => {
+          if (item.type !== 'sermon') return item.id;
+          const next = finalSermonItems[cursor];
+          cursor += 1;
+          return next?.id || item.id;
         });
 
-        return {
-          ...payload,
-          series: { ...payload.series, sermonIds },
-          sermons: reordered,
-        };
+      await withMutationGuard(async () => {
+        await reorderSeriesItems(series.id, nextItemIds);
       });
-
-      try {
-        await reorderSermonsAPI(series.id, sermonIds);
-        // Invalidate to ensure persisted cache syncs after reorder
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-      } catch (e: unknown) {
-        if (previous) {
-          queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, seriesId], previous);
-        }
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        setMutationError(errorObj);
-        throw errorObj;
-      }
     },
-    [series, data, updateDetailCache, queryClient, seriesId]
+    [series, withMutationGuard]
+  );
+
+  const reorderMixedItems = useCallback(
+    async (itemIds: string[]) => {
+      if (!series) return;
+      await withMutationGuard(async () => {
+        await reorderSeriesItems(series.id, itemIds);
+      });
+    },
+    [series, withMutationGuard]
   );
 
   const updateSeriesDetail = useCallback(
     async (updates: Partial<Series>) => {
       if (!series) return;
-      setMutationError(null);
-      try {
+      await withMutationGuard(async () => {
         await updateSeries(series.id, updates);
-        await refreshSeriesDetail();
-        queryClient.invalidateQueries({ queryKey: ["series", series.userId] });
-      } catch (e: unknown) {
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        setMutationError(errorObj);
-        throw errorObj;
-      }
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+      });
     },
-    [series, refreshSeriesDetail, queryClient]
+    [series, withMutationGuard, queryClient]
   );
 
   return {
     series,
+    items,
     sermons,
+    groups,
     loading: isLoading || isFetching,
     error: (error as Error | null) ?? mutationError,
     refreshSeriesDetail,
     addSermon,
     addSermons,
+    addGroup,
+    removeItem,
     removeSermon,
     reorderSeriesSermons,
+    reorderMixedItems,
     updateSeriesDetail,
   };
 }

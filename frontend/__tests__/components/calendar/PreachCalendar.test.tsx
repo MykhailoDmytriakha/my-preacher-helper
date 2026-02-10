@@ -56,7 +56,7 @@ describe('PreachCalendar', () => {
 
     render(
       <PreachCalendar
-        sermonsByDate={sermonsByDate}
+        eventsByDate={sermonsByDate}
         selectedDate={selectedDate}
         onDateSelect={jest.fn()}
       />
@@ -72,7 +72,7 @@ describe('PreachCalendar', () => {
 
     render(
       <PreachCalendar
-        sermonsByDate={sermonsByDate}
+        eventsByDate={sermonsByDate}
         selectedDate={selectedDate}
         onDateSelect={jest.fn()}
         currentMonth={currentMonth}
@@ -90,7 +90,7 @@ describe('PreachCalendar', () => {
 
     render(
       <PreachCalendar
-        sermonsByDate={sermonsByDate}
+        eventsByDate={sermonsByDate}
         selectedDate={selectedDate}
         onDateSelect={onDateSelect}
         onMonthChange={onMonthChange}
@@ -113,7 +113,7 @@ describe('PreachCalendar', () => {
 
     render(
       <PreachCalendar
-        sermonsByDate={sermonsByDate}
+        eventsByDate={sermonsByDate}
         selectedDate={selectedDate}
         onDateSelect={jest.fn()}
       />

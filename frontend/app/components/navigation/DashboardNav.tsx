@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
+import { hasGroupsAccess } from "@/services/userSettings.service";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 
@@ -33,15 +34,53 @@ export default function DashboardNav() {
   debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navDropdownOpen, setNavDropdownOpen] = useState(false);
+  const [showGroupsNav, setShowGroupsNav] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const navItems = useMemo(() => (
-    primaryNavItems.map((item) => ({
-      ...item,
-      label: t(item.labelKey, { defaultValue: item.defaultLabel })
-    }))
-  ), [t]);
+    primaryNavItems
+      .filter((item) => showGroupsNav || item.key !== 'groups')
+      .map((item) => ({
+        ...item,
+        label: t(item.labelKey, { defaultValue: item.defaultLabel })
+      }))
+  ), [t, showGroupsNav]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function checkGroupsAccess() {
+      if (!user?.uid) {
+        if (isActive) setShowGroupsNav(false);
+        return;
+      }
+
+      const hasAccess = await hasGroupsAccess(user.uid);
+      if (isActive) {
+        setShowGroupsNav(hasAccess);
+      }
+    }
+
+    checkGroupsAccess();
+    return () => {
+      isActive = false;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const handleGroupsFeatureUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<boolean>;
+      if (typeof customEvent.detail === 'boolean') {
+        setShowGroupsNav(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('groups-feature-updated', handleGroupsFeatureUpdated as EventListener);
+    return () => {
+      window.removeEventListener('groups-feature-updated', handleGroupsFeatureUpdated as EventListener);
+    };
+  }, []);
 
   // Function to close mobile menu and nav dropdown when path changes
   useEffect(() => {
@@ -294,6 +333,7 @@ export default function DashboardNav() {
         isOpen={mobileMenuOpen} 
         onLogout={handleLogout}
         pathname={pathname || ''}
+        showGroups={showGroupsNav}
         onNavigate={() => setMobileMenuOpen(false)}
       />
 

@@ -2386,16 +2386,22 @@ export default function PlanPage() {
 
     // schedule after layout settles
     requestAnimationFrame(() => {
+      const latestPair = refs.current[pointId];
+      if (!latestPair?.left || !latestPair?.right) return;
+
       // Reset to natural height for measurement
-      pair.left!.style.height = 'auto';
-      pair.right!.style.height = 'auto';
+      latestPair.left.style.height = 'auto';
+      latestPair.right.style.height = 'auto';
 
       requestAnimationFrame(() => {
-        const lh = pair.left!.offsetHeight;
-        const rh = pair.right!.offsetHeight;
+        const finalPair = refs.current[pointId];
+        if (!finalPair?.left || !finalPair?.right) return;
+
+        const lh = finalPair.left.offsetHeight;
+        const rh = finalPair.right.offsetHeight;
         const max = Math.max(lh, rh);
-        pair.left!.style.height = `${max}px`;
-        pair.right!.style.height = `${max}px`;
+        finalPair.left.style.height = `${max}px`;
+        finalPair.right.style.height = `${max}px`;
       });
     });
   };

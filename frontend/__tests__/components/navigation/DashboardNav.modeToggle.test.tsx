@@ -1,9 +1,10 @@
-import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import ModeToggle from '@/components/navigation/ModeToggle';
+import { hasGroupsAccess } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 // Use mocked ModeToggle rendered inside DashboardNav and query by testids exposed there
 jest.mock('@locales/i18n', () => ({}));
@@ -24,6 +25,7 @@ const resetScenario = () => {
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
   paramsMap = {};
+  mockHasGroupsAccess.mockResolvedValue(true);
 };
 
 jest.mock('next/navigation', () => ({
@@ -52,6 +54,11 @@ jest.mock('@/components/navigation/LanguageSwitcher', () => ({ __esModule: true,
 jest.mock('@/components/navigation/UserProfileDropdown', () => ({ __esModule: true, default: () => <div data-testid="user-dropdown" /> }));
 jest.mock('@/components/navigation/FeedbackModal', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/navigation/MobileMenu', () => ({ __esModule: true, default: () => <div data-testid="mobile-menu" /> }));
+jest.mock('@/services/userSettings.service', () => ({
+  ...jest.requireActual('@/services/userSettings.service'),
+  hasGroupsAccess: jest.fn(),
+}));
+const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
 // Mock usePrepModeAccess hook
 jest.mock('@/hooks/usePrepModeAccess', () => ({
@@ -280,6 +287,38 @@ describe('DashboardNav mode toggle', () => {
 });
 
 describe('Navigation button visibility', () => {
+  it('hides groups navigation item when groups access is disabled', async () => {
+    mockHasGroupsAccess.mockResolvedValueOnce(false);
+    pathnameMock = '/dashboard';
+
+    render(<DashboardNav />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('navigation.groups')).not.toBeInTheDocument();
+    });
+  });
+
+  it('updates groups item visibility immediately after feature toggle event', async () => {
+    pathnameMock = '/dashboard';
+    render(<DashboardNav />);
+
+    await waitFor(() => {
+      expect(screen.getByText('navigation.groups')).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new CustomEvent('groups-feature-updated', { detail: false }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('navigation.groups')).not.toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new CustomEvent('groups-feature-updated', { detail: true }));
+
+    await waitFor(() => {
+      expect(screen.getByText('navigation.groups')).toBeInTheDocument();
+    });
+  });
+
   it('toggles dropdown based on route', async () => {
     await runScenarios(
       [

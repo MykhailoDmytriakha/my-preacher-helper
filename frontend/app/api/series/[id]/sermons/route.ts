@@ -8,6 +8,31 @@ const ERROR_MESSAGES = {
   SERIES_NOT_FOUND: 'Series not found',
 } as const;
 
+async function syncSermonPositions(seriesId: string) {
+  const series = await seriesRepository.fetchSeriesById(seriesId);
+  if (!series) return;
+
+  const sermonItems = (series.items || [])
+    .filter((item) => item.type === 'sermon')
+    .map((item) => ({ sermonId: item.refId, position: item.position }));
+
+  if (sermonItems.length > 0) {
+    await Promise.all(
+      sermonItems.map((item) =>
+        sermonsRepository.updateSermonSeriesInfo(item.sermonId, seriesId, item.position)
+      )
+    );
+    return;
+  }
+
+  // Legacy fallback for series documents without mixed items
+  await Promise.all(
+    (series.sermonIds || []).map((sermonId, index) =>
+      sermonsRepository.updateSermonSeriesInfo(sermonId, seriesId, index + 1)
+    )
+  );
+}
+
 // POST /api/series/:id/sermons - add sermon to series
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: seriesId } = await params;
@@ -28,8 +53,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Add sermon to series
     await seriesRepository.addSermonToSeries(seriesId, sermonId, position);
 
-    // Update the sermon's seriesId field
-    await sermonsRepository.updateSermonSeriesInfo(sermonId, seriesId, position);
+    // Sync all sermon positions after mutation to keep references stable
+    await syncSermonPositions(seriesId);
 
     return NextResponse.json({ message: 'Sermon added to series successfully' });
   } catch (error: unknown) {
@@ -64,6 +89,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Reorder sermons in series
     await seriesRepository.reorderSermonsInSeries(seriesId, sermonIds);
+    await syncSermonPositions(seriesId);
 
     return NextResponse.json({ message: 'Sermons reordered successfully' });
   } catch (error: unknown) {
@@ -98,6 +124,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     // Clear the sermon's seriesId field
     await sermonsRepository.updateSermonSeriesInfo(sermonId, null, null);
+    await syncSermonPositions(seriesId);
 
     return NextResponse.json({ message: 'Sermon removed from series successfully' });
   } catch (error: unknown) {

@@ -39,6 +39,7 @@ export class UserSettingsRepository {
    * @param displayName User display name (optional)
    * @param enablePrepMode Enable prep mode access (optional)
    * @param enableAudioGeneration Enable audio generation access (optional)
+   * @param enableGroups Enable groups workspace access (optional)
    * @returns ID of the created or updated document
    */
   async createOrUpdate(
@@ -47,7 +48,8 @@ export class UserSettingsRepository {
     email?: string,
     displayName?: string,
     enablePrepMode?: boolean,
-    enableAudioGeneration?: boolean
+    enableAudioGeneration?: boolean,
+    enableGroups?: boolean
   ): Promise<string> {
     try {
       const docRef = adminDb.collection(this.collection).doc(userId);
@@ -62,6 +64,7 @@ export class UserSettingsRepository {
       if (displayName !== undefined) allowedUpdates.displayName = displayName;
       if (enablePrepMode !== undefined) allowedUpdates.enablePrepMode = enablePrepMode;
       if (enableAudioGeneration !== undefined) allowedUpdates.enableAudioGeneration = enableAudioGeneration;
+      if (enableGroups !== undefined) allowedUpdates.enableGroups = enableGroups;
 
       // If no fields to update, return early
       if (Object.keys(allowedUpdates).length === 0) {

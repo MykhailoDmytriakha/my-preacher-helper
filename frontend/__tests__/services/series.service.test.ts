@@ -13,6 +13,9 @@ let deleteSeries: any;
 let addSermonToSeries: any;
 let removeSermonFromSeries: any;
 let reorderSermons: any;
+let addGroupToSeries: any;
+let removeSeriesItem: any;
+let reorderSeriesItems: any;
 
 describe('Series Service', () => {
   beforeEach(async () => {
@@ -30,6 +33,9 @@ describe('Series Service', () => {
     addSermonToSeries = seriesService.addSermonToSeries;
     removeSermonFromSeries = seriesService.removeSermonFromSeries;
     reorderSermons = seriesService.reorderSermons;
+    addGroupToSeries = seriesService.addGroupToSeries;
+    removeSeriesItem = seriesService.removeSeriesItem;
+    reorderSeriesItems = seriesService.reorderSeriesItems;
   });
 
   afterEach(() => {
@@ -491,6 +497,57 @@ describe('Series Service', () => {
       expect(consoleSpy).toHaveBeenCalledWith('reorderSermons: Error reordering sermons in series series-1:', error);
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('mixed-item endpoints', () => {
+    it('adds group to series successfully', async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await expect(addGroupToSeries('series-1', 'group-1', 3)).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'group', refId: 'group-1', position: 3 }),
+      });
+    });
+
+    it('removes mixed item from series', async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await expect(removeSeriesItem('series-1', 'group', 'group-1')).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items?type=group&refId=group-1', {
+        method: 'DELETE',
+      });
+    });
+
+    it('reorders mixed items', async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await expect(reorderSeriesItems('series-1', ['item-2', 'item-1'])).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds: ['item-2', 'item-1'] }),
+      });
+    });
+
+    it('throws on mixed endpoint API errors', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 400 });
+      await expect(addGroupToSeries('series-1', 'group-1')).rejects.toThrow('Failed to add group to series');
+
+      mockFetch.mockResolvedValue({ ok: false, status: 400 });
+      await expect(removeSeriesItem('series-1', 'sermon', 'sermon-1')).rejects.toThrow(
+        'Failed to remove item from series'
+      );
+
+      mockFetch.mockResolvedValue({ ok: false, status: 400 });
+      await expect(reorderSeriesItems('series-1', ['item-1'])).rejects.toThrow(
+        'Failed to reorder series items'
+      );
     });
   });
 });

@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
 import { debugLog } from '@/utils/debugMode';
@@ -91,6 +92,7 @@ type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 
 type SermonData = ReturnType<typeof useSermon>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
+type GroupData = ReturnType<typeof useGroupDetail>['group'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
   segment === 'dashboard' || (index === 0 && Boolean(segmentLabels[segment]));
@@ -103,6 +105,45 @@ type BuildSegmentCrumbParams = {
   t: TranslateFn;
   sermon: SermonData;
   series: SeriesData;
+  group: GroupData;
+};
+
+type DetailLabelContext = {
+  sermon: SermonData;
+  series: SeriesData;
+  group: GroupData;
+};
+
+type DetailLabelResolver = (context: DetailLabelContext) => string | null;
+
+const detailLabelResolvers: Record<string, DetailLabelResolver> = {
+  sermons: ({ sermon }) => sermon?.title || null,
+  series: ({ series }) => (series ? series.title || `Series ${series.id.slice(-4)}` : null),
+  groups: ({ group }) => group?.title || null,
+};
+
+const buildCrumb = (label: string, isLast: boolean, currentPath: string, hrefOverride?: string) => ({
+  label,
+  href: isLast ? undefined : (hrefOverride ?? currentPath),
+  isCurrent: isLast,
+});
+
+const resolveDetailLabel = (
+  parent: string,
+  t: TranslateFn,
+  context: DetailLabelContext
+): string | null => {
+  const detailConfig = detailParents[parent];
+  if (!detailConfig) {
+    return null;
+  }
+
+  const resolvedLabel = detailLabelResolvers[parent]?.(context);
+  if (resolvedLabel) {
+    return resolvedLabel;
+  }
+
+  return t(detailConfig.labelKey, { defaultValue: detailConfig.defaultLabel });
 };
 
 const buildSegmentCrumb = ({
@@ -113,50 +154,26 @@ const buildSegmentCrumb = ({
   t,
   sermon,
   series,
+  group,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
   const config = segmentLabels[segment];
   if (config) {
-    const label = t(config.labelKey, { defaultValue: config.defaultLabel });
-    return {
-      label,
-      href: isLast ? undefined : (config.href ?? currentPath),
-      isCurrent: isLast,
-    };
+    return buildCrumb(
+      t(config.labelKey, { defaultValue: config.defaultLabel }),
+      isLast,
+      currentPath,
+      config.href
+    );
   }
 
-  if (parent && detailParents[parent]) {
-    if (parent === 'sermons' && sermon) {
-      return {
-        label: sermon.title,
-        href: isLast ? undefined : currentPath,
-        isCurrent: isLast,
-      };
+  if (parent) {
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group });
+    if (detailLabel) {
+      return buildCrumb(detailLabel, isLast, currentPath);
     }
-
-    if (parent === 'series' && series) {
-      return {
-        label: series.title || `Series ${series.id.slice(-4)}`,
-        href: isLast ? undefined : currentPath,
-        isCurrent: isLast,
-      };
-    }
-
-    const detailLabel = t(detailParents[parent].labelKey, {
-      defaultValue: detailParents[parent].defaultLabel,
-    });
-
-    return {
-      label: detailLabel,
-      href: isLast ? undefined : currentPath,
-      isCurrent: isLast,
-    };
   }
 
-  return {
-    label: capitalizeWords(segment),
-    href: isLast ? undefined : currentPath,
-    isCurrent: isLast,
-  };
+  return buildCrumb(capitalizeWords(segment), isLast, currentPath);
 };
 
 export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean }) {
@@ -191,11 +208,23 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
 
+  // Get groupId from URL
+  const groupId = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'groups' && segments[1]) {
+      return segments[1];
+    }
+    return null;
+  }, [pathname]);
+
   // Get sermon data if we have sermonId
   const { sermon } = useSermon(sermonId || '');
 
   // Get series data if we have seriesId
   const { series } = useSeriesDetail(seriesId || '');
+
+  // Get group data if we have groupId
+  const { group } = useGroupDetail(groupId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
@@ -247,7 +276,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group }));
     });
 
     // Handle "Preaching" mode overlay
@@ -274,12 +303,14 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       path: pathname,
       sermonId,
       sermonTitle: sermon?.title,
+      groupId,
+      groupTitle: group?.title,
       itemsLength: crumbs.length,
       items: JSON.stringify(crumbs)
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, shouldHide, t]);
 
   if (shouldHide) {
     return null;

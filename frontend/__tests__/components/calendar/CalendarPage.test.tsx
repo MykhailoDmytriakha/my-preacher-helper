@@ -3,6 +3,7 @@ import React from 'react';
 import CalendarPage from '../../../app/(pages)/(private)/calendar/page';
 import { PreachDate, Sermon } from '@/models/models';
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
+import { useCalendarGroups } from '@/hooks/useCalendarGroups';
 import { useSeries } from '@/hooks/useSeries';
 import '@testing-library/jest-dom';
 
@@ -11,11 +12,15 @@ jest.mock('@/hooks/useCalendarSermons', () => ({
   useCalendarSermons: jest.fn(),
 }));
 
+jest.mock('@/hooks/useCalendarGroups', () => ({
+  useCalendarGroups: jest.fn(),
+}));
+
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: jest.fn(),
 }));
 
-jest.mock('@/hooks/useAuth', () => ({
+jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({
     user: { uid: 'test-user' },
   }),
@@ -115,6 +120,7 @@ jest.mock('react-i18next', () => ({
 
 // Mock the useCalendarSermons hook
 const mockUseCalendarSermons = jest.mocked(useCalendarSermons);
+const mockUseCalendarGroups = jest.mocked(useCalendarGroups);
 const mockUseSeries = jest.mocked(useSeries);
 
 describe('CalendarPage', () => {
@@ -152,6 +158,13 @@ describe('CalendarPage', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseCalendarGroups.mockReturnValue({
+      groups: [],
+      groupsByDate: {},
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
   });
 
   it('renders calendar header and components', () => {

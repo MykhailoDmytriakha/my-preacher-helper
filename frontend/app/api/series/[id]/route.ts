@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { groupsRepository } from '@repositories/groups.repository';
 import { seriesRepository } from '@repositories/series.repository';
 
 // Error messages
@@ -48,7 +49,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Check if there's anything to update
-    const validFields = ['title', 'theme', 'description', 'bookOrTopic', 'startDate', 'duration', 'color', 'status'];
+    const validFields = [
+      'title',
+      'theme',
+      'description',
+      'bookOrTopic',
+      'startDate',
+      'duration',
+      'color',
+      'status',
+      'seriesKind',
+    ];
     const filteredUpdates: Record<string, unknown> = {};
 
     for (const field of validFields) {
@@ -89,10 +100,19 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return NextResponse.json({ message: ERROR_MESSAGES.SERIES_NOT_FOUND }, { status: 200 });
     }
 
+    const items = series.items || [];
+    const sermonRefs = items.filter((item) => item.type === 'sermon').map((item) => item.refId);
+    const groupRefs = items.filter((item) => item.type === 'group').map((item) => item.refId);
+
+    // Legacy fallback for old series documents without items
+    if (items.length === 0 && series.sermonIds.length > 0) {
+      sermonRefs.push(...series.sermonIds);
+    }
+
     // Clear series references from sermons before deleting the series
-    if (series.sermonIds.length > 0) {
+    if (sermonRefs.length > 0) {
       const batch = adminDb.batch();
-      for (const sermonId of series.sermonIds) {
+      for (const sermonId of Array.from(new Set(sermonRefs))) {
         const sermonRef = adminDb.collection('sermons').doc(sermonId);
         batch.update(sermonRef, {
           seriesId: null,
@@ -100,7 +120,16 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
         });
       }
       await batch.commit();
-      console.log(`Cleared series references from ${series.sermonIds.length} sermons`);
+      console.log(`Cleared series references from ${sermonRefs.length} sermons`);
+    }
+
+    if (groupRefs.length > 0) {
+      await Promise.all(
+        Array.from(new Set(groupRefs)).map((groupId) =>
+          groupsRepository.updateGroupSeriesInfo(groupId, null, null)
+        )
+      );
+      console.log(`Cleared series references from ${groupRefs.length} groups`);
     }
 
     await seriesRepository.deleteSeries(id);

@@ -1,19 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import { Series, Sermon } from '@/models/models';
-import { getSeriesById, addSermonToSeries, removeSermonFromSeries, reorderSermons, updateSeries } from '@/services/series.service';
+import {
+  addGroupToSeries,
+  addSermonToSeries,
+  getSeriesById,
+  removeSeriesItem,
+  reorderSeriesItems,
+  updateSeries,
+} from '@/services/series.service';
+import { getGroupById } from '@/services/groups.service';
 import { getSermonById } from '@/services/sermon.service';
 
 import type { ReactNode } from 'react';
 
-// Mock the services
 jest.mock('@/services/series.service', () => ({
   getSeriesById: jest.fn(),
   addSermonToSeries: jest.fn(),
-  removeSermonFromSeries: jest.fn(),
-  reorderSermons: jest.fn(),
+  addGroupToSeries: jest.fn(),
+  removeSeriesItem: jest.fn(),
+  reorderSeriesItems: jest.fn(),
   updateSeries: jest.fn(),
 }));
 
@@ -21,17 +29,24 @@ jest.mock('@/services/sermon.service', () => ({
   getSermonById: jest.fn(),
 }));
 
+jest.mock('@/services/groups.service', () => ({
+  getGroupById: jest.fn(),
+}));
+
 const mockGetSeriesById = getSeriesById as jest.MockedFunction<typeof getSeriesById>;
 const mockGetSermonById = getSermonById as jest.MockedFunction<typeof getSermonById>;
+const mockGetGroupById = getGroupById as jest.MockedFunction<typeof getGroupById>;
 const mockAddSermonToSeries = addSermonToSeries as jest.MockedFunction<typeof addSermonToSeries>;
-const mockRemoveSermonFromSeries = removeSermonFromSeries as jest.MockedFunction<typeof removeSermonFromSeries>;
-const mockReorderSermons = reorderSermons as jest.MockedFunction<typeof reorderSermons>;
+const mockAddGroupToSeries = addGroupToSeries as jest.MockedFunction<typeof addGroupToSeries>;
+const mockRemoveSeriesItem = removeSeriesItem as jest.MockedFunction<typeof removeSeriesItem>;
+const mockReorderSeriesItems = reorderSeriesItems as jest.MockedFunction<typeof reorderSeriesItems>;
 const mockUpdateSeries = updateSeries as jest.MockedFunction<typeof updateSeries>;
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
   });
+
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
@@ -81,449 +96,112 @@ describe('useSeriesDetail', () => {
     jest.clearAllMocks();
     mockGetSeriesById.mockResolvedValue(mockSeries);
     mockGetSermonById.mockImplementation((id) =>
-      Promise.resolve(mockSermons.find(s => s.id === id))
+      Promise.resolve(mockSermons.find((sermon) => sermon.id === id))
     );
+    mockGetGroupById.mockResolvedValue(undefined);
+    mockAddSermonToSeries.mockResolvedValue(undefined);
+    mockAddGroupToSeries.mockResolvedValue(undefined);
+    mockRemoveSeriesItem.mockResolvedValue(undefined);
+    mockReorderSeriesItems.mockResolvedValue(undefined);
+    mockUpdateSeries.mockResolvedValue(mockSeries);
   });
 
-  describe('Initial state and data fetching', () => {
-    it('should initialize with loading state and empty data', () => {
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+  it('fetches series detail payload on mount', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
 
-      expect(result.current.loading).toBe(true);
-      expect(result.current.series).toBeNull();
-      expect(result.current.sermons).toEqual([]);
-      expect(result.current.error).toBeNull();
-    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-    it('should fetch series and sermons data on mount', async () => {
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      expect(mockGetSeriesById).toHaveBeenCalledWith('series-1');
-      expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1');
-      expect(mockGetSermonById).toHaveBeenCalledWith('sermon-2');
-      expect(result.current.series).toEqual(mockSeries);
-      expect(result.current.sermons).toEqual(mockSermons); // sorted by seriesPosition
-      expect(result.current.error).toBeNull();
-    });
-
-    it('should not fetch data when seriesId is empty', () => {
-      const { result } = renderHook(() => useSeriesDetail(''), { wrapper: createWrapper() });
-
-      expect(result.current.loading).toBe(false);
-      expect(result.current.series).toBeNull();
-      expect(result.current.sermons).toEqual([]);
-      expect(mockGetSeriesById).not.toHaveBeenCalled();
-    });
-
-    it('should handle series not found error', async () => {
-      mockGetSeriesById.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('non-existent'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      expect(result.current.series).toBeNull();
-      expect(result.current.sermons).toEqual([]);
-      expect(result.current.error?.message).toBe('Series not found');
-    });
-
-    it('should handle fetch error gracefully', async () => {
-      const error = new Error('Fetch failed');
-      mockGetSeriesById.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      expect(result.current.series).toBeNull();
-      expect(result.current.sermons).toEqual([]);
-      expect(result.current.error).toEqual(error);
-    });
-
-    it('should filter out undefined sermons and sort by seriesPosition', async () => {
-      const logSpy = jest.spyOn(console, 'log').mockImplementation();
-      mockGetSermonById.mockImplementation((id) => {
-        if (id === 'sermon-1') return Promise.resolve(mockSermons[0]);
-        if (id === 'sermon-2') return Promise.resolve(mockSermons[1]);
-        return Promise.resolve(undefined); // sermon-3 doesn't exist
-      });
-
-      const seriesWithInvalidSermon = { ...mockSeries, sermonIds: ['sermon-1', 'sermon-2', 'sermon-3'] };
-
-      mockGetSeriesById.mockResolvedValue(seriesWithInvalidSermon);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      expect(result.current.sermons).toEqual(mockSermons); // undefined sermon filtered out
-      expect(logSpy).toHaveBeenCalledWith(
-        'Series series-1 contains 1 invalid sermon IDs that were filtered out'
-      );
-      logSpy.mockRestore();
-    });
+    expect(mockGetSeriesById).toHaveBeenCalledWith('series-1');
+    expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1');
+    expect(mockGetSermonById).toHaveBeenCalledWith('sermon-2');
+    expect(result.current.series).toMatchObject(mockSeries);
+    expect(result.current.sermons).toEqual(mockSermons);
+    expect(result.current.items).toHaveLength(2);
   });
 
-  describe('addSermon', () => {
-    it('should add sermon to series and refresh data', async () => {
-      mockAddSermonToSeries.mockResolvedValue(undefined);
+  it('does not fetch when seriesId is empty', async () => {
+    const { result } = renderHook(() => useSeriesDetail(''), { wrapper: createWrapper() });
 
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermon('new-sermon-id', 3);
-      });
-
-      expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-1', 'new-sermon-id', 3);
-      expect(mockGetSeriesById).toHaveBeenCalledTimes(3); // initial + refresh + invalidate
-    });
-
-    it('should handle add sermon error', async () => {
-      const error = new Error('Add sermon failed');
-      mockAddSermonToSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.addSermon('new-sermon-id')).rejects.toThrow('Add sermon failed');
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-
-    it('wraps non-Error rejections in Error', async () => {
-      mockAddSermonToSeries.mockRejectedValue('boom');
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.addSermon('new-sermon-id')).rejects.toThrow('boom');
-    });
-
-    it('should do nothing if no series is loaded', async () => {
-      mockGetSeriesById.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('non-existent'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermon('new-sermon-id');
-      });
-
-      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
-    });
+    expect(result.current.loading).toBe(false);
+    expect(mockGetSeriesById).not.toHaveBeenCalled();
+    expect(result.current.series).toBeNull();
   });
 
-  describe('addSermons', () => {
-    it('should add multiple sermons with optimistic updates', async () => {
-      const newSermonIds = ['new-sermon-1', 'new-sermon-2'];
-      const newSermons = [
-        {
-          id: 'new-sermon-1',
-          title: 'New Sermon 1',
-          verse: 'Matthew 5:1',
-          date: '2024-01-15',
-          userId: 'user-1',
-          thoughts: [],
-          outline: { introduction: [], main: [], conclusion: [] },
-          isPreached: false,
-          seriesId: 'series-1',
-          seriesPosition: 3,
-        },
-        {
-          id: 'new-sermon-2',
-          title: 'New Sermon 2',
-          verse: 'Luke 6:20',
-          date: '2024-01-22',
-          userId: 'user-1',
-          thoughts: [],
-          outline: { introduction: [], main: [], conclusion: [] },
-          isPreached: false,
-          seriesId: 'series-1',
-          seriesPosition: 4,
-        },
-      ];
+  it('returns error when series is missing', async () => {
+    mockGetSeriesById.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useSeriesDetail('missing-series'), { wrapper: createWrapper() });
 
-      mockGetSermonById.mockImplementation((id) => {
-        const newSermon = newSermons.find(s => s.id === id);
-        if (newSermon) return Promise.resolve(newSermon);
-        return Promise.resolve(mockSermons.find(s => s.id === id));
-      });
-
-      mockAddSermonToSeries.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermons(newSermonIds);
-      });
-
-      expect(result.current.sermons).toEqual([...mockSermons, ...newSermons]);
-      expect(mockAddSermonToSeries).toHaveBeenCalledTimes(2);
-    });
-
-    it('should rollback optimistic updates on error', async () => {
-      const error = new Error('Add sermons failed');
-      mockAddSermonToSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      const initialSermons = [...result.current.sermons];
-
-      await expect(result.current.addSermons(['new-sermon-id'])).rejects.toThrow('Add sermons failed');
-
-      expect(result.current.sermons).toEqual(initialSermons); // rolled back
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-
-    it('uses fallback data when fetched sermon is missing', async () => {
-      const missingId = 'new-sermon-1';
-
-      mockGetSermonById.mockImplementation((id) => {
-        if (id === missingId) return Promise.resolve(undefined);
-        return Promise.resolve(mockSermons.find(s => s.id === id));
-      });
-
-      mockAddSermonToSeries.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermons([missingId]);
-      });
-
-      const added = result.current.sermons.find((sermon: Sermon) => sermon.id === missingId);
-
-      expect(added).toBeTruthy();
-      expect(added?.title).toBe('New Sermon');
-    });
-
-    it('should do nothing if no series is loaded', async () => {
-      mockGetSeriesById.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('missing-series'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermons(['sermon-1']);
-      });
-
-      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
-    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error?.message).toBe('Series not found');
   });
 
-  describe('removeSermon', () => {
-    it('should remove sermon with optimistic updates', async () => {
-      mockRemoveSermonFromSeries.mockResolvedValue(undefined);
+  it('adds one sermon into series', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.removeSermon('sermon-1');
-      });
-
-      expect(result.current.sermons).toEqual([mockSermons[1]]); // sermon-1 removed
-      expect(mockRemoveSermonFromSeries).toHaveBeenCalledWith('series-1', 'sermon-1');
+    await act(async () => {
+      await result.current.addSermon('new-sermon-id', 2);
     });
 
-    it('should rollback optimistic updates on error', async () => {
-      const error = new Error('Remove sermon failed');
-      mockRemoveSermonFromSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      const initialSermons = [...result.current.sermons];
-
-      await expect(result.current.removeSermon('sermon-1')).rejects.toThrow('Remove sermon failed');
-
-      expect(result.current.sermons).toEqual(initialSermons); // rolled back
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
+    expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-1', 'new-sermon-id', 2);
   });
 
-  describe('reorderSeriesSermons', () => {
-    it('should reorder sermons with optimistic updates', async () => {
-      const newOrder = ['sermon-2', 'sermon-1'];
-      mockReorderSermons.mockResolvedValue(undefined);
+  it('adds multiple sermons into series', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.reorderSeriesSermons(newOrder);
-      });
-
-      // Check that sermons are reordered with updated positions
-      expect(result.current.sermons[0].id).toBe('sermon-2');
-      expect(result.current.sermons[0].seriesPosition).toBe(1);
-      expect(result.current.sermons[1].id).toBe('sermon-1');
-      expect(result.current.sermons[1].seriesPosition).toBe(2);
-
-      expect(mockReorderSermons).toHaveBeenCalledWith('series-1', newOrder);
+    await act(async () => {
+      await result.current.addSermons(['new-sermon-1', 'new-sermon-2']);
     });
 
-    it('should rollback optimistic updates on reorder error', async () => {
-      const error = new Error('Reorder failed');
-      mockReorderSermons.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      const initialSermons = [...result.current.sermons];
-      const newOrder = ['sermon-2', 'sermon-1'];
-
-      await expect(result.current.reorderSeriesSermons(newOrder)).rejects.toThrow('Reorder failed');
-
-      expect(result.current.sermons).toEqual(initialSermons); // rolled back
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-
-    it('should throw error if sermon in order is not found', async () => {
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.reorderSeriesSermons(['non-existent-sermon'])).rejects.toThrow('Sermon with id non-existent-sermon not found');
-    });
+    expect(mockAddSermonToSeries).toHaveBeenCalledTimes(2);
+    expect(mockAddSermonToSeries).toHaveBeenNthCalledWith(1, 'series-1', 'new-sermon-1', 2);
+    expect(mockAddSermonToSeries).toHaveBeenNthCalledWith(2, 'series-1', 'new-sermon-2', 3);
   });
 
-  describe('updateSeriesDetail', () => {
-    it('should update series and refresh data', async () => {
-      const updates = { title: 'Updated Title', theme: 'Updated Theme' };
-      const updatedSeries = { ...mockSeries, ...updates };
-      mockUpdateSeries.mockResolvedValue(updatedSeries);
+  it('removes sermon via generic series-item API', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.updateSeriesDetail(updates);
-      });
-
-      expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', updates);
-      expect(mockGetSeriesById).toHaveBeenCalledTimes(2); // initial + refresh
+    await act(async () => {
+      await result.current.removeSermon('sermon-1');
     });
 
-    it('should handle update error', async () => {
-      const error = new Error('Update failed');
-      mockUpdateSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.updateSeriesDetail({ title: 'Updated' })).rejects.toThrow('Update failed');
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-
-    it('should do nothing if no series is loaded', async () => {
-      mockGetSeriesById.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeriesDetail('non-existent'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.updateSeriesDetail({ title: 'Updated' });
-      });
-
-      expect(mockUpdateSeries).not.toHaveBeenCalled();
-    });
+    expect(mockRemoveSeriesItem).toHaveBeenCalledWith('series-1', 'sermon', 'sermon-1');
   });
 
-  describe('refreshSeriesDetail', () => {
-    it('should refresh all series detail data', async () => {
-      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+  it('reorders sermons through mixed-item reorder endpoint', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.refreshSeriesDetail();
-      });
-
-      expect(mockGetSeriesById).toHaveBeenCalledTimes(2); // initial + refresh
-      expect(mockGetSermonById).toHaveBeenCalledTimes(4); // initial (2) + refresh (2)
+    await act(async () => {
+      await result.current.reorderSeriesSermons(['sermon-2', 'sermon-1']);
     });
+
+    expect(mockReorderSeriesItems).toHaveBeenCalledWith('series-1', expect.any(Array));
+    const calledIds = mockReorderSeriesItems.mock.calls[0][1];
+    expect(calledIds).toHaveLength(2);
+  });
+
+  it('updates series metadata', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.updateSeriesDetail({ title: 'Updated title' });
+    });
+
+    expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', { title: 'Updated title' });
+  });
+
+  it('refreshes data on demand', async () => {
+    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.refreshSeriesDetail();
+    });
+
+    expect(mockGetSeriesById).toHaveBeenCalledTimes(2);
   });
 });

@@ -154,9 +154,6 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         totalTokens: completion.usage.total_tokens,
       };
 
-      // Try to extract cost if provided by an aggregator (like OpenRouter)
-      const rawResponse = completion as any;
-
       logger.info(operationName, `Usage: ${usage.totalTokens} tokens (In: ${usage.promptTokens}, Out: ${usage.completionTokens})`);
     }
 

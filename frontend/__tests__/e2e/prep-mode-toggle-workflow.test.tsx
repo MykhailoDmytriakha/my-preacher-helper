@@ -15,11 +15,13 @@ global.fetch = mockFetch;
 const mockGetUserSettings = jest.fn();
 const mockUpdatePrepModeAccess = jest.fn();
 const mockHasPrepModeAccess = jest.fn();
+const mockHasGroupsAccess = jest.fn();
 
 jest.mock('@/services/userSettings.service', () => ({
   getUserSettings: (...args: any[]) => mockGetUserSettings(...args),
   updatePrepModeAccess: (...args: any[]) => mockUpdatePrepModeAccess(...args),
   hasPrepModeAccess: (...args: any[]) => mockHasPrepModeAccess(...args),
+  hasGroupsAccess: (...args: any[]) => mockHasGroupsAccess(...args),
   getCookieLanguage: () => 'en'
 }));
 
@@ -108,6 +110,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
     mockGetUserSettings.mockReset();
     mockUpdatePrepModeAccess.mockReset();
     mockHasPrepModeAccess.mockReset();
+    mockHasGroupsAccess.mockReset();
     mockPush.mockReset();
     mockUsePathname.mockReturnValue('/sermons/test-sermon-id');
     mockUseSearchParams.mockReturnValue({
@@ -115,6 +118,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
       toString: () => ''
     });
     prepModeAccessState = { hasAccess: false, loading: false };
+    mockHasGroupsAccess.mockResolvedValue(true);
   };
 
   beforeEach(resetScenario);

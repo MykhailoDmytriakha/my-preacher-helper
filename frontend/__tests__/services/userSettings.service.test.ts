@@ -1,7 +1,9 @@
 import {
   getUserSettings,
   updatePrepModeAccess,
-  hasPrepModeAccess
+  hasPrepModeAccess,
+  updateGroupsAccess,
+  hasGroupsAccess
 } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 import { setDebugModeEnabled } from '@/utils/debugMode';
@@ -301,6 +303,81 @@ describe('User Settings Service - Prep Mode Functions', () => {
               );
 
               consoleSpy.mockRestore();
+            }
+          }
+        ],
+        { beforeEachScenario: resetScenario }
+      );
+    });
+  });
+
+  describe('updateGroupsAccess', () => {
+    it('updates groups access successfully and handles errors', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'successfully updates groups feature to enabled',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ success: true })
+              });
+
+              await expect(updateGroupsAccess('user1', true)).resolves.toBeUndefined();
+              expect(mockFetch).toHaveBeenCalledWith('/api/user/settings', expect.objectContaining({
+                method: 'PUT',
+                body: JSON.stringify({ userId: 'user1', enableGroups: true }),
+              }));
+            }
+          },
+          {
+            name: 'handles API errors and throws',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({
+                ok: false,
+                statusText: 'Bad Request',
+                json: jest.fn().mockResolvedValue({})
+              });
+
+              await expect(updateGroupsAccess('user1', true)).rejects.toThrow();
+            }
+          }
+        ],
+        { beforeEachScenario: resetScenario }
+      );
+    });
+  });
+
+  describe('hasGroupsAccess', () => {
+    it('returns groups feature access state', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'returns false for empty user id',
+            run: async () => {
+              const result = await hasGroupsAccess('');
+              expect(result).toBe(false);
+              expect(mockFetch).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'returns true when groups feature is enabled',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: jest.fn().mockResolvedValue({ settings: { enableGroups: true } })
+              });
+
+              const result = await hasGroupsAccess('user1');
+              expect(result).toBe(true);
+            }
+          },
+          {
+            name: 'returns false on errors',
+            run: async () => {
+              mockFetch.mockRejectedValueOnce(new Error('Network error'));
+              const result = await hasGroupsAccess('user1');
+              expect(result).toBe(false);
             }
           }
         ],

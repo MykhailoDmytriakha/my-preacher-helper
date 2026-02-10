@@ -187,3 +187,84 @@ export const reorderSermons = async (seriesId: string, sermonIds: string[]): Pro
     throw error;
   }
 };
+
+export const addGroupToSeries = async (
+  seriesId: string,
+  groupId: string,
+  position?: number
+): Promise<void> => {
+  try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const response = await fetch(`${API_BASE}/api/series/${seriesId}/items`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ type: 'group', refId: groupId, position }),
+    });
+
+    if (!response.ok) {
+      console.error(
+        `addGroupToSeries: Response not ok for series ${seriesId}, group ${groupId}, status:`,
+        response.status
+      );
+      throw new Error('Failed to add group to series');
+    }
+  } catch (error) {
+    console.error(`addGroupToSeries: Error adding group ${groupId} to series ${seriesId}:`, error);
+    throw error;
+  }
+};
+
+export const removeSeriesItem = async (
+  seriesId: string,
+  type: 'sermon' | 'group',
+  refId: string
+): Promise<void> => {
+  try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+    const params = new URLSearchParams({ type, refId });
+    const response = await fetch(`${API_BASE}/api/series/${seriesId}/items?${params.toString()}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      console.error(
+        `removeSeriesItem: Response not ok for series ${seriesId}, type ${type}, refId ${refId}, status:`,
+        response.status
+      );
+      throw new Error('Failed to remove item from series');
+    }
+  } catch (error) {
+    console.error(
+      `removeSeriesItem: Error removing item ${refId} (${type}) from series ${seriesId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
+export const reorderSeriesItems = async (seriesId: string, itemIds: string[]): Promise<void> => {
+  try {
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const response = await fetch(`${API_BASE}/api/series/${seriesId}/items`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ itemIds }),
+    });
+
+    if (!response.ok) {
+      console.error(`reorderSeriesItems: Response not ok for series ${seriesId}, status:`, response.status);
+      throw new Error('Failed to reorder series items');
+    }
+  } catch (error) {
+    console.error(`reorderSeriesItems: Error reordering items in series ${seriesId}:`, error);
+    throw error;
+  }
+};

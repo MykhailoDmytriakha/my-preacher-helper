@@ -38,9 +38,11 @@ jest.mock('next/link', () => {
 
 // Mock heroicons
 jest.mock('@heroicons/react/24/outline', () => ({
+    CalendarDaysIcon: () => <div data-testid="calendar-days-icon" />,
     MapPinIcon: () => <div data-testid="map-pin-icon" />,
     UserIcon: () => <div data-testid="user-icon" />,
     BookOpenIcon: () => <div data-testid="book-open-icon" />,
+    UserGroupIcon: () => <div data-testid="user-group-icon" />,
 }));
 
 describe('DateEventList', () => {
@@ -272,7 +274,7 @@ describe('DateEventList', () => {
         expect(screen.getByText('Excellent')).toBeInTheDocument();
     });
 
-    it('displays sermon notes', () => {
+    it('does not render preach notes in date cards', () => {
         render(
             <DateEventList
                 month={mockMonth}
@@ -281,7 +283,7 @@ describe('DateEventList', () => {
             />
         );
 
-        expect(screen.getByText(/Great sermon/)).toBeInTheDocument();
+        expect(screen.queryByText(/Great sermon/)).not.toBeInTheDocument();
     });
 
     it('handles sermons without preachDates gracefully', () => {

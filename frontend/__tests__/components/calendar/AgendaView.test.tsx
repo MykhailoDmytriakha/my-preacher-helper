@@ -32,8 +32,10 @@ jest.mock('next/link', () => {
 
 // Mock heroicons
 jest.mock('@heroicons/react/24/outline', () => ({
+    CalendarDaysIcon: () => <div data-testid="calendar-days-icon" />,
     MapPinIcon: () => <div data-testid="map-pin-icon" />,
     UserIcon: () => <div data-testid="user-icon" />,
+    UserGroupIcon: () => <div data-testid="user-group-icon" />,
     BookOpenIcon: () => <div data-testid="book-open-icon" />,
     ChevronRightIcon: () => <div data-testid="chevron-right-icon" />,
 }));
@@ -105,9 +107,9 @@ describe('AgendaView', () => {
         const verseContainer = verseElement.closest('div');
         expect(verseContainer).toHaveClass('break-words', 'whitespace-pre-line', 'flex-1');
 
-        // Check that parent container has proper alignment classes
+        // Check that parent container has current metadata layout classes
         const parentContainer = verseContainer?.parentElement;
-        expect(parentContainer).toHaveClass('flex', 'items-start', 'gap-1.5');
+        expect(parentContainer).toHaveClass('flex', 'flex-col', 'gap-2');
 
         expect(parentContainer).toBeInTheDocument();
     });

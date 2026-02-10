@@ -64,7 +64,9 @@ export async function POST(request: Request) {
       duration: seriesData.duration,
       color: seriesData.color,
       status: seriesData.status || 'draft',
-      sermonIds: seriesData.sermonIds || []
+      sermonIds: seriesData.sermonIds || [],
+      items: seriesData.items || [],
+      seriesKind: seriesData.seriesKind
     });
 
     console.log("Returning success response for created series");

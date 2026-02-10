@@ -305,6 +305,10 @@
       "title": "Sermon Audio Generation (Beta)",
       "description": "Enable experimental audio generation for sermons"
     },
+    "groups": {
+      "title": "Groups Workspace (Beta)",
+      "description": "Enable access to the Groups workspace and related navigation"
+    },
     "debugMode": {
       "title": "Debug Mode",
       "description": "Enable extra console logging for troubleshooting"
@@ -567,8 +571,8 @@
     "rejectAll": "Reject All",
     "rejectAllChanges": "Reject All Changes",
     "removeFromStructure": "Remove From Structure",
-    "localThoughtPending": "Saving locally \u00b7 {{time}}",
-    "localThoughtFailed": "Not synced \u00b7 {{time}}",
+    "localThoughtPending": "Saving locally · {{time}}",
+    "localThoughtFailed": "Not synced · {{time}}",
     "localThoughtRetry": "Retry sync",
     "localThoughtExpired": "Local thought expired and was removed.",
     "revertChanges": "Revert Changes",
@@ -640,6 +644,7 @@
     "delete": "Delete",
     "add": "Add",
     "saving": "Saving...",
+    "deleting": "Deleting...",
     "dragToReorder": "Drag to reorder",
     "savingChanges": "Saving changes...",
     "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point",
@@ -671,7 +676,8 @@
     "hours": "Hours",
     "seconds": "Seconds",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "unknown": "Unknown"
   },
   "shareNotes": {
     "title": "Shared note",
@@ -1450,7 +1456,8 @@
         "selectSermons": "Select Sermons",
         "addSelected": "Add Selected",
         "adding": "Adding...",
-        "selectedCount": "{{count}} selected"
+        "selectedCount": "{{count}} selected",
+        "addGroup": "Add Group"
       },
       "detail": {
         "sermonsInSeries": "Sermons in this series",
@@ -1464,7 +1471,11 @@
         "selectSermonsDescription": "Preview of thesis/thought, date and number of notes will help you navigate quickly.",
         "noSermonsFound": "No sermons found for this query",
         "noSermonsAvailable": "No sermons available to add yet",
-        "clearSearch": "Clear search"
+        "clearSearch": "Clear search",
+        "noGroupsFound": "No groups found for this query",
+        "selectGroupsDescription": "Pick groups to include in this series. You can reorder everything later.",
+        "removeSermonHint": "This sermon will be detached from the series.",
+        "removeGroupHint": "This group will be detached from the series."
       },
       "filters": {
         "allSermons": "All Sermons",
@@ -1481,8 +1492,10 @@
         "deleteFailed": "Failed to delete series",
         "addSermonFailed": "Failed to add sermon to series",
         "removeSermonFailed": "Failed to remove sermon from series",
-        "reorderFailed": "Failed to reorder sermons"
-      }
+        "reorderFailed": "Failed to reorder sermons",
+        "addGroupFailed": "Failed to add group to series"
+      },
+      "groupsAdded": "Group{{count, plural, one {} other {s}}} added to series"
     },
     "studies": {
       "badge": "Preview",
@@ -1508,7 +1521,93 @@
         "export": "Export facilitator-friendly guides with clear action steps."
       },
       "ctaTitle": "Help steer the flow",
-      "ctaDescription": "Share your preferred agenda layouts or question patterns through Feedback so we can bake them into templates."
+      "ctaDescription": "Share your preferred agenda layouts or question patterns through Feedback so we can bake them into templates.",
+      "empty": "No groups yet",
+      "inSeries": "In series",
+      "actions": {
+        "create": "Create Group",
+        "newGroup": "New Group",
+        "delete": "Delete",
+        "deleteConfirm": "Delete this group permanently?"
+      },
+      "access": {
+        "disabledTitle": "Groups workspace is disabled",
+        "disabledDescription": "Enable this beta feature in Settings to access groups.",
+        "openSettings": "Open settings"
+      },
+      "form": {
+        "title": "Group title",
+        "titlePlaceholder": "e.g., Family group night",
+        "description": "Description",
+        "descriptionPlaceholder": "Goal, context, and preparation notes...",
+        "bootstrapHint": "Start from templates, then arrange your flow."
+      },
+      "defaults": {
+        "mainTopic": "Main topic",
+        "scripture": "Scripture passages"
+      },
+      "templates": {
+        "title": "Block templates",
+        "subtitle": "Add reusable blocks to structure the meeting.",
+        "empty": "No templates yet. Add your first block.",
+        "contentPlaceholder": "Short guidance, key verses, or prompts..."
+      },
+      "flow": {
+        "title": "Group flow",
+        "subtitle": "Arrange blocks in the exact order of your meeting.",
+        "empty": "No blocks in flow yet. Add one from templates.",
+        "addToFlow": "Add to flow",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "duplicate": "Duplicate",
+        "duration": "Duration (min)",
+        "instanceTitle": "Flow title",
+        "instanceNotes": "Flow notes"
+      },
+      "meetings": {
+        "title": "Meeting dates",
+        "add": "Add meeting",
+        "empty": "No meetings recorded yet",
+        "location": "Location",
+        "audience": "Audience",
+        "notes": "Notes"
+      },
+      "status": {
+        "draft": "Draft",
+        "empty": "Empty",
+        "filled": "Filled"
+      },
+      "itemsLabel": {
+        "templates": "Templates",
+        "flowSteps": "Flow steps",
+        "meetings": "Meetings",
+        "nextMeeting": "Next meeting",
+        "lastMeeting": "Last meeting",
+        "noDate": "No date"
+      },
+      "stats": {
+        "total": "Total groups",
+        "draft": "Draft",
+        "active": "Active",
+        "completed": "Completed"
+      },
+      "messages": {
+        "created": "Group created successfully",
+        "saved": "Group saved successfully",
+        "meetingAdded": "Meeting added successfully",
+        "deleted": "Group deleted successfully"
+      },
+      "preview": {
+        "title": "Filled blocks preview",
+        "empty": "Fill block content to see it in preview."
+      },
+      "errors": {
+        "loadFailed": "Failed to load groups",
+        "createFailed": "Failed to create group",
+        "updateFailed": "Failed to update group",
+        "meetingAddFailed": "Failed to add meeting",
+        "deleteFailed": "Failed to delete group"
+      }
     }
   },
   "studiesWorkspace": {

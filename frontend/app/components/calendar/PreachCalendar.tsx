@@ -6,10 +6,9 @@ import { DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 
 import "react-day-picker/dist/style.css";
-import { Sermon } from "@/models/models";
 
 interface PreachCalendarProps {
-    sermonsByDate: Record<string, Sermon[]>;
+    eventsByDate: Record<string, unknown[]>;
     selectedDate: Date;
     onDateSelect: (date: Date) => void;
     currentMonth?: Date;
@@ -17,7 +16,7 @@ interface PreachCalendarProps {
 }
 
 export default function PreachCalendar({
-    sermonsByDate,
+    eventsByDate,
     selectedDate,
     onDateSelect,
     currentMonth,
@@ -35,7 +34,7 @@ export default function PreachCalendar({
 
     const hasEvents = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return sermonsByDate[dateStr] && sermonsByDate[dateStr].length > 0;
+        return eventsByDate[dateStr] && eventsByDate[dateStr].length > 0;
     };
 
     return (

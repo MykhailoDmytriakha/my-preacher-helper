@@ -331,6 +331,24 @@ describe('UserSettingsRepository', () => {
               // Note: Firebase update() only updates the specified fields,
               // other fields like isAdmin should remain unchanged
             }
+          },
+          {
+            name: 'updates groups access flag explicitly',
+            run: async () => {
+              await userSettingsRepository.createOrUpdate(
+                'existing-user-id',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                true
+              );
+
+              expect(mockUpdate).toHaveBeenCalledWith({
+                enableGroups: true
+              });
+            }
           }
         ],
         { beforeEachScenario: resetScenario }

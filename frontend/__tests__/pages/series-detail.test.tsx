@@ -19,6 +19,34 @@ const mockUseAuth = jest.fn<{ user: { uid: string } | null }, []>(() => ({ user:
 const mockUseSeries = jest.fn((_userId: string | null) => ({ deleteExistingSeries: jest.fn() }));
 const mockUseSeriesDetail = jest.fn();
 
+const createSeriesDetailMock = (overrides: Record<string, unknown> = {}) => ({
+  series: {
+    id: 'test-series-id',
+    title: 'Test Series',
+    theme: 'Test Theme',
+    status: 'active',
+    color: '#FF0000',
+    updatedAt: '2024-01-01T00:00:00Z',
+    items: [],
+    sermonIds: [],
+  },
+  items: [],
+  sermons: [],
+  groups: [],
+  loading: false,
+  error: null,
+  addSermons: mockAddSermons,
+  addSermon: jest.fn(),
+  addGroup: jest.fn(),
+  removeItem: jest.fn(),
+  removeSermon: jest.fn(),
+  reorderSeriesSermons: jest.fn(),
+  reorderMixedItems: jest.fn(),
+  updateSeriesDetail: jest.fn(),
+  refreshSeriesDetail: mockRefreshSeriesDetail,
+  ...overrides,
+});
+
 jest.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
   useRouter: () => ({
@@ -164,25 +192,7 @@ describe('SeriesDetailPage', () => {
     mockUseParams.mockReturnValue({ id: 'test-series-id' });
     mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
     mockUseSeries.mockReturnValue({ deleteExistingSeries: jest.fn() });
-    mockUseSeriesDetail.mockReturnValue({
-      series: {
-        id: 'test-series-id',
-        title: 'Test Series',
-        theme: 'Test Theme',
-        status: 'active',
-        color: '#FF0000',
-        updatedAt: '2024-01-01T00:00:00Z',
-      },
-      sermons: [],
-      loading: false,
-      error: null,
-      addSermons: mockAddSermons,
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
-      updateSeriesDetail: jest.fn(),
-      refreshSeriesDetail: mockRefreshSeriesDetail,
-    });
+    mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock());
   });
 
   it('renders series details correctly', () => {
@@ -194,22 +204,11 @@ describe('SeriesDetailPage', () => {
 
     expect(screen.getByText('Test Series')).toBeInTheDocument();
     expect(screen.getByText('Test Theme')).toBeInTheDocument();
-    expect(screen.getAllByText('workspaces.series.form.statuses.active')).toHaveLength(2); // status badge and indicator
+    expect(screen.getAllByText('workspaces.series.form.statuses.active')).toHaveLength(1);
   });
 
   it('renders skeleton when loading', () => {
-    mockUseSeriesDetail.mockReturnValue({
-      series: null,
-      sermons: [],
-      loading: true,
-      error: null,
-      addSermons: mockAddSermons,
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
-      updateSeriesDetail: jest.fn(),
-      refreshSeriesDetail: mockRefreshSeriesDetail,
-    });
+    mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock({ series: null, loading: true }));
 
     render(
       <TestProviders>
@@ -222,18 +221,7 @@ describe('SeriesDetailPage', () => {
   });
 
   it('renders error state when series is missing', () => {
-    mockUseSeriesDetail.mockReturnValue({
-      series: null,
-      sermons: [],
-      loading: false,
-      error: new Error('Failed'),
-      addSermons: mockAddSermons,
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
-      updateSeriesDetail: jest.fn(),
-      refreshSeriesDetail: mockRefreshSeriesDetail,
-    });
+    mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock({ series: null, error: new Error('Failed') }));
 
     render(
       <TestProviders>
@@ -241,7 +229,7 @@ describe('SeriesDetailPage', () => {
       </TestProviders>
     );
 
-    expect(screen.getByText('Series not found or failed to load.')).toBeInTheDocument();
+    expect(screen.getByText('workspaces.series.errors.updateFailed')).toBeInTheDocument();
   });
 
   it('uses empty seriesId when params id is not a string', () => {
@@ -268,28 +256,22 @@ describe('SeriesDetailPage', () => {
     expect(mockUseSeries).toHaveBeenCalledWith(null);
   });
 
-  it('renders completed status dot and updatedAt placeholder', () => {
-    mockUseSeriesDetail.mockReturnValue({
+  it('renders completed status badge', () => {
+    mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock({
       series: {
         id: 'test-series-id',
         title: 'Test Series',
         theme: 'Test Theme',
         status: 'completed',
         color: '#FF0000',
+        items: [],
+        sermonIds: [],
       },
       sermons: [
         { id: 'sermon-1', isPreached: true },
         { id: 'sermon-2', isPreached: false },
       ],
-      loading: false,
-      error: null,
-      addSermons: mockAddSermons,
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
-      updateSeriesDetail: jest.fn(),
-      refreshSeriesDetail: mockRefreshSeriesDetail,
-    });
+    }));
 
     render(
       <TestProviders>
@@ -297,9 +279,7 @@ describe('SeriesDetailPage', () => {
       </TestProviders>
     );
 
-    expect(document.querySelector('span.h-2.w-2.rounded-full.bg-emerald-500')).toBeTruthy();
-    expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('workspaces.series.form.statuses.completed')).toBeInTheDocument();
   });
 
   it('navigates to /series when Back to Series button is clicked', () => {

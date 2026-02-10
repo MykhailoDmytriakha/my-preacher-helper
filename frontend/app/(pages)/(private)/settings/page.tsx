@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import AudioGenerationToggle from "@/components/settings/AudioGenerationToggle";
 import DebugModeToggle from "@/components/settings/DebugModeToggle";
+import GroupsFeatureToggle from "@/components/settings/GroupsFeatureToggle";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
 import TagsSection from "@/components/settings/TagsSection";
@@ -47,6 +48,7 @@ export default function SettingsPage() {
             <UserSettingsSection user={user} />
             <PrepModeToggle />
             <AudioGenerationToggle />
+            <GroupsFeatureToggle />
             <DebugModeToggle />
           </div>
         );
@@ -57,6 +59,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UserSettingsSection user={user} />
             <PrepModeToggle />
+            <GroupsFeatureToggle />
             <DebugModeToggle />
           </div>
         );

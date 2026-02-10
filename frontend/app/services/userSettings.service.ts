@@ -334,3 +334,56 @@ export async function updateAudioGenerationAccess(userId: string, enabled: boole
     throw error;
   }
 }
+
+/**
+ * Update user's groups workspace feature flag
+ * @param userId The user ID
+ * @param enabled Whether groups workspace should be enabled
+ */
+export async function updateGroupsAccess(userId: string, enabled: boolean): Promise<void> {
+  try {
+    if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, enableGroups: enabled }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update groups access: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating groups access:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if user has access to groups workspace
+ * @param userId The user ID
+ * @returns Boolean indicating if user has groups workspace access
+ */
+export async function hasGroupsAccess(userId: string): Promise<boolean> {
+  try {
+    if (!userId) {
+      return false;
+    }
+
+    if (isBrowserOffline()) {
+      return false;
+    }
+
+    const settings = await getUserSettings(userId);
+    return settings?.enableGroups || false;
+  } catch (error) {
+    console.error('Error checking groups access:', error);
+    return false;
+  }
+}

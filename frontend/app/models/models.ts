@@ -127,6 +127,77 @@ export interface Sermon {
   };
 }
 
+export type SeriesKind = 'sermon' | 'group' | 'mixed';
+export type SeriesItemType = 'sermon' | 'group';
+
+export interface SeriesItem {
+  id: string;
+  type: SeriesItemType;
+  refId: string;
+  position: number;
+  plannedDate?: string;
+  completedAt?: string;
+}
+
+export type GroupBlockTemplateType =
+  | 'announcement'
+  | 'topic'
+  | 'scripture'
+  | 'questions'
+  | 'explanation'
+  | 'notes'
+  | 'prayer'
+  | 'custom';
+
+export type GroupBlockStatus = 'empty' | 'draft' | 'filled';
+
+export interface GroupBlockTemplate {
+  id: string;
+  type: GroupBlockTemplateType;
+  title: string;
+  summary?: string;
+  content: string;
+  scriptureRefs?: string[];
+  questions?: string[];
+  status: GroupBlockStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupFlowItem {
+  id: string;
+  templateId: string;
+  order: number;
+  durationMin?: number | null;
+  instanceTitle?: string;
+  instanceNotes?: string;
+}
+
+export interface GroupMeetingDate {
+  id: string;
+  date: string;
+  location?: string;
+  audience?: string;
+  notes?: string;
+  outcome?: 'excellent' | 'good' | 'average' | 'poor';
+  createdAt: string;
+}
+
+export interface Group {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  status: 'draft' | 'active' | 'completed';
+  templates: GroupBlockTemplate[];
+  flow: GroupFlowItem[];
+  meetingDates?: GroupMeetingDate[];
+  seriesId?: string | null;
+  seriesPosition?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Preparation {
   spiritual?: {
     readAndPrayedConfirmed?: boolean;
@@ -193,6 +264,10 @@ export interface Series {
   bookOrTopic: string;            // "Romans" or "Grace"
 
   sermonIds: string[];            // Ordered array of sermon IDs
+  /** Unified ordered list of references to sermons/groups in this series */
+  items?: SeriesItem[];
+  /** Optional UX hint for filtering and labeling series composition */
+  seriesKind?: SeriesKind;
 
   startDate?: string;             // ISO date
   duration?: number;              // weeks
@@ -245,6 +320,7 @@ export interface UserSettings {
   isAdmin: boolean;
   enablePrepMode?: boolean;  // Per-user prep mode access
   enableAudioGeneration?: boolean; // Beta: audio generation feature
+  enableGroups?: boolean; // Beta: groups workspace feature
   email?: string;
   displayName?: string;
 }

@@ -135,7 +135,8 @@ describe('User Settings API Route', () => {
                   language: 'ru',
                   email: 'updated@example.com',
                   displayName: 'Updated User',
-                  enablePrepMode: true
+                  enablePrepMode: true,
+                  enableGroups: true
                 })
               });
 
@@ -148,7 +149,8 @@ describe('User Settings API Route', () => {
                 'updated@example.com',
                 'Updated User',
                 true,
-                undefined
+                undefined,
+                true
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -175,6 +177,7 @@ describe('User Settings API Route', () => {
                 undefined,
                 undefined,
                 false,
+                undefined,
                 undefined
               );
               expect(response.status).toBe(200);
@@ -203,6 +206,7 @@ describe('User Settings API Route', () => {
                 undefined,
                 undefined,
                 true,
+                undefined,
                 undefined
               );
               expect(response.status).toBe(200);
@@ -289,7 +293,8 @@ describe('User Settings API Route', () => {
                   language: 'de',
                   email: 'new@example.com',
                   displayName: 'New User',
-                  enablePrepMode: true
+                  enablePrepMode: true,
+                  enableGroups: true
                 })
               });
 
@@ -302,7 +307,8 @@ describe('User Settings API Route', () => {
                 'new@example.com',
                 'New User',
                 true,
-                undefined
+                undefined,
+                true
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -330,6 +336,7 @@ describe('User Settings API Route', () => {
                 'test@example.com',
                 undefined,
                 false,
+                undefined,
                 undefined
               );
               expect(response.status).toBe(200);
@@ -352,6 +359,7 @@ describe('User Settings API Route', () => {
               expect(mockCreateOrUpdate).toHaveBeenCalledWith(
                 'minimal-user',
                 'en', // Default language
+                undefined,
                 undefined,
                 undefined,
                 undefined,

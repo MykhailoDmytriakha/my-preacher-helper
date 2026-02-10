@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration } = body;
+    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
@@ -48,6 +48,7 @@ export async function PUT(request: NextRequest) {
     if ('displayName' in body) updates.displayName = displayName;
     if ('enablePrepMode' in body) updates.enablePrepMode = enablePrepMode;
     if ('enableAudioGeneration' in body) updates.enableAudioGeneration = enableAudioGeneration;
+    if ('enableGroups' in body) updates.enableGroups = enableGroups;
 
     await userSettingsRepository.createOrUpdate(
       userId,
@@ -55,7 +56,8 @@ export async function PUT(request: NextRequest) {
       updates.email as string | undefined,
       updates.displayName as string | undefined,
       updates.enablePrepMode as boolean | undefined,
-      updates.enableAudioGeneration as boolean | undefined
+      updates.enableAudioGeneration as boolean | undefined,
+      updates.enableGroups as boolean | undefined
     );
 
     return NextResponse.json({ success: true });
@@ -72,7 +74,7 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration } = body;
+    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
@@ -87,7 +89,8 @@ export async function POST(request: NextRequest) {
       'email' in body ? email : undefined,
       'displayName' in body ? displayName : undefined,
       'enablePrepMode' in body ? enablePrepMode : undefined,
-      'enableAudioGeneration' in body ? enableAudioGeneration : undefined
+      'enableAudioGeneration' in body ? enableAudioGeneration : undefined,
+      'enableGroups' in body ? enableGroups : undefined
     );
 
     return NextResponse.json({ success: true });

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
+import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
 
@@ -14,6 +15,9 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/hooks/useSermon', () => jest.fn());
 jest.mock('@/hooks/useSeriesDetail', () => ({
   useSeriesDetail: jest.fn(),
+}));
+jest.mock('@/hooks/useGroupDetail', () => ({
+  useGroupDetail: jest.fn(),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -32,6 +36,7 @@ describe('Breadcrumbs', () => {
   const mockUseSearchParams = useSearchParams as jest.Mock;
   const mockUseSermon = useSermon as jest.Mock;
   const mockUseSeriesDetail = useSeriesDetail as jest.Mock;
+  const mockUseGroupDetail = useGroupDetail as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -44,6 +49,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -60,6 +66,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -76,6 +83,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -91,6 +99,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: mockSeries });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -105,6 +114,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -119,6 +129,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -126,13 +137,30 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
 
-  it('should show Groups > Group for group detail page (no group data required)', () => {
+  it('should show Groups > Group Title for group detail page', () => {
+    const mockGroup = { id: 'test-group-id', title: 'Family Group #1' };
     mockUsePathname.mockReturnValue('/groups/test-group-id');
     mockUseSearchParams.mockReturnValue({
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: mockGroup });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Groups')).toBeInTheDocument();
+    expect(screen.getByText('Family Group #1')).toBeInTheDocument();
+  });
+
+  it('should fallback to generic Group label when group data is unavailable', () => {
+    mockUsePathname.mockReturnValue('/groups/test-group-id');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 
@@ -147,6 +175,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
 
     render(<Breadcrumbs />);
 

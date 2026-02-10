@@ -12,18 +12,21 @@ interface MobileMenuProps {
   isOpen: boolean;
   onLogout: () => Promise<void>;
   pathname?: string | null;
+  showGroups?: boolean;
   onNavigate?: () => void;
 }
 
-export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate }: MobileMenuProps) {
+export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = true, onNavigate }: MobileMenuProps) {
   const { t } = useTranslation();
 
   if (!isOpen) return null;
 
-  const navItems = primaryNavItems.map((item) => ({
-    ...item,
-    label: t(item.labelKey, { defaultValue: item.defaultLabel })
-  }));
+  const navItems = primaryNavItems
+    .filter((item) => showGroups || item.key !== 'groups')
+    .map((item) => ({
+      ...item,
+      label: t(item.labelKey, { defaultValue: item.defaultLabel })
+    }));
 
   return (
     <div className="md:hidden">
