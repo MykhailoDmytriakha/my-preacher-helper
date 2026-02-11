@@ -21,6 +21,7 @@
 *   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors. For AI chains, use **Sequence-Aware Mocking** to verify context passing.
 *   **Strict Change Coverage:** Maintain **100% test coverage** for all newly added or modified lines (diff). Overall file coverage must remain **≥80%**. Run `npm run test:coverage && npm run lint:full` from root to verify.
+*   **Optimistic Sync UX:** For optimistic list mutations, apply local state immediately, keep transient sync metadata (`pending`/`error`) separate from domain entities, and always provide rollback + retry paths on failure.
 *   **Color Scheme Compliance:** Use tokens from `@/utils/themeColors` (e.g., `SERMON_SECTION_COLORS`, `UI_COLORS`, `TIMER_CONTROL_COLORS`). Do not hardcode colors. Section-specific UI must reflect section colors.
 *   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
 *   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
@@ -44,6 +45,13 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-11 Dashboard Optimistic Flow: Separate Domain Data from Sync Metadata
+**Problem:** Dashboard mutations looked "optimistic" only after API success, so users could not see pending/error states and had no inline recovery when writes failed.
+**Attempts:** The previous flow used post-success cache updates plus `alert/confirm`, which hid transient sync failures at card level.
+**Solution:** Introduced `useDashboardOptimisticSermons` as a single mutation layer with temporary entities, per-sermon sync state, rollback on failure, and retry/dismiss actions propagated to dashboard cards.
+**Why it worked:** Separating sync metadata from sermon domain data enabled immediate pending/error rendering without polluting persisted models, while rollback kept cache consistency across failure paths.
+**Principle:** In optimistic list UIs, keep domain entities and sync metadata separate; every optimistic write must have rollback and user-visible recovery.
 
 ### 2026-02-10 Calendar Date Drift: Marker/List Must Share One Pipeline
 **Problem:** Calendar showed planned sermon on different days (e.g., marker on 26 while right panel showed 15) and dashboard planned date formatting leaked time fragments.
@@ -595,6 +603,14 @@
 
 **Emerging Principle:** Export ordering should match UI ordering source to prevent divergence.
 
+### Dashboard Sync & Optimistic Consistency (3 lessons)
+**Common Pattern:** Dashboard data feels inconsistent when mutations are treated as one-shot requests instead of a full sync lifecycle (`pending` -> `success/error` -> recovery).
+- Dashboard preached status sync issue fixed (2026-01-18)
+- IndexedDB cache desync issues across app fixed (2026-01-18)
+- Dashboard optimistic sync metadata + retry/dismiss flow (2026-02-11)
+
+**Emerging Principle:** Dashboard mutations should be modeled as explicit sync state machines with optimistic apply, rollback, and recovery controls.
+
 ### Refactoring Safety (1 lesson)
 **Pattern:** Regression after helper extraction
 - Plan prompt refactor regression guard (2026-01-04)
@@ -883,6 +899,8 @@
 **Key Directories:**
 - `app/components/navigation/` - DashboardNav, Breadcrumbs, navConfig
 - `app/components/skeletons/` - Loading UI placeholders (Grid/Focus modes)
+- `app/hooks/useDashboardOptimisticSermons.ts` - Dashboard optimistic mutation orchestrator (create/edit/delete/preach-status)
+- `app/models/dashboardOptimistic.ts` - Dashboard sync-state domain types (`pending`/`error`, operation tracking)
 - `locales/{en,ru,uk}/translation.json` - All UI strings
 - `config/schemas/zod/` - AI structured output schemas
 - `api/clients/` - AI integration clients
@@ -915,4 +933,5 @@
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
 - Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
 - Calendar Date Integrity: Keep preach dates as date-only (`YYYY-MM-DD`) and derive month markers + right-panel list + analytics from one normalized calendar event pipeline.
+- Dashboard Optimistic Pipeline: Use `useDashboardOptimisticSermons` to centralize optimistic mutations and render sync state in `app/components/dashboard/SermonCard.tsx` with retry/dismiss controls.
 - Comments: English only in code

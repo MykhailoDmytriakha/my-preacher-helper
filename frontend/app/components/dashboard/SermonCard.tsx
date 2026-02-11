@@ -18,7 +18,7 @@ import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
 import { getContrastColor } from "@utils/color";
-import { formatDate, formatDateOnly } from "@utils/dateFormatter";
+import { formatDateOnly } from "@utils/dateFormatter";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
 
 import HighlightedText from "../HighlightedText";
@@ -96,10 +96,10 @@ function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSy
     syncState.operation === 'create'
       ? t('addSermon.newSermon', { defaultValue: 'New sermon' })
       : syncState.operation === 'delete'
-      ? t('optionMenu.delete', { defaultValue: 'Delete' })
-      : syncState.operation === 'preach-status'
-      ? t('optionMenu.markAsPreached', { defaultValue: 'Preached status' })
-      : t('editSermon.editSermon', { defaultValue: 'Edit sermon' });
+        ? t('optionMenu.delete', { defaultValue: 'Delete' })
+        : syncState.operation === 'preach-status'
+          ? t('optionMenu.markAsPreached', { defaultValue: 'Preached status' })
+          : t('editSermon.editSermon', { defaultValue: 'Edit sermon' });
 
   if (syncState.status === 'pending') {
     return (
@@ -155,17 +155,14 @@ function SermonCardHeader({
 }: SermonCardHeaderProps) {
   const hasPreachedDate = Boolean(formattedPreachedDate);
   const hasPlannedDate = !hasPreachedDate && Boolean(formattedPlannedDate);
-  const statusDateText = formattedPreachedDate ?? formattedPlannedDate ?? '-';
+  const hasStatusDate = hasPreachedDate || hasPlannedDate;
+  const statusDateText = formattedPreachedDate ?? formattedPlannedDate ?? '';
   const statusLabel = hasPreachedDate
     ? t(DASHBOARD_PREACHED_KEY)
-    : hasPlannedDate
-    ? t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })
-    : t(DASHBOARD_PREACHED_KEY);
+    : t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' });
   const statusClasses = hasPreachedDate
     ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
-    : hasPlannedDate
-    ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-    : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500';
+    : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300';
 
   return (
     <div className="flex items-start justify-between mb-2">
@@ -175,13 +172,15 @@ function SermonCardHeader({
           <span className="uppercase tracking-wide text-[10px]">{t('dashboard.created')}</span>
           <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
         </div>
-        <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses}`}>
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="uppercase tracking-wide text-[10px]">{statusLabel}</span>
-          <span className={hasPreachedDate || hasPlannedDate ? TEXT_PRIMARY_CLASSES : ''}>
-            {statusDateText}
-          </span>
-        </div>
+        {hasStatusDate && (
+          <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses}`}>
+            <CheckCircle2 className="w-3 h-3" />
+            <span className="uppercase tracking-wide text-[10px]">{statusLabel}</span>
+            <span className={TEXT_PRIMARY_CLASSES}>
+              {statusDateText}
+            </span>
+          </div>
+        )}
         <SermonSyncBadge
           sermonId={sermon.id}
           syncState={syncState}
@@ -317,20 +316,7 @@ function SermonCardBadges({
         </div>
       )}
 
-      {/* Preached Status (Icon only) */}
-      {effectiveIsPreached && (
-        <div className="flex items-center text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md border border-green-100 dark:border-green-800/30" title={t(DASHBOARD_PREACHED_KEY)}>
-          <CheckCircle2 className="w-3 h-3 mr-1.5" />
-          <span>{t(DASHBOARD_PREACHED_KEY)}</span>
-        </div>
-      )}
 
-      {!effectiveIsPreached && plannedDatesCount > 0 && (
-        <div className="flex items-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30" title={t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })}>
-          <Calendar className="w-3 h-3 mr-1.5" />
-          <span>{t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' })}</span>
-        </div>
-      )}
 
       {/* Missing Preach Dates Warning */}
       {effectiveIsPreached && preachedDatesCount === 0 && (
@@ -385,7 +371,7 @@ export default function SermonCard({
   const preachedDatesCount = countPreachDatesByStatus(sermon, 'preached');
   const plannedDatesCount = countPreachDatesByStatus(sermon, 'planned');
 
-  const formattedCreatedDate = formatDate(sermon.date);
+  const formattedCreatedDate = formatDateOnly(sermon.date?.slice(0, 10));
   const formattedPreachedDate = latestPreachedDate?.date ? formatDateOnly(latestPreachedDate.date) : null;
   const formattedPlannedDate =
     !formattedPreachedDate && nextPlannedDate?.date ? formatDateOnly(nextPlannedDate.date) : null;
@@ -406,8 +392,8 @@ export default function SermonCard({
   const syncVisualClasses = syncState?.status === 'pending'
     ? 'opacity-75 border-blue-200 dark:border-blue-700'
     : syncState?.status === 'error'
-    ? 'border-red-300 dark:border-red-700'
-    : '';
+      ? 'border-red-300 dark:border-red-700'
+      : '';
 
   const cardClasses = `
     group flex flex-col

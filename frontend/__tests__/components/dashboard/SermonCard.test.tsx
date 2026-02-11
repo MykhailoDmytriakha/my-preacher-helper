@@ -103,10 +103,10 @@ describe('SermonCard Component', () => {
 
     expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
     expect(screen.getByText('John 3:16')).toBeInTheDocument();
-    expect(screen.getByText('18.02.2025, 11:24')).toBeInTheDocument();
+    expect(screen.getByText('18.02.2025')).toBeInTheDocument();
     expect(screen.getByText('Created')).toBeInTheDocument();
-    expect(screen.getByText('Preached')).toBeInTheDocument();
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // No preached/planned date → status badge is hidden
+    expect(screen.queryByText('Preached')).not.toBeInTheDocument();
   });
 
   it('displays thought count correctly for singular', () => {
@@ -167,7 +167,7 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Has outline')).toBeInTheDocument();
   });
 
-  it('displays "Preached" badge when sermon is preached', () => {
+  it('shows missing-preach-dates warning for legacy preached sermon without dates', () => {
     const preachedSermon: Sermon = {
       ...baseSermon,
       isPreached: true,
@@ -181,7 +181,29 @@ describe('SermonCard Component', () => {
       />
     );
 
-    expect(screen.getAllByText('Preached')).toHaveLength(2);
+    // Legacy case: isPreached=true but no preachDates → header badge hidden (no date to show)
+    expect(screen.queryByText('Preached')).not.toBeInTheDocument();
+    // Missing-preach-dates warning should appear
+    expect(screen.getByText('calendar.noPreachDatesWarning')).toBeInTheDocument();
+  });
+
+  it('displays "Preached" badge in header when sermon has preachDates with preached status', () => {
+    const preachedSermon: Sermon = {
+      ...baseSermon,
+      isPreached: true,
+      preachDates: [{ id: 'pd-1', date: '2025-03-01', church: { id: 'c1', name: 'Test Church' }, status: 'preached', createdAt: '2025-03-01T00:00:00Z' }],
+    };
+
+    render(
+      <SermonCard
+        sermon={preachedSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    // Preached badge appears once in header only (no duplicate in bottom badges)
+    expect(screen.getAllByText('Preached')).toHaveLength(1);
   });
 
   it('applies consistent styling for all sermons regardless of preached status', () => {
