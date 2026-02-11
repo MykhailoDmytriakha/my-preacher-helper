@@ -8,8 +8,11 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 // Mock child components for structural testing
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="dashboard-nav">Mocked Nav</div>);
 jest.mock('@/components/dashboard/DashboardStats', () => ({ sermons }: { sermons: any[] }) => <div data-testid="dashboard-stats">Mocked Stats ({sermons.length})</div>);
-jest.mock('@/components/AddSermonModal', () => ({ onNewSermonCreated }: { onNewSermonCreated: any }) => (
-  <button data-testid="add-sermon-modal-trigger" onClick={() => onNewSermonCreated({ id: 'new', title: 'New' })}>
+jest.mock('@/components/AddSermonModal', () => ({ onCreateRequest }: { onCreateRequest: any }) => (
+  <button
+    data-testid="add-sermon-modal-trigger"
+    onClick={() => onCreateRequest({ title: 'New', verse: 'John 1:1' })}
+  >
     Mocked Add Sermon
   </button>
 ));
@@ -96,6 +99,7 @@ const mockUseSeries = jest.fn();
 const mockDeleteSermonFromCache = jest.fn();
 const mockUpdateSermonCache = jest.fn();
 const mockAddSermonToCache = jest.fn();
+const mockOptimisticCreateSermon = jest.fn();
 
 jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => mockUseDashboardSermons(),
@@ -108,6 +112,22 @@ jest.mock('@/hooks/useDashboardSermons', () => ({
 
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => mockUseSeries(),
+}));
+
+jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
+  useDashboardOptimisticSermons: () => ({
+    syncStatesById: {},
+    actions: {
+      createSermon: mockOptimisticCreateSermon,
+      saveEditedSermon: jest.fn(),
+      deleteSermon: jest.fn(),
+      markAsPreachedFromPreferred: jest.fn(),
+      unmarkAsPreached: jest.fn(),
+      savePreachDate: jest.fn(),
+      retrySync: jest.fn(),
+      dismissSyncError: jest.fn(),
+    },
+  }),
 }));
 
 // Mock i18n
@@ -159,6 +179,7 @@ describe('Dashboard Page', () => {
       get: (_key: string) => null, // Default: no query params = 'active'
     });
     mockPush.mockClear();
+    mockOptimisticCreateSermon.mockReset();
   });
 
   describe('Basic Rendering', () => {
@@ -398,7 +419,7 @@ describe('Dashboard Page', () => {
     });
 
     it('handles sermon actions', async () => {
-      const { deleteSermonFromCache, updateSermonCache, addSermonToCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
+      const { deleteSermonFromCache, updateSermonCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
 
       render(<DashboardPage />);
 
@@ -412,7 +433,9 @@ describe('Dashboard Page', () => {
 
       // Add
       fireEvent.click(screen.getByTestId('add-sermon-modal-trigger'));
-      expect(addSermonToCache).toHaveBeenCalledWith(expect.objectContaining({ id: 'new' }));
+      expect(mockOptimisticCreateSermon).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'New', verse: 'John 1:1' })
+      );
     });
   });
 });

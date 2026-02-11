@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { useSeries } from '@/hooks/useSeries';
+import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PlusIcon } from "@components/Icons";
@@ -21,6 +22,7 @@ interface AddSermonModalProps {
   onClose?: () => void;
   showTriggerButton?: boolean;
   allowPlannedDate?: boolean;
+  onCreateRequest?: (input: DashboardCreateSermonInput) => Promise<void>;
 }
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
@@ -32,7 +34,8 @@ export default function AddSermonModal({
   isOpen,
   onClose,
   showTriggerButton = true,
-  allowPlannedDate = false
+  allowPlannedDate = false,
+  onCreateRequest
 }: AddSermonModalProps) {
   // showTriggerButton is used to conditionally render the trigger button
   const { t } = useTranslation();
@@ -54,6 +57,28 @@ export default function AddSermonModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (onCreateRequest) {
+      try {
+        await onCreateRequest({
+          title,
+          verse,
+          seriesId: selectedSeriesId || undefined,
+          plannedDate: allowPlannedDate ? plannedDate || undefined : undefined,
+          unspecifiedChurchName: getUnspecifiedChurch().name,
+        });
+      } catch (error) {
+        console.error('Error creating sermon (optimistic request):', error);
+      }
+
+      setTitle('');
+      setVerse('');
+      setSelectedSeriesId('');
+      setPlannedDate('');
+      handleClose();
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) {
       console.error("User is not authenticated");

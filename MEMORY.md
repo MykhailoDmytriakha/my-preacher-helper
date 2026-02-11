@@ -45,6 +45,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-10 Calendar Date Drift: Marker/List Must Share One Pipeline
+**Problem:** Calendar showed planned sermon on different days (e.g., marker on 26 while right panel showed 15) and dashboard planned date formatting leaked time fragments.
+**Attempts:** Hardened day-marker CSS placement and added diagnostics, but mismatch persisted because marker and list logic still consumed different date sources.
+**Solution:** Enforced date-only (`YYYY-MM-DD`) normalization across API/repository + utilities and rebuilt calendar month payload from one normalized source (`sermons[].preachDates`) used by markers, list, and analytics; `sermonStatusByDate` remains fallback-only when event payload lacks current date.
+**Why it worked:** Removing parallel date pipelines eliminated source divergence and timezone/time-component drift, so every calendar surface resolves the same day key.
+**Principle:** For calendar consistency, normalize preach dates to `YYYY-MM-DD` and drive markers, lists, and counters from one shared normalized event map.
+
 ### 2026-02-06 Structured Prompt Telemetry Join Point
 **Problem:** Prompt quality was hard to improve systematically because AI calls were a black box: no consistent record of prompt blocks, context, model, or outputs per run.
 **Attempts:** Partial migration to structured output without unified analytics capture was not enough for post-hoc diagnosis.
@@ -736,6 +743,11 @@
 *   **Protocol:** Разделять `viewedMonth` (что видим) и `selectedDate` (что выбрали). Передавать `viewedMonth` в дочерние списки.
 *   **Reasoning:** Пользователь может смотреть события января, выбрав дату в декабре. Списки должны показывать январь.
 
+**Single Source Date Pipeline**
+*   **Context:** Маркеры месяца, правая панель событий и аналитика календаря.
+*   **Protocol:** Нормализовать даты проповедей до `YYYY-MM-DD` на границе API/Repository и строить month-view/list/analytics из одного нормализованного `eventsByDate` пайплайна. Внешние status maps использовать только как fallback, если в event payload нет текущей даты.
+*   **Reasoning:** Убирает расхождения по дням (левый календарь vs правый список) и исключает смещения из-за времени/таймзоны.
+
 **Series Integration Consistency**
 *   **Context:** Вторичные представления (Календарь, Агенда).
 *   **Protocol:** Наследовать визуальные паттерны (цвета серий, бейджи) из Dashboard. Использовать `useSeries`.
@@ -902,4 +914,5 @@
 - AI Prompt Analytics: `app/api/clients/promptBuilder.ts` builds modular prompt blueprints; `app/api/clients/structuredOutput.ts` is the canonical structured join point; `app/api/clients/aiTelemetry.ts` persists normalized input/output envelopes in Firestore (`ai_prompt_telemetry`) as best-effort non-blocking sidecar.
 - Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
 - Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
+- Calendar Date Integrity: Keep preach dates as date-only (`YYYY-MM-DD`) and derive month markers + right-panel list + analytics from one normalized calendar event pipeline.
 - Comments: English only in code

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, PreachDate } from "@/models/models";
 import {
   getEffectiveIsPreached,
@@ -24,11 +25,19 @@ interface OptionMenuProps {
   sermon: Sermon;
   onDelete?: (sermonId: string) => void;
   onUpdate?: (updatedSermon: Sermon) => void;
+  optimisticActions?: DashboardOptimisticActions;
+  syncState?: DashboardSermonSyncState;
 }
 
 const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
 
-export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuProps) {
+export default function OptionMenu({
+  sermon,
+  onDelete,
+  onUpdate,
+  optimisticActions,
+  syncState
+}: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -36,6 +45,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
   const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
+  const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -61,8 +71,16 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
   const handleDelete = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isSyncPending) return;
     const confirmed = window.confirm(t('optionMenu.deleteConfirm'));
     if (!confirmed) return;
+
+    if (optimisticActions?.deleteSermon) {
+      await optimisticActions.deleteSermon(sermon);
+      setOpen(false);
+      return;
+    }
+
     try {
       await deleteSermon(sermon.id);
       if (onDelete) {
@@ -96,6 +114,10 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
     }
   };
 
+  const closeMenu = () => {
+    setOpen(false);
+  };
+
   const invalidateCalendarCache = () =>
     queryClient.invalidateQueries({
       queryKey: ['calendarSermons'],
@@ -110,85 +132,114 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
     return preachDate.church?.id === UNSPECIFIED_CHURCH_ID;
   };
 
+  const applySermonUpdateResult = (updated: Sermon | null) => {
+    invalidateCalendarCache();
+    if (updated && onUpdate) {
+      onUpdate(updated);
+      return;
+    }
+    if (!onUpdate) {
+      router.refresh();
+    }
+  };
+
+  const openPreachDetailsModal = (preachDate: PreachDate | null) => {
+    setPreachDateToMark(preachDate);
+    setPreachModalInitialData(
+      preachDate
+        ? {
+            ...preachDate,
+            status: 'preached',
+            church:
+              preachDate.church?.id === UNSPECIFIED_CHURCH_ID
+                ? { id: '', name: '', city: '' }
+                : preachDate.church
+          }
+        : undefined
+    );
+    setShowPreachModal(true);
+    closeMenu();
+  };
+
+  const markAsPreachedWithPreferredDate = async (preferredDate: PreachDate) => {
+    if (requiresPreachedDetails(preferredDate)) {
+      openPreachDetailsModal(preferredDate);
+      return;
+    }
+
+    if (optimisticActions?.markAsPreachedFromPreferred) {
+      await optimisticActions.markAsPreachedFromPreferred(sermon, preferredDate);
+      closeMenu();
+      return;
+    }
+
+    await preachDatesService.updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
+    const updated = await updateSermon({
+      ...sermon,
+      isPreached: true
+    });
+    applySermonUpdateResult(updated);
+    closeMenu();
+  };
+
+  const unmarkAsPreachedInPlace = async () => {
+    if (optimisticActions?.unmarkAsPreached) {
+      await optimisticActions.unmarkAsPreached(sermon);
+      closeMenu();
+      return;
+    }
+
+    const preachedDates = getPreachDatesByStatus(sermon, 'preached');
+    if (preachedDates.length > 0) {
+      await Promise.all(
+        preachedDates.map((preachDate) =>
+          preachDatesService.updatePreachDate(sermon.id, preachDate.id, { status: 'planned' })
+        )
+      );
+    }
+
+    const updated = await updateSermon({
+      ...sermon,
+      isPreached: false
+    });
+    applySermonUpdateResult(updated);
+    closeMenu();
+  };
+
   const handleTogglePreached = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isSyncPending) return;
 
     try {
       if (!effectiveIsPreached) {
         const preferredDate = getPreferredDateToMarkAsPreached(sermon);
-
         if (preferredDate) {
-          if (requiresPreachedDetails(preferredDate)) {
-            setPreachDateToMark(preferredDate);
-            setPreachModalInitialData({
-              ...preferredDate,
-              status: 'preached',
-              church:
-                preferredDate.church?.id === UNSPECIFIED_CHURCH_ID
-                  ? { id: '', name: '', city: '' }
-                  : preferredDate.church
-            });
-            setShowPreachModal(true);
-            setOpen(false);
-            return;
-          }
-
-          await preachDatesService.updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
-
-          const updated = await updateSermon({
-            ...sermon,
-            isPreached: true
-          });
-
-          invalidateCalendarCache();
-
-          if (updated && onUpdate) {
-            onUpdate(updated);
-          } else if (!onUpdate) {
-            router.refresh();
-          }
-          setOpen(false);
+          await markAsPreachedWithPreferredDate(preferredDate);
           return;
         }
 
-        setPreachDateToMark(null);
-        setPreachModalInitialData(undefined);
-        setShowPreachModal(true);
-        setOpen(false);
+        openPreachDetailsModal(null);
         return;
       }
 
-      // Unmark as preached but keep dates: convert factual dates back to planned.
-      const preachedDates = getPreachDatesByStatus(sermon, 'preached');
-      if (preachedDates.length > 0) {
-        await Promise.all(
-          preachedDates.map((preachDate) =>
-            preachDatesService.updatePreachDate(sermon.id, preachDate.id, { status: 'planned' })
-          )
-        );
-      }
-
-      const updated = await updateSermon({
-        ...sermon,
-        isPreached: false
-      });
-
-      invalidateCalendarCache();
-
-      if (updated && onUpdate) {
-        onUpdate(updated);
-      } else if (!onUpdate) {
-        router.refresh();
-      }
+      await unmarkAsPreachedInPlace();
     } catch (error) {
       console.error("Error updating preached status:", error);
       alert(t('optionMenu.updateError'));
+      closeMenu();
     }
-    setOpen(false);
   };
 
   const handleSavePreachDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
+    if (optimisticActions?.savePreachDate) {
+      await optimisticActions.savePreachDate(sermon, data, preachDateToMark);
+      setPreachDateToMark(null);
+      setPreachModalInitialData(undefined);
+      setShowPreachModal(false);
+      return;
+    }
+
     try {
       if (preachDateToMark) {
         await preachDatesService.updatePreachDate(sermon.id, preachDateToMark.id, {
@@ -228,8 +279,9 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
     <div ref={menuRef} className="relative">
       <button
         onClick={handleToggle}
-        className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200"
+        className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200 disabled:opacity-60"
         aria-label={t('optionMenu.options')}
+        disabled={isSyncPending}
       >
         <DotsVerticalIcon className="w-5 h-5" />
       </button>
@@ -241,6 +293,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               onClick={handleEdit}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
+              disabled={isSyncPending}
             >
               <span>{t('optionMenu.edit')}</span>
             </button>
@@ -248,6 +301,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               onClick={handleTogglePreached}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
+              disabled={isSyncPending}
             >
               <span>
                 {effectiveIsPreached
@@ -259,6 +313,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
               onClick={handleDelete}
               className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
+              disabled={isSyncPending}
             >
               <span>{t('optionMenu.delete')}</span>
             </button>
@@ -271,6 +326,7 @@ export default function OptionMenu({ sermon, onDelete, onUpdate }: OptionMenuPro
           sermon={sermon}
           onClose={handleCloseEditModal}
           onUpdate={handleUpdateSermon}
+          onSaveRequest={optimisticActions?.saveEditedSermon}
         />
       )}
 

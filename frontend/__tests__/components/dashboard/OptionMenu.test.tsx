@@ -135,6 +135,18 @@ describe('OptionMenu Component', () => {
     onDelete: jest.fn(),
     onUpdate: jest.fn(),
   };
+
+  const buildOptimisticActions = (overrides: Record<string, jest.Mock> = {}) => ({
+    createSermon: jest.fn().mockResolvedValue(undefined),
+    saveEditedSermon: jest.fn().mockResolvedValue(undefined),
+    deleteSermon: jest.fn().mockResolvedValue(undefined),
+    markAsPreachedFromPreferred: jest.fn().mockResolvedValue(undefined),
+    unmarkAsPreached: jest.fn().mockResolvedValue(undefined),
+    savePreachDate: jest.fn().mockResolvedValue(undefined),
+    retrySync: jest.fn().mockResolvedValue(undefined),
+    dismissSyncError: jest.fn(),
+    ...overrides,
+  });
   
   beforeEach(() => {
     jest.clearAllMocks();
@@ -503,4 +515,175 @@ describe('OptionMenu Component', () => {
     // Check onDelete was not called
     expect(defaultProps.onDelete).not.toHaveBeenCalled();
   });
-}); 
+
+  it('uses optimistic delete action when provided', async () => {
+    const optimisticActions = buildOptimisticActions();
+
+    render(
+      <OptionMenu
+        {...defaultProps}
+        optimisticActions={optimisticActions}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('Delete'));
+
+    await waitFor(() => {
+      expect(optimisticActions.deleteSermon).toHaveBeenCalledWith(mockSermon);
+    });
+
+    expect(deleteSermon).not.toHaveBeenCalled();
+  });
+
+  it('uses optimistic mark action for planned preferred date', async () => {
+    const optimisticActions = buildOptimisticActions();
+    const plannedSermon: Sermon = {
+      ...mockSermon,
+      preachDates: [
+        {
+          id: 'pd-plan-optimistic',
+          date: '2026-07-10',
+          status: 'planned',
+          church: { id: 'c1', name: 'Test Church', city: 'City' },
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+
+    render(
+      <OptionMenu
+        sermon={plannedSermon}
+        optimisticActions={optimisticActions}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    await waitFor(() => {
+      expect(optimisticActions.markAsPreachedFromPreferred).toHaveBeenCalledWith(
+        plannedSermon,
+        expect.objectContaining({ id: 'pd-plan-optimistic' })
+      );
+    });
+
+    expect(preachDatesService.updatePreachDate).not.toHaveBeenCalledWith(
+      'sermon-1',
+      'pd-plan-optimistic',
+      expect.objectContaining({ status: 'preached' })
+    );
+  });
+
+  it('uses optimistic unmark action for preached sermon', async () => {
+    const optimisticActions = buildOptimisticActions();
+    const preachedSermon: Sermon = {
+      ...mockSermon,
+      isPreached: true,
+      preachDates: [
+        {
+          id: 'pd-preached',
+          date: '2026-07-10',
+          status: 'preached',
+          church: { id: 'c1', name: 'Test Church', city: 'City' },
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+
+    render(
+      <OptionMenu
+        sermon={preachedSermon}
+        optimisticActions={optimisticActions}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
+
+    await waitFor(() => {
+      expect(optimisticActions.unmarkAsPreached).toHaveBeenCalledWith(preachedSermon);
+    });
+
+    expect(updateSermon).not.toHaveBeenCalledWith(expect.objectContaining({ isPreached: false }));
+  });
+
+  it('uses optimistic savePreachDate action from modal flow', async () => {
+    const optimisticActions = buildOptimisticActions();
+
+    render(
+      <OptionMenu
+        sermon={mockSermon}
+        optimisticActions={optimisticActions}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Save Date'));
+
+    await waitFor(() => {
+      expect(optimisticActions.savePreachDate).toHaveBeenCalledWith(
+        mockSermon,
+        expect.objectContaining({
+          date: '2024-01-21',
+          church: expect.objectContaining({ name: 'Test Church' }),
+          audience: 'Youth',
+        }),
+        null
+      );
+    });
+
+    expect(preachDatesService.addPreachDate).not.toHaveBeenCalled();
+  });
+
+  it('disables menu interactions while sync is pending', () => {
+    render(
+      <OptionMenu
+        {...defaultProps}
+        syncState={{ status: 'pending', operation: 'update' }}
+      />
+    );
+
+    const menuButton = screen.getByRole('button', { name: 'Options' });
+    expect(menuButton).toBeDisabled();
+  });
+
+  it('handles optimistic mark errors and closes menu', async () => {
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const optimisticActions = buildOptimisticActions({
+      markAsPreachedFromPreferred: jest.fn().mockRejectedValue(new Error('mark failed')),
+    });
+    const plannedSermon: Sermon = {
+      ...mockSermon,
+      preachDates: [
+        {
+          id: 'pd-plan-error',
+          date: '2026-08-01',
+          status: 'planned',
+          church: { id: 'c1', name: 'Test Church', city: 'City' },
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+
+    render(
+      <OptionMenu
+        sermon={plannedSermon}
+        optimisticActions={optimisticActions}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+
+    await waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith('optionMenu.updateError');
+    });
+
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    alertSpy.mockRestore();
+  });
+});

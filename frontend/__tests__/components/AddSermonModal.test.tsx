@@ -373,4 +373,83 @@ describe('AddSermonModal Component', () => {
     // Restore mocks
     (console.error as jest.Mock).mockRestore();
   });
-}); 
+
+  test('delegates create flow to onCreateRequest when provided', async () => {
+    const onCreateRequest = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
+
+    render(
+      <TestProviders>
+        <AddSermonModal
+          onCreateRequest={onCreateRequest}
+          onClose={onClose}
+          allowPlannedDate
+        />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('New Sermon'));
+
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
+      target: { value: 'Delegated Sermon' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'Luke 4:18' },
+    });
+    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
+      target: { value: '2026-05-10' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(onCreateRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Delegated Sermon',
+          verse: 'Luke 4:18',
+          plannedDate: '2026-05-10',
+        })
+      );
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    expect(createSermon).not.toHaveBeenCalled();
+  });
+
+  test('logs optimistic create errors but still resets and closes modal', async () => {
+    const onCreateRequest = jest.fn().mockRejectedValue(new Error('optimistic-fail'));
+    const onClose = jest.fn();
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    render(
+      <TestProviders>
+        <AddSermonModal
+          onCreateRequest={onCreateRequest}
+          onClose={onClose}
+        />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('New Sermon'));
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
+      target: { value: 'Failed Delegated Sermon' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'Acts 1:8' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(onCreateRequest).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Error creating sermon (optimistic request):',
+      expect.any(Error)
+    );
+
+    consoleSpy.mockRestore();
+  });
+});

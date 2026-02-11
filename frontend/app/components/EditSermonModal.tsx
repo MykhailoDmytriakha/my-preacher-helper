@@ -7,6 +7,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getNextPlannedDate } from '@/utils/preachDateStatus';
@@ -17,9 +18,10 @@ interface EditSermonModalProps {
   sermon: Sermon;
   onClose: () => void;
   onUpdate: (updatedSermon: Sermon) => void;
+  onSaveRequest?: (input: DashboardEditSermonInput) => Promise<void>;
 }
 
-export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermonModalProps) {
+export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveRequest }: EditSermonModalProps) {
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
   const isReadOnly = !isOnline;
@@ -67,6 +69,27 @@ export default function EditSermonModal({ sermon, onClose, onUpdate }: EditSermo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
+
+    if (onSaveRequest) {
+      setIsSubmitting(true);
+      try {
+        onClose();
+        await onSaveRequest({
+          sermon,
+          title,
+          verse,
+          plannedDate,
+          initialPlannedDate,
+          unspecifiedChurchName: getUnspecifiedChurch().name,
+        });
+      } catch (error) {
+        console.error("Error scheduling optimistic sermon update:", error);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {

@@ -1,10 +1,11 @@
 "use client";
 
-import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle } from "lucide-react";
+import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
+import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
 import {
@@ -37,6 +38,8 @@ interface SermonCardProps {
   onUpdate: (updatedSermon: Sermon) => void;
   searchQuery?: string;
   searchSnippets?: ThoughtSnippet[];
+  syncState?: DashboardSermonSyncState;
+  optimisticActions?: DashboardOptimisticActions;
 }
 
 interface SermonCardHeaderProps {
@@ -46,6 +49,8 @@ interface SermonCardHeaderProps {
   formattedPlannedDate: string | null;
   onDelete: (id: string) => void;
   onUpdate: (updatedSermon: Sermon) => void;
+  syncState?: DashboardSermonSyncState;
+  optimisticActions?: DashboardOptimisticActions;
   t: TFunction;
 }
 
@@ -77,6 +82,66 @@ interface SermonCardFooterProps {
   t: TFunction;
 }
 
+interface SermonSyncBadgeProps {
+  sermonId: string;
+  syncState?: DashboardSermonSyncState;
+  optimisticActions?: DashboardOptimisticActions;
+  t: TFunction;
+}
+
+function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSyncBadgeProps) {
+  if (!syncState) return null;
+
+  const operationLabel =
+    syncState.operation === 'create'
+      ? t('addSermon.newSermon', { defaultValue: 'New sermon' })
+      : syncState.operation === 'delete'
+      ? t('optionMenu.delete', { defaultValue: 'Delete' })
+      : syncState.operation === 'preach-status'
+      ? t('optionMenu.markAsPreached', { defaultValue: 'Preached status' })
+      : t('editSermon.editSermon', { defaultValue: 'Edit sermon' });
+
+  if (syncState.status === 'pending') {
+    return (
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/25 dark:text-blue-300 px-2 py-0.5 text-xs font-medium">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span className="uppercase tracking-wide text-[10px]">{t('buttons.saving', { defaultValue: 'Saving' })}</span>
+        <span className={TEXT_PRIMARY_CLASSES}>{operationLabel}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-700 dark:bg-red-900/25 dark:text-red-300 px-2 py-0.5 text-xs font-medium">
+      <AlertCircle className="w-3 h-3" />
+      <span className="uppercase tracking-wide text-[10px]">{t('errors.generic', { defaultValue: 'Error' })}</span>
+      <span className="max-w-[120px] truncate">{syncState.message || t('errors.savingError', { defaultValue: 'Sync failed' })}</span>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void optimisticActions?.retrySync(sermonId);
+        }}
+        className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700"
+      >
+        {t('buttons.retry', { defaultValue: 'Retry' })}
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          optimisticActions?.dismissSyncError(sermonId);
+        }}
+        className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-white/70 hover:bg-white dark:bg-gray-800/70 dark:hover:bg-gray-700"
+      >
+        {t('buttons.dismiss', { defaultValue: 'Dismiss' })}
+      </button>
+    </div>
+  );
+}
+
 function SermonCardHeader({
   sermon,
   formattedCreatedDate,
@@ -84,6 +149,8 @@ function SermonCardHeader({
   formattedPlannedDate,
   onDelete,
   onUpdate,
+  syncState,
+  optimisticActions,
   t,
 }: SermonCardHeaderProps) {
   const hasPreachedDate = Boolean(formattedPreachedDate);
@@ -115,6 +182,12 @@ function SermonCardHeader({
             {statusDateText}
           </span>
         </div>
+        <SermonSyncBadge
+          sermonId={sermon.id}
+          syncState={syncState}
+          optimisticActions={optimisticActions}
+          t={t}
+        />
       </div>
 
       <div className="z-20 -mr-2 -mt-1">
@@ -122,6 +195,8 @@ function SermonCardHeader({
           sermon={sermon}
           onDelete={(id: string) => onDelete(id)}
           onUpdate={onUpdate}
+          optimisticActions={optimisticActions}
+          syncState={syncState}
         />
       </div>
     </div>
@@ -299,7 +374,9 @@ export default function SermonCard({
   onDelete,
   onUpdate,
   searchQuery = "",
-  searchSnippets = []
+  searchSnippets = [],
+  syncState,
+  optimisticActions
 }: SermonCardProps) {
   const { t } = useTranslation();
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
@@ -326,12 +403,19 @@ export default function SermonCard({
   })();
 
   // Card base styles - clean white/dark theme without heavy backgrounds
+  const syncVisualClasses = syncState?.status === 'pending'
+    ? 'opacity-75 border-blue-200 dark:border-blue-700'
+    : syncState?.status === 'error'
+    ? 'border-red-300 dark:border-red-700'
+    : '';
+
   const cardClasses = `
     group flex flex-col
     bg-white dark:bg-gray-800
     rounded-xl shadow-sm hover:shadow-md transition-all duration-300
     border border-gray-200 dark:border-gray-700
     h-full relative overflow-visible
+    ${syncVisualClasses}
   `;
 
   return (
@@ -347,6 +431,8 @@ export default function SermonCard({
             formattedPlannedDate={formattedPlannedDate}
             onDelete={onDelete}
             onUpdate={onUpdate}
+            syncState={syncState}
+            optimisticActions={optimisticActions}
             t={t}
           />
 

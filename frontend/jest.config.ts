@@ -68,6 +68,7 @@ const config: Config = {
     '!app/**/__mocks__/**', // Exclude __mocks__ directories
     '!**/node_modules/**', // Standard exclusion
     '!app/models/models.ts', // Types-only file; no runtime coverage
+    '!app/models/dashboardOptimistic.ts', // Types-only file; no runtime coverage
     '!app/types/TimerProps.ts', // Types-only file; no runtime coverage
     '!app/types/TimerState.ts', // Types-only file; no runtime coverage
     '!<rootDir>/app/layout.tsx', // Often excluded as it's hard to test directly

@@ -168,6 +168,8 @@
     "cancel": "Скасувати",
     "save": "Зберегти",
     "saving": "Збереження...",
+    "retry": "Повторити",
+    "dismiss": "Сховати",
     "back": "Назад",
     "backToSermon": "Назад до проповіді",
     "copy": "Копиювати",
@@ -419,6 +421,7 @@
     }
   },
   "errors": {
+    "generic": "Помилка",
     "audioProcessing": "Error processing audio",
     "thoughtDeleteError": "Error deleting thought. Please try again.",
     "thoughtUpdateError": "Error updating thought in database",

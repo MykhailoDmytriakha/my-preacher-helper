@@ -7,6 +7,8 @@ import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/pr
 import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
+const mockUseOnlineStatus = jest.fn(() => true);
+
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
   updateSermon: jest.fn()
@@ -16,6 +18,10 @@ jest.mock('@/services/preachDates.service', () => ({
   addPreachDate: jest.fn(),
   updatePreachDate: jest.fn(),
   deletePreachDate: jest.fn(),
+}));
+
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => mockUseOnlineStatus(),
 }));
 
 jest.mock('next/navigation', () => ({
@@ -101,6 +107,7 @@ describe('EditSermonModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseOnlineStatus.mockReturnValue(true);
     (updateSermon as jest.Mock).mockResolvedValue(mockUpdatedSermon);
     (addPreachDate as jest.Mock).mockResolvedValue({
       id: 'pd-added',
@@ -323,4 +330,75 @@ describe('EditSermonModal Component', () => {
       );
     });
   });
-}); 
+
+  test('delegates save to onSaveRequest when provided', async () => {
+    const onSaveRequest = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
+    const onUpdate = jest.fn();
+
+    render(
+      <EditSermonModal
+        sermon={mockSermon}
+        onClose={onClose}
+        onUpdate={onUpdate}
+        onSaveRequest={onSaveRequest}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Delegated Save Title' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onSaveRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sermon: mockSermon,
+          title: 'Delegated Save Title',
+          verse: mockSermon.verse,
+          plannedDate: '',
+          initialPlannedDate: '',
+        })
+      );
+    });
+
+    expect(updateSermon).not.toHaveBeenCalled();
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  test('logs delegated save errors and exits submitting state', async () => {
+    const onSaveRequest = jest.fn().mockRejectedValue(new Error('delegated-save-failed'));
+    const onClose = jest.fn();
+    const onUpdate = jest.fn();
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    render(
+      <EditSermonModal
+        sermon={mockSermon}
+        onClose={onClose}
+        onUpdate={onUpdate}
+        onSaveRequest={onSaveRequest}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Delegated Error Title' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(onSaveRequest).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Save')).toBeEnabled();
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Error scheduling optimistic sermon update:',
+      expect.any(Error)
+    );
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+});

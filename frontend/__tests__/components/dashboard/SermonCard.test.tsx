@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import SermonCard from '@/components/dashboard/SermonCard';
@@ -80,6 +80,17 @@ describe('SermonCard Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
+
+  const optimisticActions = {
+    createSermon: jest.fn(),
+    saveEditedSermon: jest.fn(),
+    deleteSermon: jest.fn(),
+    markAsPreachedFromPreferred: jest.fn(),
+    unmarkAsPreached: jest.fn(),
+    savePreachDate: jest.fn(),
+    retrySync: jest.fn(),
+    dismissSyncError: jest.fn(),
+  };
 
   it('renders sermon card with basic information', () => {
     render(
@@ -256,5 +267,63 @@ describe('SermonCard Component', () => {
       button.querySelector('svg') && !button.textContent?.trim()
     );
     expect(exportButtons.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['create', 'addSermon.newSermon'],
+    ['delete', 'optionMenu.delete'],
+    ['preach-status', 'optionMenu.markAsPreached'],
+    ['update', 'editSermon.editSermon'],
+  ] as const)('renders sync operation label for %s state', (operation, labelKey) => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        syncState={{ status: 'pending', operation }}
+      />
+    );
+
+    expect(screen.getByText(labelKey)).toBeInTheDocument();
+  });
+
+  it('renders pending sync badge and pending visual card style', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        syncState={{ status: 'pending', operation: 'update' }}
+      />
+    );
+
+    expect(screen.getByText('buttons.saving')).toBeInTheDocument();
+    const card = screen.getByTestId(`sermon-card-${baseSermon.id}`);
+    expect(card).toHaveClass('opacity-75');
+    expect(card).toHaveClass('border-blue-200');
+  });
+
+  it('renders error sync badge and triggers retry/dismiss handlers', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        syncState={{ status: 'error', operation: 'update' }}
+        optimisticActions={optimisticActions as any}
+      />
+    );
+
+    const retryButton = screen.getByText('buttons.retry');
+    const dismissButton = screen.getByText('buttons.dismiss');
+
+    fireEvent.click(retryButton);
+    fireEvent.click(dismissButton);
+
+    expect(optimisticActions.retrySync).toHaveBeenCalledWith(baseSermon.id);
+    expect(optimisticActions.dismissSyncError).toHaveBeenCalledWith(baseSermon.id);
+
+    const card = screen.getByTestId(`sermon-card-${baseSermon.id}`);
+    expect(card).toHaveClass('border-red-300');
   });
 });

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
+import { useDashboardOptimisticSermons } from "@/hooks/useDashboardOptimisticSermons";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
 import { useSeries } from "@/hooks/useSeries";
@@ -27,7 +28,8 @@ export default function DashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { sermons, loading } = useDashboardSermons();
-  const { deleteSermonFromCache, updateSermonCache, addSermonToCache } = useSermonMutations();
+  const { deleteSermonFromCache, updateSermonCache } = useSermonMutations();
+  const { syncStatesById, actions: optimisticActions } = useDashboardOptimisticSermons();
 
   const { series: allSeries } = useSeries(user?.uid || null);
 
@@ -79,10 +81,6 @@ export default function DashboardPage() {
     updateSermonCache(updatedSermon);
   };
 
-  const handleNewSermon = (newSermon: Sermon) => {
-    addSermonToCache(newSermon);
-  };
-
   // Filtering & Sorting
   const { processedSermons, searchSnippetsById } = useFilteredSermons(
     sermons,
@@ -108,7 +106,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
-          <AddSermonModal onNewSermonCreated={handleNewSermon} allowPlannedDate />
+          <AddSermonModal
+            onCreateRequest={optimisticActions.createSermon}
+            allowPlannedDate
+          />
         </div>
       </div>
 
@@ -332,6 +333,8 @@ export default function DashboardPage() {
         setSearchQuery={setSearchQuery}
         onDeleteSermon={handleDeleteSermon}
         onUpdateSermon={handleUpdateSermon}
+        syncStatesById={syncStatesById}
+        optimisticActions={optimisticActions}
       />
     </div>
   );
