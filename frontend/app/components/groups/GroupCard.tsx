@@ -174,7 +174,7 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
           <p className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-400">{group.description}</p>
         )}
 
-        <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <div className="mt-auto grid grid-cols-3 gap-2 pt-4 text-xs text-gray-600 dark:text-gray-300">
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
             <div className="inline-flex items-center gap-1">
               <DocumentDuplicateIcon className="h-3.5 w-3.5" />

@@ -83,6 +83,7 @@ export default function GroupDetailPage() {
   flowRef.current = flow;
 
   const [meetingDate, setMeetingDate] = useState('');
+  const [isDateFocused, setIsDateFocused] = useState(false);
   const [meetingLocation, setMeetingLocation] = useState('');
   const [meetingAudience, setMeetingAudience] = useState('');
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -488,9 +489,15 @@ export default function GroupDetailPage() {
             <div className="flex items-center gap-2">
               <CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <input
-                type="date"
+                type={isDateFocused || meetingDate ? 'date' : 'text'}
                 value={meetingDate}
-                onChange={(event) => { setMeetingDate(event.target.value); debouncedSave(); }}
+                onChange={(event) => {
+                  setMeetingDate(event.target.value);
+                  debouncedSave();
+                }}
+                onFocus={() => setIsDateFocused(true)}
+                onBlur={() => setIsDateFocused(false)}
+                placeholder={t('workspaces.groups.meetings.datePlaceholder', { defaultValue: 'No date' })}
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               />
             </div>

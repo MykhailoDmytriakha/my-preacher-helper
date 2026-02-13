@@ -372,7 +372,8 @@ describe('GroupDetailPage', () => {
       expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
     });
 
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = screen.getByPlaceholderText('No date') as HTMLInputElement;
+    fireEvent.focus(dateInput);
     fireEvent.change(dateInput, { target: { value: '2026-03-01' } });
 
     await waitFor(() => {

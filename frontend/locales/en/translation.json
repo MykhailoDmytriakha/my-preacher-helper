@@ -1586,7 +1586,8 @@
         "empty": "No meetings recorded yet",
         "location": "Location",
         "audience": "Audience",
-        "notes": "Notes"
+        "notes": "Notes",
+        "datePlaceholder": "No date"
       },
       "status": {
         "draft": "Draft",
