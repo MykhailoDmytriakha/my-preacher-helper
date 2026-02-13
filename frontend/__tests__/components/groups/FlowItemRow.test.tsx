@@ -149,4 +149,22 @@ describe('FlowItemRow', () => {
         fireEvent.click(screen.getByText('Move down'));
         expect(defaultProps.onMoveDown).toHaveBeenCalled();
     });
+
+    it('applies correct z-index when menu is open', () => {
+        const { container } = render(<FlowItemRow {...defaultProps} />);
+
+        // Default state (z-index 1)
+        // The root element is the one with the style prop.
+        // container.firstChild should be the div with ref={setNodeRef}
+        const row = container.firstChild as HTMLElement;
+        expect(row).toHaveStyle('z-index: 1');
+
+        // Open menu (z-index 50)
+        fireEvent.click(screen.getByLabelText('More options'));
+        expect(row).toHaveStyle('z-index: 50');
+
+        // Close menu (z-index 1)
+        fireEvent.click(screen.getByLabelText('More options'));
+        expect(row).toHaveStyle('z-index: 1');
+    });
 });

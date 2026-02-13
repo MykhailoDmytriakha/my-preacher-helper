@@ -67,7 +67,7 @@ export default function FlowItemRow({
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.4 : 1,
-        zIndex: isDragging ? 10 : 1,
+        zIndex: isDragging ? 10 : (menuOpen ? 50 : 1),
     };
 
     const statusInfo = STATUS_COLORS[template.status];
