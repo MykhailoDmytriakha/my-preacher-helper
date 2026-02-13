@@ -1,6 +1,7 @@
 'use client';
 
-// eslint-disable-next-line unused-imports/no-unused-imports
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
     Bars3Icon,
     EllipsisVerticalIcon,
@@ -53,6 +54,22 @@ export default function FlowItemRow({
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: flowItem.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 10 : 1,
+    };
+
     const statusInfo = STATUS_COLORS[template.status];
     const displayTitle = flowItem.instanceTitle || template.title;
     const contentSnippet = template.content?.trim();
@@ -77,6 +94,9 @@ export default function FlowItemRow({
 
     return (
         <div
+            ref={setNodeRef}
+            style={style}
+            {...attributes}
             role="button"
             tabIndex={0}
             onClick={onSelect}
@@ -86,13 +106,17 @@ export default function FlowItemRow({
                     onSelect();
                 }
             }}
-            className={`group/item relative flex items-center gap-3 rounded-xl border px-4 py-3 transition-all cursor-pointer ${isSelected
+            className={`group/item relative flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors cursor-pointer ${isSelected
                 ? 'border-blue-300 bg-blue-50/60 shadow-sm ring-1 ring-blue-200 dark:border-blue-700 dark:bg-blue-950/30 dark:ring-blue-800'
                 : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
                 }`}
         >
             {/* Drag handle */}
-            <div className="flex-shrink-0 cursor-grab text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+            <div
+                {...listeners}
+                className="flex-shrink-0 cursor-grab text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 active:cursor-grabbing outline-none touch-none"
+                onClick={(e) => e.stopPropagation()}
+            >
                 <Bars3Icon className="h-4 w-4" />
             </div>
 
@@ -146,7 +170,7 @@ export default function FlowItemRow({
                     className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 focus:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                     aria-label={t('common.more', { defaultValue: 'More options' })}
                 >
-                    <EllipsisVerticalIcon className="h-4.5 w-4.5" />
+                    <EllipsisVerticalIcon className="h-5 w-5" />
                 </button>
 
                 {menuOpen && (

@@ -658,6 +658,7 @@
     "savingChanges": "Сохранение изменений...",
     "cannotDeleteWithThoughts": "Невозможно удалить: {{count}} мысль(ей) привязано к этому пункту",
     "save": "Сохранить",
+    "saved": "Сохранено",
     "cancel": "Отмена",
     "showSearch": "Показать поиск",
     "hideSearch": "Скрыть поиск",
@@ -1828,16 +1829,22 @@
       "duration": "мин"
     },
     "types": {
-      "worship": "Поклонение",
+      "topic": "Основная тема",
+      "scripture": "Писание",
+      "questions": "Вопросы",
+      "announcement": "Объявление",
+      "explanation": "Объяснение",
+      "notes": "Заметки",
       "prayer": "Молитва",
+      "custom": "Свой блок",
+      "worship": "Поклонение",
       "sermon_discussion": "Обсуждение проповеди",
       "ice_breaker": "Ледокол",
       "vision": "Видение",
       "announcements": "Объявления",
       "testimony": "Свидетельство",
       "offering": "Пожертвование",
-      "fellowship": "Общение",
-      "custom": "Свой блок"
+      "fellowship": "Общение"
     }
   }
 }

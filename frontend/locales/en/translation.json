@@ -658,6 +658,7 @@
     "savingChanges": "Saving changes...",
     "cannotDeleteWithThoughts": "Cannot delete: {{count}} thought(s) assigned to this point",
     "save": "Save",
+    "saved": "Saved",
     "cancel": "Cancel",
     "showSearch": "Show search",
     "hideSearch": "Hide search",
@@ -1828,16 +1829,22 @@
       "duration": "min"
     },
     "types": {
-      "worship": "Worship",
+      "topic": "Main Topic",
+      "scripture": "Scripture",
+      "questions": "Questions",
+      "announcement": "Announcement",
+      "explanation": "Explanation",
+      "notes": "Notes",
       "prayer": "Prayer",
+      "custom": "Custom Block",
+      "worship": "Worship",
       "sermon_discussion": "Sermon Discussion",
       "ice_breaker": "Ice Breaker",
       "vision": "Vision",
       "announcements": "Announcements",
       "testimony": "Testimony",
       "offering": "Offering",
-      "fellowship": "Fellowship",
-      "custom": "Custom Block"
+      "fellowship": "Fellowship"
     }
   }
 }

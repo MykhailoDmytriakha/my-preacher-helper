@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 
 import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
@@ -6,12 +7,61 @@ import { hasGroupsAccess } from '@/services/userSettings.service';
 
 const mockPush = jest.fn();
 const mockUseParams = jest.fn(() => ({ id: 'group-1' }));
+const mockArrayMove = jest.fn((items: any[], from: number, to: number) => {
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  if (!moved) return next;
+  next.splice(to, 0, moved);
+  return next;
+});
 
 jest.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
   useRouter: () => ({
     push: mockPush,
   }),
+}));
+
+jest.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children, onDragEnd }: any) => (
+    <div data-testid="dnd-context">
+      <button
+        type="button"
+        onClick={() => onDragEnd({ active: { id: 'flow-1' }, over: { id: 'flow-2' } })}
+      >
+        Trigger drag end
+      </button>
+      {children}
+    </div>
+  ),
+  closestCenter: jest.fn(),
+  KeyboardSensor: jest.fn(),
+  PointerSensor: jest.fn(),
+  useSensor: jest.fn(() => ({})),
+  useSensors: jest.fn(() => []),
+}));
+
+jest.mock('@dnd-kit/sortable', () => ({
+  arrayMove: (...args: [any[], number, number]) => mockArrayMove(...args),
+  SortableContext: ({ children }: any) => <>{children}</>,
+  sortableKeyboardCoordinates: jest.fn(),
+  verticalListSortingStrategy: jest.fn(),
+  useSortable: jest.fn(() => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: jest.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false,
+  })),
+}));
+
+jest.mock('@dnd-kit/utilities', () => ({
+  CSS: {
+    Transform: {
+      toString: () => '',
+    },
+  },
 }));
 
 jest.mock('@/hooks/useGroupDetail', () => ({
@@ -42,74 +92,87 @@ jest.mock('sonner', () => ({
 
 const mockUseGroupDetail = useGroupDetail as jest.MockedFunction<typeof useGroupDetail>;
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
+const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
+
+const createMockGroup = (overrides: Partial<any> = {}) =>
+  ({
+    id: 'group-1',
+    userId: 'user-1',
+    title: 'Family Group',
+    description: 'Group description',
+    status: 'active',
+    templates: [
+      {
+        id: 'tpl-1',
+        type: 'topic',
+        title: 'Main topic',
+        content: 'Discussion content',
+        status: 'filled',
+        scriptureRefs: [],
+        questions: [],
+        createdAt: 'x',
+        updatedAt: 'x',
+      },
+    ],
+    flow: [
+      {
+        id: 'flow-1',
+        templateId: 'tpl-1',
+        order: 1,
+        durationMin: 25,
+        instanceNotes: 'Focus on application',
+      },
+    ],
+    meetingDates: [
+      {
+        id: 'date-1',
+        date: '2026-02-11',
+        location: 'Hall',
+        audience: 'Youth',
+        notes: 'Bring notes',
+        createdAt: 'x',
+      },
+    ],
+    createdAt: 'x',
+    updatedAt: 'x',
+    seriesId: null,
+    seriesPosition: null,
+    ...overrides,
+  }) as any;
 
 describe('GroupDetailPage', () => {
   const updateGroupDetail = jest.fn();
   const addMeetingDate = jest.fn();
+  const updateMeetingDate = jest.fn();
   const removeMeetingDate = jest.fn();
   const deleteGroupDetail = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useRealTimers();
     (window as any).confirm = jest.fn(() => true);
     mockHasGroupsAccess.mockResolvedValue(true);
     mockUseParams.mockReturnValue({ id: 'group-1' });
     updateGroupDetail.mockResolvedValue(undefined);
     addMeetingDate.mockResolvedValue(undefined);
+    updateMeetingDate.mockResolvedValue(undefined);
     removeMeetingDate.mockResolvedValue(undefined);
     deleteGroupDetail.mockResolvedValue(undefined);
 
     mockUseGroupDetail.mockReturnValue({
-      group: {
-        id: 'group-1',
-        userId: 'user-1',
-        title: 'Family Group',
-        description: 'Group description',
-        status: 'active',
-        templates: [
-          {
-            id: 'tpl-1',
-            type: 'topic',
-            title: 'Main topic',
-            content: 'Discussion content',
-            status: 'filled',
-            scriptureRefs: [],
-            questions: [],
-            createdAt: 'x',
-            updatedAt: 'x',
-          },
-        ],
-        flow: [
-          {
-            id: 'flow-1',
-            templateId: 'tpl-1',
-            order: 1,
-            durationMin: 25,
-            instanceNotes: 'Focus on application',
-          },
-        ],
-        meetingDates: [
-          {
-            id: 'date-1',
-            date: '2026-02-11',
-            location: 'Hall',
-            audience: 'Youth',
-            notes: 'Bring notes',
-            createdAt: 'x',
-          },
-        ],
-        createdAt: 'x',
-        updatedAt: 'x',
-        seriesId: null,
-        seriesPosition: null,
-      } as any,
+      group: createMockGroup(),
       loading: false,
       error: null,
       updateGroupDetail,
       addMeetingDate,
+      updateMeetingDate,
       removeMeetingDate,
       deleteGroupDetail,
     } as any);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('renders loading state', () => {
@@ -136,63 +199,14 @@ describe('GroupDetailPage', () => {
     });
   });
 
-  it('saves edited group details', async () => {
+  it('populates meeting date fields from group data', async () => {
     render(<GroupDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('2026-02-11')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Hall')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Youth')).toBeInTheDocument();
     });
-
-    const titleInput = screen.getByDisplayValue('Family Group');
-    const descriptionTextarea = screen.getByDisplayValue('Group description');
-    fireEvent.change(titleInput, { target: { value: '  Updated Group  ' } });
-    fireEvent.change(descriptionTextarea, { target: { value: '  Updated Description  ' } });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() =>
-      expect(updateGroupDetail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Updated Group',
-          description: 'Updated Description',
-          status: 'active',
-        })
-      )
-    );
-  });
-
-  it('adds and removes meeting dates', async () => {
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Add meeting date' })).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByPlaceholderText('Location (optional)'), {
-      target: { value: 'Room 7' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Audience (optional)'), {
-      target: { value: 'Leaders' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Notes (optional)'), {
-      target: { value: 'Agenda' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add meeting date' }));
-    await waitFor(() =>
-      expect(addMeetingDate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          location: 'Room 7',
-          audience: 'Leaders',
-          notes: 'Agenda',
-        })
-      )
-    );
-
-    // first icon-only delete button in meetings list
-    const iconButtons = screen.getAllByRole('button');
-    fireEvent.click(iconButtons[iconButtons.length - 1]);
-    expect(removeMeetingDate).toHaveBeenCalledWith('date-1');
   });
 
   it('deletes group and navigates back to /groups', async () => {
@@ -220,5 +234,237 @@ describe('GroupDetailPage', () => {
       expect(screen.getByText('Groups workspace is disabled')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     });
+  });
+
+  it('renders empty flow placeholder when no blocks exist', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({ templates: [], flow: [], meetingDates: [] }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No blocks yet')).toBeInTheDocument();
+    });
+  });
+
+  it('triggers save handlers for flow add/edit/delete actions', async () => {
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add block' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Main topic' }));
+
+    fireEvent.click(screen.getAllByText('Main topic')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Block Name')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Block Name'), { target: { value: 'Updated Block' } });
+    fireEvent.change(screen.getByLabelText('Duration (min)'), { target: { value: '30' } });
+    fireEvent.click(screen.getByTitle('Filled'));
+
+    const updatedBlockRow = screen.getAllByText('Updated Block')[0];
+    fireEvent.click(updatedBlockRow);
+    fireEvent.click(updatedBlockRow);
+    fireEvent.click(updatedBlockRow);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(updateGroupDetail).toHaveBeenCalled();
+    });
+  });
+
+  it('handles drag-end reorder and schedules autosave', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({
+        templates: [
+          {
+            id: 'tpl-1',
+            type: 'topic',
+            title: 'Main topic',
+            content: 'Discussion content',
+            status: 'filled',
+            scriptureRefs: [],
+            questions: [],
+            createdAt: 'x',
+            updatedAt: 'x',
+          },
+          {
+            id: 'tpl-2',
+            type: 'notes',
+            title: 'Second block',
+            content: 'Second block content',
+            status: 'draft',
+            scriptureRefs: [],
+            questions: [],
+            createdAt: 'x',
+            updatedAt: 'x',
+          },
+        ],
+        flow: [
+          {
+            id: 'flow-1',
+            templateId: 'tpl-1',
+            order: 1,
+            durationMin: 25,
+          },
+          {
+            id: 'flow-2',
+            templateId: 'tpl-2',
+            order: 2,
+            durationMin: 10,
+          },
+        ],
+      }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger drag end' }));
+
+    await waitFor(() => {
+      expect(updateGroupDetail).toHaveBeenCalled();
+    });
+
+    expect(mockArrayMove).toHaveBeenCalled();
+  });
+
+  it('adds meeting date when there is no existing date', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({ meetingDates: [] }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+    });
+
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: '2026-03-01' } });
+
+    await waitFor(() => {
+      expect(addMeetingDate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date: '2026-03-01',
+        })
+      );
+    });
+  });
+
+  it('removes meeting date when date field is cleared', async () => {
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026-02-11')).toBeInTheDocument();
+    });
+
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(removeMeetingDate).toHaveBeenCalledWith('date-1');
+    });
+  });
+
+  it('shows toast error when autosave fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    updateGroupDetail.mockRejectedValueOnce(new Error('save failed'));
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByDisplayValue('Family Group'), {
+      target: { value: 'Broken save' },
+    });
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalled();
+    });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  // This test uses fake timers and must be last to avoid polluting other tests
+  it('auto-saves edited group details and meeting date after debounce', async () => {
+    const { unmount } = render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
+    });
+
+    // Switch to fake timers after component has rendered and settled
+    jest.useFakeTimers();
+
+    const titleInput = screen.getByDisplayValue('Family Group');
+    const descriptionTextarea = screen.getByDisplayValue('Group description');
+    fireEvent.change(titleInput, { target: { value: '  Updated Group  ' } });
+    fireEvent.change(descriptionTextarea, { target: { value: '  Updated Description  ' } });
+
+    // Also update meeting location
+    const locationInput = screen.getByDisplayValue('Hall');
+    fireEvent.change(locationInput, { target: { value: 'New Hall' } });
+
+    // Advance past debounce delay (500ms) + saved status timer (2000ms)
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    expect(updateGroupDetail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Updated Group',
+        description: 'Updated Description',
+        status: 'active',
+      })
+    );
+
+    // Meeting date should be updated (existing meeting id = 'date-1')
+    expect(updateMeetingDate).toHaveBeenCalledWith(
+      'date-1',
+      expect.objectContaining({
+        date: '2026-02-11',
+        location: 'New Hall',
+        audience: 'Youth',
+      })
+    );
+
+    // Unmount before restoring real timers to flush pending debounces
+    unmount();
+    jest.useRealTimers();
   });
 });

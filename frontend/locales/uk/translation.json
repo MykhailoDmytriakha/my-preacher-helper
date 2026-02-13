@@ -658,6 +658,7 @@
     "savingChanges": "Збереження змін...",
     "cannotDeleteWithThoughts": "Неможливо видалити: {{count}} думка(ок) прив'язано до цього пункту",
     "save": "Зберегти",
+    "saved": "Збережено",
     "cancel": "Скасувати",
     "showSearch": "Показати пошук",
     "hideSearch": "Сховати пошук",
@@ -1828,16 +1829,22 @@
       "duration": "хв"
     },
     "types": {
-      "worship": "Поклоніння",
+      "topic": "Основна тема",
+      "scripture": "Писання",
+      "questions": "Запитання",
+      "announcement": "Оголошення",
+      "explanation": "Пояснення",
+      "notes": "Нотатки",
       "prayer": "Молитва",
+      "custom": "Свій блок",
+      "worship": "Поклоніння",
       "sermon_discussion": "Обговорення проповіді",
       "ice_breaker": "Криголам",
       "vision": "Бачення",
       "announcements": "Оголошення",
       "testimony": "Свідчення",
       "offering": "Пожертвування",
-      "fellowship": "Спілкування",
-      "custom": "Свій блок"
+      "fellowship": "Спілкування"
     }
   }
 }
