@@ -134,6 +134,8 @@ describe('GroupCard', () => {
       />
     );
 
+    // Open three-dot menu first, then click Delete
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onDelete).toHaveBeenCalledTimes(1);
 
@@ -157,6 +159,8 @@ describe('GroupCard', () => {
       />
     );
 
+    // Menu should show deleting state when opened
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('button', { name: 'Deleting...' })).toBeDisabled();
   });
 });

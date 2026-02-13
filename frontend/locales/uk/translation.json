@@ -640,6 +640,7 @@
   },
   "common": {
     "warning": "Увага",
+    "more": "Більше опцій",
     "next": "Далі",
     "previous": "Назад",
     "search": "Пошук",
@@ -1790,6 +1791,53 @@
       "modeEdit": "Редактор",
       "modePreview": "Перегляд",
       "dragToResize": "Перетягніть для зміни розміру"
+    }
+  },
+  "groupFlow": {
+    "title": "Flow групи",
+    "description": "Розташуйте блоки у точній послідовності зустрічі.",
+    "addBlock": "Додати блок",
+    "emptyState": "Блоків поки немає",
+    "status": {
+      "empty": "Пусто",
+      "draft": "Чернетка",
+      "filled": "Заповнено"
+    },
+    "editor": {
+      "title": "Редактор блоку",
+      "stepTitleLabel": "Заголовок кроку",
+      "stepTitlePlaceholder": "Наприклад, Вступ",
+      "blockTitleLabel": "Назва блоку (шаблон)",
+      "contentLabel": "Вміст",
+      "contentPlaceholder": "Короткі орієнтири, ключові вірші або питання...",
+      "durationLabel": "Тривалість (хв)",
+      "notesLabel": "Нотатки лідера",
+      "notesPlaceholder": "Особисті нотатки, невидимі для учасників...",
+      "close": "Закрити",
+      "statusLabel": "Статус",
+      "placeholder": "Виберіть блок з потоку для редагування"
+    },
+    "actions": {
+      "moveUp": "Вгору",
+      "moveDown": "Вниз",
+      "duplicate": "Дублювати",
+      "delete": "Видалити"
+    },
+    "stats": {
+      "filled": "заповнено",
+      "duration": "хв"
+    },
+    "types": {
+      "worship": "Поклоніння",
+      "prayer": "Молитва",
+      "sermon_discussion": "Обговорення проповіді",
+      "ice_breaker": "Криголам",
+      "vision": "Бачення",
+      "announcements": "Оголошення",
+      "testimony": "Свідчення",
+      "offering": "Пожертвування",
+      "fellowship": "Спілкування",
+      "custom": "Свій блок"
     }
   }
 }

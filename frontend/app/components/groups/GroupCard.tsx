@@ -1,7 +1,14 @@
 "use client";
 
-import { CalendarDaysIcon, DocumentDuplicateIcon, Squares2X2Icon, TrashIcon } from '@heroicons/react/24/outline';
+import {
+  CalendarDaysIcon,
+  DocumentDuplicateIcon,
+  EllipsisVerticalIcon,
+  Squares2X2Icon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Group } from '@/models/models';
@@ -75,6 +82,9 @@ const formatMeetingDate = (value: string): string | null => {
 
 export default function GroupCard({ group, onDelete, deleting = false }: GroupCardProps) {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const meetingCount = (group.meetingDates || []).length;
   const primaryMeetingDate = resolvePrimaryMeetingDate(group.meetingDates);
   const meetingDateLabel = primaryMeetingDate?.isUpcoming
@@ -85,16 +95,77 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
       t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' }))
     : t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' });
 
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        closeMenu();
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu();
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [menuOpen, closeMenu]);
+
   return (
     <article
       className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
     >
+      {/* Three-dot menu */}
+      {onDelete && (
+        <div ref={menuRef} className="absolute right-2 top-2 z-10">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMenuOpen((prev) => !prev);
+            }}
+            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+            aria-label={t('common.more', { defaultValue: 'More options' })}
+          >
+            <EllipsisVerticalIcon className="h-5 w-5" />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeMenu();
+                  onDelete();
+                }}
+                disabled={deleting}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/30"
+              >
+                <TrashIcon className="h-4 w-4" />
+                {deleting
+                  ? t('common.deleting', { defaultValue: 'Deleting...' })
+                  : t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <Link href={`/groups/${group.id}`} className="flex flex-1 flex-col">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 pr-8">
           <h3 className="text-lg font-semibold text-gray-900 transition-colors group-hover:text-blue-600 dark:text-gray-50 dark:group-hover:text-blue-400">
             {group.title}
           </h3>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClasses[group.status]}`}>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${statusClasses[group.status]}`}>
             {t(`workspaces.series.form.statuses.${group.status}`, { defaultValue: group.status })}
           </span>
         </div>
@@ -132,23 +203,10 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
         </div>
       </Link>
 
-      <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+      <div className="mt-4 flex items-center border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
         <span>
           {t('workspaces.groups.itemsLabel.meetings', { defaultValue: 'Meetings' })}: {meetingCount}
         </span>
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleting}
-            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-            {deleting
-              ? t('common.deleting', { defaultValue: 'Deleting...' })
-              : t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
-          </button>
-        )}
       </div>
     </article>
   );

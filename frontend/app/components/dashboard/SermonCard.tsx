@@ -279,7 +279,6 @@ function SermonCardBadges({
   hasOutline,
   effectiveIsPreached,
   preachedDatesCount,
-  plannedDatesCount,
   t,
 }: SermonCardBadgesProps) {
   return (

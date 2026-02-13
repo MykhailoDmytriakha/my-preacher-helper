@@ -4,7 +4,6 @@ import {
   ArrowLeftIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
-  ClipboardDocumentListIcon,
   PlusIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
@@ -14,30 +13,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import AddBlockButton from '@/components/groups/AddBlockButton';
+import FlowEditor from '@/components/groups/FlowEditor';
+import FlowFooter from '@/components/groups/FlowFooter';
+import FlowItemRow from '@/components/groups/FlowItemRow';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
-import { GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
+import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 import {
   createFlowItem,
   createTemplate,
   duplicateFlowItem,
-  getFilledFlowItems,
   moveFlowItem,
   normalizeFlow,
   removeFlowItem,
 } from '@/utils/groupFlow';
 
-const TEMPLATE_OPTIONS: Array<{ type: GroupBlockTemplateType; labelKey: string; fallback: string }> = [
-  { type: 'announcement', labelKey: 'workspaces.groups.types.announcement', fallback: 'Announcement' },
-  { type: 'topic', labelKey: 'workspaces.groups.types.topic', fallback: 'Main topic' },
-  { type: 'scripture', labelKey: 'workspaces.groups.types.scripture', fallback: 'Scripture' },
-  { type: 'questions', labelKey: 'workspaces.groups.types.questions', fallback: 'Questions' },
-  { type: 'explanation', labelKey: 'workspaces.groups.types.explanation', fallback: 'Explanation' },
-  { type: 'notes', labelKey: 'workspaces.groups.types.notes', fallback: 'Notes' },
-  { type: 'prayer', labelKey: 'workspaces.groups.types.prayer', fallback: 'Prayer focus' },
-  { type: 'custom', labelKey: 'workspaces.groups.types.custom', fallback: 'Custom' },
-];
+const STATUS_CYCLE: GroupBlockStatus[] = ['empty', 'draft', 'filled'];
 
 export default function GroupDetailPage() {
   const { id } = useParams();
@@ -48,7 +41,7 @@ export default function GroupDetailPage() {
   const [groupsEnabled, setGroupsEnabled] = useState(false);
   const [accessLoading, setAccessLoading] = useState(true);
 
-  const { group, loading, error, updateGroupDetail, addMeetingDate, removeMeetingDate, deleteGroupDetail } =
+  const { group, loading, updateGroupDetail, addMeetingDate, removeMeetingDate, deleteGroupDetail } =
     useGroupDetail(groupsEnabled ? groupId : '');
 
   const [title, setTitle] = useState('');
@@ -57,6 +50,7 @@ export default function GroupDetailPage() {
   const [templates, setTemplates] = useState<GroupBlockTemplate[]>([]);
   const [flow, setFlow] = useState<GroupFlowItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
 
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0]);
   const [meetingLocation, setMeetingLocation] = useState('');
@@ -104,16 +98,34 @@ export default function GroupDetailPage() {
     [templates]
   );
 
-  const filledPreview = useMemo(() => getFilledFlowItems(flow, templates), [flow, templates]);
+  const normalizedFlow = useMemo(() => normalizeFlow(flow), [flow]);
 
-  const addTemplate = (type: GroupBlockTemplateType) => {
-    const nextTemplate = createTemplate(type, {
-      title: t(
-        TEMPLATE_OPTIONS.find((option) => option.type === type)?.labelKey || '',
-        { defaultValue: TEMPLATE_OPTIONS.find((option) => option.type === type)?.fallback || 'Block' }
-      ),
-    });
+  const totalDuration = useMemo(
+    () => normalizedFlow.reduce((sum, item) => sum + (item.durationMin || 0), 0),
+    [normalizedFlow]
+  );
+
+  const filledCount = useMemo(
+    () => normalizedFlow.filter((item) => templatesById.get(item.templateId)?.status === 'filled').length,
+    [normalizedFlow, templatesById]
+  );
+
+  const selectedFlowItem = useMemo(
+    () => normalizedFlow.find((item) => item.id === selectedFlowItemId) || null,
+    [normalizedFlow, selectedFlowItemId]
+  );
+
+  const selectedTemplate = useMemo(
+    () => (selectedFlowItem ? templatesById.get(selectedFlowItem.templateId) || null : null),
+    [selectedFlowItem, templatesById]
+  );
+
+  const handleAddBlock = (type: GroupBlockTemplateType) => {
+    const nextTemplate = createTemplate(type);
     setTemplates((prev) => [...prev, nextTemplate]);
+    const nextFlowItem = createFlowItem(nextTemplate.id, flow.length + 1);
+    setFlow((prev) => normalizeFlow([...prev, nextFlowItem]));
+    setSelectedFlowItemId(nextFlowItem.id);
   };
 
   const updateTemplate = (templateId: string, updates: Partial<GroupBlockTemplate>) => {
@@ -121,22 +133,37 @@ export default function GroupDetailPage() {
       prev.map((template) =>
         template.id === templateId
           ? {
-              ...template,
-              ...updates,
-              updatedAt: new Date().toISOString(),
-            }
+            ...template,
+            ...updates,
+            updatedAt: new Date().toISOString(),
+          }
           : template
       )
     );
   };
 
-  const removeTemplate = (templateId: string) => {
-    setTemplates((prev) => prev.filter((template) => template.id !== templateId));
-    setFlow((prev) => normalizeFlow(prev.filter((flowItem) => flowItem.templateId !== templateId)));
+  const removeFlowBlock = (flowItemId: string) => {
+    const item = flow.find((f) => f.id === flowItemId);
+    if (!item) return;
+    // Remove flow item
+    setFlow((prev) => removeFlowItem(prev, flowItemId));
+    // Remove template if no other flow items reference it
+    const otherRefs = flow.filter((f) => f.id !== flowItemId && f.templateId === item.templateId);
+    if (otherRefs.length === 0) {
+      setTemplates((prev) => prev.filter((t) => t.id !== item.templateId));
+    }
+    if (selectedFlowItemId === flowItemId) setSelectedFlowItemId(null);
   };
 
-  const addTemplateToFlow = (templateId: string) => {
-    setFlow((prev) => normalizeFlow([...prev, createFlowItem(templateId, prev.length + 1)]));
+  const cycleStatus = (templateId: string) => {
+    setTemplates((prev) =>
+      prev.map((template) => {
+        if (template.id !== templateId) return template;
+        const currentIndex = STATUS_CYCLE.indexOf(template.status);
+        const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length];
+        return { ...template, status: nextStatus, updatedAt: new Date().toISOString() };
+      })
+    );
   };
 
   const updateFlowItem = (itemId: string, updates: Partial<GroupFlowItem>) => {
@@ -145,9 +172,9 @@ export default function GroupDetailPage() {
         prev.map((flowItem) =>
           flowItem.id === itemId
             ? {
-                ...flowItem,
-                ...updates,
-              }
+              ...flowItem,
+              ...updates,
+            }
             : flowItem
         )
       )
@@ -244,7 +271,7 @@ export default function GroupDetailPage() {
     }
   };
 
-  if (accessLoading || loading) {
+  if (accessLoading || (groupsEnabled && loading)) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((index) => (
@@ -283,7 +310,7 @@ export default function GroupDetailPage() {
     );
   }
 
-  if (error || !group) {
+  if (!group) {
     return (
       <div className="space-y-4">
         <button
@@ -375,252 +402,90 @@ export default function GroupDetailPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_minmax(320px,420px)]">
         <div className="space-y-6">
+          {/* Unified Flow List */}
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {t('workspaces.groups.templates.title', { defaultValue: 'Template library' })}
+                  {t('groupFlow.title', { defaultValue: 'Group Flow' })}
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {t('workspaces.groups.templates.subtitle', {
-                    defaultValue: 'Create reusable blocks and mark their completion status.',
+                  {t('groupFlow.description', {
+                    defaultValue: 'Arrange blocks in the exact sequence of the meeting.',
                   })}
                 </p>
               </div>
+              <AddBlockButton onAdd={handleAddBlock} />
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-2">
-              {TEMPLATE_OPTIONS.map((option) => (
-                <button
-                  key={option.type}
-                  onClick={() => addTemplate(option.type)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  {t(option.labelKey, { defaultValue: option.fallback })}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-4">
-              {templates.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                  {t('workspaces.groups.templates.empty', {
-                    defaultValue: 'No templates yet. Add your first block type.',
-                  })}
+            <div className="space-y-2">
+              {normalizedFlow.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  <p className="mb-3">
+                    {t('groupFlow.emptyState', {
+                      defaultValue: 'No blocks yet',
+                    })}
+                  </p>
                 </div>
               ) : (
-                templates.map((template) => (
-                  <div key={template.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <input
-                        value={template.title}
-                        onChange={(event) => updateTemplate(template.id, { title: event.target.value })}
-                        className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                      />
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={template.status}
-                          onChange={(event) =>
-                            updateTemplate(template.id, {
-                              status: event.target.value as GroupBlockTemplate['status'],
-                            })
-                          }
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                        >
-                          <option value="empty">
-                            {t('workspaces.groups.status.empty', { defaultValue: 'Empty' })}
-                          </option>
-                          <option value="draft">
-                            {t('workspaces.groups.status.draft', { defaultValue: 'Draft' })}
-                          </option>
-                          <option value="filled">
-                            {t('workspaces.groups.status.filled', { defaultValue: 'Filled' })}
-                          </option>
-                        </select>
-                        <button
-                          onClick={() => addTemplateToFlow(template.id)}
-                          className="rounded-lg bg-blue-600 px-2 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                        >
-                          {t('workspaces.groups.flow.addToFlow', { defaultValue: 'Add to flow' })}
-                        </button>
-                        <button
-                          onClick={() => removeTemplate(template.id)}
-                          className="rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <textarea
-                      value={template.content}
-                      onChange={(event) => updateTemplate(template.id, { content: event.target.value })}
-                      rows={4}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      placeholder={t('workspaces.groups.templates.contentPlaceholder', {
-                        defaultValue: 'Write content, notes, key points, or context here...',
-                      })}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {t('workspaces.groups.flow.title', { defaultValue: 'Group flow' })}
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {t('workspaces.groups.flow.subtitle', {
-                    defaultValue: 'Reorder, duplicate, and set optional timing per step.',
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {flow.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                  {t('workspaces.groups.flow.empty', {
-                    defaultValue: 'No flow steps yet. Add a template to flow.',
-                  })}
-                </div>
-              ) : (
-                normalizeFlow(flow).map((flowItem, index) => {
+                normalizedFlow.map((flowItem, index) => {
                   const template = templatesById.get(flowItem.templateId);
                   if (!template) return null;
 
                   return (
-                    <div key={flowItem.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                            {index + 1}
-                          </span>
-                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                            {flowItem.instanceTitle || template.title}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up'))}
-                            className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                          >
-                            {t('workspaces.groups.flow.moveUp', { defaultValue: 'Up' })}
-                          </button>
-                          <button
-                            onClick={() => setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down'))}
-                            className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                          >
-                            {t('workspaces.groups.flow.moveDown', { defaultValue: 'Down' })}
-                          </button>
-                          <button
-                            onClick={() => setFlow((prev) => duplicateFlowItem(prev, flowItem.id))}
-                            className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                          >
-                            {t('workspaces.groups.flow.duplicate', { defaultValue: 'Duplicate' })}
-                          </button>
-                          <button
-                            onClick={() => setFlow((prev) => removeFlowItem(prev, flowItem.id))}
-                            className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-                          >
-                            {t('common.delete', { defaultValue: 'Delete' })}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <input
-                          value={flowItem.instanceTitle || ''}
-                          onChange={(event) =>
-                            updateFlowItem(flowItem.id, { instanceTitle: event.target.value || undefined })
-                          }
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          placeholder={t('workspaces.groups.flow.instanceTitle', {
-                            defaultValue: 'Optional instance title',
-                          })}
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          value={flowItem.durationMin ?? ''}
-                          onChange={(event) =>
-                            updateFlowItem(flowItem.id, {
-                              durationMin: event.target.value ? Number(event.target.value) : null,
-                            })
-                          }
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          placeholder={t('workspaces.groups.flow.duration', {
-                            defaultValue: 'Duration (optional)',
-                          })}
-                        />
-                        <input
-                          value={flowItem.instanceNotes || ''}
-                          onChange={(event) =>
-                            updateFlowItem(flowItem.id, { instanceNotes: event.target.value || undefined })
-                          }
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          placeholder={t('workspaces.groups.flow.instanceNotes', {
-                            defaultValue: 'Optional notes',
-                          })}
-                        />
-                      </div>
-                    </div>
+                    <FlowItemRow
+                      key={flowItem.id}
+                      flowItem={flowItem}
+                      template={template}
+                      index={index}
+                      isSelected={selectedFlowItemId === flowItem.id}
+                      isFirst={index === 0}
+                      isLast={index === normalizedFlow.length - 1}
+                      onSelect={() => setSelectedFlowItemId(
+                        selectedFlowItemId === flowItem.id ? null : flowItem.id
+                      )}
+                      onStatusCycle={() => cycleStatus(template.id)}
+                      onMoveUp={() => setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up'))}
+                      onMoveDown={() => setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down'))}
+                      onDuplicate={() => setFlow((prev) => duplicateFlowItem(prev, flowItem.id))}
+                      onDelete={() => removeFlowBlock(flowItem.id)}
+                    />
                   );
                 })
               )}
+            </div>
+
+            <div className="mt-3">
+              <FlowFooter
+                totalDuration={totalDuration}
+                filledCount={filledCount}
+                totalCount={normalizedFlow.length}
+              />
             </div>
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex items-center gap-2">
-              <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {t('workspaces.groups.preview.title', { defaultValue: 'Final preview (filled only)' })}
-              </h2>
+          {/* Side panel editor — shows when a block is selected */}
+          {selectedFlowItem && selectedTemplate ? (
+            <div className="xl:sticky xl:top-4">
+              <FlowEditor
+                flowItem={selectedFlowItem}
+                template={selectedTemplate}
+                onUpdateTemplate={(updates) => updateTemplate(selectedTemplate.id, updates)}
+                onUpdateFlowItem={(updates) => updateFlowItem(selectedFlowItem.id, updates)}
+                onClose={() => setSelectedFlowItemId(null)}
+              />
             </div>
-
-            {filledPreview.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                {t('workspaces.groups.preview.empty', {
-                  defaultValue: 'No filled blocks yet. Mark templates as "filled" to include them here.',
-                })}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filledPreview.map(({ flowItem, template }, index) => (
-                  <div key={flowItem.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                        {index + 1}. {flowItem.instanceTitle || template?.title}
-                      </h3>
-                      {flowItem.durationMin ? (
-                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                          {flowItem.durationMin} min
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">
-                      {template?.content}
-                    </p>
-                    {flowItem.instanceNotes && (
-                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {flowItem.instanceNotes}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="hidden rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 xl:block dark:border-gray-700 dark:text-gray-400">
+              {t('groupFlow.editor.placeholder', {
+                defaultValue: 'Select a block from the flow to edit its content',
+              })}
+            </div>
+          )}
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="mb-4 flex items-center gap-2">

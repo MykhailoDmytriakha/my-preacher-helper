@@ -640,6 +640,7 @@
   },
   "common": {
     "warning": "Warning",
+    "more": "More options",
     "next": "Next",
     "previous": "Previous",
     "search": "Search",
@@ -1790,6 +1791,53 @@
       "modeEdit": "Edit",
       "modePreview": "Preview",
       "dragToResize": "Drag to resize"
+    }
+  },
+  "groupFlow": {
+    "title": "Group Flow",
+    "description": "Arrange blocks in the exact sequence of the meeting.",
+    "addBlock": "Add block",
+    "emptyState": "No blocks yet",
+    "status": {
+      "empty": "Empty",
+      "draft": "Draft",
+      "filled": "Filled"
+    },
+    "editor": {
+      "title": "Block Editor",
+      "stepTitleLabel": "Step Title",
+      "stepTitlePlaceholder": "E.g., Introduction",
+      "blockTitleLabel": "Block Name (Template)",
+      "contentLabel": "Content",
+      "contentPlaceholder": "Brief guidelines, key verses, or questions...",
+      "durationLabel": "Duration (min)",
+      "notesLabel": "Leader Notes",
+      "notesPlaceholder": "Private notes, not visible to members...",
+      "close": "Close",
+      "statusLabel": "Status",
+      "placeholder": "Select a block from the flow to edit its content"
+    },
+    "actions": {
+      "moveUp": "Move Up",
+      "moveDown": "Move Down",
+      "duplicate": "Duplicate",
+      "delete": "Delete"
+    },
+    "stats": {
+      "filled": "filled",
+      "duration": "min"
+    },
+    "types": {
+      "worship": "Worship",
+      "prayer": "Prayer",
+      "sermon_discussion": "Sermon Discussion",
+      "ice_breaker": "Ice Breaker",
+      "vision": "Vision",
+      "announcements": "Announcements",
+      "testimony": "Testimony",
+      "offering": "Offering",
+      "fellowship": "Fellowship",
+      "custom": "Custom Block"
     }
   }
 }

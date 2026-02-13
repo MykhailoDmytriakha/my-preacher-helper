@@ -11,6 +11,21 @@ export class GroupsRepository {
     ) as T;
   }
 
+  private deepCleanUndefined<T>(value: T): T {
+    if (value === null || value === undefined) return value;
+    if (Array.isArray(value)) {
+      return value.map((item) => this.deepCleanUndefined(item)) as T;
+    }
+    if (typeof value === 'object' && value !== null) {
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, this.deepCleanUndefined(v)])
+      ) as T;
+    }
+    return value;
+  }
+
   private normalizeFlow(flow: GroupFlowItem[] = []): GroupFlowItem[] {
     return [...flow]
       .filter((item) => Boolean(item?.id) && Boolean(item.templateId))
@@ -81,11 +96,13 @@ export class GroupsRepository {
       throw new Error(ERROR_GROUP_NOT_FOUND);
     }
 
-    const cleanUpdates = this.filterUndefinedValues({
-      ...updates,
-      ...(updates.flow ? { flow: this.normalizeFlow(updates.flow) } : {}),
-      updatedAt: new Date().toISOString(),
-    });
+    const cleanUpdates = this.deepCleanUndefined(
+      this.filterUndefinedValues({
+        ...updates,
+        ...(updates.flow ? { flow: this.normalizeFlow(updates.flow) } : {}),
+        updatedAt: new Date().toISOString(),
+      })
+    );
 
     await adminDb.collection(GROUPS_COLLECTION).doc(groupId).update(cleanUpdates);
     return this.hydrateGroup({

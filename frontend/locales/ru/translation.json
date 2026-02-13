@@ -640,6 +640,7 @@
   },
   "common": {
     "warning": "Внимание",
+    "more": "Ещё",
     "next": "Далее",
     "previous": "Назад",
     "search": "Поиск",
@@ -1790,6 +1791,53 @@
       "modeEdit": "Редактор",
       "modePreview": "Просмотр",
       "dragToResize": "Перетащите для изменения размера"
+    }
+  },
+  "groupFlow": {
+    "title": "Flow группы",
+    "description": "Расположите блоки в точной последовательности встречи.",
+    "addBlock": "Добавить блок",
+    "emptyState": "Блоков пока нет",
+    "status": {
+      "empty": "Пусто",
+      "draft": "Черновик",
+      "filled": "Заполнено"
+    },
+    "editor": {
+      "title": "Редактор блока",
+      "stepTitleLabel": "Заголовок шага",
+      "stepTitlePlaceholder": "Например, Вступление",
+      "blockTitleLabel": "Название блока (шаблон)",
+      "contentLabel": "Контент",
+      "contentPlaceholder": "Краткие ориентиры, ключевые стихи или вопросы...",
+      "durationLabel": "Длительность (мин)",
+      "notesLabel": "Заметки лидера",
+      "notesPlaceholder": "Личные заметки, не видны участникам...",
+      "close": "Закрыть",
+      "statusLabel": "Статус",
+      "placeholder": "Выберите блок из потока для редактирования"
+    },
+    "actions": {
+      "moveUp": "Вверх",
+      "moveDown": "Вниз",
+      "duplicate": "Дублировать",
+      "delete": "Удалить"
+    },
+    "stats": {
+      "filled": "заполнено",
+      "duration": "мин"
+    },
+    "types": {
+      "worship": "Поклонение",
+      "prayer": "Молитва",
+      "sermon_discussion": "Обсуждение проповеди",
+      "ice_breaker": "Ледокол",
+      "vision": "Видение",
+      "announcements": "Объявления",
+      "testimony": "Свидетельство",
+      "offering": "Пожертвование",
+      "fellowship": "Общение",
+      "custom": "Свой блок"
     }
   }
 }
