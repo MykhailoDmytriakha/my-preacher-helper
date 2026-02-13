@@ -18,6 +18,7 @@ export type PrimaryNavItem = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   matchers: RegExp[];
   theme?: NavItemThemeKey;
+  isBeta?: boolean;
 };
 
 const dashboardMatcher = /^\/(dashboard|sermons)(\/|$)/;
@@ -54,7 +55,8 @@ export const primaryNavItems: PrimaryNavItem[] = [
     labelKey: 'navigation.groups',
     defaultLabel: 'Groups',
     icon: UsersIcon,
-    matchers: [/^\/groups(\/|$)/]
+    matchers: [/^\/groups(\/|$)/],
+    isBeta: true
   },
   {
     key: 'calendar',

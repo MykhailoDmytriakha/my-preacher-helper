@@ -46,15 +46,19 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
                 prefetch
                 onClick={() => onNavigate?.()}
                 aria-current={active ? 'page' : undefined}
-                className={`flex items-center justify-between rounded-md px-3 py-2 text-base font-medium transition ${
-                  active
+                className={`flex items-center justify-between rounded-md px-3 py-2 text-base font-medium transition ${active
                     ? themeClasses.menu
                     : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2" suppressHydrationWarning={true}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {item.label}
+                  {item.isBeta && (
+                    <span className="text-[10px] uppercase font-bold px-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded leading-tight">
+                      Beta
+                    </span>
+                  )}
                 </span>
                 {active && (
                   <span className={`text-xs ${themeClasses.indicator}`} aria-hidden="true">

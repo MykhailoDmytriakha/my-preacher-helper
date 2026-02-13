@@ -93,10 +93,10 @@ export default function DashboardNav() {
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
   const isDashboard = pathname === '/dashboard';
-  
+
   // Get current mode directly from URL params for immediate response
   const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
-  
+
   const setMode = (mode: 'classic' | 'prep') => {
     try {
       // Check if we're trying to switch to the same mode
@@ -114,13 +114,13 @@ export default function DashboardNav() {
         params.set('mode', 'prep');
       }
       const query = params.toString();
-      
+
       // Use push for better navigation
       const newUrl = `${pathname}${query ? `?${query}` : ''}`;
       console.log('Navigating to:', newUrl);
-      
+
       router.push(newUrl, { scroll: false });
-      
+
       console.log('Successfully switched to', mode, 'mode');
     } catch (error) {
       console.error('Error switching mode:', error);
@@ -193,15 +193,19 @@ export default function DashboardNav() {
                         href={item.href}
                         prefetch={isOnline}
                         aria-current={active ? 'page' : undefined}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm transition ${
-                          active
+                        className={`flex items-center gap-2 px-4 py-2 text-sm transition ${active
                             ? themeClasses.menu
                             : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
-                        }`}
+                          }`}
                         onClick={() => setNavDropdownOpen(false)}
                       >
                         <Icon className="h-4 w-4" aria-hidden="true" />
                         <span suppressHydrationWarning={true}>{item.label}</span>
+                        {item.isBeta && (
+                          <span className="ml-1 text-[10px] uppercase font-bold px-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded leading-tight">
+                            Beta
+                          </span>
+                        )}
                       </Link>
                     );
                   })}
@@ -224,14 +228,18 @@ export default function DashboardNav() {
                       href={item.href}
                       prefetch={isOnline}
                       aria-current={active ? 'page' : undefined}
-                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${
-                        active
+                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${active
                           ? themeClasses.pill
                           : 'border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
-                      }`}
+                        }`}
                     >
                       <Icon className="h-4 w-4" aria-hidden="true" />
                       <span suppressHydrationWarning={true}>{item.label}</span>
+                      {item.isBeta && (
+                        <span className="text-[10px] uppercase font-bold px-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded leading-tight">
+                          Beta
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -268,9 +276,9 @@ export default function DashboardNav() {
             <div className="language-container">
               <LanguageSwitcher />
             </div>
-            <UserProfileDropdown 
-              user={user} 
-              onLogout={handleLogout} 
+            <UserProfileDropdown
+              user={user}
+              onLogout={handleLogout}
             />
           </div>
         </div>
@@ -329,8 +337,8 @@ export default function DashboardNav() {
       </div>
 
       {/* Mobile menu */}
-      <MobileMenu 
-        isOpen={mobileMenuOpen} 
+      <MobileMenu
+        isOpen={mobileMenuOpen}
         onLogout={handleLogout}
         pathname={pathname || ''}
         showGroups={showGroupsNav}
@@ -338,10 +346,10 @@ export default function DashboardNav() {
       />
 
       {/* Feedback Modal */}
-      <FeedbackModal 
-        isOpen={showFeedbackModal} 
-        onClose={closeFeedbackModal} 
-        onSubmit={submitFeedbackWithUser} 
+      <FeedbackModal
+        isOpen={showFeedbackModal}
+        onClose={closeFeedbackModal}
+        onSubmit={submitFeedbackWithUser}
       />
     </nav>
   );
