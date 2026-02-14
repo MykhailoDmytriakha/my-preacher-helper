@@ -5,24 +5,9 @@ const KNOWN_ITEM_TYPES: SeriesItemType[] = ['sermon', 'group'];
 const isKnownItemType = (value: string): value is SeriesItemType =>
   KNOWN_ITEM_TYPES.includes(value as SeriesItemType);
 
-const getTimeSeed = () => {
-  if (typeof Date.now === 'function') {
-    const timestamp = Date.now();
-    if (Number.isFinite(timestamp)) {
-      return timestamp;
-    }
-  }
-
-  const fallbackTimestamp = new Date().getTime();
-  return Number.isFinite(fallbackTimestamp) ? fallbackTimestamp : 0;
-};
 
 const buildItemId = (type: SeriesItemType, refId: string) => {
-  const unique =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${getTimeSeed()}-${Math.random().toString(36).slice(2, 9)}`;
-  return `${type}-${refId}-${unique}`;
+  return `${type}-${refId}`;
 };
 
 const withSequentialPositions = (items: SeriesItem[]) =>

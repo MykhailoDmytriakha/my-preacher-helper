@@ -27,6 +27,7 @@ describe('SeriesItemCard', () => {
     const onRemove = jest.fn();
     render(
       <SeriesItemCard
+        id="item-1"
         resolvedItem={{
           item: { id: 'item-1', type: 'sermon', refId: 'sermon-1', position: 1 },
           sermon: {
@@ -53,13 +54,14 @@ describe('SeriesItemCard', () => {
     expect(screen.getByText('Sermons')).toBeInTheDocument();
     expect(screen.getByText('dashboard.preached')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByTitle('workspaces.series.actions.removeFromSeries'));
     expect(onRemove).toHaveBeenCalledWith('sermon', 'sermon-1');
   });
 
   it('renders group item and fallback unknown label', () => {
     const { rerender } = render(
       <SeriesItemCard
+        id="item-2"
         resolvedItem={{
           item: { id: 'item-2', type: 'group', refId: 'group-1', position: 1 },
           group: {
@@ -83,6 +85,7 @@ describe('SeriesItemCard', () => {
 
     rerender(
       <SeriesItemCard
+        id="item-3"
         resolvedItem={{
           item: { id: 'item-3', type: 'group', refId: 'missing', position: 2 },
         }}

@@ -1,6 +1,20 @@
 'use client';
 
-import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
+import {
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import {
   ArrowLeftIcon,
   ExclamationTriangleIcon,
@@ -11,11 +25,12 @@ import {
 import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import MarkdownDisplay from '@/components/MarkdownDisplay';
 import AddGroupToSeriesModal from '@/components/series/AddGroupToSeriesModal';
 import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import EditSeriesModal from '@/components/series/EditSeriesModal';
@@ -64,7 +79,10 @@ export default function SeriesDetailPage() {
     reorderMixedItems,
     updateSeriesDetail,
     refreshSeriesDetail,
+    isRefetching,
   } = useSeriesDetail(seriesId);
+
+  const [optimisticItems, setOptimisticItems] = useState(items);
 
   const { user } = useAuth();
   const { deleteExistingSeries } = useSeries(user?.uid || null);
@@ -73,6 +91,14 @@ export default function SeriesDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [modalState, setModalState] = useState<ModalState>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval>(null);
+
+  // Sync optimistic items with server items when server items change
+  // but only when not fetching (to avoid interrupting DND state)
+  useEffect(() => {
+    if (!isRefetching) {
+      setOptimisticItems(items);
+    }
+  }, [items, isRefetching]);
 
   const showAddSermonModal = modalState === MODAL_STATES.ADD_SERMON;
   const showAddGroupModal = modalState === MODAL_STATES.ADD_GROUP;
@@ -84,19 +110,43 @@ export default function SeriesDetailPage() {
   const closeModals = () => setModalState(null);
   const cancelCreateSermon = () => setModalState(MODAL_STATES.ADD_SERMON);
 
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination || !series) return;
-    if (result.source.index === result.destination.index) return;
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-    const nextItemIds = [...items.map((entry) => entry.item.id)];
-    const [moved] = nextItemIds.splice(result.source.index, 1);
-    nextItemIds.splice(result.destination.index, 0, moved);
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id || !series) {
+      return;
+    }
+
+    const oldIndex = optimisticItems.findIndex((item) => item.item.id === active.id);
+    const newIndex = optimisticItems.findIndex((item) => item.item.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // 1. Update optimistic UI immediately
+    const nextItems = arrayMove(optimisticItems, oldIndex, newIndex);
+    setOptimisticItems(nextItems);
+
+    // 2. Persist to backend
+    const nextItemIds = nextItems.map((entry) => entry.item.id);
 
     try {
       await reorderMixedItems(nextItemIds);
     } catch (errorValue) {
       console.error('Error reordering series items:', errorValue);
       toast.error(t('workspaces.series.errors.reorderFailed'));
+      // Rollback on error
+      setOptimisticItems(items);
     }
   };
 
@@ -207,7 +257,8 @@ export default function SeriesDetailPage() {
   return (
     <div className="space-y-7">
       <div className="overflow-hidden rounded-3xl border border-gray-200/70 bg-gradient-to-br from-blue-600/10 via-indigo-600/10 to-cyan-600/10 p-6 shadow-sm dark:border-gray-800 dark:from-blue-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-6">
+          {/* Top Section: Back Button and Title */}
           <div className="space-y-4">
             <button
               onClick={() => router.push('/series')}
@@ -217,124 +268,137 @@ export default function SeriesDetailPage() {
               {t('navigation.series')}
             </button>
 
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-4">
               {series.color && (
-                <div className="mt-1 h-14 w-2 rounded-full shadow-inner" style={{ background: series.color }} />
+                <div className="mt-1 h-10 w-1.5 rounded-full shadow-inner" style={{ background: series.color }} />
               )}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{series.title}</h1>
-                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${statusColors[series.status]}`}>
-                    {t(`workspaces.series.form.statuses.${series.status}`)}
-                  </span>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600 ring-1 ring-gray-200 dark:bg-gray-900/70 dark:text-gray-200 dark:ring-gray-800">
-                    <SparklesIcon className="h-4 w-4 text-amber-500" />
-                    {series.bookOrTopic}
-                  </span>
-                  {series.seriesKind && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-800/60">
-                      {t(`workspaces.series.kind.${series.seriesKind}`, {
-                        defaultValue: series.seriesKind,
-                      })}
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`rounded-full px-3 py-1 text-sm font-medium ${statusColors[series.status]}`}>
+                      {t(`workspaces.series.form.statuses.${series.status}`)}
                     </span>
-                  )}
-                </div>
-                <p className="text-gray-700 dark:text-gray-300">{series.theme}</p>
-                {series.description && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">{series.description}</p>
-                )}
-                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                  <span>
-                    {t('workspaces.series.detail.sermonCount', {
-                      count: stats.total,
-                      defaultValue: `${stats.total} items`,
-                    })}
-                  </span>
-                  {series.startDate && (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 ring-1 ring-gray-200 dark:bg-gray-900/70 dark:ring-gray-800">
-                      <ClockIcon className="h-4 w-4 text-emerald-500" />
-                      {new Date(series.startDate).toLocaleDateString()}
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600 ring-1 ring-gray-200 dark:bg-gray-900/70 dark:text-gray-200 dark:ring-gray-800">
+                      <SparklesIcon className="h-4 w-4 text-amber-500" />
+                      {series.bookOrTopic}
                     </span>
-                  )}
+                    {series.seriesKind && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-800/60">
+                        {t(`workspaces.series.kind.${series.seriesKind}`, {
+                          defaultValue: series.seriesKind,
+                        })}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Action Buttons: Always in a dedicated row below the title */}
           <div className="flex flex-wrap gap-3">
             <button
               onClick={openAddSermonModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:w-auto sm:min-w-[180px]"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addSermon')}
             </button>
             <button
               onClick={openAddGroupModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto sm:min-w-[180px]"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addGroup', { defaultValue: 'Add group' })}
             </button>
             <button
               onClick={() => setShowEditModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 sm:w-auto sm:min-w-[180px]"
             >
               <PencilIcon className="h-4 w-4" />
               {t('workspaces.series.editSeries')}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-700/60 dark:bg-red-900/40 dark:text-red-200"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-700/60 dark:bg-red-900/40 dark:text-red-200 sm:w-auto sm:min-w-[180px]"
             >
               <TrashIcon className="h-4 w-4" />
               {t(TRANSLATION_KEYS.DELETE_SERIES)}
             </button>
           </div>
-        </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('workspaces.series.detail.sermonsInSeries', { defaultValue: 'Items in series' })}
-            </p>
-            <span className="mt-2 block text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</span>
-          </div>
-          <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('navigation.sermons', { defaultValue: 'Sermons' })}
-            </p>
-            <span className="mt-2 block text-2xl font-bold text-blue-600 dark:text-blue-300">
-              {stats.sermonsCount}
-            </span>
-          </div>
-          <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('navigation.groups', { defaultValue: 'Groups' })}
-            </p>
-            <span className="mt-2 block text-2xl font-bold text-emerald-600 dark:text-emerald-300">
-              {stats.groupsCount}
-            </span>
-          </div>
-          <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('dashboard.preached', { defaultValue: 'Preached' })}
-            </p>
-            <span className="mt-2 block text-2xl font-bold text-purple-600 dark:text-purple-300">
-              {stats.completedSermons}
-            </span>
-          </div>
-          <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('calendar.analytics.totalPreachings', { defaultValue: 'Meetings' })}
-            </p>
-            <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">
-              {stats.conductedGroups}
-            </span>
+          {/* Bottom Section: Theme, Description and Stats bar */}
+          <div className="flex flex-col gap-4 border-t border-gray-100/50 pt-6 dark:border-gray-800/50">
+            <div className="space-y-2">
+              <p className="font-medium text-gray-700 dark:text-gray-300">{series.theme}</p>
+              {series.description && (
+                <MarkdownDisplay
+                  content={series.description}
+                  className="max-w-none text-gray-600 dark:text-gray-400"
+                  compact
+                />
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/40 px-3 py-1 ring-1 ring-gray-100/50 dark:bg-gray-900/40 dark:ring-gray-800/50">
+                {t('workspaces.series.detail.sermonCount', {
+                  count: stats.total,
+                  defaultValue: `${stats.total} items`,
+                })}
+              </span>
+              {series.startDate && (
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/40 px-3 py-1 ring-1 ring-gray-100/50 dark:bg-gray-900/40 dark:ring-gray-800/50">
+                  <ClockIcon className="h-4 w-4 text-emerald-500" />
+                  {new Date(series.startDate).toLocaleDateString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('workspaces.series.detail.sermonsInSeries', { defaultValue: 'Items in series' })}
+          </p>
+          <span className="mt-2 block text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</span>
+        </div>
+        <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('navigation.sermons', { defaultValue: 'Sermons' })}
+          </p>
+          <span className="mt-2 block text-2xl font-bold text-blue-600 dark:text-blue-300">
+            {stats.sermonsCount}
+          </span>
+        </div>
+        <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('navigation.groups', { defaultValue: 'Groups' })}
+          </p>
+          <span className="mt-2 block text-2xl font-bold text-emerald-600 dark:text-emerald-300">
+            {stats.groupsCount}
+          </span>
+        </div>
+        <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('dashboard.preached', { defaultValue: 'Preached' })}
+          </p>
+          <span className="mt-2 block text-2xl font-bold text-purple-600 dark:text-purple-300">
+            {stats.completedSermons}
+          </span>
+        </div>
+        <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('calendar.analytics.totalPreachings', { defaultValue: 'Meetings' })}
+          </p>
+          <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">
+            {stats.conductedGroups}
+          </span>
+        </div>
+      </div>
       <div className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/70">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -382,40 +446,28 @@ export default function SeriesDetailPage() {
             </p>
           </div>
         ) : (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="series-items-list">
-              {(provided, snapshot) => (
-                <div
-                  {...provided.droppableProps}
-                  ref={provided.innerRef}
-                  className={`space-y-3 rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700 ${
-                    snapshot.isDraggingOver ? 'bg-blue-50/80 dark:bg-blue-900/20' : 'bg-white/40 dark:bg-gray-900/40'
-                  }`}
-                >
-                  {items.map((resolvedItem, index) => (
-                    <Draggable key={resolvedItem.item.id} draggableId={resolvedItem.item.id} index={index}>
-                      {(dragProvided, dragSnapshot) => (
-                        <div
-                          ref={dragProvided.innerRef}
-                          {...dragProvided.draggableProps}
-                          style={dragProvided.draggableProps.style}
-                        >
-                          <SeriesItemCard
-                            resolvedItem={resolvedItem}
-                            position={index + 1}
-                            isDragging={dragSnapshot.isDragging}
-                            dragHandleProps={dragProvided.dragHandleProps}
-                            onRemove={(type, refId) => setPendingRemoval({ type, refId })}
-                          />
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={optimisticItems.map((entry) => entry.item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-4">
+                {optimisticItems.map((entry, index) => (
+                  <SeriesItemCard
+                    key={entry.item.id}
+                    id={entry.item.id}
+                    position={index + 1}
+                    resolvedItem={entry}
+                    onRemove={(type, refId) => setPendingRemoval({ type, refId })}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -472,11 +524,11 @@ export default function SeriesDetailPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {pendingRemoval.type === 'sermon'
                     ? t('workspaces.series.detail.removeSermonHint', {
-                        defaultValue: 'This sermon will be detached from the series.',
-                      })
+                      defaultValue: 'This sermon will be detached from the series.',
+                    })
                     : t('workspaces.series.detail.removeGroupHint', {
-                        defaultValue: 'This group will be detached from the series.',
-                      })}
+                      defaultValue: 'This group will be detached from the series.',
+                    })}
                 </p>
               </div>
             </div>

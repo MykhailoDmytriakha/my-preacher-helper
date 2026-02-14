@@ -1,5 +1,7 @@
 "use client";
 
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Bars3Icon, BookOpenIcon, UserGroupIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +10,6 @@ import { formatDate } from '@utils/dateFormatter';
 import { getEffectiveIsPreached } from '@utils/preachDateStatus';
 
 import type { Group, SeriesItem, Sermon } from '@/models/models';
-import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 
 type ResolvedSeriesItem = {
   item: SeriesItem;
@@ -20,8 +21,7 @@ interface SeriesItemCardProps {
   resolvedItem: ResolvedSeriesItem;
   position: number;
   onRemove?: (type: 'sermon' | 'group', refId: string) => void;
-  isDragging?: boolean;
-  dragHandleProps?: DraggableProvidedDragHandleProps | null;
+  id: string;
 }
 
 const sermonPreview = (sermon: Sermon) =>
@@ -31,11 +31,26 @@ export default function SeriesItemCard({
   resolvedItem,
   position,
   onRemove,
-  isDragging = false,
-  dragHandleProps,
+  id,
 }: SeriesItemCardProps) {
   const { t } = useTranslation();
   const { item, sermon, group } = resolvedItem;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : 1,
+  };
 
   const isSermon = item.type === 'sermon';
   const sermonIsPreached = sermon ? getEffectiveIsPreached(sermon) : false;
@@ -46,17 +61,19 @@ export default function SeriesItemCard({
 
   return (
     <div
-      className={`relative flex gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm ring-1 ring-gray-100 transition-all dark:border-gray-700 dark:bg-gray-900/70 dark:ring-gray-800 ${
-        isDragging ? 'shadow-lg ring-2 ring-blue-500/40' : 'hover:shadow-md'
-      }`}
+      ref={setNodeRef}
+      style={style}
+      className={`relative flex gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm ring-1 ring-gray-100 dark:border-gray-700 dark:bg-gray-900/70 dark:ring-gray-800 ${isDragging ? 'shadow-lg ring-2 ring-blue-500/40' : 'hover:shadow-md'
+        }`}
     >
       <div className="flex flex-col items-center gap-2">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/40 dark:text-blue-200 dark:ring-blue-800/70">
           {position}
         </div>
         <div
-          {...dragHandleProps}
-          className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
+          {...attributes}
+          {...listeners}
+          className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300 touch-none outline-none"
           title={t('workspaces.series.detail.dragToReorder')}
         >
           <Bars3Icon className="h-4 w-4" />
@@ -66,11 +83,10 @@ export default function SeriesItemCard({
       <div className="flex-1 min-w-0">
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-              isSermon
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
-                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-            }`}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${isSermon
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+              }`}
           >
             {isSermon ? <BookOpenIcon className="h-3.5 w-3.5" /> : <UserGroupIcon className="h-3.5 w-3.5" />}
             {isSermon ? t('navigation.sermons', { defaultValue: 'Sermons' }) : t('navigation.groups', { defaultValue: 'Groups' })}

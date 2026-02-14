@@ -1566,13 +1566,13 @@ export default function SermonPage() {
                     />
                   </div>
                   <PreachDateList sermonId={sermon!.id} />
-                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
                   <SermonOutline
                     sermon={sermon!}
                     thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                     onOutlineUpdate={handleOutlineUpdate}
                     isReadOnly={isReadOnly}
                   />
+                  <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
                   {sermon!.structure && <StructurePreview sermon={sermon!} />}
                 </motion.div>
               ) : (
@@ -1628,13 +1628,13 @@ export default function SermonPage() {
                     hasInconsistentThoughts={hasInconsistentThoughts}
                   />
                 </div>
-                <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
                 <SermonOutline
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                   onOutlineUpdate={handleOutlineUpdate}
                   isReadOnly={isReadOnly}
                 />
+                <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
                 {sermon!.structure && <StructurePreview sermon={sermon!} />}
               </div>
             </div>

@@ -18,7 +18,7 @@ describe('seriesItems utils', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({ type: 'sermon', refId: 's1', position: 1 });
     expect(items[1]).toMatchObject({ type: 'sermon', refId: 's2', position: 2 });
-    expect(items[0].id).toContain('sermon-s1-');
+    expect(items[0].id).toBe('sermon-s1');
   });
 
   it('normalizes mixed items and repairs invalid fields', () => {
@@ -72,16 +72,5 @@ describe('seriesItems utils', () => {
     expect(inferSeriesKind(mixed)).toBe('mixed');
     expect(inferSeriesKind(mixed.filter((item) => item.type === 'group'))).toBe('group');
     expect(inferSeriesKind(mixed.filter((item) => item.type === 'sermon'))).toBe('sermon');
-  });
-
-  it('uses Date fallback path when Date.now is unavailable', () => {
-    const originalNow = Date.now;
-    // Trigger getTimeSeed fallback path used by buildItemId
-    Object.defineProperty(Date, 'now', { configurable: true, value: undefined });
-
-    const result = deriveSeriesItemsFromSermonIds(['fallback-sermon']);
-    expect(result[0].id).toContain('sermon-fallback-sermon-');
-
-    Object.defineProperty(Date, 'now', { configurable: true, value: originalNow });
   });
 });
