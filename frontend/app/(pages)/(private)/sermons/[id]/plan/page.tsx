@@ -1824,6 +1824,7 @@ const PlanPreachingView = ({
             onTimerStateChange={onTimerStateChange}
             onTimerFinished={onTimerFinished}
             onSetDuration={onSetDuration}
+            exitFallbackPath={sermon?.id ? `/sermons/${sermon.id}` : undefined}
           />
         </div>
 
@@ -2914,7 +2915,8 @@ export default function PlanPage() {
   const handleStartPreachingMode = useCallback(() => {
     // Start preaching mode - timer starts at 0:00 (idle state)
     setPreachingDuration(null); // Start with no duration (timer will be idle)
-    updatePlanViewMode("preaching");
+    // Use push so that router.back() from preaching returns to this plan page, not to sermon/dashboard
+    updatePlanViewMode("preaching", { replace: false });
   }, [updatePlanViewMode]);
 
   // Alias for compatibility with ViewPlanMenu component

@@ -1,5 +1,6 @@
 "use client";
 
+import { SquareX } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,8 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 import { TimerPhase, TimerPhaseDurations } from '@/types/TimerState';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
-import { useNavigationOnboarding } from '@hooks/useNavigationOnboarding';
-import { useSwipeGesture } from '@hooks/useSwipeGesture';
 
 import CustomTimePicker from './CustomTimePicker';
 import DigitalTimerDisplay from './DigitalTimerDisplay';
@@ -177,6 +176,8 @@ interface PreachingTimerProps {
     isFinished: boolean;
     isBlinking?: boolean;
   }) => void;
+  /** When provided, used as fallback when there is no history (e.g. opened in new tab). Otherwise back() returns to where the user came from. */
+  exitFallbackPath?: string;
 }
 
 const PreachingTimer: React.FC<PreachingTimerProps> = ({
@@ -185,27 +186,22 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   onSetDuration,
   onTimerFinished,
   onTimerStateChange,
+  exitFallbackPath,
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
 
-  // TRIZ Navigation Logic
-  const { showTooltip, showEscapeButton, incrementGestureCount } = useNavigationOnboarding();
-
-  const handleNavigation = useCallback(() => {
-    incrementGestureCount();
-    router.back();
-  }, [incrementGestureCount, router]);
+  const handleExitPreaching = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(exitFallbackPath ?? '/dashboard');
+    }
+  }, [router, exitFallbackPath]);
 
   const handleDashboardNavigation = useCallback(() => {
-    incrementGestureCount();
     router.push('/dashboard');
-  }, [incrementGestureCount, router]);
-
-  // Gestures (Global window attachment via null ref)
-  useSwipeGesture(null, {
-    onSwipeRight: handleNavigation
-  });
+  }, [router]);
 
   // Timer Logic
   const initialTimerSettings = useMemo(() => {
@@ -281,7 +277,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   // Keyboard Shortcuts (disabled when modal or presets are open)
   useKeyboardShortcut({
     onEscape: handleDashboardNavigation,
-    onBackspace: handleNavigation,
+    onBackspace: handleExitPreaching,
     enabled: keyboardShortcutsEnabled,
   });
 
@@ -405,8 +401,18 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8">
           {/* Desktop Layout - Timer & Controls */}
           <div className="hidden lg:flex lg:items-center lg:justify-between lg:h-16 lg:px-4">
-            {/* Left: Spacer to balance layout (or could be empty) */}
-            <div className="flex-1"></div>
+            {/* Left: Exit preaching mode */}
+            <div className="flex items-center flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={handleExitPreaching}
+                className="flex items-center justify-center p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors shrink-0"
+                aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
+                data-testid="exit-preaching"
+              >
+                <SquareX className="h-5 w-5 shrink-0" />
+              </button>
+            </div>
 
             {/* Center: Timer Display */}
             <div className="flex items-center justify-center mx-8" data-testid="timer-center-section">
@@ -439,6 +445,18 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
 
           {/* Tablet/Mobile Layout - Timer & Controls */}
           <div className="lg:hidden flex flex-col py-2 space-y-2">
+            {/* Exit button - left edge */}
+            <div className="flex justify-start px-0 pb-1">
+              <button
+                type="button"
+                onClick={handleExitPreaching}
+                className="flex items-center justify-center p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
+                data-testid="exit-preaching"
+              >
+                <SquareX className="h-5 w-5 shrink-0" />
+              </button>
+            </div>
             {/* Timer Display and Controls (Centered) */}
             <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 pb-2">
               <div className="flex items-center justify-center">
@@ -477,27 +495,6 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         />
       )}
       </nav>
-
-      {/* Floating Escape Button (Fallback) */}
-      {showEscapeButton && (
-        <button
-          onClick={handleNavigation}
-          className="fixed bottom-6 right-6 z-50 p-4 bg-gray-900/50 hover:bg-gray-900/80 text-white rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 animate-fade-in"
-          aria-label={t("navigation.escape.ariaLabel", { defaultValue: "Go back" })}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-        </button>
-      )}
-
-      {/* Onboarding Tooltip */}
-      {showTooltip && (
-        <div className="fixed top-20 left-4 z-50 max-w-xs px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-xl animate-bounce-message pointer-events-none">
-          {t("navigation.tooltip.swipe", { defaultValue: "💡 Tip: Swipe right to go back, or use breadcrumbs above" })}
-          <div className="absolute top-0 left-4 -mt-2 w-4 h-4 bg-blue-600 transform rotate-45"></div>
-        </div>
-      )}
 
       {/* Custom Time Picker Modal */}
       {showCustomPicker && (

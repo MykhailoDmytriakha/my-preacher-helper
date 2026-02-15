@@ -15,10 +15,12 @@ global.MutationObserver = jest.fn(() => ({
 
 // Mock Next.js router and params
 let mockSearchParams = new URLSearchParams();
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useSearchParams: () => mockSearchParams,
   usePathname: () => '/sermons/test-sermon-id/plan',
 }));
@@ -79,7 +81,18 @@ jest.mock('@/services/sermon.service', () => ({
 // Mock child components (if any are direct children of the page)
 jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div data-testid="key-fragments-modal">Mocked Key Fragments Modal</div>);
 jest.mock('@/components/plan/PlanStyleSelector', () => () => <div data-testid="plan-style-selector">Mocked Plan Style Selector</div>);
-jest.mock('@/components/plan/ViewPlanMenu', () => () => <div data-testid="view-plan-menu">Mocked View Plan Menu</div>);
+jest.mock('@/components/plan/ViewPlanMenu', () => {
+  const React = require('react');
+  return function MockViewPlanMenu(props: { onStartPreachingMode?: () => void }) {
+    return (
+      <div data-testid="view-plan-menu">
+        <button type="button" data-testid="start-preaching" onClick={props.onStartPreachingMode ?? undefined}>
+          Start Preaching
+        </button>
+      </div>
+    );
+  };
+});
 jest.mock('@/components/ExportButtons', () => () => <div data-testid="export-buttons">Mocked Export Buttons</div>);
 jest.mock('@/components/PreachingTimer', () => {
   const React = require('react');
@@ -169,6 +182,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
   beforeEach(async () => {
     mockSearchParams = new URLSearchParams();
+    mockPush.mockClear();
+    mockReplace.mockClear();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
     
@@ -382,6 +397,21 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalled();
     });
+  });
+
+  it('enters preaching mode with push (not replace) so back() returns to plan', async () => {
+    mockSearchParams = new URLSearchParams();
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+    const startPreachingButton = screen.getByTestId('start-preaching');
+    fireEvent.click(startPreachingButton);
+
+    expect(mockPush).toHaveBeenCalledWith(
+      '/sermons/test-sermon-id/plan?planView=preaching',
+      { scroll: false }
+    );
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('auto-scrolls to a section when section param is provided', async () => {

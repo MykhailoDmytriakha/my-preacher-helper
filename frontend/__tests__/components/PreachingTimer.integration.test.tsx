@@ -70,6 +70,7 @@ jest.mock('react-i18next', () => ({
     t: (key: string, options?: { defaultValue?: string }) => {
       const translations: Record<string, string> = {
         'plan.timer.regionLabel': 'Preaching Timer Controls',
+        'plan.exitPreachingMode': 'Exit Preaching Mode',
         'navigation.breadcrumb.dashboard': 'Dashboard',
         'navigation.breadcrumb.sermon': 'Sermon',
         'navigation.breadcrumb.plan': 'Plan',
@@ -364,6 +365,34 @@ describe('PreachingTimer Integration', () => {
     );
 
     expect(() => renderWithClient(<PreachingTimer />)).not.toThrow();
+  });
+
+  describe('exit preaching button', () => {
+    const getExitButton = () => screen.getAllByTestId('exit-preaching')[0];
+
+    it('renders exit button with aria-label', () => {
+      renderWithClient(<PreachingTimer />);
+      const exitButton = getExitButton();
+      expect(exitButton).toBeInTheDocument();
+      const ariaLabel = exitButton.getAttribute('aria-label');
+      expect(ariaLabel === 'Exit Preaching Mode' || ariaLabel === 'plan.exitPreachingMode').toBe(true);
+    });
+
+    it('exit button is clickable without throwing', () => {
+      renderWithClient(<PreachingTimer />);
+      expect(() => {
+        act(() => {
+          fireEvent.click(getExitButton());
+        });
+      }).not.toThrow();
+    });
+
+    it('accepts exitFallbackPath prop and renders exit button', () => {
+      renderWithClient(
+        <PreachingTimer exitFallbackPath="/sermons/abc123/plan" />
+      );
+      expect(getExitButton()).toBeInTheDocument();
+    });
   });
 
 });
