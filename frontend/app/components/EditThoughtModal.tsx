@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
@@ -273,6 +274,9 @@ export default function EditThoughtModal({
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useScrollLock(true);
+
   const [isDictating, setIsDictating] = useState(false);
   const [textareaMaxHeight, setTextareaMaxHeight] = useState<number | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);

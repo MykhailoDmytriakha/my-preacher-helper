@@ -2,11 +2,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddThoughtManual from '@/components/AddThoughtManual';
+import { useScrollLock } from '@/hooks/useScrollLock';
 import { TestProviders } from '@test-utils/test-providers';
 import { createManualThought } from '@services/thought.service';
 
 // Mock the services
 jest.mock('@services/thought.service');
+// Mock scroll lock hook
+jest.mock('@/hooks/useScrollLock', () => ({
+  useScrollLock: jest.fn(),
+}));
+
 // No longer fetching in the component during open when props are provided
 
 const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
@@ -34,9 +40,9 @@ jest.mock('@utils/tagUtils', () => ({
   getStructureIcon: jest.fn(() => null),
   getTagStyle: jest.fn(() => ({ className: 'test-class', style: {} })),
   normalizeStructureTag: jest.fn((tag: string) => {
-    if (['Introduction','intro','Вступление','Вступ'].includes(tag)) return 'intro';
-    if (['Main Part','main','Основная часть','Основна частина'].includes(tag)) return 'main';
-    if (['Conclusion','conclusion','Заключение','Висновок'].includes(tag)) return 'conclusion';
+    if (['Introduction', 'intro', 'Вступление', 'Вступ'].includes(tag)) return 'intro';
+    if (['Main Part', 'main', 'Основная часть', 'Основна частина'].includes(tag)) return 'main';
+    if (['Conclusion', 'conclusion', 'Заключение', 'Висновок'].includes(tag)) return 'conclusion';
     return null;
   })
 }));
@@ -102,9 +108,9 @@ describe('AddThoughtManual', () => {
         sermonOutline={preloadedOutline as any}
       />
     );
-    
+
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
-    
+
     // Assert dialog is present
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -173,7 +179,7 @@ describe('AddThoughtManual', () => {
         sermonOutline={preloadedOutline as any}
       />
     );
-    
+
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
     const dialog = await screen.findByRole('dialog');
     const overlay = dialog.parentElement as HTMLElement;
@@ -241,4 +247,33 @@ describe('AddThoughtManual', () => {
   });
 
   // Removed older async fetch behavior tests; the component now relies on preloaded data
+
+  it('toggles scroll lock based on open state', async () => {
+    (useScrollLock as jest.Mock).mockClear();
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
+
+    // Initially closed
+    expect(useScrollLock).toHaveBeenLastCalledWith(false);
+
+    // Open modal
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    // Should be locked
+    expect(useScrollLock).toHaveBeenLastCalledWith(true);
+
+    // Close modal
+    fireEvent.click(screen.getByRole('button', { name: /buttons\.cancel/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Should be unlocked
+    expect(useScrollLock).toHaveBeenLastCalledWith(false);
+  });
 });

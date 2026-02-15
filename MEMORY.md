@@ -46,6 +46,24 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-14 Tree Hierarchy Management: Pure Utils for Complex Structures
+**Problem:** Implementing "Promote/Demote" (indent/outdent) logic for nested tree structures prone to index bugs and state corruption during re-parenting.
+**Solution:** Isolated structural logic into pure functions (`promoteNode`, `demoteNode`) using DFS for context lookup. Implemented keyboard shortcuts (`Cmd+Arrow`) for UX parity with professional editors.
+**Why it worked:** Pure utilities enabled 100% branch coverage of edge cases (root level limits, boundary siblings) independent of React's render cycle.
+**Principle:** Separate tree traversal (search) from structural transformation (mutation) in nested models to ensure logic portability and 100% testable boundaries.
+
+### 2026-02-14 High-Latency Debounced Sync: UX Feedback is Mandatory
+**Problem:** Auto-saving large state objects (like exegetical plans) on every change causes excessive Firestore writes and transient UI "stutter" during heavy edits.
+**Solution:** Implemented a 15-second debounced auto-save with an explicit user toggle and a "Saving..." status indicator.
+**Why it worked:** The long debounce reduces write volume while the visual feedback manages user expectations regarding "truth" persistence.
+**Principle:** For complex model sync, favor a high-latency debounce (15s+) combined with clear "in-flight" indicators and an opt-out toggle for performance-sensitive users.
+
+### 2026-02-14 JSDOM Crypto Mocking: Object.defineProperty is the Scalpel
+**Problem:** Modern ID generation using `crypto.randomUUID` fails in JSDOM/Jest environments because `global.crypto` is often undefined or has read-only properties.
+**Solution:** Used `Object.defineProperty(global, 'crypto', { value: { randomUUID: jest.fn() }, writable: true, configurable: true })` to safely inject the mock.
+**Why it worked:** `defineProperty` bypasses the "read-only" assignment guard typical of global browser objects in JSDOM.
+**Principle:** To mock global, environment-locked browser APIs (crypto, location, navigator), use `Object.defineProperty` with `configurable: true` to ensure clean injection and cleanup.
+
 ### 2026-02-11 Dashboard Optimistic Flow: Separate Domain Data from Sync Metadata
 **Problem:** Dashboard mutations looked "optimistic" only after API success, so users could not see pending/error states and had no inline recovery when writes failed.
 **Attempts:** The previous flow used post-success cache updates plus `alert/confirm`, which hid transient sync failures at card level.

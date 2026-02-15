@@ -8,6 +8,7 @@ import "@locales/i18n";
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from '@/hooks/useSermon';
 import { useTags } from '@/hooks/useTags';
 import { Thought, SermonOutline } from '@/models/models';
@@ -43,6 +44,8 @@ export default function AddThoughtManual({
   const shouldLoadTags = !allowedTagsProp || allowedTagsProp.length === 0;
   const { allTags, loading: tagsLoading } = useTags(shouldLoadTags ? sermon?.userId : null);
   const isOnline = useOnlineStatus();
+
+  useScrollLock(open);
 
   const effectiveOutline: SermonOutline | undefined = useMemo(
     () => sermonOutlineProp ?? sermon?.outline ?? {
@@ -143,20 +146,20 @@ export default function AddThoughtManual({
 
   // Create a flat array of all outline points with section information
   const allSermonPoints: { id: string; text: string; section: string }[] = [];
-  
+
   if (effectiveOutline) {
     if (effectiveOutline.introduction && Array.isArray(effectiveOutline.introduction)) {
       effectiveOutline.introduction.forEach(point => {
         allSermonPoints.push({ ...point, section: t('outline.introduction') });
       });
     }
-    
+
     if (effectiveOutline.main && Array.isArray(effectiveOutline.main)) {
       effectiveOutline.main.forEach(point => {
         allSermonPoints.push({ ...point, section: t('outline.mainPoints') });
       });
     }
-    
+
     if (effectiveOutline.conclusion && Array.isArray(effectiveOutline.conclusion)) {
       effectiveOutline.conclusion.forEach(point => {
         allSermonPoints.push({ ...point, section: t('outline.conclusion') });
@@ -190,150 +193,150 @@ export default function AddThoughtManual({
           </div>
         )}
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
-            <div className="mb-6 flex-grow overflow-auto">
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel') || 'Text'}</label>
-                <TextareaAutosize
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder={t('manualThought.placeholder')}
-                  className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
-                  minRows={3}
-                  maxRows={16}
-                  required
-                  disabled={isSubmitting || disabled}
-                />
-              </div>
+          <div className="mb-6 flex-grow overflow-auto">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel') || 'Text'}</label>
+              <TextareaAutosize
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={t('manualThought.placeholder')}
+                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+                minRows={3}
+                maxRows={16}
+                required
+                disabled={isSubmitting || disabled}
+              />
+            </div>
 
-              {effectiveOutline && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'SermonOutline Point'}</label>
-                  <select
-                    value={selectedSermonPointId || ""}
-                    onChange={handleSermonPointChange}
-                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
-                    disabled={dataLoading || disabled}
-                  >
-                    <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
-                    
-                    {/* Group outline points by section */}
-                    {Object.entries({
-                      introduction: effectiveOutline.introduction || [],
-                      main: effectiveOutline.main || [],
-                      conclusion: effectiveOutline.conclusion || []
-                    }).map(([section, points]) => 
-                      points.length > 0 ? (
-                        <optgroup key={section} label={t(`outline.${section === 'main' ? 'mainPoints' : section}`) || section}>
-                          {points.map(point => (
-                            <option key={point.id} value={point.id}>{point.text}</option>
-                          ))}
-                        </optgroup>
-                      ) : null
-                    )}
-                  </select>
-                  
-                  {selectedPointInfo && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
-                    </p>
+            {effectiveOutline && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.outlinePointLabel') || 'SermonOutline Point'}</label>
+                <select
+                  value={selectedSermonPointId || ""}
+                  onChange={handleSermonPointChange}
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+                  disabled={dataLoading || disabled}
+                >
+                  <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
+
+                  {/* Group outline points by section */}
+                  {Object.entries({
+                    introduction: effectiveOutline.introduction || [],
+                    main: effectiveOutline.main || [],
+                    conclusion: effectiveOutline.conclusion || []
+                  }).map(([section, points]) =>
+                    points.length > 0 ? (
+                      <optgroup key={section} label={t(`outline.${section === 'main' ? 'mainPoints' : section}`) || section}>
+                        {points.map(point => (
+                          <option key={point.id} value={point.id}>{point.text}</option>
+                        ))}
+                      </optgroup>
+                    ) : null
                   )}
-                </div>
-              )}
+                </select>
 
-              <div className="mb-4">
-                <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
-                <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
-                  {tags.map((tag, idx) => {
-                    const tagInfo = effectiveAllowedTags.find(t => t.name === tag);
-                    let displayName = tag;
-                    const structureTagStatus = isStructureTag(tag);
-                    
-                    if (tagInfo?.translationKey) {
-                      displayName = t(tagInfo.translationKey);
-                    } else {
-                      const canonical = normalizeStructureTag(tag);
-                      if (canonical === 'intro') displayName = t('tags.introduction');
-                      else if (canonical === 'main') displayName = t('tags.mainPart');
-                      else if (canonical === 'conclusion') displayName = t('tags.conclusion');
-                    }
-                    
-                    const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
-                    const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
-                    const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
-                    
-                    return (
-                      <div
-                        key={tag + idx}
-                        onClick={() => handleRemoveTag(idx)}
-                        className={className}
-                        style={style}
-                        role="button"
-                        aria-label={`Remove tag ${displayName}`}
-                      >
-                        {iconInfo && (
-                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                        )}
-                        <span>{displayName}</span>
-                        <span className="ml-1">×</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-                <div className="flex flex-wrap gap-1.5 overflow-x-hidden">
-                  {availableTags.map(tag => {
-                    let displayName = tag.name;
-                    const structureTagStatus = isStructureTag(tag.name);
-                    
-                    if (tag.translationKey) {
-                      displayName = t(tag.translationKey);
-                    } else {
-                      const canonical = normalizeStructureTag(tag.name);
-                      if (canonical === 'intro') displayName = t('tags.introduction');
-                      else if (canonical === 'main') displayName = t('tags.mainPart');
-                      else if (canonical === 'conclusion') displayName = t('tags.conclusion');
-                    }
-                    
-                    const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);
-                    const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
-                    const iconInfo = structureTagStatus ? getStructureIcon(tag.name) : null;
-                    
-                    return (
-                      <div
-                        key={tag.name}
-                        onClick={() => handleAddTag(tag.name)}
-                        className={className}
-                        style={style}
-                        role="button"
-                        aria-label={`Add tag ${displayName}`}
-                      >
-                        {iconInfo && (
-                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                        )}
-                        <span>{displayName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {selectedPointInfo && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section }) || `Selected outline point from ${selectedPointInfo.section}`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">{t('thought.tagsLabel')}</p>
+              <div className="flex flex-wrap gap-1.5 max-h-[20vh] overflow-auto overflow-x-hidden">
+                {tags.map((tag, idx) => {
+                  const tagInfo = effectiveAllowedTags.find(t => t.name === tag);
+                  let displayName = tag;
+                  const structureTagStatus = isStructureTag(tag);
+
+                  if (tagInfo?.translationKey) {
+                    displayName = t(tagInfo.translationKey);
+                  } else {
+                    const canonical = normalizeStructureTag(tag);
+                    if (canonical === 'intro') displayName = t('tags.introduction');
+                    else if (canonical === 'main') displayName = t('tags.mainPart');
+                    else if (canonical === 'conclusion') displayName = t('tags.conclusion');
+                  }
+
+                  const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
+                  const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
+                  const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
+
+                  return (
+                    <div
+                      key={tag + idx}
+                      onClick={() => handleRemoveTag(idx)}
+                      className={className}
+                      style={style}
+                      role="button"
+                      aria-label={`Remove tag ${displayName}`}
+                    >
+                      {iconInfo && (
+                        <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                      )}
+                      <span>{displayName}</span>
+                      <span className="ml-1">×</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
+              <div className="flex flex-wrap gap-1.5 overflow-x-hidden">
+                {availableTags.map(tag => {
+                  let displayName = tag.name;
+                  const structureTagStatus = isStructureTag(tag.name);
+
+                  if (tag.translationKey) {
+                    displayName = t(tag.translationKey);
+                  } else {
+                    const canonical = normalizeStructureTag(tag.name);
+                    if (canonical === 'intro') displayName = t('tags.introduction');
+                    else if (canonical === 'main') displayName = t('tags.mainPart');
+                    else if (canonical === 'conclusion') displayName = t('tags.conclusion');
+                  }
+
+                  const { className: baseClassName, style } = getTagStyle(tag.name, tag.color);
+                  const className = `${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${baseClassName}`;
+                  const iconInfo = structureTagStatus ? getStructureIcon(tag.name) : null;
+
+                  return (
+                    <div
+                      key={tag.name}
+                      onClick={() => handleAddTag(tag.name)}
+                      className={className}
+                      style={style}
+                      role="button"
+                      aria-label={`Add tag ${displayName}`}
+                    >
+                      {iconInfo && (
+                        <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                      )}
+                      <span>{displayName}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-auto">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
-                disabled={isSubmitting}
-              >
-                {t('buttons.cancel')}
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                disabled={isSubmitting || !text.trim() || dataLoading || disabled || !isOnline}
-              >
-                {isSubmitting ? t('buttons.saving') : t('buttons.save')}
-              </button>
-            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-auto">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+              disabled={isSubmitting}
+            >
+              {t('buttons.cancel')}
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+              disabled={isSubmitting || !text.trim() || dataLoading || disabled || !isOnline}
+            >
+              {isSubmitting ? t('buttons.saving') : t('buttons.save')}
+            </button>
+          </div>
         </form>
       </div>
     </div>
