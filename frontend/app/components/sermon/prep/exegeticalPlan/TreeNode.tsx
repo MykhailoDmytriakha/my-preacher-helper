@@ -1,6 +1,6 @@
 'use client';
 
-import { X, CornerDownRight, ArrowDown } from 'lucide-react';
+import { X, CornerDownRight, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +19,8 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   onRemove,
   onAddChild,
   onAddSibling,
+  onPromote,
+  onDemote,
   expand
 }) => {
   const { t } = useTranslation();
@@ -113,6 +115,12 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                 } else {
                   onAddSibling(node.id);
                 }
+              } else if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (depth > 0) onPromote(node.id);
+              } else if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (index > 0) onDemote(node.id);
               }
             }}
             onFocus={() => onFocus(node.id)}
@@ -120,44 +128,73 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               if (focusedId === node.id) onBlur(node.id);
             }}
             autoFocus={inputShouldFocus}
-            className={`w-full ${hasMarker ? 'pl-8' : 'pl-2.5'} pr-8 py-1.5 text-sm bg-white dark:bg-gray-800 border rounded-md outline-none transition-colors ${
-              isFocused
-                ? 'border-blue-500 dark:border-blue-400'
-                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-            } placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-gray-100`}
+            className={`w-full ${hasMarker ? 'pl-8' : 'pl-2.5'} pr-24 py-1.5 text-sm bg-white dark:bg-gray-800 border rounded-md outline-none transition-colors ${isFocused
+              ? 'border-blue-500 dark:border-blue-400'
+              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+              } placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-gray-100`}
             placeholder={t('wizard.steps.exegeticalPlan.builder.placeholder') as string}
           />
-          
-          <button
-            onClick={() => onRemove(node.id)}
-            aria-label="delete"
-            title={t('wizard.steps.exegeticalPlan.builder.tooltips.delete') as string}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-all"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
 
-        <div className="flex items-center gap-1 mt-0.5 ml-1">
-          <button
-            onClick={() => onAddChild(node.id)}
-            aria-label="add child"
-            title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')} (⌘+Enter)`}
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-500 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-          >
-            <CornerDownRight className="w-2.5 h-2.5" />
-            <span>Sub</span>
-          </button>
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <button
+              onClick={() => onPromote(node.id)}
+              disabled={depth === 0}
+              aria-label="outdent"
+              title={t('wizard.steps.exegeticalPlan.builder.tooltips.promote') as string}
+              className={`inline-flex items-center justify-center p-0.5 rounded transition-colors ${depth === 0
+                ? 'text-gray-200 dark:text-gray-800 cursor-not-allowed'
+                : 'text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
 
-          <button
-            onClick={() => onAddSibling(node.id)}
-            aria-label="add sibling"
-            title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')} (Enter)`}
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-500 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
-          >
-            <ArrowDown className="w-2.5 h-2.5" />
-            <span>Next</span>
-          </button>
+            <button
+              onClick={() => onDemote(node.id)}
+              disabled={index === 0}
+              aria-label="indent"
+              title={t('wizard.steps.exegeticalPlan.builder.tooltips.demote') as string}
+              className={`inline-flex items-center justify-center p-0.5 rounded transition-colors ${index === 0
+                ? 'text-gray-200 dark:text-gray-800 cursor-not-allowed'
+                : 'text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700 mx-0.5"></div>
+
+            <button
+              onClick={() => onAddChild(node.id)}
+              aria-label="add child"
+              title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')} (⌘+Enter)`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+            >
+              <CornerDownRight className="w-3 h-3" />
+              <span className="sr-only sm:not-sr-only">Sub</span>
+            </button>
+
+            <button
+              onClick={() => onAddSibling(node.id)}
+              aria-label="add sibling"
+              title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')} (Enter)`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+            >
+              <ArrowDown className="w-3 h-3" />
+              <span className="sr-only sm:not-sr-only">Next</span>
+            </button>
+
+            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700 mx-0.5"></div>
+
+            <button
+              onClick={() => onRemove(node.id)}
+              aria-label="delete"
+              title={t('wizard.steps.exegeticalPlan.builder.tooltips.delete') as string}
+              className="w-5 h-5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-all"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -184,6 +221,8 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                     onRemove={onRemove}
                     onAddChild={onAddChild}
                     onAddSibling={onAddSibling}
+                    onPromote={onPromote}
+                    onDemote={onDemote}
                     expand={expand}
                   />
                 </div>

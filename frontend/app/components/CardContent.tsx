@@ -20,7 +20,7 @@ export default function CardContent({ item, className = "" }: CardContentProps) 
     <div className={`dark:text-gray-200 ${className}`}>
       <MarkdownDisplay content={item.content} />
 
-      {(item.customTagNames && item.customTagNames.length > 0) || (item.requiredTags && item.requiredTags.length > 0) && (
+      {((item.customTagNames && item.customTagNames.length > 0) || (item.requiredTags && item.requiredTags.length > 0)) && (
         <div className="flex flex-wrap gap-1 justify-end mt-2">
           {/* Structural Tags */}
           {item.requiredTags?.map((tag) => {

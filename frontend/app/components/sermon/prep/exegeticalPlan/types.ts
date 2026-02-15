@@ -21,6 +21,8 @@ export interface TreeNodeProps {
   onRemove: (id: string) => void;
   onAddChild: (id: string) => void;
   onAddSibling: (id: string) => void;
+  onPromote: (id: string) => void;
+  onDemote: (id: string) => void;
   expand: Record<string, boolean>;
 }
 

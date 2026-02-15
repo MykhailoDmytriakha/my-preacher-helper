@@ -28,6 +28,8 @@ describe('TreeNode', () => {
   const mockOnRemove = jest.fn();
   const mockOnAddChild = jest.fn();
   const mockOnAddSibling = jest.fn();
+  const mockOnPromote = jest.fn();
+  const mockOnDemote = jest.fn();
 
   const baseNode: ExegeticalPlanNode = {
     id: 'node-1',
@@ -47,6 +49,8 @@ describe('TreeNode', () => {
     onRemove: mockOnRemove,
     onAddChild: mockOnAddChild,
     onAddSibling: mockOnAddSibling,
+    onPromote: mockOnPromote,
+    onDemote: mockOnDemote,
     expand: {}
   };
 

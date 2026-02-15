@@ -13,6 +13,8 @@ import {
   removeNode,
   addChildNode,
   addSiblingNode,
+  promoteNode,
+  demoteNode,
   areTreesEqual
 } from './treeUtils';
 
@@ -30,34 +32,19 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   const [tree, setTree] = useState<ExegeticalPlanNode[]>(() =>
     (value && value.length > 0) ? value : [createNewNode()]
   );
-  const [draftTitles, setDraftTitles] = useState<Record<string, string>>(() => 
+  const [draftTitles, setDraftTitles] = useState<Record<string, string>>(() =>
     syncDraftTitles((value && value.length > 0) ? value : [createNewNode()])
   );
   const [expand, setExpand] = useState<Record<string, boolean>>({});
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [authorIntentDraft, setAuthorIntentDraft] = useState<string>(authorIntent || '');
   const [isSavingAuthorIntent, setIsSavingAuthorIntent] = useState<boolean>(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+
   const prevSavingRef = useRef<boolean>(saving);
+  const lastSavedTreeRef = useRef<ExegeticalPlanNode[] | null>(null);
 
-  useEffect(() => {
-    setAuthorIntentDraft(authorIntent || '');
-  }, [authorIntent]);
-
-  // Sync with external value after successful save
-  useEffect(() => {
-    const wasSaving = prevSavingRef.current;
-    prevSavingRef.current = saving;
-
-    // Only sync when transitioning from saving to not saving
-    if (wasSaving && !saving && value && value.length > 0) {
-      const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
-      if (!areTreesEqual(currentTreeWithDrafts, value)) {
-        setTree(value);
-        setDraftTitles(syncDraftTitles(value));
-      }
-    }
-  }, [saving, value, tree, draftTitles]);
-
+  // 1. Memoized values
   const hasUnsavedChanges = useMemo(() => {
     const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
     return !areTreesEqual(currentTreeWithDrafts, value || []);
@@ -67,6 +54,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     return authorIntentDraft !== (authorIntent || '');
   }, [authorIntentDraft, authorIntent]);
 
+  // 2. Callbacks
   const emit = useCallback((nodes: ExegeticalPlanNode[]) => {
     setTree(nodes);
   }, []);
@@ -84,8 +72,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   const handleRemoveNode = useCallback((id: string) => {
     const newTree = removeNode(tree, id);
-    
-    // Clean up draft titles for removed nodes
+
     const getAllNodeIds = (nodes: ExegeticalPlanNode[]): string[] => {
       const ids: string[] = [];
       nodes.forEach(node => {
@@ -96,7 +83,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       });
       return ids;
     };
-    
+
     const remainingIds = new Set(getAllNodeIds(newTree));
     setDraftTitles(prev => {
       const updated: Record<string, string> = {};
@@ -107,7 +94,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       });
       return updated;
     });
-    
+
     setTree(newTree);
   }, [tree]);
 
@@ -126,6 +113,29 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
   }, [tree, emit]);
 
+  const handlePromote = useCallback((id: string) => {
+    emit(promoteNode(tree, id));
+  }, [tree, emit]);
+
+  const handleDemote = useCallback((id: string) => {
+    emit(demoteNode(tree, id));
+    setExpand(prev => {
+      const findParentOf = (nodes: ExegeticalPlanNode[], targetId: string): string | null => {
+        for (let i = 0; i < nodes.length; i++) {
+          if (i > 0 && nodes[i].id === targetId) return nodes[i - 1].id;
+          if (nodes[i].children) {
+            const found = findParentOf(nodes[i].children!, targetId);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      const newParentId = findParentOf(tree, id);
+      if (newParentId) return { ...prev, [newParentId]: true };
+      return prev;
+    });
+  }, [tree, emit]);
+
   const handleSave = useCallback(async () => {
     const treeWithTitles = mergeDraftTitles(tree, draftTitles);
     await onSave?.(treeWithTitles);
@@ -140,6 +150,43 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       setIsSavingAuthorIntent(false);
     }
   }, [authorIntentDraft, onSaveAuthorIntent]);
+
+  // 3. Effects
+  useEffect(() => {
+    setAuthorIntentDraft(authorIntent || '');
+  }, [authorIntent]);
+
+  // Sync with external value after successful save
+  useEffect(() => {
+    const wasSaving = prevSavingRef.current;
+    prevSavingRef.current = saving;
+
+    if (wasSaving && !saving && value && value.length > 0) {
+      const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
+      if (!areTreesEqual(currentTreeWithDrafts, value)) {
+        setTree(value);
+        setDraftTitles(syncDraftTitles(value));
+      }
+    }
+  }, [saving, value, tree, draftTitles]);
+
+  // Auto-save logic
+  useEffect(() => {
+    if (!autoSaveEnabled || !hasUnsavedChanges || saving) return;
+
+    const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
+
+    if (lastSavedTreeRef.current && areTreesEqual(currentTreeWithDrafts, lastSavedTreeRef.current)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleSave();
+      lastSavedTreeRef.current = currentTreeWithDrafts;
+    }, 15000); // 15 seconds
+
+    return () => clearTimeout(timer);
+  }, [autoSaveEnabled, hasUnsavedChanges, saving, tree, draftTitles, handleSave]);
 
   return (
     <div className="space-y-4">
@@ -164,8 +211,12 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
           onRemove={handleRemoveNode}
           onAddChild={handleAddChild}
           onAddSibling={handleAddSibling}
+          onPromote={handlePromote}
+          onDemote={handleDemote}
           onAddMainPoint={handleAddMainPoint}
           onSave={handleSave}
+          autoSaveEnabled={autoSaveEnabled}
+          onToggleAutoSave={() => setAutoSaveEnabled(v => !v)}
         />
       </div>
 

@@ -1092,6 +1092,7 @@
         },
         "builder": {
           "title": "Exegetical Plan Builder",
+          "autoSave": "Auto-save",
           "addMainPoint": "Add main point",
           "addSubPoint": "Add subpoint",
           "addSibling": "Add sibling",
@@ -1104,6 +1105,8 @@
           "tooltips": {
             "addSibling": "Add a sibling point",
             "addChild": "Add a subpoint",
+            "promote": "Promote (Outdent)",
+            "demote": "Demote (Indent)",
             "delete": "Delete this point",
             "addMain": "Add the first main point"
           }

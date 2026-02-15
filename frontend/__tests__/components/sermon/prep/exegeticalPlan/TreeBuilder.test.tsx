@@ -37,6 +37,8 @@ describe('TreeBuilder', () => {
   const mockOnAddChild = jest.fn();
   const mockOnAddSibling = jest.fn();
   const mockOnAddMainPoint = jest.fn();
+  const mockOnPromote = jest.fn();
+  const mockOnDemote = jest.fn();
   const mockOnSave = jest.fn();
 
   const defaultProps = {
@@ -53,7 +55,11 @@ describe('TreeBuilder', () => {
     onAddChild: mockOnAddChild,
     onAddSibling: mockOnAddSibling,
     onAddMainPoint: mockOnAddMainPoint,
-    onSave: mockOnSave
+    onPromote: mockOnPromote,
+    onDemote: mockOnDemote,
+    onSave: mockOnSave,
+    autoSaveEnabled: true,
+    onToggleAutoSave: jest.fn()
   };
 
   beforeEach(() => {
