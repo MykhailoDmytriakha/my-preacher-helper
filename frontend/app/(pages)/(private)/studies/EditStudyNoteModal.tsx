@@ -13,8 +13,10 @@ import { useState, useEffect, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+import { toast } from 'sonner';
 
 import { StudyNote, ScriptureReference } from '@/models/models';
+import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 import { BibleLocale } from './bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES, getNoteModalWidth } from './constants';
@@ -69,6 +71,9 @@ export default function EditStudyNoteModal({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
+  // Voice recording state
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+
   // Load note data when opened
   useEffect(() => {
     if (note && isOpen) {
@@ -83,6 +88,7 @@ export default function EditStudyNoteModal({
       setAnalyzeError(null);
       setEditingRefIndex(null);
       setShowRefPicker(false);
+      setIsVoiceProcessing(false);
     }
   }, [note, isOpen]);
 
@@ -190,6 +196,39 @@ export default function EditStudyNoteModal({
     }
   };
 
+  const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
+    setIsVoiceProcessing(true);
+
+    const formData = new FormData();
+    formData.append('audio', audioBlob);
+
+    try {
+      const response = await fetch('/api/studies/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        const errorMessage = result.error || t('errors.audioProcessing') || 'Voice transcription failed';
+        toast.error(errorMessage);
+        return;
+      }
+
+      const newText = result.polishedText || result.originalText;
+      if (newText) {
+        setContent((prev) => (prev ? `${prev}\n\n${newText}` : newText));
+      }
+    } catch (error) {
+      console.error('Voice transcription error:', error);
+      const errorMessage = t('errors.audioProcessing') || 'Failed to process voice recording';
+      toast.error(errorMessage);
+    } finally {
+      setIsVoiceProcessing(false);
+    }
+  };
+
   if (!isOpen || !note) return null;
 
   const modalContent = (
@@ -257,9 +296,19 @@ export default function EditStudyNoteModal({
 
           {/* Content */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
-              {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
+              </label>
+              <div className="relative flex items-center justify-center w-12 h-12">
+                <FocusRecorderButton
+                  size="small"
+                  onRecordingComplete={handleVoiceRecordingComplete}
+                  isProcessing={isVoiceProcessing}
+                  onError={(errorMessage) => toast.error(errorMessage)}
+                />
+              </div>
+            </div>
             <TextareaAutosize
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -268,6 +317,7 @@ export default function EditStudyNoteModal({
               maxRows={35}
               className={`w-full resize-none ${STUDIES_INPUT_SHARED_CLASSES}`}
             />
+            {/* Audio Recorder */}
           </div>
 
           {/* AI Analyze button */}

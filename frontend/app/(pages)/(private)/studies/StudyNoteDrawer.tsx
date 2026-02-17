@@ -13,8 +13,10 @@ import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+import { toast } from 'sonner';
 
 import { StudyNote, ScriptureReference } from '@/models/models';
+import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 import { BibleLocale } from './bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
@@ -122,6 +124,9 @@ export default function StudyNoteDrawer({
     // AI analysis state
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+    // Voice recording state
+    const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
     // Load note data when opened
     useEffect(() => {
@@ -297,6 +302,39 @@ export default function StudyNoteDrawer({
         }
     };
 
+    const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
+        setIsVoiceProcessing(true);
+
+        const formData = new FormData();
+        formData.append('audio', audioBlob);
+
+        try {
+            const response = await fetch('/api/studies/transcribe', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                const errorMessage = result.error || t('errors.audioProcessing') || 'Voice transcription failed';
+                toast.error(errorMessage);
+                return;
+            }
+
+            const newText = result.polishedText || result.originalText;
+            if (newText) {
+                setContent((prev) => (prev ? `${prev}\n\n${newText}` : newText));
+            }
+        } catch (error) {
+            console.error('Voice transcription error:', error);
+            const errorMessage = t('errors.audioProcessing') || 'Failed to process voice recording';
+            toast.error(errorMessage);
+        } finally {
+            setIsVoiceProcessing(false);
+        }
+    };
+
     // ─────────────────────────────────────────────────────────────
     // SIZE CONTROLS
     // ─────────────────────────────────────────────────────────────
@@ -437,9 +475,19 @@ export default function StudyNoteDrawer({
 
                     {/* Content */}
                     <div className="flex-1">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
-                            {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                {t('studiesWorkspace.contentLabel') || 'Your thoughts'}
+                            </label>
+                            <div className="relative flex items-center justify-center w-12 h-12">
+                                <FocusRecorderButton
+                                    size="small"
+                                    onRecordingComplete={handleVoiceRecordingComplete}
+                                    isProcessing={isVoiceProcessing}
+                                    onError={(errorMessage) => toast.error(errorMessage)}
+                                />
+                            </div>
+                        </div>
                         <TextareaAutosize
                             value={content}
                             onChange={(e) => setContent(e.target.value)}

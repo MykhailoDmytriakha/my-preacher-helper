@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import StudyNoteDrawer from '../StudyNoteDrawer';
+import EditStudyNoteModal from '../EditStudyNoteModal';
 import { StudyNote } from '@/models/models';
 
+// Mock FocusRecorderButton
 // Mock FocusRecorderButton
 jest.mock('@components/FocusRecorderButton', () => ({
     FocusRecorderButton: ({ onRecordingComplete }: { onRecordingComplete: (blob: Blob) => void }) => (
@@ -21,18 +22,11 @@ jest.mock('react-i18next', () => ({
     }),
 }));
 
-// Mock toast
-jest.mock('sonner', () => ({
-    toast: {
-        error: jest.fn(),
-    },
-}));
-
 const mockNote: StudyNote = {
     id: 'note-1',
     userId: 'user-1',
     title: 'Test Note',
-    content: 'Existing content',
+    content: 'Test content',
     tags: ['tag1'],
     scriptureRefs: [],
     createdAt: new Date().toISOString(),
@@ -41,7 +35,7 @@ const mockNote: StudyNote = {
     isDraft: false,
 };
 
-describe('StudyNoteDrawer', () => {
+describe('EditStudyNoteModal', () => {
     const defaultProps = {
         note: mockNote,
         isOpen: true,
@@ -51,24 +45,19 @@ describe('StudyNoteDrawer', () => {
         bibleLocale: 'en' as const,
     };
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        global.fetch = jest.fn();
-    });
-
     it('renders FocusRecorderButton component', async () => {
-        render(<StudyNoteDrawer {...defaultProps} />);
+        render(<EditStudyNoteModal {...defaultProps} />);
         expect(await screen.findByTestId('focus-recorder-mock')).toBeInTheDocument();
     });
 
-    it('handles voice recording completion successfully', async () => {
+    it('handles voice recording completion', async () => {
         const mockResponse = { success: true, polishedText: 'Transcribed text' };
 
         (global.fetch as jest.Mock).mockResolvedValue({
             json: jest.fn().mockResolvedValue(mockResponse),
         });
 
-        render(<StudyNoteDrawer {...defaultProps} />);
+        render(<EditStudyNoteModal {...defaultProps} />);
 
         // Find the mock button and click it to trigger onRecordingComplete
         const recorderButton = await screen.findByTestId('focus-recorder-mock');
@@ -80,7 +69,7 @@ describe('StudyNoteDrawer', () => {
         // Verify content was updated
         await waitFor(() => {
             const textarea = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
-            expect(textarea).toHaveValue('Existing content\n\nTranscribed text');
+            expect(textarea).toHaveValue('Test content\n\nTranscribed text');
         });
     });
 });

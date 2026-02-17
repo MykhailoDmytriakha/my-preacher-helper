@@ -29,6 +29,7 @@
 *   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
 *   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
 *   **AI Telemetry Join Point:** Structured text AI calls must go through `callWithStructuredOutput` and emit telemetry as non-blocking side effects.
+*   **API Response Verification:** Always verify the exact shape of API responses in frontend handlers (especially fallback/polymorphic data) to prevent silent data loss.
 
 ### ⚖️ Domain Axioms (The "Why")
 *   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
@@ -41,10 +42,21 @@
 *   **Conditional Hooks:** Never return early (`if (loading) return...`) before hook definitions.
 *   **Stale Cache:** Never rely on `setQueryData` alone for persistence; always pair with `invalidateQueries` or `cancelQueries`.
 *   **Console Log:** Never `console.log` in production code; use `debugLog()`.
+*   **Interactive Nesting:** Never nest interactive elements (buttons, links) inside labels or other interactive containers.
 
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-16 API Response Contract Mismatch
+**Problem:** Transcribed text was missing from notes because the frontend expected a `transcription` key, but the API returned `polishedText` or `originalText`.
+**Solution:** Updated the frontend handler to check for `polishedText || originalText` based on the actual API response shape.
+**Principle:** **API Contract Verification:** Always verify and type the exact shape of API responses in frontend handlers, especially when the backend returns fallback data structures.
+
+### 2026-02-16 Interactive Element Nesting (Button in Label)
+**Problem:** The "Stop Recording" button was unresponsive because it was nested inside a `<label>` element, causing event propagation conflicts.
+**Solution:** Moved the `FocusRecorderButton` outside of the `<label>` and used flexbox for layout alignment.
+**Principle:** **Semantic Nesting:** Never nest interactive elements (buttons) inside labels or other interactive containers; it breaks event handling and violates HTML semantics.
 
 ### 2026-02-14 Tree Hierarchy Management: Pure Utils for Complex Structures
 **Problem:** Implementing "Promote/Demote" (indent/outdent) logic for nested tree structures prone to index bugs and state corruption during re-parenting.
