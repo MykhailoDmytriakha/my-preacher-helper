@@ -9,12 +9,13 @@ import {
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
 import { enUS, ru, uk } from "date-fns/locale";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BibleLocale, BookInfo } from "@/(pages)/(private)/studies/bibleData";
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
-import { buildBookPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
+import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
+import MonthlySermonsModal from "@/components/calendar/MonthlySermonsModal";
 import { Sermon } from "@/models/models";
 
 interface AnalyticsSectionProps {
@@ -28,14 +29,16 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
     const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear);
     const [selectedBook, setSelectedBook] = useState<BookInfo | null>(null);
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
+    const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+    const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
 
-    const getDateLocale = () => {
+    const getDateLocale = useCallback(() => {
         switch (i18n.language) {
             case 'ru': return ru;
             case 'uk': return uk;
             default: return enUS;
         }
-    };
+    }, [i18n.language]);
 
     const availableYears = useMemo(() => {
         const years = new Set<number>();
@@ -53,7 +56,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         sermonsByDate,
         selectedYear,
         locale: i18n.language,
-    }), [sermonsByDate, i18n.language, selectedYear]);
+    }), [sermonsByDate, selectedYear, i18n.language]);
 
     const bookEntries = useMemo(() => buildBookPreachEntries({
         sermonsByDate,
@@ -61,7 +64,12 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         locale: i18n.language,
     }), [sermonsByDate, selectedYear, i18n.language]);
 
-    const formatMonthLabel = (monthKey?: string) => {
+    const monthlyEntries = useMemo(() => buildMonthlyPreachEntries({
+        sermonsByDate,
+        selectedYear,
+    }), [sermonsByDate, selectedYear]);
+
+    const formatMonthLabel = useMemo(() => (monthKey?: string) => {
         if (!monthKey) return 'N/A';
         const parts = monthKey.split('-');
         if (parts.length < 2) return monthKey;
@@ -71,7 +79,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         const monthDate = new Date(year, month - 1, 1);
         if (Number.isNaN(monthDate.getTime())) return monthKey;
         return format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
-    };
+    }, [getDateLocale]);
 
     return (
         <div className="space-y-8">
@@ -356,6 +364,12 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                             : 'transparent'
                                     }}
                                     title={`${format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase())}: ${count} ${sermonsLabel}`}
+                                    onClick={() => {
+                                        if (count > 0) {
+                                            setSelectedMonth(month);
+                                            setIsMonthModalOpen(true);
+                                        }
+                                    }}
                                 >
                                     <div className="text-center">
                                         <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
@@ -408,6 +422,16 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                 }}
                 book={selectedBook}
                 entries={selectedBook ? (bookEntries[selectedBook.id] || []) : []}
+            />
+
+            <MonthlySermonsModal
+                isOpen={isMonthModalOpen}
+                onClose={() => {
+                    setIsMonthModalOpen(false);
+                    setSelectedMonth(null);
+                }}
+                monthKey={selectedMonth}
+                entries={selectedMonth ? (monthlyEntries[selectedMonth] || []) : []}
             />
         </div>
     );

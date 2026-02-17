@@ -916,6 +916,9 @@
       "bookModalEmpty": "No sermons for this book yet",
       "bookModalNoVerse": "No scripture provided",
       "bookModalUntitled": "Untitled sermon",
+      "monthModalTitle": "Sermons in {{month}}",
+      "monthModalCount": "{{count}} sermons",
+      "monthModalEmpty": "No sermons for this month yet",
       "other": "Other"
     },
     "churchAutocomplete": {

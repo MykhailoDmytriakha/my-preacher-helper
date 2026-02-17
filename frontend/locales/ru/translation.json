@@ -914,9 +914,12 @@
       "bookModalTitle": "Проповеди по книге {{book}}",
       "bookModalCount": "{{count}} проповедей",
       "bookModalEmpty": "Нет проповедей по этой книге",
-      "bookModalNoVerse": "Место Писания не указано",
-      "bookModalUntitled": "Без названия",
-      "other": "Другие"
+      "bookModalNoVerse": "Писание не указано",
+      "bookModalUntitled": "Проповедь без названия",
+      "monthModalTitle": "Проповеди в {{month}}",
+      "monthModalCount": "{{count}} проповедей",
+      "monthModalEmpty": "В этом месяце еще нет проповедей",
+      "other": "Другое"
     },
     "churchAutocomplete": {
       "placeholder": "Введите название церкви...",

@@ -13,6 +13,7 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => {
         { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
         { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
         { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
+        { id: 'Romans', chapters: 16, names: { en: 'Romans', ru: 'Римлянам', uk: 'Римлян' }, abbrev: { en: 'Rom', ru: 'Рим', uk: 'Рим' } },
         { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
         { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
     ];
@@ -39,27 +40,28 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => {
                 'Joshua': { id: 'Joshua', chapters: 24, names: { en: 'Joshua', ru: 'Иисус Навин', uk: 'Ісус Навин' }, abbrev: { en: 'Josh', ru: 'Нав', uk: 'Нав' } },
                 'Proverbs': { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
                 'Jeremiah': { id: 'Jeremiah', chapters: 52, names: { en: 'Jeremiah', ru: 'Иеремия', uk: 'Єремія' }, abbrev: { en: 'Jer', ru: 'Иер', uk: 'Єр' } },
-            'Matthew': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
-            'Mark': { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
-            'Luke': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
-            '1 Peter': { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
-            '2 Peter': { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
+                'Matthew': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
+                'Mark': { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
+                'Luke': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
+                'Romans': { id: 'Romans', chapters: 16, names: { en: 'Romans', ru: 'Римлянам', uk: 'Римлян' }, abbrev: { en: 'Rom', ru: 'Рим', uk: 'Рим' } },
+                '1 Peter': { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
+                '2 Peter': { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
                 'Быт': { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
                 'Исх': { id: 'Exodus', chapters: 40, names: { en: 'Exodus', ru: 'Исход', uk: 'Вихід' }, abbrev: { en: 'Exod', ru: 'Исх', uk: 'Вих' } },
                 'Лев': { id: 'Leviticus', chapters: 27, names: { en: 'Leviticus', ru: 'Левит', uk: 'Левит' }, abbrev: { en: 'Lev', ru: 'Лев', uk: 'Лев' } },
-            'Чис': { id: 'Numbers', chapters: 36, names: { en: 'Numbers', ru: 'Числа', uk: 'Числа' }, abbrev: { en: 'Num', ru: 'Чис', uk: 'Чис' } },
-            'Втор': { id: 'Deuteronomy', chapters: 34, names: { en: 'Deuteronomy', ru: 'Второзаконие', uk: 'Повторення Закону' }, abbrev: { en: 'Deut', ru: 'Втор', uk: 'Повт' } },
-            'Нав': { id: 'Joshua', chapters: 24, names: { en: 'Joshua', ru: 'Иисус Навин', uk: 'Ісус Навин' }, abbrev: { en: 'Josh', ru: 'Нав', uk: 'Нав' } },
-            'Притч': { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
-            'Прит': { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
-            'Иер': { id: 'Jeremiah', chapters: 52, names: { en: 'Jeremiah', ru: 'Иеремия', uk: 'Єремія' }, abbrev: { en: 'Jer', ru: 'Иер', uk: 'Єр' } },
-            'Мф': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
-            'Мат': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
-            'Мк': { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
-            'Лк': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
-            'Лук': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
-            '1Пет': { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
-            '2Пет': { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
+                'Чис': { id: 'Numbers', chapters: 36, names: { en: 'Numbers', ru: 'Числа', uk: 'Числа' }, abbrev: { en: 'Num', ru: 'Чис', uk: 'Чис' } },
+                'Втор': { id: 'Deuteronomy', chapters: 34, names: { en: 'Deuteronomy', ru: 'Второзаконие', uk: 'Повторення Закону' }, abbrev: { en: 'Deut', ru: 'Втор', uk: 'Повт' } },
+                'Нав': { id: 'Joshua', chapters: 24, names: { en: 'Joshua', ru: 'Иисус Навин', uk: 'Ісус Навин' }, abbrev: { en: 'Josh', ru: 'Нав', uk: 'Нав' } },
+                'Притч': { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
+                'Прит': { id: 'Proverbs', chapters: 31, names: { en: 'Proverbs', ru: 'Притчи', uk: 'Приповістки' }, abbrev: { en: 'Prov', ru: 'Притч', uk: 'Прип' } },
+                'Иер': { id: 'Jeremiah', chapters: 52, names: { en: 'Jeremiah', ru: 'Иеремия', uk: 'Єремія' }, abbrev: { en: 'Jer', ru: 'Иер', uk: 'Єр' } },
+                'Мф': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
+                'Мат': { id: 'Matthew', chapters: 28, names: { en: 'Matthew', ru: 'От Матфея', uk: 'Від Матвія' }, abbrev: { en: 'Matt', ru: 'Мф', uk: 'Мт' } },
+                'Мк': { id: 'Mark', chapters: 16, names: { en: 'Mark', ru: 'От Марка', uk: 'Від Марка' }, abbrev: { en: 'Mark', ru: 'Мк', uk: 'Мк' } },
+                'Лк': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
+                'Лук': { id: 'Luke', chapters: 24, names: { en: 'Luke', ru: 'От Луки', uk: 'Від Луки' }, abbrev: { en: 'Luke', ru: 'Лк', uk: 'Лк' } },
+                '1Пет': { id: '1 Peter', chapters: 5, names: { en: '1 Peter', ru: '1 Петра', uk: '1 Петра' }, abbrev: { en: '1Pet', ru: '1Пет', uk: '1Пет' } },
+                '2Пет': { id: '2 Peter', chapters: 3, names: { en: '2 Peter', ru: '2 Петра', uk: '2 Петра' }, abbrev: { en: '2Pet', ru: '2Пет', uk: '2Пет' } },
             };
 
             const lower = name.toLowerCase();
@@ -150,6 +152,7 @@ const translationsByLocale: Record<string, Record<string, string>> = {
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string, options?: any) => {
+            if (key === 'buttons.close') return options?.defaultValue || 'Закрыть';
             const translations = translationsByLocale[currentLanguage] || {};
             const template = translations[key] || options?.defaultValue || key;
             if (!options) return template;
@@ -696,8 +699,9 @@ describe('AnalyticsSection', () => {
     });
 
     describe('Regression Tests for Bug Fixes', () => {
-        const createMockWithDate = (sermon: Sermon, dateStr: string) => ({
+        const createMockWithDate = (sermon: Sermon, dateStr: string, verse?: string) => ({
             ...sermon,
+            verse: verse ?? sermon.verse,
             preachDates: [{ ...sermon.preachDates![0], date: dateStr }]
         });
 
@@ -772,6 +776,87 @@ describe('AnalyticsSection', () => {
 
             const totalPreachings = screen.getByText('Всего проповедей').closest('div')?.parentElement;
             expect(within(totalPreachings as HTMLElement).getByText('1')).toBeInTheDocument();
+        });
+
+        it('opens and closes month modal', () => {
+            const monthlySermons = {
+                '2024-01-10': [createMockWithDate(mockSermons[0], '2024-01-10')],
+            };
+            render(<AnalyticsSection sermonsByDate={monthlySermons} />);
+
+            // Find Jan card and click. There might be multiple "Янв 24" (heading and chart label)
+            const janCards = screen.getAllByText('Янв 24');
+            const janCard = janCards.find(el => el.closest('div')?.onclick || el.parentElement?.onclick || true)?.closest('div');
+            expect(janCard).toBeTruthy();
+            fireEvent.click(janCard as HTMLElement);
+
+            expect(screen.getByTestId('monthly-sermons-modal')).toBeInTheDocument();
+
+            // Close it
+            const closeBtn = screen.getByRole('button', { name: /Закрыть|Close/i });
+            fireEvent.click(closeBtn);
+
+            expect(screen.queryByTestId('monthly-sermons-modal')).not.toBeInTheDocument();
+        });
+
+        it('opens and closes book modal', () => {
+            const bookSermons = {
+                '2024-01-10': [createMockWithDate(mockSermons[0], '2024-01-10', 'Быт 1:1')],
+            };
+            render(<AnalyticsSection sermonsByDate={bookSermons} />);
+
+            // Find book tile and click
+            const bookTile = screen.getByTestId('book-tile-Genesis');
+            fireEvent.click(bookTile);
+
+            // Expect book modal (mock matches title partially)
+            expect(screen.getByText(/Бытие/)).toBeInTheDocument();
+
+            // Close it using the close button in BibleBookSermonsModal (it should have one)
+            // Note: BibleBookSermonsModal is not mocked, it's rendered.
+            const closeBtn = screen.getByRole('button', { name: /Закрыть|Close/i });
+            fireEvent.click(closeBtn);
+
+            expect(screen.queryByText(/Бытие/)).not.toBeInTheDocument();
+        });
+
+        it('opens book modal via mouse and keyboard (covering NT and Enter key)', () => {
+            const ntSermons = {
+                '2024-01-01': [
+                    {
+                        ...mockSermons[0],
+                        id: 's1',
+                        verse: 'Romans 1:1', // NT book
+                        preachDates: [{ ...mockSermons[0].preachDates![0], date: '2024-01-01' }]
+                    }
+                ]
+            };
+            render(<AnalyticsSection sermonsByDate={ntSermons} />);
+
+            // Find NT book tile (Romans)
+            const romansTile = screen.getByTestId('book-tile-Romans');
+            expect(romansTile).toBeTruthy();
+
+            // Test Enter key branch
+            fireEvent.keyDown(romansTile, { key: 'Enter' });
+            expect(screen.getByText(/Римлянам/)).toBeInTheDocument();
+
+            // Close it
+            const closeBtn = screen.getByRole('button', { name: /Закрыть|Close/i });
+            fireEvent.click(closeBtn);
+            expect(screen.queryByText(/Римлянам/)).not.toBeInTheDocument();
+
+            // Test click branch for NT
+            fireEvent.click(romansTile);
+            expect(screen.getByText(/Римлянам/)).toBeInTheDocument();
+        });
+
+        it('Date Parsing Fallbacks: handles unusual formats (redundant check for coverage)', () => {
+            const unusualSermons = {
+                '2024--01': [createMockWithDate(mockSermons[0], '2024--01')]
+            };
+            render(<AnalyticsSection sermonsByDate={unusualSermons} />);
+            expect(screen.getByText('Аналитика')).toBeInTheDocument();
         });
     });
 });

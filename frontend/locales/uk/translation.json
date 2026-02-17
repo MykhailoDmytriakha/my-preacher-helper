@@ -916,6 +916,9 @@
       "bookModalEmpty": "Немає проповідей по цій книзі",
       "bookModalNoVerse": "Місце Писання не вказано",
       "bookModalUntitled": "Без назви",
+      "monthModalTitle": "Проповіді у {{month}}",
+      "monthModalCount": "{{count}} проповідей",
+      "monthModalEmpty": "У цьому місяці ще немає проповідей",
       "other": "Інші"
     },
     "churchAutocomplete": {

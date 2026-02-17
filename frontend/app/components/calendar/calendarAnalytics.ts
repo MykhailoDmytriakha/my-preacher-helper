@@ -25,6 +25,8 @@ export type AnalyticsStats = {
     bibleBookMax: number;
 };
 
+export type MonthlyPreachEntry = { sermon: Sermon; preachDate: PreachDate };
+
 export const parseDateInfo = (dateStr: string): { year: number; monthKey: string; monthOnly: string } => {
     let year = 0;
     let monthNum = 0;
@@ -108,6 +110,8 @@ const buildBookNameCandidates = (book: BookInfo): string[] => {
         const variants = [lower];
         if (lower.startsWith('от ')) variants.push(lower.slice(3));
         if (lower.startsWith('від ')) variants.push(lower.slice(4));
+        if (lower.startsWith('к ')) variants.push(lower.slice(2));
+        if (lower.startsWith('до ')) variants.push(lower.slice(3));
         return variants;
     });
     const abbrevs = [
@@ -119,16 +123,71 @@ const buildBookNameCandidates = (book: BookInfo): string[] => {
     return Array.from(new Set([...nameVariants, ...abbrevs]));
 };
 
+const isCompactMatch = (compactVerse: string, bookNames: string[]): boolean => {
+    for (const name of bookNames) {
+        if (compactVerse === name.replace(/\s+/g, '')) return true;
+    }
+    return false;
+};
+
+const isPrefixInflectionMatch = (compactVerse: string, bookNames: string[]): boolean => {
+    if (compactVerse.length < 5) return false;
+    const v = compactVerse.toLowerCase();
+
+    for (const name of bookNames) {
+        const n = name.replace(/\s+/g, '').toLowerCase();
+        if (n.length < 5) continue;
+
+        let commonLen = 0;
+        const maxCheck = Math.min(n.length, v.length);
+        for (let j = 0; j < maxCheck; j++) {
+            if (n[j] === v[j]) commonLen++;
+            else break;
+        }
+
+        // If they share at least 5 chars and differ by at most 3 chars at result
+        if (commonLen >= 5 && Math.max(n.length, v.length) - commonLen <= 3) {
+            return true;
+        }
+    }
+    return false;
+};
+
+const isFuzzyAbbrevMatch = (compactVerse: string, bookNames: string[]): boolean => {
+    if (compactVerse.length < 2 || compactVerse.length > 4) return false;
+    const hasDigits = /\d/.test(compactVerse);
+    const cv = compactVerse.toLowerCase();
+
+    for (const name of bookNames) {
+        const compactName = name.replace(/\s+/g, '').toLowerCase();
+        if (compactName.startsWith(cv)) {
+            if (hasDigits && compactName !== cv) continue;
+            return true;
+        }
+    }
+    return false;
+};
+
 const matchBookByNameCandidates = (lowerVerse: string, book: BookInfo): string | null => {
     const trimmed = lowerVerse.trim();
-    if (!trimmed) return null;
-    const compactVerse = trimmed.replace(/\s+/g, '');
+    if (!trimmed || trimmed.length < 2) return null;
+
     const bookNames = buildBookNameCandidates(book);
-    for (const name of bookNames) {
-        if (trimmed.startsWith(name)) return book.id;
-        const compactName = name.replace(/\s+/g, '');
-        if (compactVerse.length <= 4 && compactName.startsWith(compactVerse)) return book.id;
-    }
+
+    // 1. Check exact matches first
+    if (bookNames.includes(trimmed)) return book.id;
+
+    const compactVerse = trimmed.replace(/\s+/g, '');
+
+    // 2. Exact match with compact names
+    if (isCompactMatch(compactVerse, bookNames)) return book.id;
+
+    // 3. Selective prefix/inflection matching for long words
+    if (isPrefixInflectionMatch(compactVerse, bookNames)) return book.id;
+
+    // 4. Fuzzy matching for short abbrevs (2-4 chars)
+    if (isFuzzyAbbrevMatch(compactVerse, bookNames)) return book.id;
+
     return null;
 };
 
@@ -186,33 +245,83 @@ const normalizeVerseText = (rawVerse: string): string => {
 
 const isNumericToken = (token: string): boolean => /^\d+(-\d+)?$/.test(token);
 
-const tryMatchBookAtTokens = (tokens: string[], index: number, locale: string): { bookId: string; consumed: number } | null => {
-    const maxLen = Math.min(3, tokens.length - index);
-    for (let len = maxLen; len >= 1; len -= 1) {
-        const sliceTokens = tokens.slice(index, index + len);
-        const hasNumeric = sliceTokens.some(isNumericToken);
-        if (hasNumeric) {
-            const numericAtStart = isNumericToken(sliceTokens[0]) && sliceTokens.slice(1).every(token => !isNumericToken(token));
-            if (!numericAtStart) continue;
-        }
+const getTokenVariants = (slice: string): string[] => {
+    const variants = [
+        slice,
+        slice.replace(/\s+/g, ''),
+        slice.replace(/^(\d+)(\p{L}+)/u, '$1 $2'), // 1Ин -> 1 Ин
+        slice.replace(/^(\p{L}+)(\d+)/u, '$1 $2'), // Рим1 -> Рим 1
+    ];
+    return [...new Set(variants)];
+};
 
-        const slice = sliceTokens.join(' ');
-        if (!slice) continue;
+const isBridgePreventionTriggered = (variant: string, startIndex: number, tokens: string[]): boolean => {
+    return /^\d/.test(variant) && startIndex > 0 && isNumericToken(tokens[startIndex - 1]);
+};
 
-        const candidates = [
-            slice,
-            slice.replace(/\s+/g, ''),
-            slice.replace(/^(\d)(\p{L})/u, '$1 $2'),
-        ];
+const shouldPreferSingleTokenMatch = (len: number, sliceTokens: string[], resultId: string, locale: string): boolean => {
+    if (len <= 1) return false;
+    const firstTokenMatch = getBookByName(sliceTokens[0], locale as BibleLocale);
+    return !!(firstTokenMatch && firstTokenMatch.id === resultId && isNumericToken(sliceTokens[1]));
+};
 
-        for (const variant of candidates) {
-            const matched = getBookByName(variant, locale as BibleLocale);
-            if (matched) return { bookId: matched.id, consumed: len };
-            const fuzzyMatch = resolveMatchedBook(variant, locale);
-            if (fuzzyMatch) return { bookId: fuzzyMatch, consumed: len };
-        }
+const tryAlphaPrefixMatch = (len: number, variant: string, locale: string): string | null => {
+    if (len !== 1) return null;
+    const alphaPart = variant.match(/^(\p{L}{2,})/u)?.[1];
+    if (alphaPart) {
+        const alphaMatch = getBookByName(alphaPart, locale as BibleLocale);
+        if (alphaMatch) return alphaMatch.id;
     }
     return null;
+};
+
+const tryMatchVariantsForSlice = (
+    slice: string,
+    len: number,
+    startIndex: number,
+    tokens: string[],
+    locale: string,
+    sliceTokens: string[]
+): { bookId: string; consumed: number } | null => {
+    for (const variant of getTokenVariants(slice)) {
+        const matched = getBookByName(variant, locale as BibleLocale);
+        const resultId: string | null = matched ? matched.id : resolveMatchedBook(variant, locale);
+
+        if (resultId) {
+            if (isBridgePreventionTriggered(variant, startIndex, tokens)) continue;
+
+            if (shouldPreferSingleTokenMatch(len, sliceTokens, resultId, locale)) {
+                return { bookId: resultId, consumed: 1 };
+            }
+
+            return { bookId: resultId, consumed: len };
+        }
+
+        const alphaResult = tryAlphaPrefixMatch(len, variant, locale);
+        if (alphaResult) return { bookId: alphaResult, consumed: 1 };
+    }
+    return null;
+};
+
+const tryMatchBookAtTokens = (tokens: string[], startIndex: number, locale: string): { bookId: string; consumed: number } | null => {
+    for (let len = 3; len >= 1; len -= 1) {
+        if (startIndex + len > tokens.length) continue;
+
+        const sliceTokens = tokens.slice(startIndex, startIndex + len);
+        const slice = sliceTokens.join(' ').toLowerCase();
+
+        const result = tryMatchVariantsForSlice(slice, len, startIndex, tokens, locale, sliceTokens);
+        if (result) return result;
+    }
+    return null;
+};
+
+const isReferenceTrigger = (token: string): boolean => {
+    if (!token) return false;
+    const lower = token.toLowerCase();
+    // Keywords that indicate a following reference
+    const keywords = ['гл', 'глава', 'st', 'ст', 'стих', 'розділ', 'вірш', 'ch', 'v'];
+    return isNumericToken(token) || keywords.some(k => lower.startsWith(k));
 };
 
 export const extractBookIdsFromVerse = (rawVerse: string, locale: string): string[] => {
@@ -233,14 +342,15 @@ export const extractBookIdsFromVerse = (rawVerse: string, locale: string): strin
         const match = tryMatchBookAtTokens(tokens, i, locale);
         if (match) {
             const nextToken = tokens[i + match.consumed];
-            const hasNumber = nextToken ? isNumericToken(nextToken) : false;
+            const hasTrigger = nextToken ? isReferenceTrigger(nextToken) : false;
             const isOnlyBook = i === 0 && match.consumed === tokens.length;
-            if (!hasNumber && !isOnlyBook) continue;
+
+            if (!hasTrigger && !isOnlyBook) continue;
             if (!seen.has(match.bookId)) {
                 seen.add(match.bookId);
                 found.push(match.bookId);
             }
-            i += Math.max(0, match.consumed - 1);
+            i += match.consumed - 1;
         }
     }
 
@@ -446,4 +556,31 @@ export const buildBookPreachEntries = ({
     });
 
     return entriesByBook;
+};
+
+export const buildMonthlyPreachEntries = ({
+    sermonsByDate,
+    selectedYear,
+}: {
+    sermonsByDate: SermonsByDate;
+    selectedYear: number | 'all';
+}): Record<string, MonthlyPreachEntry[]> => {
+    const allPreachDates = buildAllPreachDates(sermonsByDate);
+    const filteredPreachDates = filterPreachDatesByYear(allPreachDates, selectedYear);
+
+    const entriesByMonth: Record<string, MonthlyPreachEntry[]> = {};
+
+    filteredPreachDates.forEach(({ pd, sermon }) => {
+        const { monthKey } = parseDateInfo(pd.date);
+        if (!entriesByMonth[monthKey]) {
+            entriesByMonth[monthKey] = [];
+        }
+        entriesByMonth[monthKey].push({ sermon, preachDate: pd });
+    });
+
+    Object.values(entriesByMonth).forEach(entries => {
+        entries.sort((a, b) => b.preachDate.date.localeCompare(a.preachDate.date));
+    });
+
+    return entriesByMonth;
 };
