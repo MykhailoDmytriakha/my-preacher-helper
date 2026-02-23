@@ -14,6 +14,11 @@ jest.mock('@/utils/studyNoteUtils', () => ({
   formatStudyNoteForCopy: jest.fn(),
 }));
 
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
 import { StudyNote } from '@/models/models';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
@@ -48,7 +53,6 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={onToggleExpand}
         onEdit={onEdit}
         onDelete={onDelete}
         onAnalyze={onAnalyze}
@@ -81,7 +85,6 @@ describe('StudyNoteCard', () => {
         note={noteWithMetadata}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
         onAnalyze={jest.fn()}
@@ -95,30 +98,31 @@ describe('StudyNoteCard', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('calls onToggleExpand when the header is clicked', async () => {
-    const onToggleExpand = jest.fn();
-    const noteWithTitle = createTestNote({ id: 'note-3', title: 'Header Note' });
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  it('navigates to the dedicated note page when the card body is clicked', async () => {
+    const noteWithTitle = createTestNote({ id: 'note-redirect', title: 'Route Note' });
 
     render(
       <StudyNoteCard
         note={noteWithTitle}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={onToggleExpand}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
         onAnalyze={jest.fn()}
       />
     );
 
-    const headerToggle = screen.getByRole('button', { name: /Header Note/i });
+    const headerToggle = screen.getByRole('button', { name: /Route Note/i });
     await userEvent.click(headerToggle);
 
-    expect(onToggleExpand).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith('/studies/note-redirect');
   });
 
-  it('supports keyboard toggle on the header and ignores nested buttons', async () => {
-    const onToggleExpand = jest.fn();
+  it('supports keyboard toggle on the header to route, and ignores nested buttons', async () => {
     const onEdit = jest.fn();
     const noteWithTitle = createTestNote({ id: 'note-3b', title: 'Keyboard Note' });
 
@@ -127,7 +131,6 @@ describe('StudyNoteCard', () => {
         note={noteWithTitle}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={onToggleExpand}
         onEdit={onEdit}
         onDelete={jest.fn()}
         onAnalyze={jest.fn()}
@@ -137,13 +140,13 @@ describe('StudyNoteCard', () => {
     const headerToggle = screen.getByRole('button', { name: /Keyboard Note/i });
     headerToggle.focus();
     await userEvent.keyboard('{Enter}');
-    expect(onToggleExpand).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith('/studies/note-3b');
 
     const editButton = screen.getByRole('button', { name: 'common.edit' });
     editButton.focus();
     await userEvent.keyboard('{Enter}');
 
-    expect(onToggleExpand).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledTimes(1);
     expect(onEdit).toHaveBeenCalledWith(noteWithTitle);
   });
 
@@ -155,7 +158,6 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
         onAnalyze={jest.fn()}
@@ -176,7 +178,6 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={jest.fn()}
         onEdit={onEdit}
         onDelete={jest.fn()}
         onAnalyze={jest.fn()}
@@ -203,7 +204,6 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
         onDelete={onDelete}
         onAnalyze={jest.fn()}
@@ -232,7 +232,6 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
-        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
         onDelete={onDelete}
         onAnalyze={jest.fn()}
@@ -261,7 +260,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Bible"
@@ -285,7 +283,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery=""
@@ -307,7 +304,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Bible"
@@ -332,7 +328,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="ru"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Библия"
@@ -357,7 +352,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="faith"
@@ -384,7 +378,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Genesis"
@@ -413,7 +406,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false} // Collapsed!
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="uniqueTag"
@@ -432,7 +424,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false} // Collapsed!
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Exodus"
@@ -458,7 +449,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Genesis"
@@ -483,7 +473,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="Unique"
@@ -505,7 +494,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           searchQuery="missing"
@@ -530,7 +518,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           onAnalyze={jest.fn()}
@@ -555,7 +542,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           onAnalyze={jest.fn()}
@@ -583,7 +569,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           onShare={onShare}
@@ -611,7 +596,6 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
-          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onDelete={jest.fn()}
           onShare={onShare}

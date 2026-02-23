@@ -12,33 +12,29 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQueryState } from 'nuqs';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
-import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
 
-import AddStudyNoteModal, { NoteFormValues } from './AddStudyNoteModal';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
-import FocusView from './components/FocusView';
 import ShareNoteModal from './components/ShareNoteModal';
-import EditStudyNoteModal from './EditStudyNoteModal';
-import { useStudiesFocusMode } from './hooks/useStudiesFocusMode';
 import StudyNoteCard from './StudyNoteCard';
-import StudyNoteDrawer from './StudyNoteDrawer';
 
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
+  const router = useRouter();
   const {
     uid,
     notes,
     loading: notesLoading,
     error: notesError,
-    createNote,
     updateNote,
     deleteNote,
   } = useStudyNotes();
@@ -50,8 +46,6 @@ export default function StudiesPage() {
   } = useStudyNoteShareLinks();
   const { tags: tagData } = useTags(uid);
 
-  // Responsive: use Modal on mobile, Drawer on desktop
-  const isMobile = useMediaQuery('(max-width: 767px)');
 
   // Get current locale for Bible data
   const bibleLocale: BibleLocale = useMemo(() => {
@@ -70,14 +64,14 @@ export default function StudiesPage() {
     return allTags.map((tag) => tag.name);
   }, [tagData.customTags, tagData.requiredTags]);
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
-  const [bookFilter, setBookFilter] = useState('');
+  // Filters (URL state via nuqs)
+  const [searchQueryParam, setSearchQueryParam] = useQueryState('search', { defaultValue: '' });
+  const [tagFilter, setTagFilter] = useQueryState('tag', { defaultValue: '' });
+  const [bookFilter, setBookFilter] = useQueryState('book', { defaultValue: '' });
 
   // Type tabs
   type NoteTabType = 'all' | 'notes' | 'questions';
-  const [activeTab, setActiveTab] = useState<NoteTabType>('all');
+  const [activeTab, setActiveTab] = useQueryState<NoteTabType>('tab', { defaultValue: 'all', parse: (val) => val as NoteTabType });
 
   // Note counts by type (computed from all notes, not filtered)
   const noteCounts = useMemo(() => ({
@@ -97,10 +91,6 @@ export default function StudiesPage() {
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [allExpanded, setAllExpanded] = useState(false);
 
-  // Modal state
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingNote, setEditingNote] = useState<StudyNote | null>(null);
-
   // AI analysis state (for inline card analysis)
   const [analyzingNoteId, setAnalyzingNoteId] = useState<string | null>(null);
 
@@ -114,7 +104,7 @@ export default function StudiesPage() {
   }, [availableTags, notes]);
 
   // Trimmed search query for filtering and highlighting
-  const searchQuery = useMemo(() => search.trim(), [search]);
+  const searchQuery = useMemo(() => searchQueryParam.trim(), [searchQueryParam]);
 
   // Tokenized search for multi-word matching (AND across tokens, order-agnostic)
   const searchTokens = useMemo(
@@ -199,19 +189,6 @@ export default function StudiesPage() {
     [filteredNotes, matchesSearchTokens]
   );
 
-  // Focus mode for reading individual notes (must be after visibleNotes is defined)
-  const {
-    focusedNote,
-    focusedIndex,
-    totalCount: focusTotalCount,
-    enterFocus,
-    exitFocus,
-    goToNext,
-    goToPrev,
-    hasNext,
-    hasPrev,
-  } = useStudiesFocusMode({ visibleNotes });
-
   // Auto-expand all matching notes when searching
   // Auto-expand removed to allow Contextual Search Snippets to be visible in collapsed state.
   // User can manually expand if they want to see the full note.
@@ -242,18 +219,7 @@ export default function StudiesPage() {
     [stats.booksCount]
   );
 
-  // Handlers
-  const toggleNoteExpand = (noteId: string) => {
-    setExpandedNoteIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(noteId)) {
-        next.delete(noteId);
-      } else {
-        next.add(noteId);
-      }
-      return next;
-    });
-  };
+
 
   const handleExpandAll = () => {
     if (allExpanded) {
@@ -265,19 +231,10 @@ export default function StudiesPage() {
     }
   };
 
-  const handleAddNote = async (values: NoteFormValues) => {
-    if (!uid) return;
-    await createNote({
-      ...values,
-      userId: uid,
-      materialIds: [],
-      relatedSermonIds: [],
-    });
+  const handleAddNote = () => {
+    router.push('/studies/new');
   };
 
-  const handleUpdateNote = async (noteId: string, updates: Partial<StudyNote>) => {
-    await updateNote({ id: noteId, updates });
-  };
 
   const handleAnalyzeNote = async (note: StudyNote) => {
     if (!note.content.trim()) return;
@@ -353,12 +310,12 @@ export default function StudiesPage() {
   }, []);
 
   const clearFilters = () => {
-    setSearch('');
+    setSearchQueryParam('');
     setTagFilter('');
     setBookFilter('');
   };
 
-  const hasActiveFilters = search || tagFilter || bookFilter;
+  const hasActiveFilters = searchQueryParam || tagFilter || bookFilter;
 
   return (
     <section className="space-y-6">
@@ -388,7 +345,7 @@ export default function StudiesPage() {
               {t('studiesWorkspace.shareLinks.manageButton')}
             </Link>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleAddNote}
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 md:w-auto"
             >
               <PlusIcon className="h-5 w-5" />
@@ -461,7 +418,7 @@ export default function StudiesPage() {
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearch('')}
+                onClick={() => setSearchQueryParam('')}
                 className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 aria-label={t('studiesWorkspace.clearSearch')}
               >
@@ -470,8 +427,8 @@ export default function StudiesPage() {
               </button>
             )}
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchQueryParam}
+              onChange={(e) => setSearchQueryParam(e.target.value)}
               placeholder={t('studiesWorkspace.searchPlaceholder')}
               className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-28 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
@@ -480,7 +437,7 @@ export default function StudiesPage() {
           {/* Filter toggles */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <select
-              value={bookFilter}
+              value={bookFilter || ''}
               onChange={(e) => setBookFilter(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
             >
@@ -493,7 +450,7 @@ export default function StudiesPage() {
             </select>
 
             <select
-              value={tagFilter}
+              value={tagFilter || ''}
               onChange={(e) => setTagFilter(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
             >
@@ -578,7 +535,7 @@ export default function StudiesPage() {
           </p>
           {!hasActiveFilters && (
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleAddNote}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -594,76 +551,16 @@ export default function StudiesPage() {
               note={note}
               bibleLocale={bibleLocale}
               isExpanded={expandedNoteIds.has(note.id)}
-              onToggleExpand={() => toggleNoteExpand(note.id)}
-              onEdit={(n) => setEditingNote(n)}
+              onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
               onDelete={(noteId) => deleteNote(noteId)}
               onAnalyze={handleAnalyzeNote}
               isAnalyzing={analyzingNoteId === note.id}
               searchQuery={searchQuery}
-              onCardClick={() => enterFocus(note.id)}
               onShare={handleShareNote}
               hasShareLink={shareLinksByNoteId.has(note.id)}
             />
           ))}
         </div>
-      )}
-
-      {/* Add Modal */}
-      <AddStudyNoteModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSave={handleAddNote}
-        availableTags={tagOptions}
-        bibleLocale={bibleLocale}
-      />
-
-      {/* Edit: Modal on mobile, Drawer on desktop */}
-      {isMobile ? (
-        <EditStudyNoteModal
-          note={editingNote}
-          isOpen={editingNote !== null}
-          onClose={() => setEditingNote(null)}
-          onSave={handleUpdateNote}
-          availableTags={tagOptions}
-          bibleLocale={bibleLocale}
-        />
-      ) : (
-        <StudyNoteDrawer
-          note={editingNote}
-          isOpen={editingNote !== null}
-          onClose={() => setEditingNote(null)}
-          onSave={handleUpdateNote}
-          availableTags={tagOptions}
-          bibleLocale={bibleLocale}
-        />
-      )}
-
-      {/* Focus Mode View */}
-      {focusedNote && (
-        <FocusView
-          note={focusedNote}
-          bibleLocale={bibleLocale}
-          currentIndex={focusedIndex}
-          totalCount={focusTotalCount}
-          onClose={exitFocus}
-          onPrev={goToPrev}
-          onNext={goToNext}
-          hasPrev={hasPrev}
-          hasNext={hasNext}
-          onEdit={(n) => {
-            exitFocus();
-            setEditingNote(n);
-          }}
-          onDelete={(noteId) => {
-            deleteNote(noteId);
-            exitFocus();
-          }}
-          onAnalyze={handleAnalyzeNote}
-          isAnalyzing={analyzingNoteId === focusedNote.id}
-          searchQuery={searchQuery}
-          onShare={handleShareNote}
-          hasShareLink={shareLinksByNoteId.has(focusedNote.id)}
-        />
       )}
 
       <ShareNoteModal

@@ -13,6 +13,7 @@ import {
   TrashIcon,
   DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -31,14 +32,11 @@ interface StudyNoteCardProps {
   note: StudyNote;
   bibleLocale: BibleLocale;
   isExpanded: boolean;
-  onToggleExpand: () => void;
   onEdit: (note: StudyNote) => void;
   onDelete: (noteId: string) => void;
   onAnalyze?: (note: StudyNote) => void;
   isAnalyzing?: boolean;
   searchQuery?: string;
-  /** Called when user clicks the card body to open Focus Mode */
-  onCardClick?: () => void;
   onShare?: (note: StudyNote) => void;
   /** Whether this note has an active share link */
   hasShareLink?: boolean;
@@ -117,23 +115,22 @@ export default function StudyNoteCard({
   note,
   bibleLocale,
   isExpanded,
-  onToggleExpand,
   onEdit,
   onDelete,
   onAnalyze,
   isAnalyzing = false,
   searchQuery = '',
-  onCardClick,
   onShare,
   hasShareLink = false,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
+  const router = useRouter();
 
   // Clipboard functionality
   const clipboardResult = useClipboard({
     successDuration: 1500,
   });
-  const { isCopied, copyToClipboard } = clipboardResult || { isCopied: false, copyToClipboard: () => {} };
+  const { isCopied, copyToClipboard } = clipboardResult || { isCopied: false, copyToClipboard: () => { } };
 
   // Handle copying note data
   const handleCopyNote = async () => {
@@ -228,9 +225,9 @@ export default function StudyNoteCard({
       searchTokens.length === 0
         ? []
         : note.tags.filter((tag) => {
-            const lowered = tag.toLowerCase();
-            return searchTokens.some((token) => lowered.includes(token));
-          }),
+          const lowered = tag.toLowerCase();
+          return searchTokens.some((token) => lowered.includes(token));
+        }),
     [note.tags, searchTokens]
   );
 
@@ -239,9 +236,9 @@ export default function StudyNoteCard({
       searchTokens.length === 0
         ? []
         : note.scriptureRefs.filter((ref) => {
-            const lowered = formatRef(ref).toLowerCase();
-            return searchTokens.some((token) => lowered.includes(token));
-          }),
+          const lowered = formatRef(ref).toLowerCase();
+          return searchTokens.some((token) => lowered.includes(token));
+        }),
     [note.scriptureRefs, searchTokens, formatRef]
   );
 
@@ -281,24 +278,16 @@ export default function StudyNoteCard({
         <div
           role="button"
           tabIndex={0}
-          onClick={() => {
-            // If onCardClick is provided, use Focus Mode; otherwise toggle expand
-            if (onCardClick) {
-              onCardClick();
-            } else {
-              onToggleExpand();
-            }
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('button')) return;
+            router.push(`/studies/${note.id}${window.location.search}`);
           }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const target = e.target as HTMLElement | null;
             if (target?.closest('button')) return;
             e.preventDefault();
-            if (onCardClick) {
-              onCardClick();
-            } else {
-              onToggleExpand();
-            }
+            router.push(`/studies/${note.id}${window.location.search}`);
           }}
           className="flex flex-1 items-start gap-3 text-left cursor-pointer"
           aria-expanded={isExpanded}
@@ -360,11 +349,10 @@ export default function StudyNoteCard({
                       e.stopPropagation();
                       handleShareNote();
                     }}
-                    className={`rounded-md p-1.5 transition disabled:opacity-50 ${
-                      hasShareLink
-                        ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
-                        : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
-                    }`}
+                    className={`rounded-md p-1.5 transition disabled:opacity-50 ${hasShareLink
+                      ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
+                      }`}
                     title={t('studiesWorkspace.shareLinks.shareButton')}
                     aria-label={t('studiesWorkspace.shareLinks.shareButton')}
                   >

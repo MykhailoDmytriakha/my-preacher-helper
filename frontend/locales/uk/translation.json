@@ -639,6 +639,7 @@
     "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із {{threshold}}"
   },
   "common": {
+    "done": "Готово",
     "warning": "Увага",
     "more": "Більше опцій",
     "next": "Далі",
@@ -687,7 +688,8 @@
     "seconds": "Секунди",
     "expand": "Розгорнути",
     "collapse": "Згорнути",
-    "unknown": "Невідомо"
+    "unknown": "Невідомо",
+    "saveError": "Помилка збереження. Будь ласка, спробуйте ще раз."
   },
   "shareNotes": {
     "title": "Нотатка за посиланням",
@@ -1634,6 +1636,7 @@
     }
   },
   "studiesWorkspace": {
+    "createError": "Помилка під час створення навчальної нотатки.",
     "tabs": {
       "all": "Всі",
       "notes": "Нотатки",
@@ -1777,6 +1780,7 @@
       "openLink": "Відкрити"
     },
     "aiAnalyze": {
+      "success": "Аналіз ШІ успішно завершено.",
       "button": "AI Аналіз",
       "buttonShort": "AI",
       "analyzing": "Аналіз...",

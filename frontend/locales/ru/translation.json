@@ -639,6 +639,7 @@
     "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
+    "done": "Готово",
     "warning": "Внимание",
     "more": "Ещё",
     "next": "Далее",
@@ -687,7 +688,8 @@
     "seconds": "Секунды",
     "expand": "Развернуть",
     "collapse": "Свернуть",
-    "unknown": "Неизвестно"
+    "unknown": "Неизвестно",
+    "saveError": "Ошибка сохранения. Пожалуйста, попробуйте снова."
   },
   "shareNotes": {
     "title": "Заметка по ссылке",
@@ -1634,6 +1636,7 @@
     }
   },
   "studiesWorkspace": {
+    "createError": "Ошибка при создании учебной заметки.",
     "tabs": {
       "all": "Все",
       "notes": "Заметки",
@@ -1777,6 +1780,7 @@
       "openLink": "Открыть"
     },
     "aiAnalyze": {
+      "success": "ИИ анализ завершен успешно.",
       "button": "AI Анализ",
       "buttonShort": "AI",
       "analyzing": "Анализ...",

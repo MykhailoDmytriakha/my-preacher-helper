@@ -9,6 +9,28 @@ import { StudyNote } from '@/models/models';
 
 import StudiesPage from '../page';
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    refresh: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+  }),
+  usePathname: () => '/studies',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+jest.mock('nuqs', () => {
+  const React = require('react');
+  return {
+    useQueryState: jest.fn((key: string, options: any) => {
+      const defaultValue = options?.defaultValue || '';
+      const [state, setState] = React.useState(defaultValue);
+      return [state, setState];
+    }),
+  };
+});
+
 jest.mock('@/hooks/useStudyNotes', () => ({
   useStudyNotes: jest.fn(),
 }));
@@ -154,7 +176,6 @@ describe('StudiesPage', () => {
 
       render(<StudiesPage />);
 
-      // Click Notes tab
       const notesTab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.notes/i });
       fireEvent.click(notesTab);
 
@@ -177,7 +198,6 @@ describe('StudiesPage', () => {
 
       render(<StudiesPage />);
 
-      // Click Questions tab
       const questionsTab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.questions/i });
       fireEvent.click(questionsTab);
 
@@ -285,7 +305,7 @@ describe('StudiesPage', () => {
     const changeSearch = async (value: string) => {
       const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
       fireEvent.change(searchInput, { target: { value } });
-      await waitFor(() => expect(searchInput).toHaveValue(value));
+      await waitFor(() => expect(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i)).toHaveValue(value));
     };
 
     it('shows a clear search button and resets the query and results', async () => {
@@ -320,7 +340,7 @@ describe('StudiesPage', () => {
 
       await userEvent.click(clearButton);
 
-      await waitFor(() => expect(searchInput).toHaveValue(''));
+      await waitFor(() => expect(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i)).toHaveValue(''));
 
       const allCards = screen.getAllByRole('article');
       expect(allCards).toHaveLength(2);

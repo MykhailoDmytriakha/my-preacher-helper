@@ -8,6 +8,7 @@ import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import "./globals.css";
 
 const interSans = Inter({
@@ -56,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body 
+      <body
         className={`${interSans.variable} ${robotoMono.variable} antialiased`}
         suppressHydrationWarning={true}
       >
@@ -69,12 +70,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <TextScaleProvider>
           <AuthProvider>
             <QueryProvider>
-              <LanguageInitializer />
-              <ServiceWorkerRegister />
-              <div className="min-h-screen flex flex-col" id="app-shell">
-                <OfflineBanner />
-                {children}
-              </div>
+              <NuqsAdapter>
+                <LanguageInitializer />
+                <ServiceWorkerRegister />
+                <div className="min-h-screen flex flex-col" id="app-shell">
+                  <OfflineBanner />
+                  {children}
+                </div>
+              </NuqsAdapter>
             </QueryProvider>
           </AuthProvider>
         </TextScaleProvider>

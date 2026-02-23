@@ -639,6 +639,7 @@
     "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
+    "done": "Done",
     "warning": "Warning",
     "more": "More options",
     "next": "Next",
@@ -687,7 +688,8 @@
     "seconds": "Seconds",
     "expand": "Expand",
     "collapse": "Collapse",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "saveError": "Failed to save. Please try again."
   },
   "shareNotes": {
     "title": "Shared note",
@@ -1634,6 +1636,7 @@
     }
   },
   "studiesWorkspace": {
+    "createError": "Error creating study note.",
     "tabs": {
       "all": "All",
       "notes": "Notes",
@@ -1777,6 +1780,7 @@
       "openLink": "Open"
     },
     "aiAnalyze": {
+      "success": "AI Analysis successful.",
       "button": "AI Analyze",
       "buttonShort": "AI",
       "analyzing": "Analyzing...",

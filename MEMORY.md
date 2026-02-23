@@ -30,6 +30,7 @@
 *   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
 *   **AI Telemetry Join Point:** Structured text AI calls must go through `callWithStructuredOutput` and emit telemetry as non-blocking side effects.
 *   **API Response Verification:** Always verify the exact shape of API responses in frontend handlers (especially fallback/polymorphic data) to prevent silent data loss.
+*   **Tabular Numeric Alignment:** Use `tabular-nums` and `font-mono` for numeric counters (e.g., "X / N") to prevent layout shifts when numbers change.
 
 ### ⚖️ Domain Axioms (The "Why")
 *   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
@@ -47,6 +48,37 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-23 Testing Library React DOM Duplication (nuqs mock)
+**Problem:** Tests for `StudiesPage` failed with `TestingLibraryElementError: Found multiple elements` after `nuqs` (url state library) replaced local `useState`. Calling `render(<StudiesPage />)` multiple times in the test duplicated the DOM because static generic mocks failed to trigger native virtual-DOM replacement.
+**Solution:** Rewrote the `nuqs` mock to encapsulate a true `React.useState` reference internally, allowing pure natural `waitFor` and component re-renders from `fireEvent` triggers without manually invoking `render(...)` again.
+**Principle:** When mocking React state synchronization libraries (like `nuqs`, routers), wrap the mock return values in a native `React.useState` initialization block rather than static globals. This aligns Testing Library behavior with React's native reconciliation lifecycle.
+
+### 2026-02-23 Translation JSON Duplicate Key Corruptions
+**Problem:** Next.js development build and Jest suites crashed with `SyntaxError: Expected ',' or '}'` at arbitrary byte sizes during runtime compilation.
+**Cause:** Manual merging or automated re-generation of duplicate translation keys within the locale `.json` files aggregated values without commas (e.g. `"openLink": "Open""cancel": "Cancel",`), effectively bypassing IDE linters but breaking the webpack JSON parser.
+**Solution:** Deleted the nested trailing duplicate `aiAnalyze` object keys in all locale versions (`en`, `ru`, `uk`) and formatted the trailing commas correctly.
+**Principle:** Translation objects are strictly validated by webpack loaders. Avoid duplicating nested translation trees across JSON hierarchies as merging engines can produce syntactically un-compilable strings.
+
+### 2026-02-23 AI Population Logic: Conditional Field Updates
+**Problem:** Tests for AI analysis failed to verify title population because the note already had a title ("Current Note"), and the implementation used `if (!title.trim())` to avoid overwriting user edits.
+**Solution:** Updated tests to explicitly `fireEvent.change(titleInput, { target: { value: '' } })` before triggering AI analysis.
+**Principle:** **User-Respecting AI:** AI actions should generally append to or fill empty fields rather than overwrite existing user content. Tests for these features must explicitly clear targeted fields to verify auto-population.
+
+### 2026-02-23 Refactoring to Reduce Cognitive Complexity (Editor Page)
+**Problem:** `StudyNoteEditorPage` had cognitive complexity > 20 due to interleaved filtering, navigation, and rendering logic, making it hard to maintain and causing linting warnings.
+**Solution:** Extracted logic into `useFilteredNotes` hook.
+**Principle:** When component complexity exceeds 20, extract side-effect/state-management logic into custom hooks to preserve declarativeness and improve testability.
+
+### 2026-02-23 Global Layout Breadcrumb De-duplication
+**Problem:** Adding breadcrumbs to the editor page content created duplication with the app's global breadcrumb bar.
+**Solution:** Removed the page-level breadcrumbs and relied on the global layout.
+**Principle:** Audit global layout components before adding redundant navigation to child pages to avoid visual clutter and maintain hierarchy consistency.
+
+### 2026-02-23 UI Collision: Separation in Space (Header vs Floating)
+**Problem:** Floating pagination buttons physically obscured text on the far edges of a `max-w-full` canvas.
+**Solution:** Moved the navigation controls into the sticky header as compact icon buttons (`h-5 w-5`).
+**Principle:** **Separation in Space:** Instead of creating new floating layers that risk collision with content, utilize existing "safe zones" like the sticky header for secondary navigation controls.
 
 ### 2026-02-16 API Response Contract Mismatch
 **Problem:** Transcribed text was missing from notes because the frontend expected a `transcription` key, but the API returned `polishedText` or `originalText`.
@@ -951,6 +983,8 @@
 - `app/(pages)/(private)/sermons/[id]/structure/page.tsx` - Main page orchestrator
 
 - `app/(pages)/(private)/studies/constants.ts` - Shared study note constants and width utilities
+- `app/(pages)/(private)/studies/[id]/page.tsx` - Study Note Editor page (dedicated workspace)
+- `app/hooks/useFilteredNotes.ts` - Specialized hook for Bible note filtering and pagination logic
 
 **Key Patterns:**
 - Tests: `npm run test` (NOT `npx jest` directly)
