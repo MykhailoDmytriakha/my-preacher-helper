@@ -1637,6 +1637,7 @@
   },
   "studiesWorkspace": {
     "createError": "Error creating study note.",
+    "browseTags": "Browse tags",
     "tabs": {
       "all": "All",
       "notes": "Notes",

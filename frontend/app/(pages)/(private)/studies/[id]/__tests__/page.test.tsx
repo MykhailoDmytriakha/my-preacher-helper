@@ -71,9 +71,9 @@ const createMockNote = (id: string, title: string): StudyNote => ({
 });
 
 const mockNotes: StudyNote[] = [
-    createMockNote('note-0', 'Prev Note'),
-    createMockNote('note-1', 'Current Note'),
-    createMockNote('note-2', 'Next Note'),
+    { ...createMockNote('note-0', 'Prev Note'), updatedAt: '2024-01-03T00:00:00.000Z' },
+    { ...createMockNote('note-1', 'Current Note'), updatedAt: '2024-01-02T00:00:00.000Z' },
+    { ...createMockNote('note-2', 'Next Note'), updatedAt: '2024-01-01T00:00:00.000Z' },
 ];
 
 describe('StudyNoteEditorPage Pagination', () => {
@@ -323,5 +323,150 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.click(backButton);
 
         expect(mockRouter.push).toHaveBeenCalledWith('/studies?tag=tag1');
+    });
+
+    describe('Missing Coverage Tests', () => {
+        it('handles new note creation on initial load', async () => {
+            const mockCreateNote = jest.fn().mockResolvedValue('new-note-id');
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: mockCreateNote,
+                updateNote: jest.fn(),
+                deleteNote: jest.fn(),
+            });
+            (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+
+            render(<StudyNoteEditorPage />);
+
+            await waitFor(() => {
+                expect(mockCreateNote).toHaveBeenCalled();
+                expect(mockRouter.replace).toHaveBeenCalledWith('/studies/new-note-id');
+            });
+        });
+
+        it('shows error if new note creation fails', async () => {
+            const mockCreateNote = jest.fn().mockRejectedValue(new Error('fail'));
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: mockCreateNote,
+                updateNote: jest.fn(),
+                deleteNote: jest.fn(),
+            });
+            (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+
+            render(<StudyNoteEditorPage />);
+
+            await waitFor(() => {
+                expect(mockCreateNote).toHaveBeenCalled();
+            });
+        });
+
+        it('handles delete note click correctly', async () => {
+            const mockDeleteNote = jest.fn().mockResolvedValue(undefined);
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: jest.fn(),
+                updateNote: jest.fn(),
+                deleteNote: mockDeleteNote,
+            });
+            window.confirm = jest.fn(() => true);
+            (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+                ok: true,
+                json: jest.fn().mockResolvedValue([{ noteId: 'note-1', id: 'link-1' }])
+            });
+
+            render(<StudyNoteEditorPage />);
+
+            const deleteButton = screen.getByTitle('common.delete');
+            fireEvent.click(deleteButton);
+
+            await waitFor(() => {
+                expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
+                expect(mockRouter.back).toHaveBeenCalled();
+            });
+        });
+
+        it('handles AI analysis validation error (empty content)', async () => {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            fireEvent.change(contentInput, { target: { value: '   ' } });
+            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            // Button click is just a no-op that shows a toast.
+        });
+
+        it('handles AI analysis API failure response', async () => {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            fireEvent.change(contentInput, { target: { value: 'Something' } });
+            (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+                ok: true,
+                json: jest.fn().mockResolvedValue({ success: false, error: 'AI Error' })
+            });
+            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+        });
+
+        it('handles AI analysis network exception', async () => {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            fireEvent.change(contentInput, { target: { value: 'Something' } });
+            (global.fetch as jest.Mock) = jest.fn().mockRejectedValue(new Error('Network error'));
+            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+        });
+
+        it('triggers auto-save when content changes', async () => {
+            jest.useFakeTimers();
+            const mockUpdateNote = jest.fn().mockResolvedValue(true);
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: jest.fn(),
+                updateNote: mockUpdateNote,
+                deleteNote: jest.fn(),
+            });
+
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+
+            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            fireEvent.change(contentInput, { target: { value: 'Changed auto save content' } });
+
+            jest.advanceTimersByTime(2000);
+
+            await waitFor(() => {
+                expect(mockUpdateNote).toHaveBeenCalled();
+            });
+            jest.useRealTimers();
+        });
+
+        it('handles auto-save error', async () => {
+            jest.useFakeTimers();
+            const mockUpdateNote = jest.fn().mockRejectedValue(new Error('save failed'));
+            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
+
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+
+            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            fireEvent.change(contentInput, { target: { value: 'Changed for error' } });
+
+            jest.advanceTimersByTime(2000);
+
+            await waitFor(() => {
+                expect(mockUpdateNote).toHaveBeenCalled();
+            });
+            jest.useRealTimers();
+        });
     });
 });

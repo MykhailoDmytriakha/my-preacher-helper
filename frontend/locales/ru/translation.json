@@ -1637,6 +1637,7 @@
   },
   "studiesWorkspace": {
     "createError": "Ошибка при создании учебной заметки.",
+    "browseTags": "Каталог тегов",
     "tabs": {
       "all": "Все",
       "notes": "Заметки",
