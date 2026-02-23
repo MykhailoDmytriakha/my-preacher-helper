@@ -165,7 +165,7 @@ describe('StudyNoteCard', () => {
     );
 
     const heading = screen.getByRole('heading', { name: 'A very long title that should wrap' });
-    expect(heading).toHaveClass('line-clamp-2');
+    expect(heading).toHaveClass('line-clamp-3');
     expect(heading).toHaveClass('leading-tight');
   });
 

@@ -154,7 +154,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         render(<StudyNoteEditorPage />);
 
         // Switch to editing mode
-        const editButton = screen.getByText('common.edit');
+        const editButton = screen.getByTitle('common.edit');
         fireEvent.click(editButton);
 
         // Try ArrowLeft
@@ -195,14 +195,47 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.queryByText('1 / 1')).not.toBeInTheDocument();
     });
 
+    describe('Note / Question Mode Toggle', () => {
+        it('toggles between Note and Question type in edit mode', () => {
+            render(<StudyNoteEditorPage />);
+            expect(screen.getByText('Current Note')).toBeInTheDocument();
+
+            // Enter edit mode
+            fireEvent.click(screen.getByTitle('common.edit'));
+
+            const noteBtn = screen.getByRole('button', { name: 'studiesWorkspace.type.note' });
+            const qBtn = screen.getByRole('button', { name: 'studiesWorkspace.type.question' });
+
+            fireEvent.click(qBtn);
+            expect(qBtn).toHaveClass('bg-amber-100'); // the selected class for question
+
+            fireEvent.click(noteBtn);
+            expect(noteBtn).toHaveClass('bg-gray-100'); // the selected class for note
+        });
+
+        it('displays badges for Note and Question type in read-only mode', () => {
+            render(<StudyNoteEditorPage />);
+
+            // By default, it's a note. In read-only mode, check if note badge is shown
+            expect(screen.getByText('studiesWorkspace.type.note')).toHaveClass('bg-gray-50');
+
+            // Switch to edit mode, change to question, then switch back to read-only
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.type.question' }));
+            fireEvent.click(screen.getByTitle('common.done')); // exit edit mode
+
+            // Check if question badge is shown with amber text
+            expect(screen.getByText('studiesWorkspace.type.question')).toHaveClass('text-amber-700');
+        });
+    });
+
     it('adds and toggles tags correctly', async () => {
         render(<StudyNoteEditorPage />);
 
         // Check initial tag
         expect(screen.getByText('tag1')).toBeInTheDocument();
-
         // Enter edit mode
-        fireEvent.click(screen.getByText('common.edit'));
+        fireEvent.click(screen.getByTitle('common.edit'));
 
         // Toggle off tag1 (click the X button)
         const tag1Container = screen.getByText('tag1').parentElement;
@@ -238,7 +271,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         render(<StudyNoteEditorPage />);
 
         // Enter edit mode
-        fireEvent.click(screen.getByText('common.edit'));
+        fireEvent.click(screen.getByTitle('common.edit'));
 
         // Clear the title first (AI only sets title if it's empty)
         const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
@@ -271,7 +304,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         render(<StudyNoteEditorPage />);
 
         // Enter edit mode
-        fireEvent.click(screen.getByText('common.edit'));
+        fireEvent.click(screen.getByTitle('common.edit'));
 
         // Trigger recording completion via the mocked button
         const micButton = screen.getByTitle('studiesWorkspace.voiceRecord');
@@ -289,6 +322,6 @@ describe('StudyNoteEditorPage Pagination', () => {
         const backButton = screen.getByTitle('common.back');
         fireEvent.click(backButton);
 
-        expect(mockRouter.back).toHaveBeenCalled();
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies?tag=tag1');
     });
 });

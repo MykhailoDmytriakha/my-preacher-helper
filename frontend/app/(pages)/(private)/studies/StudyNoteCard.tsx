@@ -304,14 +304,14 @@ export default function StudyNoteCard({
           {/* Content preview */}
           <div className="min-w-0 flex-1">
             {/* Title */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2">
               {note.type === 'question' && (
-                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
+                <span className="mt-0.5 shrink-0 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
                   <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
                   {t('studiesWorkspace.type.question') || 'Question'}
                 </span>
               )}
-              <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-2 leading-tight">
+              <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-3 leading-tight">
                 {searchQuery ? (
                   <HighlightedText
                     text={note.title || t('studiesWorkspace.untitled')}
@@ -326,7 +326,7 @@ export default function StudyNoteCard({
                   {totalMatchSignals} {t('studiesWorkspace.matchingNotes')}
                 </span>
               )}
-              <div className="ml-1 flex items-center gap-1">
+              <div className="ml-2 flex flex-wrap sm:flex-nowrap items-center justify-end gap-1 shrink-0">
                 {needsAnalysis && onAnalyze && (
                   <button
                     type="button"
@@ -335,7 +335,7 @@ export default function StudyNoteCard({
                       onAnalyze(note);
                     }}
                     disabled={isAnalyzing}
-                    className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
+                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2.5 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
                     title={t('studiesWorkspace.aiAnalyze.button')}
                   >
                     <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
@@ -349,7 +349,7 @@ export default function StudyNoteCard({
                       e.stopPropagation();
                       handleShareNote();
                     }}
-                    className={`rounded-md p-1.5 transition disabled:opacity-50 ${hasShareLink
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${hasShareLink
                       ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
                       : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
                       }`}
@@ -365,7 +365,7 @@ export default function StudyNoteCard({
                     e.stopPropagation();
                     handleCopyNote();
                   }}
-                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                   title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
                 >
                   {isCopied ? (
@@ -380,7 +380,7 @@ export default function StudyNoteCard({
                     e.stopPropagation();
                     onEdit(note);
                   }}
-                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                   title={t('common.edit')}
                 >
                   <PencilIcon className="h-4 w-4" />
@@ -394,7 +394,7 @@ export default function StudyNoteCard({
                       onDelete(note.id);
                     }
                   }}
-                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                   title={t('common.delete')}
                 >
                   <TrashIcon className="h-4 w-4" />

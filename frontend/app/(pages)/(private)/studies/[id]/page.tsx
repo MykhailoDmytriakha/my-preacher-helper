@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -230,9 +230,8 @@ export default function StudyNoteEditorPage() {
     // ─── HANDLERS ─────────────────────────────────────────────────────────
 
     const handleBack = () => {
-        // If returning from newly created empty note, we might want to just go back,
-        // Router push/back will preserve nuqs query params automatically.
-        router.back();
+        const queryParams = searchParams.toString();
+        router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
     const handleDelete = async () => {
@@ -338,7 +337,7 @@ export default function StudyNoteEditorPage() {
     return (
         <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
-            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
+            <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
                 <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
                     <div className="flex items-center gap-1">
                         <button
@@ -377,20 +376,33 @@ export default function StudyNoteEditorPage() {
 
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setType('note')}
-                                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                            >
-                                {t('studiesWorkspace.type.note') || 'Note'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setType('question')}
-                                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                            >
-                                {t('studiesWorkspace.type.question') || 'Question'}
-                            </button>
+                            {isEditing ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setType('note')}
+                                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                                    >
+                                        {t('studiesWorkspace.type.note') || 'Note'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setType('question')}
+                                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                                    >
+                                        {t('studiesWorkspace.type.question') || 'Question'}
+                                    </button>
+                                </>
+                            ) : type === 'question' ? (
+                                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
+                                    <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
+                                    {t('studiesWorkspace.type.question') || 'Question'}
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 dark:bg-gray-800/50 dark:text-gray-400 dark:ring-gray-700/50">
+                                    {t('studiesWorkspace.type.note') || 'Note'}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -409,25 +421,29 @@ export default function StudyNoteEditorPage() {
 
                     <button
                         onClick={() => setIsEditing(!isEditing)}
-                        className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-colors ${isEditing
+                        className={`p-2 rounded-lg transition-colors ${isEditing
                             ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
                             }`}
+                        title={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
+                        aria-label={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
                     >
-                        {isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
+                        {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
                     </button>
 
                     <button
                         onClick={handleDelete}
-                        className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium px-2 py-1"
+                        className="p-2 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors dark:text-gray-400 dark:hover:bg-red-900/40 dark:hover:text-red-400"
+                        title={t('common.delete')}
+                        aria-label={t('common.delete')}
                     >
-                        {t('common.delete')}
+                        <TrashIcon className="h-5 w-5" />
                     </button>
                 </div>
             </header>
 
             {/* EDITOR CONTENT */}
-            <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-32 transition-all duration-300">
+            <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-48 md:pb-32 transition-all duration-300">
                 {/* Title Area */}
                 <div>
                     {isEditing ? (
@@ -462,7 +478,7 @@ export default function StudyNoteEditorPage() {
                 </div>
 
                 {isEditing && (
-                    <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-3">
+                    <div className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-50 flex flex-col gap-3">
                         <button
                             type="button"
                             onClick={handleAIAnalyze}
@@ -592,8 +608,8 @@ export default function StudyNoteEditorPage() {
                                 <button onClick={addTag} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800">
                                     <PlusIcon className="h-5 w-5" />
                                 </button>
-                                <button onClick={() => setShowTagCatalog(true)} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800">
-                                    🔍
+                                <button onClick={() => setShowTagCatalog(true)} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800" title={t('studiesWorkspace.browseTags', { defaultValue: 'Browse tags' })}>
+                                    <MagnifyingGlassIcon className="h-5 w-5" />
                                 </button>
                             </div>
                         )}

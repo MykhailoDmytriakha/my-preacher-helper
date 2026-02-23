@@ -318,9 +318,9 @@ export default function StudiesPage() {
   const hasActiveFilters = searchQueryParam || tagFilter || bookFilter;
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-4 md:space-y-6">
       {/* Header */}
-      <header className="space-y-3">
+      <header className="space-y-4">
         <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-100 dark:ring-emerald-800/60">
           <SparklesIcon className="h-4 w-4" />
           {t('workspaces.studies.badge')}
@@ -336,19 +336,19 @@ export default function StudiesPage() {
           </div>
 
           {/* Add button */}
-          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+          <div className="flex w-full flex-col sm:flex-row gap-2 md:w-auto md:items-center">
             <Link
               href="/studies/share-links"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 md:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-auto"
             >
-              <LinkIcon className="h-5 w-5" />
+              <LinkIcon className="h-4 w-4" />
               {t('studiesWorkspace.shareLinks.manageButton')}
             </Link>
             <button
               onClick={handleAddNote}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 md:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto"
             >
-              <PlusIcon className="h-5 w-5" />
+              <PlusIcon className="h-4 w-4" />
               {t('studiesWorkspace.newNote')}
             </button>
           </div>
@@ -430,7 +430,7 @@ export default function StudiesPage() {
               value={searchQueryParam}
               onChange={(e) => setSearchQueryParam(e.target.value)}
               placeholder={t('studiesWorkspace.searchPlaceholder')}
-              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-28 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-12 sm:pr-28 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
 

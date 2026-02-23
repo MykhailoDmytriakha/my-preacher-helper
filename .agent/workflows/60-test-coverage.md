@@ -37,15 +37,19 @@ npm run test:coverage && npm run lint:full
 
 ### Phase 2: Baseline Coverage Measurement
 
-4. **Run initial coverage** from root:
+> 🚨 **CRITICAL MANDATE: NEVER ASSUME COVERAGE** 🚨
+> Do not just look at the overall file-wide percentage (e.g. `85%`). You **MUST** explicitly verify that your **exact modified lines** are not listed in the "Uncovered Line #s" column in the test report. Failing to verify the exact line numbers is a severe protocol breach!
+
+4. **Run initial coverage** from root, specifically targeting the changed files to reduce noise:
    ```bash
-   npm run test:coverage
+   npm run test:coverage -- <path-to-changed-file1> <path-to-changed-file2>
    ```
    If it **fails** (tests red), fix valid test failures first.
 
-5. **Record BASELINE coverage** for each changed file:
+5. **Record BASELINE coverage** and **UNCOVERED LINES**:
    - Identify the coverage % (Lines/Statements).
-   - **Crucially: Check if the CHANGED lines are uncovered** (check "Uncovered Line #s" in Jest output).
+   - **CRUCIAL STEP: Cross-reference your `git diff` line numbers with the "Uncovered Line #s" from the Jest table.**
+   - If your changed lines appear in the "Uncovered Line #s", **YOUR NEW LOGIC IS NOT COVERED**.
    - Example log: `utils/dateFormatter.ts: 50% (Baseline) - Lines 45-50 (NEW) are UNCOVERED`.
 
 ### Phase 3: Add Regression Tests for Changes
@@ -101,9 +105,10 @@ npm run test:coverage && npm run lint:full
 
 ## Validation Checklist
 
-- [ ] Changed files AND changed line ranges identified.
-- [ ] `npm run test:coverage` passes.
-- [ ] Every single modified line is exercised by a test.
+- [ ] Changed files AND specific changed line ranges identified via `git diff -U0`.
+- [ ] `npm run test:coverage` output manually inspected for "Uncovered Line #s".
+- [ ] Confirmed that **none of the modified lines** appear in the "Uncovered Line #s" column.
+- [ ] Every single modified line is explicitly exercised by a test.
 - [ ] File-wide coverage ≥80%.
 - [ ] `npm run lint:full` passes.
 - [ ] Final run: `npm run test:coverage && npm run lint:full` — both green.
