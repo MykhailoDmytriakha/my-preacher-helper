@@ -49,6 +49,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-24 Flexible Footer Alignment in Grid Cards
+**Problem:** The statistics blocks at the bottom of the Series Card (`SeriesCard.tsx`) were not aligned when multiple cards with varying content heights were displayed in a grid row.
+**Attempts:** Addressed the issue after user observation.
+**Solution:** Wrapped the header and main content of `SeriesCard` in a `div` with `flex flex-1 flex-col`.
+**Why it worked:** `flex-1` allows the main content wrapper to grow and occupy all available free space within the card, pushing the footer (the statistics block) to the absolute bottom of the container. This ensures uniform alignment across all cards in the grid.
+**Principle:** To align footer elements at the bottom of dynamic-height grid cards, wrap the main content in a `flex-1` container to push the static footer downward.
+
 ### 2026-02-24 Headless UI Jest DOM Errors
 **Problem:** Tests for `GroupsPage` failed with unhandled ref errors after replacing native `window.confirm` with a `@headlessui/react` `Transition`-based modal.
 **Attempts:** Tried rendering the real component in JSDOM, which expects real DOM nodes for transition measurements.

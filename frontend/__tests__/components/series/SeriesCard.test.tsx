@@ -71,4 +71,45 @@ describe('SeriesCard', () => {
 
     expect(screen.getByText('Series s-id')).toBeInTheDocument(); // id.slice(-4) = 's-id'
   });
+
+  it('calculates sermon and group count from items if present', () => {
+    const seriesWithItems: Series = {
+      ...mockSeries,
+      items: [
+        { id: '1', type: 'sermon', refId: 's1', position: 0 },
+        { id: '2', type: 'sermon', refId: 's2', position: 1 },
+        { id: '3', type: 'group', refId: 'g1', position: 2 },
+      ]
+    };
+    render(<SeriesCard series={seriesWithItems} />);
+
+    // 2 sermons, 1 group
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('renders duration correctly when present', () => {
+    const seriesWithDuration = { ...mockSeries, duration: 4 };
+    render(<SeriesCard series={seriesWithDuration} />);
+    expect(screen.getByText('workspaces.series.detail.duration')).toBeInTheDocument();
+    expect(screen.getByText('4 weeks')).toBeInTheDocument();
+  });
+
+  it('uses default values when optional fields are missing', () => {
+    const minSeries: Series = {
+      id: 'min1234',
+      userId: 'test',
+      status: 'draft',
+      theme: '',
+      bookOrTopic: '',
+      sermonIds: [],
+      createdAt: '',
+      updatedAt: '',
+    };
+    render(<SeriesCard series={minSeries} />);
+
+    expect(screen.getByText('workspaces.series.description')).toBeInTheDocument();
+    expect(screen.getByText('workspaces.series.form.bookOrTopic')).toBeInTheDocument();
+    expect(screen.getByText('workspaces.series.form.statuses.draft')).toBeInTheDocument();
+  });
 });
