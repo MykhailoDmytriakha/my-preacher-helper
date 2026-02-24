@@ -1466,7 +1466,12 @@
           "draft": "Черновик",
           "active": "Активная",
           "completed": "Завершена"
-        }
+        },
+        "createHint": "Дайте серии название, тему и выберите цвет.",
+        "editHint": "Обновите название, тему, статус или цвет серии.",
+        "initialSermonsHint_one": "{{count}} проповедь будет добавлена в серию",
+        "initialSermonsHint_few": "{{count}} проповеди будут добавлены в серию",
+        "initialSermonsHint_many": "{{count}} проповедей будут добавлены в серию"
       },
       "actions": {
         "createSeries": "Создать серию",
@@ -1501,13 +1506,19 @@
         "mostSermons": "Больше проповедей"
       },
       "detail": {
-        "sermonsInSeries": "Проповеди в этой серии",
+        "sermonsInSeries": "Всего элементов",
         "noSermons": "Пока нет проповедей в этой серии",
         "addSermons": "Добавьте проповеди для начала",
         "dragToReorder": "Перетаскивайте проповеди для изменения порядка",
-        "sermonCount": "{{count}} проповедь(ей)",
-        "groupCount": "{{count}} групп(-а/-ы)",
-        "itemCount": "{{count}} элемент(ов)",
+        "sermonCount_one": "{{count}} проповедь",
+        "sermonCount_few": "{{count}} проповеди",
+        "sermonCount_many": "{{count}} проповедей",
+        "groupCount_one": "{{count}} группа",
+        "groupCount_few": "{{count}} группы",
+        "groupCount_many": "{{count}} групп",
+        "itemCount_one": "{{count}} элемент",
+        "itemCount_few": "{{count}} элемента",
+        "itemCount_many": "{{count}} элементов",
         "conductedMeetings": "Проведено встреч",
         "duration": "Длительность",
         "completedCount": "{{completed}} из {{total}} завершено",

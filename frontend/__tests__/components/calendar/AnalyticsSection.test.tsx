@@ -416,7 +416,7 @@ describe('AnalyticsSection', () => {
             const formatMock = jest.mocked(format);
             formatMock.mockImplementation((date, fmt) => {
                 void date;
-                if (fmt === 'MMM yy') return 'Янв 24'; // Russian format without dot, capitalized
+                if (fmt === 'LLL yy') return 'Янв 24'; // Russian format without dot, capitalized
                 if (fmt === 'MMMM yyyy') return 'Январь 2024';
                 return 'January 2024';
             });

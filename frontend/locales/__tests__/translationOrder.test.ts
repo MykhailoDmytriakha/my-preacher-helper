@@ -1,11 +1,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Plural suffixes that vary by language - normalize them for ordering comparison
+const PLURAL_SUFFIXES = ['_one', '_other', '_few', '_many', '_zero', '_two'];
+
+function normalizePluralKey(key: string): string {
+    for (const suffix of PLURAL_SUFFIXES) {
+        if (key.endsWith(suffix)) {
+            return key.slice(0, -suffix.length);
+        }
+    }
+    return key;
+}
+
 // More robust key extraction considering basic nesting (up to one level)
 const getKeysWithNestingOrder = (filePath: string): string[] => {
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split(/\r?\n/);
     const keys: string[] = [];
+    const seen = new Set<string>();
     let currentParentKey: string | null = null;
 
     const keyRegex = /^\s*"([^"]+)"\s*:/;
@@ -15,17 +28,27 @@ const getKeysWithNestingOrder = (filePath: string): string[] => {
     for (const line of lines) {
         const keyMatch = line.match(keyRegex);
         if (keyMatch) {
-            const key = keyMatch[1];
+            const rawKey = keyMatch[1];
             if (objectStartRegex.test(line)) {
                 // This key opens a nested object
-                keys.push(key);
-                currentParentKey = key;
+                keys.push(rawKey);
+                seen.add(rawKey);
+                currentParentKey = rawKey;
             } else if (currentParentKey) {
-                // This is a key within a nested object
-                keys.push(`${currentParentKey}.${key}`);
+                // This is a key within a nested object — normalize plural suffix
+                const normalizedLeaf = normalizePluralKey(rawKey);
+                const fullKey = `${currentParentKey}.${normalizedLeaf}`;
+                if (!seen.has(fullKey)) {
+                    keys.push(fullKey);
+                    seen.add(fullKey);
+                }
             } else {
                 // This is a top-level key
-                keys.push(key);
+                const normalized = normalizePluralKey(rawKey);
+                if (!seen.has(normalized)) {
+                    keys.push(normalized);
+                    seen.add(normalized);
+                }
             }
         }
 

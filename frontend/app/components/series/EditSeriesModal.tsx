@@ -90,7 +90,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
               </p>
               <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-100">{series.title}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Обновите название, тему, статус или цвет серии.
+                {t('workspaces.series.form.editHint')}
               </p>
             </div>
             <button
@@ -226,7 +226,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                 disabled={saving}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
               >
-                {saving ? 'Saving...' : t('workspaces.series.actions.saveChanges')}
+                {saving ? t('common.saving') : t('workspaces.series.actions.saveChanges')}
               </button>
             </div>
           </form>

@@ -1466,7 +1466,12 @@
           "draft": "Чернетка",
           "active": "Активна",
           "completed": "Завершена"
-        }
+        },
+        "createHint": "Дайте серії назву, тему та оберіть колір.",
+        "editHint": "Оновіть назву, тему, статус або колір серії.",
+        "initialSermonsHint_one": "{{count}} проповідь буде додана до серії",
+        "initialSermonsHint_few": "{{count}} проповіді будуть додані до серії",
+        "initialSermonsHint_many": "{{count}} проповідей будуть додані до серії"
       },
       "actions": {
         "createSeries": "Створити серію",
@@ -1501,13 +1506,19 @@
         "mostSermons": "Більше проповідей"
       },
       "detail": {
-        "sermonsInSeries": "Проповіді в цій серії",
+        "sermonsInSeries": "Всього елементів",
         "noSermons": "Поки немає проповідей у цій серії",
         "addSermons": "Додайте проповіді для початку",
         "dragToReorder": "Перетягуйте проповіді для зміни порядку",
-        "sermonCount": "{{count}} проповідь(ей)",
-        "groupCount": "{{count}} груп(-а/-и)",
-        "itemCount": "{{count}} елемент(ів)",
+        "sermonCount_one": "{{count}} проповідь",
+        "sermonCount_few": "{{count}} проповіді",
+        "sermonCount_many": "{{count}} проповідей",
+        "groupCount_one": "{{count}} група",
+        "groupCount_few": "{{count}} групи",
+        "groupCount_many": "{{count}} груп",
+        "itemCount_one": "{{count}} елемент",
+        "itemCount_few": "{{count}} елементи",
+        "itemCount_many": "{{count}} елементів",
         "conductedMeetings": "Проведено зустрічей",
         "duration": "Тривалість",
         "completedCount": "{{completed}} із {{total}} завершено",

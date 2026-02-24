@@ -1466,7 +1466,11 @@
           "draft": "Draft",
           "active": "Active",
           "completed": "Completed"
-        }
+        },
+        "createHint": "Give your series a name, theme, and pick a color.",
+        "editHint": "Update the title, theme, status, or color.",
+        "initialSermonsHint_one": "{{count}} sermon will be added to this series",
+        "initialSermonsHint_other": "{{count}} sermons will be added to this series"
       },
       "actions": {
         "createSeries": "Create Series",
@@ -1501,13 +1505,16 @@
         "mostSermons": "Most sermons"
       },
       "detail": {
-        "sermonsInSeries": "Sermons in this series",
+        "sermonsInSeries": "Total items",
         "noSermons": "No sermons in this series yet",
         "addSermons": "Add sermons to get started",
         "dragToReorder": "Drag sermons to reorder them",
-        "sermonCount": "{{count}} sermon(s)",
-        "groupCount": "{{count}} group(s)",
-        "itemCount": "{{count}} item(s)",
+        "sermonCount_one": "{{count}} sermon",
+        "sermonCount_other": "{{count}} sermons",
+        "groupCount_one": "{{count}} group",
+        "groupCount_other": "{{count}} groups",
+        "itemCount_one": "{{count}} item",
+        "itemCount_other": "{{count}} items",
         "conductedMeetings": "Conducted meetings",
         "duration": "Duration",
         "completedCount": "{{completed}} of {{total}} completed",

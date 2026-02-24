@@ -25,9 +25,10 @@ jest.mock('react-i18next', () => ({
         'dashboard.stats.withOutlines': 'With Outlines',
         'dashboard.stats.latestSermon': 'Latest Sermon',
       };
-      
+
       return translations[key] || key;
     },
+    i18n: { language: 'en' },
   }),
 }));
 

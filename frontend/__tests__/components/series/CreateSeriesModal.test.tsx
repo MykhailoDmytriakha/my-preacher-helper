@@ -15,9 +15,10 @@ jest.mock('react-dom', () => {
 // Mock translations
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
         'workspaces.series.newSeries': 'New Series',
+        'workspaces.series.description': 'Organize your sermon series',
         'workspaces.series.form.title': 'Series Title',
         'workspaces.series.form.titlePlaceholder': 'Enter series title',
         'workspaces.series.form.description': 'Description',
@@ -25,10 +26,24 @@ jest.mock('react-i18next', () => ({
         'workspaces.series.form.bookOrTopic': 'Book/Topic',
         'workspaces.series.form.bookOrTopicPlaceholder': 'e.g., Romans',
         'workspaces.series.form.color': 'Theme Color',
+        'workspaces.series.form.status': 'Status',
+        'workspaces.series.form.statuses.draft': 'Draft',
+        'workspaces.series.form.statuses.active': 'Active',
+        'workspaces.series.form.statuses.completed': 'Completed',
+        'workspaces.series.form.createHint': 'Give your series a name, theme, and pick a color.',
+        'workspaces.series.form.editHint': 'Update the title, theme, status, or color.',
         'workspaces.series.actions.createSeries': 'Create Series',
-        'workspaces.series.actions.cancel': 'Cancel'
+        'workspaces.series.actions.cancel': 'Cancel',
+        'common.saving': 'Saving...'
       };
-      return translations[key] || key;
+      const template = translations[key] || key;
+      if (options && typeof options.count !== 'undefined') {
+        if (key === 'workspaces.series.form.initialSermonsHint') {
+          return `${options.count} sermon(s) will be added to this series`;
+        }
+        return template.replace('{{count}}', String(options.count));
+      }
+      return template;
     }
   })
 }));

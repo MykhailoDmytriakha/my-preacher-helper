@@ -240,7 +240,7 @@ function SermonCardSnippets({ sermonId, searchQuery, searchSnippets }: SermonCar
           className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col gap-2"
         >
           {snippet.text && (
-            <span style={{ wordBreak: 'keep-all' }}>
+            <span className="line-clamp-3" style={{ wordBreak: 'keep-all' }}>
               <HighlightedText text={snippet.text} searchQuery={searchQuery} />
             </span>
           )}

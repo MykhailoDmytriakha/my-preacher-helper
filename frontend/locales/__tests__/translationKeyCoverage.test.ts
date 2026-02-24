@@ -171,10 +171,16 @@ function loadTranslationFiles(localesDir: string): TranslationFiles {
 }
 
 /**
- * Checks if a key exists in flattened translation keys
+ * Checks if a key exists in flattened translation keys.
+ * Also checks plural-suffixed variants (_one, _other, _few, _many) because
+ * i18next plural keys are stored with suffixes in locale files.
  */
 function keyExists(key: string, flattenedKeys: Set<string>): boolean {
-  return flattenedKeys.has(key);
+  return flattenedKeys.has(key) ||
+    flattenedKeys.has(key + '_one') ||
+    flattenedKeys.has(key + '_other') ||
+    flattenedKeys.has(key + '_few') ||
+    flattenedKeys.has(key + '_many');
 }
 
 /**

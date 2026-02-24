@@ -23,6 +23,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
   const [description, setDescription] = useState('');
   const [bookOrTopic, setBookOrTopic] = useState('');
   const [color, setColor] = useState('#3B82F6'); // Default blue
+  const [status, setStatus] = useState<Series['status']>('draft');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
@@ -39,7 +40,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
         description: description.trim() || undefined,
         bookOrTopic: bookOrTopic.trim(),
         color: color || undefined,
-        status: 'draft',
+        status,
         sermonIds: initialSermonIds,
         userId: user?.uid || '',
         createdAt: new Date().toISOString(),
@@ -77,6 +78,12 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
     '#000000'  // Black
   ];
 
+  const statusOptions = [
+    { value: 'draft', label: t('workspaces.series.form.statuses.draft') },
+    { value: 'active', label: t('workspaces.series.form.statuses.active') },
+    { value: 'completed', label: t('workspaces.series.form.statuses.completed') }
+  ];
+
   const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
       <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800">
@@ -91,7 +98,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
                 {t('workspaces.series.description')}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Создайте серию, дайте ей яркое имя и тему, выберите оттенок для визуального кода.
+                {t('workspaces.series.form.createHint')}
               </p>
             </div>
             <button
@@ -163,6 +170,23 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
               />
             </label>
 
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {t('workspaces.series.form.status')}
+              </span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as Series['status'])}
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="space-y-3">
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                 {t('workspaces.series.form.color')}
@@ -197,7 +221,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
 
             {initialSermonIds.length > 0 && (
               <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
-                {initialSermonIds.length} sermon(s) will be added to this series
+                {t('workspaces.series.form.initialSermonsHint', { count: initialSermonIds.length })}
               </div>
             )}
 
@@ -214,7 +238,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
                 disabled={saving}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
               >
-                {saving ? 'Creating...' : t('workspaces.series.actions.createSeries')}
+                {saving ? t('common.saving') : t('workspaces.series.actions.createSeries')}
               </button>
             </div>
           </form>

@@ -373,7 +373,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                 >
                                     <div className="text-center">
                                         <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                                            {format(monthDate, 'MMM yy', { locale: getDateLocale() }).replace('.', '').replace(/^./, str => str.toUpperCase())}
+                                            {format(monthDate, 'LLL yy', { locale: getDateLocale() }).replace('.', '').replace(/^./, str => str.toUpperCase())}
                                         </div>
                                         {count > 0 && (
                                             <div className="text-sm font-bold text-amber-600 dark:text-amber-400 mt-1">

@@ -10,7 +10,7 @@ interface DashboardStatsProps {
 }
 
 export default function DashboardStats({ sermons }: DashboardStatsProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   
   // Calculate stats
   const totalSermons = sermons.length;
@@ -29,11 +29,11 @@ export default function DashboardStats({ sermons }: DashboardStatsProps) {
     : null;
     
   // Format the latest sermon date
-  const formattedLatestDate = latestSermonDate 
-    ? new Intl.DateTimeFormat(undefined, { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
+  const formattedLatestDate = latestSermonDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
       }).format(latestSermonDate)
     : '--';
   
