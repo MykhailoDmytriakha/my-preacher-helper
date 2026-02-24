@@ -1,8 +1,8 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
@@ -65,7 +66,7 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
     const prevNoteId = currentIndex > 0 ? filteredNotes[currentIndex - 1].id : null;
     const nextNoteId = currentIndex >= 0 && currentIndex < filteredNotes.length - 1 ? filteredNotes[currentIndex + 1].id : null;
 
-    return { filteredNotes, currentIndex, prevNoteId, nextNoteId };
+    return { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery };
 }
 
 function useNoteKeyboardNavigation({
@@ -279,6 +280,20 @@ function EditorHeader({
     isSaving: boolean; saveError: string | null; lastSaved: Date | null;
     setIsEditing: (b: boolean) => void; handleDelete: () => void;
 }) {
+    const [showMenu, setShowMenu] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!showMenu) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showMenu]);
+
     return (
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
             <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
@@ -374,14 +389,27 @@ function EditorHeader({
                     {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
                 </button>
 
-                <button
-                    onClick={handleDelete}
-                    className="p-2 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors dark:text-gray-400 dark:hover:bg-red-900/40 dark:hover:text-red-400"
-                    title={t('common.delete')}
-                    aria-label={t('common.delete')}
-                >
-                    <TrashIcon className="h-5 w-5" />
-                </button>
+                <div className="relative" ref={menuRef}>
+                    <button
+                        onClick={() => setShowMenu(!showMenu)}
+                        className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                        title={t('common.more') || 'More'}
+                        aria-label={t('common.more') || 'More'}
+                    >
+                        <EllipsisVerticalIcon className="h-5 w-5" />
+                    </button>
+                    {showMenu && (
+                        <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 z-50">
+                            <button
+                                onClick={() => { setShowMenu(false); handleDelete(); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                            >
+                                <TrashIcon className="h-4 w-4" />
+                                {t('common.delete')}
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </header>
     );
@@ -434,7 +462,7 @@ export default function StudyNoteEditorPage() {
 
     // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
     const searchParams = useSearchParams();
-    const { filteredNotes, currentIndex, prevNoteId, nextNoteId } = useFilteredNotes(notes, searchParams, bibleLocale);
+    const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
     useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams });
 
@@ -508,7 +536,11 @@ export default function StudyNoteEditorPage() {
                         />
                     ) : (
                         <h1 className="w-full text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-tight min-h-[1em]">
-                            {title || (isNew ? '' : t('studiesWorkspace.untitled'))}
+                            {title ? (
+                                searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
+                            ) : (
+                                isNew ? '' : t('studiesWorkspace.untitled')
+                            )}
                         </h1>
                     )}
                 </div>
@@ -524,7 +556,7 @@ export default function StudyNoteEditorPage() {
                         />
                     ) : (
                         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-                            <MarkdownDisplay content={content} />
+                            <MarkdownDisplay content={content} searchQuery={searchQuery} />
                         </div>
                     )}
 

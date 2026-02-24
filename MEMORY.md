@@ -49,6 +49,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-23 UI Simplification via TRIZ
+**Problem:** The study notes interface had too many action buttons (AI, Edit, Delete, Share, Copy) immediately visible on the card, creating cognitive friction.
+**Attempts:** Tried making them smaller or transparent.
+**Solution:** Removed primary actions (Delete, Edit, AI) from the card header entirely. Moved "Delete" into a ⋯ (ellipsis) menu inside the note editor page itself. Kept card click as the primary navigation to Edit mode.
+**Why it worked:** Matches TRIZ "Trimming/Local Quality" — secondary functions were moved closer to their actual usage context (the full editor) offloading the primary list view. Reduces accidental destructive clicks.
+**Principle:** Whenever a list item view exceeds 3 primary discrete actions, aggressively migrate destructive and contextual functions into a dedicated detailed view or a ⋯ (ellipsis) dropdown.
+
 ### 2026-02-23 Testing Library React DOM Duplication (nuqs mock)
 **Problem:** Tests for `StudiesPage` failed with `TestingLibraryElementError: Found multiple elements` after `nuqs` (url state library) replaced local `useState`. Calling `render(<StudiesPage />)` multiple times in the test duplicated the DOM because static generic mocks failed to trigger native virtual-DOM replacement.
 **Solution:** Rewrote the `nuqs` mock to encapsulate a true `React.useState` reference internally, allowing pure natural `waitFor` and component re-renders from `fireEvent` triggers without manually invoking `render(...)` again.

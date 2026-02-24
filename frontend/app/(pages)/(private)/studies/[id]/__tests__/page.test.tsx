@@ -383,7 +383,10 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             render(<StudyNoteEditorPage />);
 
-            const deleteButton = screen.getByTitle('common.delete');
+            // Open ⋯ menu first, then click Delete
+            const moreButton = screen.getByTitle('common.more');
+            fireEvent.click(moreButton);
+            const deleteButton = screen.getByText('common.delete');
             fireEvent.click(deleteButton);
 
             await waitFor(() => {

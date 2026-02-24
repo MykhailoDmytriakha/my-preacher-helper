@@ -8,9 +8,7 @@ import {
   LinkIcon,
   PencilIcon,
   QuestionMarkCircleIcon,
-  SparklesIcon,
   TagIcon,
-  TrashIcon,
   DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
@@ -33,9 +31,6 @@ interface StudyNoteCardProps {
   bibleLocale: BibleLocale;
   isExpanded: boolean;
   onEdit: (note: StudyNote) => void;
-  onDelete: (noteId: string) => void;
-  onAnalyze?: (note: StudyNote) => void;
-  isAnalyzing?: boolean;
   searchQuery?: string;
   onShare?: (note: StudyNote) => void;
   /** Whether this note has an active share link */
@@ -116,9 +111,6 @@ export default function StudyNoteCard({
   bibleLocale,
   isExpanded,
   onEdit,
-  onDelete,
-  onAnalyze,
-  isAnalyzing = false,
   searchQuery = '',
   onShare,
   hasShareLink = false,
@@ -158,7 +150,6 @@ export default function StudyNoteCard({
   };
 
   // Check if note needs AI analysis (no title, no refs, no tags)
-  const needsAnalysis = !note.title && note.scriptureRefs.length === 0 && note.tags.length === 0;
 
   // Format scripture reference for display
   const formatRef = useCallback((ref: {
@@ -327,21 +318,6 @@ export default function StudyNoteCard({
                 </span>
               )}
               <div className="ml-2 flex flex-wrap sm:flex-nowrap items-center justify-end gap-1 shrink-0">
-                {needsAnalysis && onAnalyze && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAnalyze(note);
-                    }}
-                    disabled={isAnalyzing}
-                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-2.5 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-                    title={t('studiesWorkspace.aiAnalyze.button')}
-                  >
-                    <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                    {!isExpanded && (t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI')}
-                  </button>
-                )}
                 {onShare && (
                   <button
                     type="button"
@@ -373,31 +349,6 @@ export default function StudyNoteCard({
                   ) : (
                     <DocumentDuplicateIcon className="h-4 w-4" />
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(note);
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                  title={t('common.edit')}
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm(t('studiesWorkspace.deleteConfirm'))) {
-                      onDelete(note.id);
-                    }
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                  title={t('common.delete')}
-                >
-                  <TrashIcon className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -504,9 +455,7 @@ export default function StudyNoteCard({
           </div>
 
           {/* Analyze button for notes without metadata (collapsed only) */}
-          {!isExpanded && needsAnalysis && onAnalyze && (
-            <span className="sr-only">{t('studiesWorkspace.aiAnalyze.buttonShort') || 'AI'}</span>
-          )}
+
         </div>
       </div>
 
@@ -567,44 +516,17 @@ export default function StudyNoteCard({
             </div>
           )}
 
-          {/* Actions */}
+          {/* Footer */}
           <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onEdit(note)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                >
-                  <PencilIcon className="h-3.5 w-3.5" />
-                  {t('common.edit')}
-                </button>
-
-                {needsAnalysis && onAnalyze && (
-                  <button
-                    onClick={() => onAnalyze(note)}
-                    disabled={isAnalyzing}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50"
-                  >
-                    <SparklesIcon className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                    {t('studiesWorkspace.aiAnalyze.button')}
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-                <span>{new Date(note.createdAt).toLocaleDateString()}</span>
-                <button
-                  onClick={() => {
-                    if (confirm(t('studiesWorkspace.deleteConfirm'))) {
-                      onDelete(note.id);
-                    }
-                  }}
-                  className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                  title={t('common.delete')}
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
-              </div>
+              <button
+                onClick={() => onEdit(note)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+                {t('common.edit')}
+              </button>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
         </div>

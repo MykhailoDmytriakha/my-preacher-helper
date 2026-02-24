@@ -41,67 +41,6 @@ const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
 };
 
 describe('StudyNoteCard', () => {
-  it('shows the AI analyze control when the note lacks metadata', async () => {
-    const onToggleExpand = jest.fn();
-    const onEdit = jest.fn();
-    const onDelete = jest.fn();
-    const onAnalyze = jest.fn();
-    const note = createTestNote();
-
-    render(
-      <StudyNoteCard
-        note={note}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        onAnalyze={onAnalyze}
-      />
-    );
-
-    expect(screen.getByText('studiesWorkspace.untitled')).toBeInTheDocument();
-
-    const analyzeButton = screen.getByRole('button', {
-      name: 'studiesWorkspace.aiAnalyze.buttonShort',
-    });
-    await userEvent.click(analyzeButton);
-
-    expect(onAnalyze).toHaveBeenCalledWith(note);
-    expect(onToggleExpand).not.toHaveBeenCalled();
-  });
-
-  it('hides the AI analyze control when the note already has metadata', () => {
-    const noteWithMetadata = createTestNote({
-      id: 'note-2',
-      title: 'Metadata present',
-      tags: ['wisdom'],
-      scriptureRefs: [
-        { id: 'ref-1', book: 'Genesis', chapter: 1, fromVerse: 1 },
-      ],
-    });
-
-    render(
-      <StudyNoteCard
-        note={noteWithMetadata}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={jest.fn()}
-        onDelete={jest.fn()}
-        onAnalyze={jest.fn()}
-      />
-    );
-
-    expect(
-      screen.queryByRole('button', {
-        name: 'studiesWorkspace.aiAnalyze.buttonShort',
-      })
-    ).not.toBeInTheDocument();
-  });
-
-  beforeEach(() => {
-    mockPush.mockClear();
-  });
-
   it('navigates to the dedicated note page when the card body is clicked', async () => {
     const noteWithTitle = createTestNote({ id: 'note-redirect', title: 'Route Note' });
 
@@ -111,8 +50,6 @@ describe('StudyNoteCard', () => {
         bibleLocale="en"
         isExpanded={false}
         onEdit={jest.fn()}
-        onDelete={jest.fn()}
-        onAnalyze={jest.fn()}
       />
     );
 
@@ -120,34 +57,6 @@ describe('StudyNoteCard', () => {
     await userEvent.click(headerToggle);
 
     expect(mockPush).toHaveBeenCalledWith('/studies/note-redirect');
-  });
-
-  it('supports keyboard toggle on the header to route, and ignores nested buttons', async () => {
-    const onEdit = jest.fn();
-    const noteWithTitle = createTestNote({ id: 'note-3b', title: 'Keyboard Note' });
-
-    render(
-      <StudyNoteCard
-        note={noteWithTitle}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={onEdit}
-        onDelete={jest.fn()}
-        onAnalyze={jest.fn()}
-      />
-    );
-
-    const headerToggle = screen.getByRole('button', { name: /Keyboard Note/i });
-    headerToggle.focus();
-    await userEvent.keyboard('{Enter}');
-    expect(mockPush).toHaveBeenCalledWith('/studies/note-3b');
-
-    const editButton = screen.getByRole('button', { name: 'common.edit' });
-    editButton.focus();
-    await userEvent.keyboard('{Enter}');
-
-    expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(onEdit).toHaveBeenCalledWith(noteWithTitle);
   });
 
   it('applies responsive classes to the title', () => {
@@ -159,8 +68,6 @@ describe('StudyNoteCard', () => {
         bibleLocale="en"
         isExpanded={false}
         onEdit={jest.fn()}
-        onDelete={jest.fn()}
-        onAnalyze={jest.fn()}
       />
     );
 
@@ -169,83 +76,7 @@ describe('StudyNoteCard', () => {
     expect(heading).toHaveClass('leading-tight');
   });
 
-  it('shows Edit button in header and calls onEdit when clicked', async () => {
-    const onEdit = jest.fn();
-    const note = createTestNote({ id: 'note-5', title: 'Card with header buttons' });
 
-    render(
-      <StudyNoteCard
-        note={note}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={onEdit}
-        onDelete={jest.fn()}
-        onAnalyze={jest.fn()}
-      />
-    );
-
-    const editButton = screen.getByRole('button', { name: 'common.edit' });
-    expect(editButton).toBeInTheDocument();
-
-    await userEvent.click(editButton);
-    expect(onEdit).toHaveBeenCalledWith(note);
-  });
-
-  it('shows Delete button in header and calls onDelete when clicked', async () => {
-    const onDelete = jest.fn();
-    const note = createTestNote({ id: 'note-6', title: 'Delete me' });
-
-    // Mock confirm to return true
-    const originalConfirm = window.confirm;
-    window.confirm = jest.fn(() => true);
-
-    render(
-      <StudyNoteCard
-        note={note}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={jest.fn()}
-        onDelete={onDelete}
-        onAnalyze={jest.fn()}
-      />
-    );
-
-    const deleteButton = screen.getByRole('button', { name: 'common.delete' });
-    expect(deleteButton).toBeInTheDocument();
-
-    await userEvent.click(deleteButton);
-    expect(window.confirm).toHaveBeenCalledWith('studiesWorkspace.deleteConfirm');
-    expect(onDelete).toHaveBeenCalledWith(note.id);
-
-    window.confirm = originalConfirm;
-  });
-
-  it('does not call onDelete when confirm is cancelled', async () => {
-    const onDelete = jest.fn();
-    const note = createTestNote({ id: 'note-7', title: 'Do not delete' });
-
-    const originalConfirm = window.confirm;
-    window.confirm = jest.fn(() => false);
-
-    render(
-      <StudyNoteCard
-        note={note}
-        bibleLocale="en"
-        isExpanded={false}
-        onEdit={jest.fn()}
-        onDelete={onDelete}
-        onAnalyze={jest.fn()}
-      />
-    );
-
-    const deleteButton = screen.getByRole('button', { name: 'common.delete' });
-    await userEvent.click(deleteButton);
-
-    expect(window.confirm).toHaveBeenCalled();
-    expect(onDelete).not.toHaveBeenCalled();
-
-    window.confirm = originalConfirm;
-  });
 
   describe('Search Highlighting', () => {
     it('highlights matching text in title when searchQuery is provided', () => {
@@ -261,7 +92,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Bible"
         />
       );
@@ -284,7 +114,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery=""
         />
       );
@@ -305,7 +134,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={true}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Bible"
         />
       );
@@ -329,7 +157,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="ru"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Библия"
         />
       );
@@ -353,7 +180,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={true}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="faith"
         />
       );
@@ -379,7 +205,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={true}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Genesis"
         />
       );
@@ -407,7 +232,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false} // Collapsed!
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="uniqueTag"
         />
       );
@@ -425,7 +249,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false} // Collapsed!
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Exodus"
         />
       );
@@ -450,7 +273,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Genesis"
         />
       );
@@ -474,7 +296,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="Unique"
         />
       );
@@ -495,7 +316,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           searchQuery="missing"
         />
       );
@@ -519,8 +339,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
-          onAnalyze={jest.fn()}
         />
       );
 
@@ -543,8 +361,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={true}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
-          onAnalyze={jest.fn()}
         />
       );
 
@@ -570,7 +386,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           onShare={onShare}
           hasShareLink={false}
         />
@@ -597,7 +412,6 @@ describe('StudyNoteCard', () => {
           bibleLocale="en"
           isExpanded={false}
           onEdit={jest.fn()}
-          onDelete={jest.fn()}
           onShare={onShare}
           hasShareLink={true}
         />

@@ -35,8 +35,6 @@ export default function StudiesPage() {
     notes,
     loading: notesLoading,
     error: notesError,
-    updateNote,
-    deleteNote,
   } = useStudyNotes();
   const {
     shareLinks,
@@ -91,8 +89,6 @@ export default function StudiesPage() {
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [allExpanded, setAllExpanded] = useState(false);
 
-  // AI analysis state (for inline card analysis)
-  const [analyzingNoteId, setAnalyzingNoteId] = useState<string | null>(null);
 
   // Merge available tags with tags from notes
   const tagOptions = useMemo(() => {
@@ -235,75 +231,6 @@ export default function StudiesPage() {
     router.push('/studies/new');
   };
 
-
-  const handleAnalyzeNote = async (note: StudyNote) => {
-    if (!note.content.trim()) return;
-
-    setAnalyzingNoteId(note.id);
-
-    try {
-      const response = await fetch('/api/studies/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: note.content,
-          existingTags: tagOptions,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success || !result.data) {
-        console.error('Analysis failed:', result.error);
-        return;
-      }
-
-      const { title, scriptureRefs, tags } = result.data;
-
-      // Update note with AI results
-      const updates: Partial<StudyNote> = {};
-
-      if (!note.title && title) {
-        updates.title = title;
-      }
-
-      if (scriptureRefs?.length > 0) {
-        const newRefs = scriptureRefs
-          .filter((newRef: { book: string; chapter: number; fromVerse: number; toVerse?: number }) =>
-            !note.scriptureRefs.some(
-              (existing) =>
-                existing.book === newRef.book &&
-                existing.chapter === newRef.chapter &&
-                existing.fromVerse === newRef.fromVerse &&
-                existing.toVerse === newRef.toVerse
-            )
-          )
-          .map((ref: { book: string; chapter: number; fromVerse: number; toVerse?: number }) => ({
-            ...ref,
-            id: crypto.randomUUID(),
-          }));
-
-        if (newRefs.length > 0) {
-          updates.scriptureRefs = [...note.scriptureRefs, ...newRefs];
-        }
-      }
-
-      if (tags?.length > 0) {
-        const newTags = tags.filter((t: string) => !note.tags.includes(t));
-        if (newTags.length > 0) {
-          updates.tags = [...note.tags, ...newTags];
-        }
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await updateNote({ id: note.id, updates });
-      }
-    } catch (error) {
-      console.error('AI analysis error:', error);
-    } finally {
-      setAnalyzingNoteId(null);
-    }
-  };
 
   const handleShareNote = useCallback((note: StudyNote) => {
     setShareNote(note);
@@ -552,9 +479,6 @@ export default function StudiesPage() {
               bibleLocale={bibleLocale}
               isExpanded={expandedNoteIds.has(note.id)}
               onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
-              onDelete={(noteId) => deleteNote(noteId)}
-              onAnalyze={handleAnalyzeNote}
-              isAnalyzing={analyzingNoteId === note.id}
               searchQuery={searchQuery}
               onShare={handleShareNote}
               hasShareLink={shareLinksByNoteId.has(note.id)}
