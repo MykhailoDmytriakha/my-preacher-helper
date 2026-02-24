@@ -343,7 +343,7 @@ export default function SeriesDetailPage() {
 
             <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-500 dark:text-gray-400">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/40 px-3 py-1 ring-1 ring-gray-100/50 dark:bg-gray-900/40 dark:ring-gray-800/50">
-                {t('workspaces.series.detail.sermonCount', {
+                {t('workspaces.series.detail.itemCount', {
                   count: stats.total,
                   defaultValue: `${stats.total} items`,
                 })}
@@ -392,7 +392,7 @@ export default function SeriesDetailPage() {
         </div>
         <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('calendar.analytics.totalPreachings', { defaultValue: 'Meetings' })}
+            {t('workspaces.series.detail.conductedMeetings', { defaultValue: 'Meetings' })}
           </p>
           <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">
             {stats.conductedGroups}

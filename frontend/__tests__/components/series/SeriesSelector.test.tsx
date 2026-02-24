@@ -18,16 +18,21 @@ jest.mock('@/providers/AuthProvider', () => ({
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
         'workspaces.series.actions.selectSeries': 'Select Series',
         'workspaces.series.actions.selectSeriesForAdd': 'Add to Series',
         'workspaces.series.actions.selectSeriesForChange': 'Change Series',
         'common.search': 'Search series...',
         'workspaces.series.loadingSeries': 'Loading series...',
-        'workspaces.series.errors.addSermonFailed': 'Failed to add sermon to series'
+        'workspaces.series.errors.addSermonFailed': 'Failed to add sermon to series',
+        'workspaces.series.detail.sermonCount': '{{count}} sermons'
       };
-      return translations[key] || key;
+      const template = translations[key] || key;
+      if (options && typeof options.count !== 'undefined') {
+        return template.replace('{{count}}', String(options.count));
+      }
+      return template;
     }
   })
 }));

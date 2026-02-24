@@ -131,7 +131,7 @@ export default function SeriesPage() {
             <BookOpenIcon className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Total series</p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.total')}</p>
             <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.total}</p>
           </div>
         </div>
@@ -140,7 +140,7 @@ export default function SeriesPage() {
             <ClipboardDocumentListIcon className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Active</p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.active')}</p>
             <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.active}</p>
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function SeriesPage() {
             <ClockIcon className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Drafts</p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.drafts')}</p>
             <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.drafts}</p>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function SeriesPage() {
             <CheckCircleIcon className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Completed</p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.completed')}</p>
             <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.completed}</p>
           </div>
         </div>
@@ -194,7 +194,7 @@ export default function SeriesPage() {
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="appearance-none w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               >
-                <option value="all">All statuses</option>
+                <option value="all">{t('workspaces.series.filter.allStatuses')}</option>
                 <option value="active">{t('workspaces.series.form.statuses.active')}</option>
                 <option value="draft">{t('workspaces.series.form.statuses.draft')}</option>
                 <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
@@ -210,9 +210,9 @@ export default function SeriesPage() {
                 onChange={(e) => setSort(e.target.value as SortOption)}
                 className="appearance-none w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               >
-                <option value="recent">Newest first</option>
-                <option value="title">Title A-Z</option>
-                <option value="sermons">Most sermons</option>
+                <option value="recent">{t('workspaces.series.sort.newest')}</option>
+                <option value="title">{t('workspaces.series.sort.titleAZ')}</option>
+                <option value="sermons">{t('workspaces.series.sort.mostSermons')}</option>
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
                 <ChevronIcon direction="down" className="h-4 w-4" />

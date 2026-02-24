@@ -923,7 +923,8 @@
       "monthModalTitle": "Проповіді у {{month}}",
       "monthModalCount": "{{count}} проповідей",
       "monthModalEmpty": "У цьому місяці ще немає проповідей",
-      "other": "Інші"
+      "other": "Інші",
+      "daysUnit": "дн."
     },
     "churchAutocomplete": {
       "placeholder": "Введіть назву церкви...",
@@ -1485,6 +1486,20 @@
         "selectedCount": "{{count}} вибрано",
         "addGroup": "Додати групу"
       },
+      "stats": {
+        "total": "Усього серій",
+        "active": "Активні",
+        "drafts": "Чернетки",
+        "completed": "Завершені"
+      },
+      "filter": {
+        "allStatuses": "Всі статуси"
+      },
+      "sort": {
+        "newest": "Спочатку нові",
+        "titleAZ": "Назва А-Я",
+        "mostSermons": "Більше проповідей"
+      },
       "detail": {
         "sermonsInSeries": "Проповіді в цій серії",
         "noSermons": "Поки немає проповідей у цій серії",
@@ -1492,6 +1507,8 @@
         "dragToReorder": "Перетягуйте проповіді для зміни порядку",
         "sermonCount": "{{count}} проповідь(ей)",
         "groupCount": "{{count}} груп(-а/-и)",
+        "itemCount": "{{count}} елемент(ів)",
+        "conductedMeetings": "Проведено зустрічей",
         "duration": "Тривалість",
         "completedCount": "{{completed}} із {{total}} завершено",
         "selectSermonsTitle": "Виберіть проповіді",

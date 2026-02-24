@@ -139,7 +139,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                         </h3>
                     </div>
                     <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                        {stats.avgPrepTime} <span className="text-sm font-normal text-gray-500">days</span>
+                        {stats.avgPrepTime} <span className="text-sm font-normal text-gray-500">{t('calendar.analytics.daysUnit')}</span>
                     </p>
                 </div>
 

@@ -132,7 +132,7 @@ export default function SeriesSelector({ onClose, onSelect, currentSeriesId, mod
                           •
                         </span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {s.sermonIds.length} sermons
+                          {t('workspaces.series.detail.sermonCount', { count: s.sermonIds.length })}
                         </span>
                       </div>
                     </div>

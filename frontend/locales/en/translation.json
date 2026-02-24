@@ -923,7 +923,8 @@
       "monthModalTitle": "Sermons in {{month}}",
       "monthModalCount": "{{count}} sermons",
       "monthModalEmpty": "No sermons for this month yet",
-      "other": "Other"
+      "other": "Other",
+      "daysUnit": "days"
     },
     "churchAutocomplete": {
       "placeholder": "Enter church name...",
@@ -1485,6 +1486,20 @@
         "selectedCount": "{{count}} selected",
         "addGroup": "Add Group"
       },
+      "stats": {
+        "total": "Total series",
+        "active": "Active",
+        "drafts": "Drafts",
+        "completed": "Completed"
+      },
+      "filter": {
+        "allStatuses": "All statuses"
+      },
+      "sort": {
+        "newest": "Newest first",
+        "titleAZ": "Title A-Z",
+        "mostSermons": "Most sermons"
+      },
       "detail": {
         "sermonsInSeries": "Sermons in this series",
         "noSermons": "No sermons in this series yet",
@@ -1492,6 +1507,8 @@
         "dragToReorder": "Drag sermons to reorder them",
         "sermonCount": "{{count}} sermon(s)",
         "groupCount": "{{count}} group(s)",
+        "itemCount": "{{count}} item(s)",
+        "conductedMeetings": "Conducted meetings",
         "duration": "Duration",
         "completedCount": "{{completed}} of {{total}} completed",
         "selectSermonsTitle": "Select Sermons",

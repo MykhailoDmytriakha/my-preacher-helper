@@ -923,7 +923,8 @@
       "monthModalTitle": "Проповеди в {{month}}",
       "monthModalCount": "{{count}} проповедей",
       "monthModalEmpty": "В этом месяце еще нет проповедей",
-      "other": "Другое"
+      "other": "Другое",
+      "daysUnit": "дн."
     },
     "churchAutocomplete": {
       "placeholder": "Введите название церкви...",
@@ -1485,6 +1486,20 @@
         "selectedCount": "{{count}} выбрано",
         "addGroup": "Добавить группу"
       },
+      "stats": {
+        "total": "Всего серий",
+        "active": "Активные",
+        "drafts": "Черновики",
+        "completed": "Завершённые"
+      },
+      "filter": {
+        "allStatuses": "Все статусы"
+      },
+      "sort": {
+        "newest": "Сначала новые",
+        "titleAZ": "Название А-Я",
+        "mostSermons": "Больше проповедей"
+      },
       "detail": {
         "sermonsInSeries": "Проповеди в этой серии",
         "noSermons": "Пока нет проповедей в этой серии",
@@ -1492,6 +1507,8 @@
         "dragToReorder": "Перетаскивайте проповеди для изменения порядка",
         "sermonCount": "{{count}} проповедь(ей)",
         "groupCount": "{{count}} групп(-а/-ы)",
+        "itemCount": "{{count}} элемент(ов)",
+        "conductedMeetings": "Проведено встреч",
         "duration": "Длительность",
         "completedCount": "{{completed}} из {{total}} завершено",
         "selectSermonsTitle": "Выберите проповеди",
