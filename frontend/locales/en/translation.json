@@ -652,6 +652,7 @@
     "moveDown": "Move down",
     "edit": "Edit",
     "delete": "Delete",
+    "remove": "Remove",
     "add": "Add",
     "saving": "Saving...",
     "deleting": "Deleting...",
@@ -1552,7 +1553,8 @@
         "create": "Create Group",
         "newGroup": "New Group",
         "delete": "Delete",
-        "deleteConfirm": "Delete this group permanently?"
+        "deleteConfirm": "Delete this group permanently?",
+        "assignToSeries": "Assign to series"
       },
       "access": {
         "disabledTitle": "Groups workspace is disabled",
@@ -1605,6 +1607,8 @@
       "itemsLabel": {
         "templates": "Templates",
         "flowSteps": "Flow steps",
+        "readiness": "Ready",
+        "duration": "Min",
         "meetings": "Meetings",
         "nextMeeting": "Next meeting",
         "lastMeeting": "Last meeting",
@@ -1620,7 +1624,9 @@
         "created": "Group created successfully",
         "saved": "Group saved successfully",
         "meetingAdded": "Meeting added successfully",
-        "deleted": "Group deleted successfully"
+        "deleted": "Group deleted successfully",
+        "seriesAssigned": "Assigned to series",
+        "seriesUnlinked": "Unlinked from series"
       },
       "preview": {
         "title": "Filled blocks preview",
@@ -1631,7 +1637,9 @@
         "createFailed": "Failed to create group",
         "updateFailed": "Failed to update group",
         "meetingAddFailed": "Failed to add meeting",
-        "deleteFailed": "Failed to delete group"
+        "deleteFailed": "Failed to delete group",
+        "seriesAssignFailed": "Failed to assign series",
+        "seriesUnlinkFailed": "Failed to unlink series"
       }
     }
   },

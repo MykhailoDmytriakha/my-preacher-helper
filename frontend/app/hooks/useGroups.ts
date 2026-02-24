@@ -19,7 +19,6 @@ export function useGroups(userId?: string | null) {
   const {
     data: groups = [],
     isLoading,
-    isFetching,
     error,
   } = useServerFirstQuery({
     queryKey: buildQueryKey(effectiveUserId),
@@ -104,7 +103,7 @@ export function useGroups(userId?: string | null) {
 
   return {
     groups,
-    loading: isLoading || isFetching,
+    loading: isLoading,
     error: (error as Error | null) ?? mutationError,
     refreshGroups,
     createNewGroup: (payload: Omit<Group, 'id'>) =>

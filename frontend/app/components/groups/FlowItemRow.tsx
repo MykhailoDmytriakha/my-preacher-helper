@@ -15,10 +15,10 @@ import { useTranslation } from 'react-i18next';
 
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
-const STATUS_COLORS: Record<string, { dot: string; label: string }> = {
-    empty: { dot: 'bg-gray-300 dark:bg-gray-600', label: 'Empty' },
-    draft: { dot: 'bg-amber-400 dark:bg-amber-500', label: 'Draft' },
-    filled: { dot: 'bg-emerald-500 dark:bg-emerald-400', label: 'Filled' },
+const STATUS_DOT: Record<string, string> = {
+    empty: 'bg-gray-300 dark:bg-gray-600',
+    draft: 'bg-amber-400 dark:bg-amber-500',
+    filled: 'bg-emerald-500 dark:bg-emerald-400',
 };
 
 interface FlowItemRowProps {
@@ -52,7 +52,9 @@ export default function FlowItemRow({
 }: FlowItemRowProps) {
     const { t } = useTranslation();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [openUpwards, setOpenUpwards] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
 
     const {
         attributes,
@@ -70,7 +72,7 @@ export default function FlowItemRow({
         zIndex: isDragging ? 10 : (menuOpen ? 50 : 1),
     };
 
-    const statusInfo = STATUS_COLORS[template.status];
+    const statusDot = STATUS_DOT[template.status] ?? STATUS_DOT.empty;
     const displayTitle = flowItem.instanceTitle || template.title;
     const contentSnippet = template.content?.trim();
 
@@ -127,10 +129,12 @@ export default function FlowItemRow({
                     event.stopPropagation();
                     onStatusCycle();
                 }}
-                title={t(`groupFlow.status.${template.status}`, { defaultValue: statusInfo.label })}
+                title={t(`groupFlow.status.${template.status}`, {
+                    defaultValue: template.status.charAt(0).toUpperCase() + template.status.slice(1)
+                })}
                 className="flex-shrink-0 group/dot relative"
             >
-                <span className={`block h-3 w-3 rounded-full ${statusInfo.dot} transition-transform hover:scale-125 ring-2 ring-white dark:ring-gray-800`} />
+                <span className={`block h-3 w-3 rounded-full ${statusDot} transition-transform hover:scale-125 ring-2 ring-white dark:ring-gray-800`} />
             </button>
 
             {/* Number */}
@@ -146,7 +150,7 @@ export default function FlowItemRow({
                     </span>
                 </div>
                 {contentSnippet && (
-                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words">
                         {contentSnippet}
                     </p>
                 )}
@@ -162,9 +166,16 @@ export default function FlowItemRow({
             {/* Three-dot menu */}
             <div ref={menuRef} className="relative flex-shrink-0">
                 <button
+                    ref={buttonRef}
                     type="button"
                     onClick={(event) => {
                         event.stopPropagation();
+                        if (!menuOpen && buttonRef.current) {
+                            const rect = buttonRef.current.getBoundingClientRect();
+                            const spaceBelow = window.innerHeight - rect.bottom;
+                            // ~200px is enough for the popup menu's max height + padding
+                            setOpenUpwards(spaceBelow < 200);
+                        }
                         setMenuOpen((prev) => !prev);
                     }}
                     className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 focus:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
@@ -174,7 +185,10 @@ export default function FlowItemRow({
                 </button>
 
                 {menuOpen && (
-                    <div className="absolute right-0 top-full z-30 mt-1 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                    <div
+                        className={`absolute right-0 z-30 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800 ${openUpwards ? "bottom-full mb-1" : "top-full mt-1"
+                            }`}
+                    >
                         {!isFirst && (
                             <button
                                 type="button"

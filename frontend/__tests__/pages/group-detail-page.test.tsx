@@ -22,6 +22,13 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
+jest.mock('lodash/debounce', () => jest.fn((fn) => {
+  const debounced = (...args: any[]) => fn(...args);
+  debounced.cancel = jest.fn();
+  debounced.flush = jest.fn();
+  return debounced;
+}));
+
 jest.mock('@dnd-kit/core', () => ({
   DndContext: ({ children, onDragEnd }: any) => (
     <div data-testid="dnd-context">
@@ -68,6 +75,10 @@ jest.mock('@/hooks/useGroupDetail', () => ({
   useGroupDetail: jest.fn(),
 }));
 
+jest.mock('@/hooks/useSeries', () => ({
+  useSeries: jest.fn(() => ({ series: [{ id: 'mock-series-1', title: 'Mock Series', color: '#000000' }] })),
+}));
+
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' } }),
 }));
@@ -90,9 +101,20 @@ jest.mock('sonner', () => ({
   },
 }));
 
+jest.mock('@/components/series/SeriesSelector', () => ({
+  __esModule: true,
+  default: ({ onSelect, onClose }: any) => (
+    <div data-testid="series-selector-mock">
+      <button onClick={() => onSelect('mock-series-1')}>Select Mock Series</button>
+      <button onClick={onClose}>Close Selector</button>
+    </div>
+  ),
+}));
+
 const mockUseGroupDetail = useGroupDetail as jest.MockedFunction<typeof useGroupDetail>;
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
+const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
 
 const createMockGroup = (overrides: Partial<any> = {}) =>
   ({
@@ -223,6 +245,23 @@ describe('GroupDetailPage', () => {
     (window as any).confirm = jest.fn(() => false);
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
     expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows error toast when deleting group fails', async () => {
+    deleteGroupDetail.mockRejectedValueOnce(new Error('Delete failed'));
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+
+    await waitFor(() => {
+      expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
+      expect(mockToastError).toHaveBeenCalledWith('Failed to delete group');
+    });
   });
 
   it('shows disabled message when groups feature is off', async () => {
@@ -419,6 +458,124 @@ describe('GroupDetailPage', () => {
     });
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('handles assigning a group to a series', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({ seriesId: null }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Assign to series' })).toBeInTheDocument();
+    });
+
+    // Open the selector modal
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument();
+    });
+
+    // Select a series from the mock
+    fireEvent.click(screen.getByText('Select Mock Series'));
+
+    await waitFor(() => {
+      // The old test checked for 'Part of a series' as the link name, but now we expect the matched series title
+      // We mocked useSeries with { series: [{ id: 'mock-series-1', ... }] } above, so if the group has seriesId: 'mock-series-1', it shows the title 'Mock Series'.
+      // In the current test group, seriesId is 'mock-series-1' assigned above.
+      expect(updateGroupDetail).toHaveBeenCalledWith(
+        expect.objectContaining({ seriesId: 'mock-series-1' })
+      );
+      expect(mockToastSuccess).toHaveBeenCalledWith('Assigned to series');
+      expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument(); // modal closes
+    });
+  });
+
+  it('handles editing and unlinking an existing series assignment', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({ seriesId: 'mock-series-1' }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Mock Series' })).toHaveAttribute('href', '/series/mock-series-1');
+    });
+
+    // Edit flow
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument());
+
+    // Test the close button mechanism of the mock
+    fireEvent.click(screen.getByText('Close Selector'));
+    await waitFor(() => expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument());
+
+    // Unlink flow
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => {
+      expect(updateGroupDetail).toHaveBeenCalledWith(
+        expect.objectContaining({ seriesId: null })
+      );
+      expect(mockToastSuccess).toHaveBeenCalledWith('Unlinked from series');
+    });
+  });
+
+  it('shows error toast when assigning series fails', async () => {
+    updateGroupDetail.mockRejectedValueOnce(new Error('Assign series failed'));
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Assign to series' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
+    await waitFor(() => expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Select Mock Series'));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('Failed to assign series');
+    });
+  });
+
+  it('shows error toast when unlinking series fails', async () => {
+    mockUseGroupDetail.mockReturnValue({
+      group: createMockGroup({ seriesId: 'mock-series-1' }),
+      loading: false,
+      error: null,
+      updateGroupDetail,
+      addMeetingDate,
+      updateMeetingDate,
+      removeMeetingDate,
+      deleteGroupDetail,
+    } as any);
+
+    updateGroupDetail.mockRejectedValueOnce(new Error('Unlink series failed'));
+
+    render(<GroupDetailPage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('Failed to unlink series');
+    });
   });
 
   // This test uses fake timers and must be last to avoid polluting other tests

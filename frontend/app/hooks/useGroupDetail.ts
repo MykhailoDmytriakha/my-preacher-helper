@@ -21,7 +21,7 @@ export function useGroupDetail(groupId: string) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
 
-  const { data, isLoading, isFetching, error, refetch } = useServerFirstQuery<Group | null>({
+  const { data, isLoading, error, refetch } = useServerFirstQuery<Group | null>({
     queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId],
     enabled: !!groupId,
     queryFn: async () => {
@@ -45,9 +45,11 @@ export function useGroupDetail(groupId: string) {
       if (!group) return;
       setMutationError(null);
       try {
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId] });
         const updated = await updateGroup(group.id, updates);
         queryClient.setQueryData([QUERY_KEYS.GROUP_DETAIL, groupId], updated);
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS] });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId], refetchType: 'none' });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS], refetchType: 'none' });
       } catch (errorValue: unknown) {
         const normalized =
           errorValue instanceof Error ? errorValue : new Error(String(errorValue));
@@ -129,7 +131,7 @@ export function useGroupDetail(groupId: string) {
 
   return {
     group,
-    loading: isLoading || isFetching,
+    loading: isLoading,
     error: (error as Error | null) ?? mutationError,
     refreshGroupDetail,
     updateGroupDetail,

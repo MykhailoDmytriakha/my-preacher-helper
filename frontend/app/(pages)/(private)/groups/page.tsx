@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import CreateGroupModal from '@/components/groups/CreateGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
 import { useGroups } from '@/hooks/useGroups';
+import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
@@ -21,6 +22,7 @@ export default function GroupsPage() {
   const [accessLoading, setAccessLoading] = useState(true);
   const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
   const { groups, loading, error, refreshGroups, createNewGroup, deleteExistingGroup } = useGroups(groupsUserId);
+  const { series } = useSeries(groupsUserId);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
 
@@ -249,6 +251,7 @@ export default function GroupsPage() {
             <GroupCard
               key={group.id}
               group={group}
+              series={series}
               onDelete={() => handleDeleteGroup(group)}
               deleting={deletingGroupId === group.id}
             />

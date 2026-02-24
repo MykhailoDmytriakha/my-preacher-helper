@@ -8,6 +8,10 @@ jest.mock('@/hooks/useGroups', () => ({
   useGroups: jest.fn(),
 }));
 
+jest.mock('@/hooks/useSeries', () => ({
+  useSeries: jest.fn(() => ({ series: [] })),
+}));
+
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: jest.fn(() => ({ user: { uid: 'user-1' } })),
 }));

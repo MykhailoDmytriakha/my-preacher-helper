@@ -2,19 +2,21 @@
 
 import {
   CalendarDaysIcon,
-  DocumentDuplicateIcon,
+  CheckCircleIcon,
+  ClockIcon,
   EllipsisVerticalIcon,
-  Squares2X2Icon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Group } from '@/models/models';
+import { Group, Series } from '@/models/models';
+import { getContrastColor } from '@/utils/color';
 
 interface GroupCardProps {
   group: Group;
+  series?: Series[];
   onDelete?: () => void;
   deleting?: boolean;
 }
@@ -80,12 +82,23 @@ const formatMeetingDate = (value: string): string | null => {
   }).format(parsed);
 };
 
-export default function GroupCard({ group, onDelete, deleting = false }: GroupCardProps) {
+export default function GroupCard({ group, series = [], onDelete, deleting = false }: GroupCardProps) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const meetingCount = (group.meetingDates || []).length;
+  const totalBlocks = (group.flow || []).length;
+  const filledCount = (group.templates || []).filter((t) => t.status === 'filled').length;
+  const totalDuration = (group.flow || []).reduce((sum, item) => sum + (item.durationMin || 0), 0);
+
+  const readinessColor =
+    totalBlocks === 0
+      ? 'text-gray-400 dark:text-gray-500'
+      : filledCount === totalBlocks
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : filledCount > 0
+          ? 'text-amber-500 dark:text-amber-400'
+          : 'text-gray-500 dark:text-gray-400';
   const primaryMeetingDate = resolvePrimaryMeetingDate(group.meetingDates);
   const meetingDateLabel = primaryMeetingDate?.isUpcoming
     ? t('workspaces.groups.itemsLabel.nextMeeting', { defaultValue: 'Next meeting' })
@@ -94,6 +107,13 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
     ? (formatMeetingDate(primaryMeetingDate.date) ||
       t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' }))
     : t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' });
+
+  const groupSeries = (() => {
+    if (group.seriesId && group.seriesId.trim()) {
+      return series?.find(s => s.id === group.seriesId);
+    }
+    return undefined;
+  })();
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -176,21 +196,21 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
 
         <div className="mt-auto grid grid-cols-3 gap-2 pt-4 text-xs text-gray-600 dark:text-gray-300">
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
-            <div className="inline-flex items-center gap-1">
-              <DocumentDuplicateIcon className="h-3.5 w-3.5" />
-              <span>{(group.templates || []).length}</span>
+            <div className={`inline-flex items-center gap-1 ${readinessColor}`}>
+              <CheckCircleIcon className="h-3.5 w-3.5" />
+              <span className="font-medium">{filledCount}/{totalBlocks}</span>
             </div>
             <div className="mt-1 text-[11px] opacity-80">
-              {t('workspaces.groups.itemsLabel.templates', { defaultValue: 'Templates' })}
+              {t('workspaces.groups.itemsLabel.readiness', { defaultValue: 'Ready' })}
             </div>
           </div>
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
             <div className="inline-flex items-center gap-1">
-              <Squares2X2Icon className="h-3.5 w-3.5" />
-              <span>{(group.flow || []).length}</span>
+              <ClockIcon className="h-3.5 w-3.5" />
+              <span>{totalDuration > 0 ? `${totalDuration}` : '—'}</span>
             </div>
             <div className="mt-1 text-[11px] opacity-80">
-              {t('workspaces.groups.itemsLabel.flowSteps', { defaultValue: 'Flow' })}
+              {t('workspaces.groups.itemsLabel.duration', { defaultValue: 'Min' })}
             </div>
           </div>
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
@@ -203,10 +223,26 @@ export default function GroupCard({ group, onDelete, deleting = false }: GroupCa
         </div>
       </Link>
 
-      <div className="mt-4 flex items-center border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-        <span>
-          {t('workspaces.groups.itemsLabel.meetings', { defaultValue: 'Meetings' })}: {meetingCount}
-        </span>
+      <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        <div className="flex items-center gap-2">
+          {groupSeries && (
+            <span
+              className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px] cursor-pointer"
+              style={groupSeries.color ? {
+                backgroundColor: groupSeries.color,
+                color: getContrastColor(groupSeries.color),
+              } : {}}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.location.href = `/series/${groupSeries.id}`;
+              }}
+              title={groupSeries.title}
+            >
+              <span className="truncate">{groupSeries.title}</span>
+            </span>
+          )}
+        </div>
       </div>
     </article>
   );

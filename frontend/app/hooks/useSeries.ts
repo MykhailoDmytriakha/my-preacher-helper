@@ -80,9 +80,9 @@ export function useSeries(userId?: string | null) {
       queryClient.setQueryData<SeriesDetailCache | undefined>([QUERY_KEYS.SERIES_DETAIL, updated.id], (prev) =>
         prev
           ? {
-              ...prev,
-              series: { ...(prev.series ?? {} as Series), ...updated },
-            }
+            ...prev,
+            series: { ...(prev.series ?? {} as Series), ...updated },
+          }
           : prev
       );
       setMutationError(null);
@@ -196,7 +196,7 @@ export function useSeries(userId?: string | null) {
 
   return {
     series,
-    loading: isLoading || isFetching,
+    loading: isLoading,
     error: (error as Error | null) ?? mutationError,
     refreshSeries,
     createNewSeries,

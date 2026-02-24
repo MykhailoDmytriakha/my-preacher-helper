@@ -141,10 +141,10 @@ describe('useSeries', () => {
 
   describe('createNewSeries', () => {
     it('should create a new series and update state', async () => {
-    const newSeriesData = {
-      userId: 'user-1',
-      title: 'New Series',
-      theme: 'New Theme',
+      const newSeriesData = {
+        userId: 'user-1',
+        title: 'New Series',
+        theme: 'New Theme',
         description: 'New Description',
         bookOrTopic: 'New Book',
         sermonIds: [],
@@ -229,6 +229,33 @@ describe('useSeries', () => {
       expect(result.current.error).toBeNull();
     });
 
+    it('should update SERIES_DETAIL cache if it exists', async () => {
+      const updates = { title: 'Updated Title', theme: 'Updated Theme' };
+      const updatedSeries = { ...mockSeries[0], ...updates };
+      mockUpdateSeries.mockResolvedValue(updatedSeries);
+
+      // We need queryClient to have some cache data
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(['series-detail', 'series-1'], { series: mockSeries[0], other: 'data' });
+
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.updateExistingSeries('series-1', updates);
+      });
+
+      // Verify the cache was updated correctly
+      const cached = queryClient.getQueryData<any>(['series-detail', 'series-1']);
+      expect(cached).toEqual({
+        series: updatedSeries,
+        other: 'data'
+      });
+    });
+
     it('should handle update error and set error state', async () => {
       const error = new Error('Update failed');
       mockUpdateSeries.mockRejectedValue(error);
@@ -244,6 +271,18 @@ describe('useSeries', () => {
       // Wait for error state to be set
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
+      });
+    });
+
+    it('should handle offline error in mutationGuard', async () => {
+      mockUseOnlineStatus.mockReturnValue(false);
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
+
+      await expect(result.current.updateExistingSeries('series-1', {})).rejects.toThrow('Offline: operation not available.');
+
+      await waitFor(() => {
+        expect(result.current.error).toBeInstanceOf(Error);
+        expect((result.current.error as Error).message).toBe('Offline: operation not available.');
       });
     });
   });
@@ -421,6 +460,24 @@ describe('useSeries', () => {
 
       expect(result.current.series).toEqual(newSeries);
       expect(mockGetAllSeries).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle refresh error', async () => {
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
+
+      const error = new Error('Refresh failed');
+      mockGetAllSeries.mockRejectedValueOnce(error); // first load error
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      mockGetAllSeries.mockRejectedValueOnce(error); // refresh error
+      await act(async () => {
+        await expect(result.current.refreshSeries()).rejects.toThrow('Refresh failed');
+      });
+
+      expect(result.current.error).toEqual(error);
     });
   });
 });

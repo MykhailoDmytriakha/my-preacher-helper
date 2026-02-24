@@ -58,7 +58,6 @@ describe('GroupCard', () => {
     expect(screen.getByText('Family Group')).toBeInTheDocument();
     expect(screen.getByText('Weekly meeting')).toBeInTheDocument();
     expect(screen.getByText('Next meeting')).toBeInTheDocument();
-    expect(screen.getByText('Meetings: 2')).toBeInTheDocument();
     expect(screen.getByRole('link').getAttribute('href')).toBe('/groups/g1');
   });
 
@@ -162,5 +161,39 @@ describe('GroupCard', () => {
     // Menu should show deleting state when opened
     fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('button', { name: 'Deleting...' })).toBeDisabled();
+  });
+
+  it('renders series badge and handles series click', () => {
+    const originalLocation = window.location;
+    // @ts-ignore
+    delete window.location;
+    window.location = { href: '' } as unknown as Location;
+
+    const group = {
+      id: 'g1',
+      userId: 'user-1',
+      title: 'Group 1',
+      status: 'active',
+      templates: [],
+      flow: [],
+      meetingDates: [],
+      createdAt: 'x',
+      updatedAt: 'x',
+      seriesId: 's1',
+      seriesPosition: null,
+    };
+
+    // @ts-ignore
+    const series = [{ id: 's1', title: 'Test Series Badge', color: '#ff0000' }];
+
+    render(<GroupCard group={group as any} series={series as any} />);
+
+    const badge = screen.getByText('Test Series Badge');
+    expect(badge).toBeInTheDocument();
+
+    fireEvent.click(badge);
+    expect(window.location.href).toBe('/series/s1');
+
+    window.location = originalLocation as unknown as Location;
   });
 });

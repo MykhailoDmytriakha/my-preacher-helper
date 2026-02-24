@@ -49,6 +49,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-23 React Query Optimistic Sync & Transient Render Destruction
+**Problem:** The group details page form flickered, continuously wiped user input during auto-save, and sometimes completely unmounted into a full-page Skeleton loader.
+**Attempts:** Added `invalidateQueries` which fixed the cache sync but caused the flicker.
+**Solution:** (1) Switched `invalidateQueries()` to `cancelQueries()` + `refetchType: 'none'`. (2) Removed `isFetching` from the `loading` boolean export in custom hooks. (3) Stabilized debounce callbacks with refs in `useAutoSave` to prevent infinitely regenerating `debounce` instances on every keystroke.
+**Why it worked:** `refetchType: 'none'` marks the optimistic cache as stale (triggering IndexedDB sync) without firing an immediate background refetch that overwrites local state. Removing `isFetching` prevents the UI from falling back to initial loading states during these background syncs. Ref-based debouncing ensures function identity remains stable across renders.
+**Principle:** For optimistic auto-save forms, use `cancelQueries` + `refetchType: 'none'` to persist cache without refetching, and never include `isFetching` in the primary `loading` state that drives full-page skeletons.
+
 ### 2026-02-23 UI Simplification via TRIZ
 **Problem:** The study notes interface had too many action buttons (AI, Edit, Delete, Share, Copy) immediately visible on the card, creating cognitive friction.
 **Attempts:** Tried making them smaller or transparent.

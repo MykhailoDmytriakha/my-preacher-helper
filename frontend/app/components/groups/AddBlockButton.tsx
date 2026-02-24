@@ -17,8 +17,8 @@ const TEMPLATE_OPTIONS: Array<{ type: GroupBlockTemplateType; labelKey: string; 
     { type: 'announcement', labelKey: 'groupFlow.types.announcement', fallback: 'Announcement' },
     { type: 'explanation', labelKey: 'groupFlow.types.explanation', fallback: 'Explanation' },
     { type: 'notes', labelKey: 'groupFlow.types.notes', fallback: 'Notes' },
-    { type: 'prayer', labelKey: 'groupFlow.types.prayer', fallback: 'Prayer focus' },
-    { type: 'custom', labelKey: 'groupFlow.types.custom', fallback: 'Custom' },
+    { type: 'prayer', labelKey: 'groupFlow.types.prayer', fallback: 'Prayer' },
+    { type: 'custom', labelKey: 'groupFlow.types.custom', fallback: 'Custom Block' },
 ];
 
 interface AddBlockButtonProps {

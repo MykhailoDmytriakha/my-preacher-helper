@@ -652,6 +652,7 @@
     "moveDown": "Перемістити вниз",
     "edit": "Редагувати",
     "delete": "Видалити",
+    "remove": "Зняти",
     "add": "Додати",
     "saving": "Збереження...",
     "deleting": "Видалення...",
@@ -1552,7 +1553,8 @@
         "create": "Створити групу",
         "newGroup": "Нова група",
         "delete": "Видалити",
-        "deleteConfirm": "Видалити цю групу безповоротно?"
+        "deleteConfirm": "Видалити цю групу безповоротно?",
+        "assignToSeries": "Прив’язати до серії"
       },
       "access": {
         "disabledTitle": "Workspace груп вимкнено",
@@ -1605,6 +1607,8 @@
       "itemsLabel": {
         "templates": "Шаблони",
         "flowSteps": "Кроки flow",
+        "readiness": "Готово",
+        "duration": "Хв",
         "meetings": "Зустрічі",
         "nextMeeting": "Найближча зустріч",
         "lastMeeting": "Остання зустріч",
@@ -1620,7 +1624,9 @@
         "created": "Групу створено успішно",
         "saved": "Групу збережено успішно",
         "meetingAdded": "Зустріч додано успішно",
-        "deleted": "Групу видалено успішно"
+        "deleted": "Групу видалено успішно",
+        "seriesAssigned": "Прив’язано до серії",
+        "seriesUnlinked": "Відв’язано від серії"
       },
       "preview": {
         "title": "Прев’ю заповнених блоків",
@@ -1631,7 +1637,9 @@
         "createFailed": "Не вдалося створити групу",
         "updateFailed": "Не вдалося оновити групу",
         "meetingAddFailed": "Не вдалося додати зустріч",
-        "deleteFailed": "Не вдалося видалити групу"
+        "deleteFailed": "Не вдалося видалити групу",
+        "seriesAssignFailed": "Не вдалося прив’язати до серії",
+        "seriesUnlinkFailed": "Не вдалося відв’язати від серії"
       }
     }
   },

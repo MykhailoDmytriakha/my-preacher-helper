@@ -22,8 +22,9 @@ import {
   MapPinIcon,
   TrashIcon,
   UsersIcon,
+  LinkIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
-import debounce from 'lodash/debounce';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -34,7 +35,10 @@ import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
+import SeriesSelector from '@/components/series/SeriesSelector';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { useSeries } from '@/hooks/useSeries';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
@@ -61,14 +65,16 @@ export default function GroupDetailPage() {
   const { group, loading, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate, deleteGroupDetail } =
     useGroupDetail(groupsEnabled ? groupId : '');
 
+  const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
+  const { series } = useSeries(groupsUserId);
+
+  const [isSeriesSelectorOpen, setIsSeriesSelectorOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'draft' | 'active' | 'completed'>('draft');
   const [templates, setTemplates] = useState<GroupBlockTemplate[]>([]);
   const [flow, setFlow] = useState<GroupFlowItem[]>([]);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
-  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const updateGroupDetailRef = useRef(updateGroupDetail);
   // Refs so the debounced save always reads the latest state without re-triggering
   const titleRef = useRef(title);
@@ -157,8 +163,12 @@ export default function GroupDetailPage() {
     updateGroupDetailRef.current = updateGroupDetail;
   }, [updateGroupDetail]);
 
+  const initializedGroupIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!group) return;
+    if (initializedGroupIdRef.current === group.id) return;
+
     setTitle(group.title);
     setDescription(group.description || '');
     setStatus(group.status);
@@ -168,6 +178,8 @@ export default function GroupDetailPage() {
     setMeetingDate(firstMeeting?.date || '');
     setMeetingLocation(firstMeeting?.location || '');
     setMeetingAudience(firstMeeting?.audience || '');
+
+    initializedGroupIdRef.current = group.id;
   }, [group]);
 
   // Keep a ref to the server-side meeting date id so we know whether to add/update/remove
@@ -178,56 +190,41 @@ export default function GroupDetailPage() {
 
   const performSave = useCallback(
     async () => {
-      try {
-        setSaveStatus('saving');
-        await updateGroupDetailRef.current({
-          title: titleRef.current.trim(),
-          description: descriptionRef.current.trim() || undefined,
-          status: statusRef.current,
-          templates: templatesRef.current,
-          flow: normalizeFlow(flowRef.current),
-        });
+      await updateGroupDetailRef.current({
+        title: titleRef.current.trim(),
+        description: descriptionRef.current.trim() || undefined,
+        status: statusRef.current,
+        templates: templatesRef.current,
+        flow: normalizeFlow(flowRef.current),
+      });
 
-        // Sync single meeting date
-        const date = meetingDateRef.current;
-        const location = meetingLocationRef.current.trim() || undefined;
-        const audience = meetingAudienceRef.current.trim() || undefined;
-        const existingId = existingMeetingIdRef.current;
+      // Sync single meeting date
+      const date = meetingDateRef.current;
+      const location = meetingLocationRef.current.trim() || undefined;
+      const audience = meetingAudienceRef.current.trim() || undefined;
+      const existingId = existingMeetingIdRef.current;
 
-        if (date && existingId) {
-          await updateMeetingDateRef.current(existingId, { date, location, audience });
-        } else if (date && !existingId) {
-          await addMeetingDateRef.current({ date, location, audience });
-        } else if (!date && existingId) {
-          await removeMeetingDateRef.current(existingId);
-        }
-
-        setSaveStatus('saved');
-        clearTimeout(saveStatusTimerRef.current);
-        saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (errorValue) {
-        console.error('Failed to save group changes:', errorValue);
-        toast.error(
-          t('workspaces.groups.errors.updateFailed', {
-            defaultValue: 'Failed to update group',
-          })
-        );
-        setSaveStatus('idle');
+      if (date && existingId) {
+        await updateMeetingDateRef.current(existingId, { date, location, audience });
+      } else if (date && !existingId) {
+        await addMeetingDateRef.current({ date, location, audience });
+      } else if (!date && existingId) {
+        await removeMeetingDateRef.current(existingId);
       }
     },
-    [t]
+    []
   );
 
-  // Stable identity — never recreated, so calling it never triggers re-renders
-  const debouncedSave = useMemo(() => debounce(performSave, 500), [performSave]);
-
-  // Flush pending saves on unmount
-  useEffect(() => {
-    return () => {
-      debouncedSave.flush();
-      clearTimeout(saveStatusTimerRef.current);
-    };
-  }, [debouncedSave]);
+  const { debouncedSave, status: saveStatus } = useAutoSave(performSave, {
+    delay: 500,
+    onError: () => {
+      toast.error(
+        t('workspaces.groups.errors.updateFailed', {
+          defaultValue: 'Failed to update group',
+        })
+      );
+    },
+  });
 
   const templatesById = useMemo(
     () => new Map(templates.map((template) => [template.id, template])),
@@ -257,7 +254,7 @@ export default function GroupDetailPage() {
   );
 
   const handleAddBlock = (type: GroupBlockTemplateType) => {
-    const nextTemplate = createTemplate(type);
+    const nextTemplate = createTemplate(type, { title: t(`groupFlow.types.${type}`, { defaultValue: type }) });
     setTemplates((prev) => [...prev, nextTemplate]);
     const nextFlowItem = createFlowItem(nextTemplate.id, flow.length + 1);
     setFlow((prev) => normalizeFlow([...prev, nextFlowItem]));
@@ -349,6 +346,27 @@ export default function GroupDetailPage() {
       );
     } finally {
       setDeletingGroup(false);
+    }
+  };
+
+  const handleSeriesSelect = async (seriesId: string) => {
+    try {
+      await updateGroupDetailRef.current({ seriesId });
+      toast.success(t('workspaces.groups.messages.seriesAssigned', { defaultValue: 'Assigned to series' }));
+      setIsSeriesSelectorOpen(false);
+    } catch (error) {
+      console.error('Failed to assign series:', error);
+      toast.error(t('workspaces.groups.errors.seriesAssignFailed', { defaultValue: 'Failed to assign series' }));
+    }
+  };
+
+  const handleUnlinkSeries = async () => {
+    try {
+      await updateGroupDetailRef.current({ seriesId: null });
+      toast.success(t('workspaces.groups.messages.seriesUnlinked', { defaultValue: 'Unlinked from series' }));
+    } catch (error) {
+      console.error('Failed to unlink series:', error);
+      toast.error(t('workspaces.groups.errors.seriesUnlinkFailed', { defaultValue: 'Failed to unlink series' }));
     }
   };
 
@@ -472,14 +490,46 @@ export default function GroupDetailPage() {
                 <option value="active">{t('workspaces.series.form.statuses.active')}</option>
                 <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
               </select>
-              {group.seriesId && (
-                <Link
-                  href={`/series/${group.seriesId}`}
-                  className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-100 dark:ring-blue-800/60"
+              {group.seriesId ? (
+                <div className="flex items-center gap-[1px]">
+                  {(() => {
+                    const matchedSeries = series.find((s) => s.id === group.seriesId);
+                    const seriesName = matchedSeries ? matchedSeries.title : t('workspaces.groups.inSeries', { defaultValue: 'Part of a series' });
+                    return (
+                      <Link
+                        href={`/series/${group.seriesId}`}
+                        className="inline-flex max-w-[200px] items-center gap-2 rounded-l-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200/50 hover:bg-blue-50 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-800/40 dark:hover:bg-blue-900/50 transition-colors"
+                        title={seriesName}
+                      >
+                        <CheckCircleIcon className="shrink-0 h-3.5 w-3.5" />
+                        <span className="truncate">{seriesName}</span>
+                      </Link>
+                    );
+                  })()}
+                  <button
+                    onClick={() => setIsSeriesSelectorOpen(true)}
+                    className="bg-white/90 px-2.5 py-1.5 text-xs font-medium text-gray-500 ring-1 ring-blue-200/50 hover:bg-blue-50 hover:text-blue-700 transition-colors dark:bg-blue-900/30 dark:text-gray-300 dark:ring-blue-800/40 dark:hover:bg-blue-900/50 dark:hover:text-blue-200"
+                    title={t('common.edit', { defaultValue: 'Edit' })}
+                  >
+                    {t('common.edit', { defaultValue: 'Edit' })}
+                  </button>
+                  <button
+                    onClick={handleUnlinkSeries}
+                    className="rounded-r-full bg-white/90 px-2 py-1.5 text-xs font-medium text-gray-400 ring-1 ring-blue-200/50 hover:bg-red-50 hover:text-red-600 transition-colors dark:bg-blue-900/30 dark:text-gray-500 dark:ring-blue-800/40 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                    title={t('common.remove', { defaultValue: 'Remove' })}
+                  >
+                    <XMarkIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsSeriesSelectorOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-blue-300 bg-white/50 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition-colors dark:border-blue-800/50 dark:bg-gray-800/30 dark:text-blue-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
                 >
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
-                  {t('workspaces.groups.inSeries', { defaultValue: 'Part of a series' })}
-                </Link>
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  {t('workspaces.groups.actions.assignToSeries', { defaultValue: 'Assign to series' })}
+                </button>
               )}
             </div>
           </div>
@@ -620,6 +670,15 @@ export default function GroupDetailPage() {
           )}
         </div>
       </div>
+
+      {isSeriesSelectorOpen && (
+        <SeriesSelector
+          mode="change"
+          currentSeriesId={group.seriesId}
+          onSelect={handleSeriesSelect}
+          onClose={() => setIsSeriesSelectorOpen(false)}
+        />
+      )}
     </section>
   );
 }
