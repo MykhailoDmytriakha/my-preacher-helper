@@ -641,6 +641,7 @@
   "common": {
     "done": "Готово",
     "warning": "Внимание",
+    "confirm": "Подтвердить",
     "more": "Ещё",
     "next": "Далее",
     "previous": "Назад",
@@ -1490,6 +1491,7 @@
         "addSermons": "Добавьте проповеди для начала",
         "dragToReorder": "Перетаскивайте проповеди для изменения порядка",
         "sermonCount": "{{count}} проповедь(ей)",
+        "groupCount": "{{count}} групп(-а/-ы)",
         "duration": "Длительность",
         "completedCount": "{{completed}} из {{total}} завершено",
         "selectSermonsTitle": "Выберите проповеди",
@@ -1553,8 +1555,9 @@
         "create": "Создать группу",
         "newGroup": "Новая группа",
         "delete": "Удалить",
-        "deleteConfirm": "Удалить эту группу безвозвратно?",
-        "assignToSeries": "Привязать к серии"
+        "deleteConfirm": "Удалить эту группу навсегда?",
+        "deleteConfirmTitle": "Удалить группу",
+        "assignToSeries": "Назначить в серию"
       },
       "access": {
         "disabledTitle": "Рабочее пространство групп отключено",

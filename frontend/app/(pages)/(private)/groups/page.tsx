@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 import CreateGroupModal from '@/components/groups/CreateGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useGroups } from '@/hooks/useGroups';
 import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
@@ -25,6 +26,7 @@ export default function GroupsPage() {
   const { series } = useSeries(groupsUserId);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -75,21 +77,20 @@ export default function GroupsPage() {
     }
   };
 
-  const handleDeleteGroup = async (group: Group) => {
-    const confirmed = window.confirm(
-      t('workspaces.groups.actions.deleteConfirm', {
-        defaultValue: 'Delete this group permanently?',
-      })
-    );
+  const handleDeleteGroupTrigger = (group: Group) => {
+    setGroupToDelete(group);
+  };
 
-    if (!confirmed) return;
+  const handleConfirmDelete = async () => {
+    if (!groupToDelete) return;
 
     try {
-      setDeletingGroupId(group.id);
-      await deleteExistingGroup(group.id);
+      setDeletingGroupId(groupToDelete.id);
+      await deleteExistingGroup(groupToDelete.id);
       toast.success(
         t('workspaces.groups.messages.deleted', { defaultValue: 'Group deleted successfully' })
       );
+      setGroupToDelete(null);
     } catch (errorValue) {
       console.error('Failed to delete group:', errorValue);
       toast.error(
@@ -252,7 +253,7 @@ export default function GroupsPage() {
               key={group.id}
               group={group}
               series={series}
-              onDelete={() => handleDeleteGroup(group)}
+              onDelete={() => handleDeleteGroupTrigger(group)}
               deleting={deletingGroupId === group.id}
             />
           ))}
@@ -262,6 +263,24 @@ export default function GroupsPage() {
       {showCreateModal && (
         <CreateGroupModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateGroup} />
       )}
+
+      <ConfirmModal
+        isOpen={!!groupToDelete}
+        onClose={() => setGroupToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={t('workspaces.groups.actions.deleteConfirmTitle', { defaultValue: 'Delete Group' })}
+        description={
+          groupToDelete
+            ? `${t('workspaces.groups.actions.deleteConfirm', {
+              defaultValue: 'Delete this group permanently?',
+            })} "${groupToDelete.title}"`
+            : t('workspaces.groups.actions.deleteConfirm', {
+              defaultValue: 'Delete this group permanently?',
+            })
+        }
+        confirmText={t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
+        isDeleting={!!deletingGroupId}
+      />
     </section>
   );
 }

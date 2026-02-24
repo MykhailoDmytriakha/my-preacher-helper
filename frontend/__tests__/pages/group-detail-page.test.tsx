@@ -101,6 +101,19 @@ jest.mock('sonner', () => ({
   },
 }));
 
+jest.mock('@/components/ui/ConfirmModal', () => {
+  return function MockConfirmModal({ isOpen, onClose, onConfirm, confirmText, cancelText }: any) {
+    if (!isOpen) return null;
+    return (
+      <div data-testid="confirm-modal">
+        <p>Delete this group permanently?</p>
+        <button onClick={onConfirm}>{confirmText || 'Confirm'}</button>
+        <button onClick={onClose}>{cancelText || 'Cancel'}</button>
+      </div>
+    );
+  };
+});
+
 jest.mock('@/components/series/SeriesSelector', () => ({
   __esModule: true,
   default: ({ onSelect, onClose }: any) => (
@@ -239,11 +252,23 @@ describe('GroupDetailPage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
     await waitFor(() => expect(deleteGroupDetail).toHaveBeenCalledTimes(1));
     expect(mockPush).toHaveBeenCalledWith('/groups');
 
-    (window as any).confirm = jest.fn(() => false);
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
   });
 
@@ -257,6 +282,12 @@ describe('GroupDetailPage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
       expect(deleteGroupDetail).toHaveBeenCalledTimes(1);

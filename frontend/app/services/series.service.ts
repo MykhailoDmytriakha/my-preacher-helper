@@ -41,7 +41,9 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
     if (isBrowserOffline()) {
       throw new Error(OFFLINE_ERROR);
     }
-    const response = await fetch(`${API_BASE}/api/series/${seriesId}`);
+    const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       console.error(`getSeriesById: Response not ok for id ${seriesId}, status: ${response.status}`);

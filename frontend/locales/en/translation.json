@@ -641,6 +641,7 @@
   "common": {
     "done": "Done",
     "warning": "Warning",
+    "confirm": "Confirm",
     "more": "More options",
     "next": "Next",
     "previous": "Previous",
@@ -1490,6 +1491,7 @@
         "addSermons": "Add sermons to get started",
         "dragToReorder": "Drag sermons to reorder them",
         "sermonCount": "{{count}} sermon(s)",
+        "groupCount": "{{count}} group(s)",
         "duration": "Duration",
         "completedCount": "{{completed}} of {{total}} completed",
         "selectSermonsTitle": "Select Sermons",
@@ -1554,6 +1556,7 @@
         "newGroup": "New Group",
         "delete": "Delete",
         "deleteConfirm": "Delete this group permanently?",
+        "deleteConfirmTitle": "Delete Group",
         "assignToSeries": "Assign to series"
       },
       "access": {

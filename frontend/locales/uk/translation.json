@@ -641,6 +641,7 @@
   "common": {
     "done": "Готово",
     "warning": "Увага",
+    "confirm": "Підтвердити",
     "more": "Більше опцій",
     "next": "Далі",
     "previous": "Назад",
@@ -1490,6 +1491,7 @@
         "addSermons": "Додайте проповіді для початку",
         "dragToReorder": "Перетягуйте проповіді для зміни порядку",
         "sermonCount": "{{count}} проповідь(ей)",
+        "groupCount": "{{count}} груп(-а/-и)",
         "duration": "Тривалість",
         "completedCount": "{{completed}} із {{total}} завершено",
         "selectSermonsTitle": "Виберіть проповіді",
@@ -1553,8 +1555,9 @@
         "create": "Створити групу",
         "newGroup": "Нова група",
         "delete": "Видалити",
-        "deleteConfirm": "Видалити цю групу безповоротно?",
-        "assignToSeries": "Прив’язати до серії"
+        "deleteConfirm": "Видалити цю групу назавжди?",
+        "deleteConfirmTitle": "Видалити групу",
+        "assignToSeries": "Додати до серії"
       },
       "access": {
         "disabledTitle": "Workspace груп вимкнено",

@@ -58,7 +58,7 @@ describe('groups.service', () => {
       expect.stringContaining('/api/groups?userId=user-1'),
       { cache: 'no-store' }
     );
-    expect(mockFetch).toHaveBeenNthCalledWith(2, expect.stringContaining('/api/groups/g1'));
+    expect(mockFetch).toHaveBeenNthCalledWith(2, expect.stringContaining('/api/groups/g1'), { cache: 'no-store' });
   });
 
   it('creates, updates and deletes group', async () => {

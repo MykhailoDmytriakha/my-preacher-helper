@@ -49,6 +49,13 @@
 
 ## 🆕 Lessons (Inbox) — Только что выучено
 
+### 2026-02-24 Headless UI Jest DOM Errors
+**Problem:** Tests for `GroupsPage` failed with unhandled ref errors after replacing native `window.confirm` with a `@headlessui/react` `Transition`-based modal.
+**Attempts:** Tried rendering the real component in JSDOM, which expects real DOM nodes for transition measurements.
+**Solution:** Mocked the specific `ConfirmModal` UI component in test files (`jest.mock('@/components/ui/ConfirmModal', ...)`).
+**Why it worked:** Bypasses complex real-DOM requirements of Headless UI's animation libraries during pure logic tests.
+**Principle:** When refactoring native UI (like `window.confirm`) to complex libraries (like Headless UI), immediately mock the new UI component in Jest to isolate logic tests from virtual-DOM animation crashes.
+
 ### 2026-02-23 React Query Optimistic Sync & Transient Render Destruction
 **Problem:** The group details page form flickered, continuously wiped user input during auto-save, and sometimes completely unmounted into a full-page Skeleton loader.
 **Attempts:** Added `invalidateQueries` which fixed the cache sync but caused the flicker.

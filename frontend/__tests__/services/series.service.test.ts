@@ -145,7 +145,7 @@ describe('Series Service', () => {
 
       const result = await getSeriesById('series-1');
 
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`);
+      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, { cache: 'no-store' });
       expect(result).toEqual(mockSeries);
     });
 

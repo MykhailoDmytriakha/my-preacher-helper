@@ -50,6 +50,8 @@ export function useGroupDetail(groupId: string) {
         queryClient.setQueryData([QUERY_KEYS.GROUP_DETAIL, groupId], updated);
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId], refetchType: 'none' });
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS], refetchType: 'none' });
+        queryClient.invalidateQueries({ queryKey: ['series'] });
+        queryClient.invalidateQueries({ queryKey: ['series-detail'] });
       } catch (errorValue: unknown) {
         const normalized =
           errorValue instanceof Error ? errorValue : new Error(String(errorValue));

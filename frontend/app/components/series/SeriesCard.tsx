@@ -4,6 +4,7 @@ import {
   BookOpenIcon,
   ClockIcon,
   ArrowTrendingUpIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { useTranslation } from "react-i18next";
 
@@ -37,7 +38,8 @@ const statusStyles: Record<
 
 export default function SeriesCard({ series }: SeriesCardProps) {
   const { t } = useTranslation();
-  const sermonCount = series.sermonIds?.length || 0;
+  const sermonCount = series.items ? series.items.filter(i => i.type === "sermon").length : (series.sermonIds?.length || 0);
+  const groupCount = series.items ? series.items.filter(i => i.type === "group").length : 0;
   const accent = series.color || "#2563EB";
 
   return (
@@ -87,19 +89,30 @@ export default function SeriesCard({ series }: SeriesCardProps) {
       <div className="mt-6 space-y-3 border-t border-gray-100 pt-4 dark:border-gray-700">
         <div className="grid grid-cols-2 gap-3 text-sm text-gray-700 dark:text-gray-300">
           <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
-            <ArrowTrendingUpIcon className="h-4 w-4 text-blue-500" />
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+            <ArrowTrendingUpIcon className="h-4 w-4 shrink-0 text-blue-500" />
+            <div className="flex flex-col leading-tight min-w-0">
+              <span className="truncate text-xs text-gray-500 dark:text-gray-400">
                 {t("workspaces.series.detail.sermonCount", { count: sermonCount })}
               </span>
               <span className="font-semibold text-gray-900 dark:text-gray-100">{sermonCount}</span>
             </div>
           </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+            <UserGroupIcon className="h-4 w-4 shrink-0 text-indigo-500" />
+            <div className="flex flex-col leading-tight min-w-0">
+              <span className="truncate text-xs text-gray-500 dark:text-gray-400">
+                {t("workspaces.series.detail.groupCount", { count: groupCount })}
+              </span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{groupCount}</span>
+            </div>
+          </div>
+
           {series.duration && (
             <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
-              <ClockIcon className="h-4 w-4 text-amber-500" />
-              <div className="flex flex-col leading-tight">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+              <ClockIcon className="h-4 w-4 shrink-0 text-amber-500" />
+              <div className="flex flex-col leading-tight min-w-0">
+                <span className="truncate text-xs text-gray-500 dark:text-gray-400">
                   {t("workspaces.series.detail.duration", { defaultValue: "Duration" })}
                 </span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">

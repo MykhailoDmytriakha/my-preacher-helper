@@ -113,7 +113,9 @@ export function useSeriesDetail(seriesId: string) {
       if (!series) return;
       await withMutationGuard(async () => {
         await addSermonToSeries(series.id, sermonId, position);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+        await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
       });
     },
     [series, withMutationGuard, queryClient]
@@ -128,7 +130,9 @@ export function useSeriesDetail(seriesId: string) {
             addSermonToSeries(series.id, sermonId, (series.items?.length || 0) + index)
           )
         );
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+        await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
       });
     },
     [series, withMutationGuard, queryClient]
@@ -139,6 +143,7 @@ export function useSeriesDetail(seriesId: string) {
       if (!series) return;
       await withMutationGuard(async () => {
         await addGroupToSeries(series.id, groupId, position);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
         await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
       });
@@ -151,9 +156,12 @@ export function useSeriesDetail(seriesId: string) {
       if (!series) return;
       await withMutationGuard(async () => {
         await removeSeriesItem(series.id, type, refId);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
         if (type === 'group') {
           await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
+        } else if (type === 'sermon') {
+          await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
         }
       });
     },
@@ -189,9 +197,11 @@ export function useSeriesDetail(seriesId: string) {
 
       await withMutationGuard(async () => {
         await reorderSeriesItems(series.id, nextItemIds);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
       });
     },
-    [series, withMutationGuard]
+    [series, withMutationGuard, queryClient]
   );
 
   const reorderMixedItems = useCallback(
@@ -199,9 +209,11 @@ export function useSeriesDetail(seriesId: string) {
       if (!series) return;
       await withMutationGuard(async () => {
         await reorderSeriesItems(series.id, itemIds);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
+        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
       });
     },
-    [series, withMutationGuard]
+    [series, withMutationGuard, queryClient]
   );
 
   const updateSeriesDetail = useCallback(
@@ -209,6 +221,7 @@ export function useSeriesDetail(seriesId: string) {
       if (!series) return;
       await withMutationGuard(async () => {
         await updateSeries(series.id, updates);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
       });
     },

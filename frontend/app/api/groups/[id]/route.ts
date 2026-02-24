@@ -48,6 +48,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       seriesPosition: payload.seriesPosition,
     });
 
+    // Handle series sync if seriesId changed
+    if (payload.seriesId !== undefined && payload.seriesId !== group.seriesId) {
+      if (group.seriesId) {
+        // Remove from old series
+        try {
+          await seriesRepository.removeGroupFromSeries(group.seriesId, id);
+        } catch (e) {
+          console.error(`Failed to remove group ${id} from old series ${group.seriesId}:`, e);
+        }
+      }
+      if (payload.seriesId) {
+        // Add to new series
+        try {
+          await seriesRepository.addGroupToSeries(payload.seriesId, id, payload.seriesPosition);
+        } catch (e) {
+          console.error(`Failed to add group ${id} to new series ${payload.seriesId}:`, e);
+        }
+      }
+    }
+
     return NextResponse.json(next);
   } catch (error: unknown) {
     console.error(`Error updating group ${id}:`, error);

@@ -37,6 +37,7 @@ import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 import SeriesSelector from '@/components/series/SeriesSelector';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeries } from '@/hooks/useSeries';
@@ -94,6 +95,7 @@ export default function GroupDetailPage() {
   const [meetingLocation, setMeetingLocation] = useState('');
   const [meetingAudience, setMeetingAudience] = useState('');
   const [deletingGroup, setDeletingGroup] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const meetingDateRef = useRef(meetingDate);
   const meetingLocationRef = useRef(meetingLocation);
@@ -321,14 +323,6 @@ export default function GroupDetailPage() {
   const handleDeleteGroup = async () => {
     if (!group) return;
 
-    const confirmed = window.confirm(
-      t('workspaces.groups.actions.deleteConfirm', {
-        defaultValue: 'Delete this group permanently?',
-      })
-    );
-
-    if (!confirmed) return;
-
     try {
       setDeletingGroup(true);
       await deleteGroupDetail();
@@ -452,7 +446,7 @@ export default function GroupDetailPage() {
               </span>
             )}
             <button
-              onClick={handleDeleteGroup}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={deletingGroup}
               className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/70 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950/30"
             >
@@ -691,6 +685,27 @@ export default function GroupDetailPage() {
           onClose={() => setIsSeriesSelectorOpen(false)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          setShowDeleteConfirm(false);
+          handleDeleteGroup();
+        }}
+        title={t('workspaces.groups.actions.deleteConfirmTitle', { defaultValue: 'Delete Group' })}
+        description={
+          group
+            ? `${t('workspaces.groups.actions.deleteConfirm', {
+              defaultValue: 'Delete this group permanently?',
+            })} "${group.title}"`
+            : t('workspaces.groups.actions.deleteConfirm', {
+              defaultValue: 'Delete this group permanently?',
+            })
+        }
+        confirmText={t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
+        isDeleting={deletingGroup}
+      />
     </section>
   );
 }

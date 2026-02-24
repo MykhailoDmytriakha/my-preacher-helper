@@ -25,7 +25,9 @@ export const getGroupById = async (groupId: string): Promise<Group | undefined> 
     throw new Error(OFFLINE_ERROR);
   }
 
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}`);
+  const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
+    cache: 'no-store',
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch group');
   }

@@ -61,7 +61,7 @@ describe('Sermon Service', () => {
       const result = await getSermonById('test-id');
 
       expect(result).toEqual(mockSermon);
-      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/api/sermons/test-id`);
+      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/api/sermons/test-id`, { cache: 'no-store' });
     });
 
     it('returns undefined for 404 response (sermon not found)', async () => {
@@ -73,7 +73,7 @@ describe('Sermon Service', () => {
       const result = await getSermonById('non-existent-id');
 
       expect(result).toBeUndefined();
-      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/api/sermons/non-existent-id`);
+      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/api/sermons/non-existent-id`, { cache: 'no-store' });
     });
 
     it('throws error for other non-ok responses', async () => {

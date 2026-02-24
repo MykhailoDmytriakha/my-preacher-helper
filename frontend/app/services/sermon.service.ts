@@ -29,7 +29,9 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
     if (isBrowserOffline()) {
       throw new Error(OFFLINE_ERROR);
     }
-    const response = await fetch(`${API_BASE}/api/sermons/${id}`);
+    const response = await fetch(`${API_BASE}/api/sermons/${id}`, {
+      cache: "no-store",
+    });
     if (!response.ok) {
       if (response.status === 404) {
         console.warn(`getSermonById: Sermon ${id} not found (404)`);
