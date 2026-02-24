@@ -75,6 +75,7 @@ export default function FlowItemRow({
     const statusDot = STATUS_DOT[template.status] ?? STATUS_DOT.empty;
     const displayTitle = flowItem.instanceTitle || template.title;
     const contentSnippet = template.content?.trim();
+    const notesSnippet = flowItem.instanceNotes?.trim();
 
     const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -152,6 +153,11 @@ export default function FlowItemRow({
                 {contentSnippet && (
                     <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words">
                         {contentSnippet}
+                    </p>
+                )}
+                {notesSnippet && (
+                    <p className="mt-0.5 text-xs italic text-indigo-500 dark:text-indigo-400 line-clamp-2">
+                        {notesSnippet}
                     </p>
                 )}
             </div>

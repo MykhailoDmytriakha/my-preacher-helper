@@ -66,6 +66,22 @@ describe('FlowItemRow', () => {
         expect(screen.getByText('15m')).toBeInTheDocument(); // 15 + "m" from default value
     });
 
+    it('renders leader notes if provided', () => {
+        const flowItemWithNotes = { ...mockFlowItem, instanceNotes: 'Special leader notes' };
+        render(<FlowItemRow {...defaultProps} flowItem={flowItemWithNotes} />);
+        expect(screen.getByText('Special leader notes')).toBeInTheDocument();
+    });
+
+    it('does not render leader notes if they are missing or empty', () => {
+        const { rerender } = render(<FlowItemRow {...defaultProps} flowItem={{ ...mockFlowItem, instanceNotes: undefined }} />);
+        // Since there's no other text fitting "Special leader notes", queryByText is fine if we use it consistently.
+        // Better: ensure no indigo text is rendered.
+        expect(screen.queryByText(/leader notes/i)).not.toBeInTheDocument();
+
+        rerender(<FlowItemRow {...defaultProps} flowItem={{ ...mockFlowItem, instanceNotes: '   ' }} />);
+        expect(screen.queryByText(/leader notes/i)).not.toBeInTheDocument();
+    });
+
     it('renders correct status color and label', () => {
         const { rerender } = render(<FlowItemRow {...defaultProps} template={{ ...mockTemplate, status: 'filled' }} />);
         const statusDot = screen.getByTitle('Filled'); // default label
