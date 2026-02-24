@@ -153,7 +153,7 @@ export default function DashboardNav() {
     <nav className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Desktop Layout */}
-        <div className="hidden md:flex h-16 items-center gap-4">
+        <div className="hidden lg:flex h-16 items-center gap-4">
           {/* Left: Logo */}
           <Link
             href="/dashboard"
@@ -194,8 +194,8 @@ export default function DashboardNav() {
                         prefetch={isOnline}
                         aria-current={active ? 'page' : undefined}
                         className={`flex items-center gap-2 px-4 py-2 text-sm transition ${active
-                            ? themeClasses.menu
-                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                          ? themeClasses.menu
+                          : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                           }`}
                         onClick={() => setNavDropdownOpen(false)}
                       >
@@ -229,8 +229,8 @@ export default function DashboardNav() {
                       prefetch={isOnline}
                       aria-current={active ? 'page' : undefined}
                       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition ${active
-                          ? themeClasses.pill
-                          : 'border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                        ? themeClasses.pill
+                        : 'border-transparent text-gray-600 hover:border-gray-200 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
                         }`}
                     >
                       <Icon className="h-4 w-4" aria-hidden="true" />
@@ -247,16 +247,13 @@ export default function DashboardNav() {
             </ul>
           )}
 
-          {/* Spacer to push mode toggle to center */}
+          {/* Spacer to push controls right */}
           <div className="flex-1" />
 
           {/* Center: Mode toggle (desktop) */}
           {showWizardButton && isSermonRoot && !prepModeLoading && (
             <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
           )}
-
-          {/* Another spacer to balance */}
-          <div className="flex-1" />
 
           {/* Right: Desktop controls */}
           <div className="flex items-center gap-4">
@@ -284,7 +281,7 @@ export default function DashboardNav() {
         </div>
 
         {/* Mobile Layout */}
-        <div className="md:hidden py-3">
+        <div className="lg:hidden py-3">
           <div className="flex items-center justify-between">
             {/* Left: Logo */}
             <div className="flex items-center">

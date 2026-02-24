@@ -1819,6 +1819,7 @@
     "description": "Розташуйте блоки у точній послідовності зустрічі.",
     "addBlock": "Додати блок",
     "emptyState": "Блоків поки немає",
+    "minutesShort": "хв",
     "status": {
       "empty": "Пусто",
       "draft": "Чернетка",
@@ -1865,6 +1866,38 @@
       "testimony": "Свідчення",
       "offering": "Пожертвування",
       "fellowship": "Спілкування"
+    }
+  },
+  "conduct": {
+    "startButton": "Почати зустріч",
+    "preflight": {
+      "title": "Підготовка",
+      "subtitle": "Перевірте тривалість блоків",
+      "backToGroup": "Назад до групи",
+      "noLimit": "—",
+      "startButton": "Почати зустріч",
+      "total": "Разом",
+      "totalTime": "Загальний час зустрічі",
+      "blocksTotal": "Блоки",
+      "free": "вільно",
+      "over": "перевищення"
+    },
+    "block": {
+      "notesToggle": "Нотатки",
+      "prev": "Назад",
+      "next": "Далі",
+      "overview": "Огляд",
+      "pause": "Пауза",
+      "resume": "Продовжити",
+      "elapsed": "Пройшло",
+      "remaining": "Залишилось",
+      "overtime": "Перевищення"
+    },
+    "overview": {
+      "title": "Хід зустрічі",
+      "end": "Завершити зустріч",
+      "completed": "Всі блоки пройдено",
+      "totalTime": "Разом"
     }
   }
 }

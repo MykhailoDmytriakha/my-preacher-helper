@@ -58,7 +58,8 @@ describe('GroupCard', () => {
     expect(screen.getByText('Family Group')).toBeInTheDocument();
     expect(screen.getByText('Weekly meeting')).toBeInTheDocument();
     expect(screen.getByText('Next meeting')).toBeInTheDocument();
-    expect(screen.getByRole('link').getAttribute('href')).toBe('/groups/g1');
+    const links = screen.getAllByRole('link');
+    expect(links.some((l) => l.getAttribute('href') === '/groups/g1')).toBe(true);
   });
 
   it('falls back to last meeting and no-date labels', () => {

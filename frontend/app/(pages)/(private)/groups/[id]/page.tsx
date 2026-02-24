@@ -20,6 +20,7 @@ import {
   CalendarDaysIcon,
   CheckCircleIcon,
   MapPinIcon,
+  PlayIcon,
   TrashIcon,
   UsersIcon,
   LinkIcon,
@@ -588,7 +589,18 @@ export default function GroupDetailPage() {
                   })}
                 </p>
               </div>
-              <AddBlockButton onAdd={handleAddBlock} />
+              <div className="flex items-center gap-2">
+                {normalizedFlow.length > 0 && (
+                  <Link
+                    href={`/groups/${group.id}/conduct`}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+                  >
+                    <PlayIcon className="h-4 w-4" />
+                    {t('conduct.startButton', { defaultValue: 'Start Meeting' })}
+                  </Link>
+                )}
+                <AddBlockButton onAdd={handleAddBlock} />
+              </div>
             </div>
 
             <div className="space-y-2">

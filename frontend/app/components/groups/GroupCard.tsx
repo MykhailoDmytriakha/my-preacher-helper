@@ -5,6 +5,7 @@ import {
   CheckCircleIcon,
   ClockIcon,
   EllipsisVerticalIcon,
+  PlayIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
@@ -243,6 +244,16 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
             </span>
           )}
         </div>
+        {totalBlocks > 0 && (
+          <Link
+            href={`/groups/${group.id}/conduct`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+          >
+            <PlayIcon className="h-3.5 w-3.5" />
+            {t('conduct.startButton', { defaultValue: 'Start Meeting' })}
+          </Link>
+        )}
       </div>
     </article>
   );

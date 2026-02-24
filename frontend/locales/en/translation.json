@@ -1819,6 +1819,7 @@
     "description": "Arrange blocks in the exact sequence of the meeting.",
     "addBlock": "Add block",
     "emptyState": "No blocks yet",
+    "minutesShort": "min",
     "status": {
       "empty": "Empty",
       "draft": "Draft",
@@ -1865,6 +1866,38 @@
       "testimony": "Testimony",
       "offering": "Offering",
       "fellowship": "Fellowship"
+    }
+  },
+  "conduct": {
+    "startButton": "Start Meeting",
+    "preflight": {
+      "title": "Meeting Setup",
+      "subtitle": "Review block durations",
+      "backToGroup": "Back to group",
+      "noLimit": "—",
+      "startButton": "Start Meeting",
+      "total": "Total",
+      "totalTime": "Total meeting time",
+      "blocksTotal": "Blocks",
+      "free": "free",
+      "over": "over"
+    },
+    "block": {
+      "notesToggle": "Notes",
+      "prev": "Back",
+      "next": "Next",
+      "overview": "Overview",
+      "pause": "Pause",
+      "resume": "Resume",
+      "elapsed": "Elapsed",
+      "remaining": "Remaining",
+      "overtime": "Overtime"
+    },
+    "overview": {
+      "title": "Meeting Flow",
+      "end": "End Meeting",
+      "completed": "All blocks completed",
+      "totalTime": "Total"
     }
   }
 }

@@ -1819,6 +1819,7 @@
     "description": "Расположите блоки в точной последовательности встречи.",
     "addBlock": "Добавить блок",
     "emptyState": "Блоков пока нет",
+    "minutesShort": "мин",
     "status": {
       "empty": "Пусто",
       "draft": "Черновик",
@@ -1865,6 +1866,38 @@
       "testimony": "Свидетельство",
       "offering": "Пожертвование",
       "fellowship": "Общение"
+    }
+  },
+  "conduct": {
+    "startButton": "Начать встречу",
+    "preflight": {
+      "title": "Подготовка",
+      "subtitle": "Проверьте длительность блоков",
+      "backToGroup": "Назад к группе",
+      "noLimit": "—",
+      "startButton": "Начать встречу",
+      "total": "Итого",
+      "totalTime": "Общее время встречи",
+      "blocksTotal": "Блоки",
+      "free": "свободно",
+      "over": "превышение"
+    },
+    "block": {
+      "notesToggle": "Заметки",
+      "prev": "Назад",
+      "next": "Далее",
+      "overview": "Обзор",
+      "pause": "Пауза",
+      "resume": "Продолжить",
+      "elapsed": "Прошло",
+      "remaining": "Осталось",
+      "overtime": "Превышение"
+    },
+    "overview": {
+      "title": "Ход встречи",
+      "end": "Завершить встречу",
+      "completed": "Все блоки пройдены",
+      "totalTime": "Итого"
     }
   }
 }
