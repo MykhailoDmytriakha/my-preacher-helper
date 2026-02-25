@@ -179,11 +179,17 @@ describe('KnowledgeSection Component', () => {
     });
 
     expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
+
+    // Expand the section to see its content
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+
     expect(screen.getByText('No insights have been generated yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Generate Insights' })).toBeInTheDocument();
   });
 
-  it('renders with insights in expanded state by default', async () => {
+  it('renders with insights in collapsed state by default', async () => {
     render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
 
     // Wait for loading state to finish - properly wrapped in act()
@@ -192,7 +198,7 @@ describe('KnowledgeSection Component', () => {
     });
 
     expect(screen.getByText('Knowledge and Insights')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
 
   it('collapses and expands when the button is clicked', async () => {
@@ -203,7 +209,15 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Verify the initial state is expanded UI
+    // Verify the initial state is collapsed
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+
+    // Click to expand - wrap in act()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+
+    // Button should now say "Show less"
     expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
 
     // Should show sections when expanded
@@ -211,21 +225,13 @@ describe('KnowledgeSection Component', () => {
     expect(screen.getByText('Related Verses')).toBeInTheDocument();
     expect(screen.getByText('Possible Directions')).toBeInTheDocument();
 
-    // Click to collapse - wrap in act()
+    // Click to collapse again - wrap in act()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
     });
 
-    // Button should now say "Show more"
+    // Button should now say "Show more" again
     expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
-
-    // Click to expand again - wrap in act()
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    });
-
-    // Button should now say "Show less" again
-    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
   });
 
   it('toggles topics visibility when show/hide is clicked', async () => {
@@ -236,10 +242,12 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default, topics should be visible
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
-
-    // Topics should be visible by default
+    // Topics should be visible after expanding
     expect(screen.getByText('Faith')).toBeInTheDocument();
 
     // Hide topics (first "Hide all" toggle belongs to topics section)
@@ -276,6 +284,11 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
+    // Expand the section to see the generate button
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+
     // Clear previous mocks
     jest.clearAllMocks();
 
@@ -307,8 +320,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default, Plan sections should be visible
-
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Plan sections should be visible
     expect(screen.getByText('Introduction')).toBeInTheDocument();
@@ -336,8 +351,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default
-
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Click the plan generate button - wrap in act()
     await act(async () => {
@@ -373,8 +390,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default
-
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Clear previous mocks
     jest.clearAllMocks();
@@ -426,8 +445,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default
-
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Clear previous mocks
     jest.clearAllMocks();
@@ -481,8 +502,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default
-
+    // Expand the section first
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Clear previous mocks
     jest.clearAllMocks();
@@ -552,6 +575,11 @@ describe('KnowledgeSection Component', () => {
         jest.advanceTimersByTime(600);
       });
 
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+
       // Click generate button
       fireEvent.click(screen.getByText('Generate Insights'));
 
@@ -589,10 +617,13 @@ describe('KnowledgeSection Component', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
       });
 
-      // Section is expanded by default
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
 
       // Find and click the regenerate topics button
       const refreshButtons = screen.getAllByTitle('Refresh');
@@ -629,10 +660,13 @@ describe('KnowledgeSection Component', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
       });
 
-      // Section is expanded by default
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
 
       // Find and click the regenerate verses button
       const refreshButtons = screen.getAllByTitle('Refresh');
@@ -669,10 +703,13 @@ describe('KnowledgeSection Component', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
       });
 
-      // Section is expanded by default
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
 
       // Find and click the regenerate directions button
       const refreshButtons = screen.getAllByTitle('Refresh');
@@ -705,7 +742,10 @@ describe('KnowledgeSection Component', () => {
         jest.advanceTimersByTime(600);
       });
 
-      // Section is expanded by default
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
 
       // Clear mocks before testing
       jest.clearAllMocks();
@@ -745,6 +785,11 @@ describe('KnowledgeSection Component', () => {
         jest.advanceTimersByTime(600);
       });
 
+      // Expand the section
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+
       // Clear mocks before testing
       jest.clearAllMocks();
 
@@ -776,7 +821,10 @@ describe('KnowledgeSection Component', () => {
       jest.advanceTimersByTime(600);
     });
 
-    // Section is expanded by default
+    // Expand the section
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
 
     // Verify that the generate button is NOT present
     expect(screen.queryByRole('button', { name: 'Generate Insights' })).not.toBeInTheDocument();

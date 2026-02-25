@@ -63,9 +63,9 @@ describe('SermonOutline Component', () => {
   // (Ensure this runs after the mock setup)
   let SermonOutline: typeof import('@/components/sermon/SermonOutline').default;
   beforeAll(async () => {
-     // Use beforeAll to import the component once after mock setup
-     const SermonOutlineModule = await import('@/components/sermon/SermonOutline');
-     SermonOutline = SermonOutlineModule.default;
+    // Use beforeAll to import the component once after mock setup
+    const SermonOutlineModule = await import('@/components/sermon/SermonOutline');
+    SermonOutline = SermonOutlineModule.default;
   });
 
   const mockSermon: Sermon = {
@@ -75,7 +75,7 @@ describe('SermonOutline Component', () => {
     verse: 'Test Verse',
     date: new Date().toISOString(),
     thoughts: [],
-    outline: { 
+    outline: {
       introduction: [],
       main: [],
       conclusion: []
@@ -94,7 +94,7 @@ describe('SermonOutline Component', () => {
     mockUpdateSermonOutline.mockReset().mockImplementation(async (_sermonId, outline) => Promise.resolve(outline));
     mockOnOutlineUpdate.mockClear();
     // Clear all mocks might still be useful here to catch unexpected calls
-    jest.clearAllMocks(); 
+    jest.clearAllMocks();
   });
 
   test('renders with initial data fetched from service', async () => {
@@ -123,17 +123,17 @@ describe('SermonOutline Component', () => {
     });
 
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait for the component to load
     await waitFor(() => {
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
-    
+
     // Check for the point count badges in each section header
     const introSection = screen.getByTestId('outline-section-introduction');
     const mainSection = screen.getByTestId('outline-section-mainPart');
     const conclSection = screen.getByTestId('outline-section-conclusion');
-    
+
     // Find count badges and verify their values
     // Look within each section's header for the counts
     const introCount = within(introSection).getByText('2');
@@ -156,23 +156,23 @@ describe('SermonOutline Component', () => {
     };
 
     render(
-      <SermonOutline 
-        sermon={mockSermon} 
+      <SermonOutline
+        sermon={mockSermon}
         onOutlineUpdate={mockOnOutlineUpdate}
         thoughtsPerSermonPoint={mockThoughtsPerPoint}
       />
     );
-    
+
     // Wait for the component to load
     await waitFor(() => {
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
-    
+
     // Check for total thought count badges in section headers
     const introSection = screen.getByTestId('outline-section-introduction');
     const mainSection = screen.getByTestId('outline-section-mainPart');
     const conclSection = screen.getByTestId('outline-section-conclusion');
-    
+
     // Check individual thought counts for each point
     const introThoughtCount = within(introSection).getByText('3');
     const mainThoughtCount = within(mainSection).getByText('5');
@@ -183,7 +183,7 @@ describe('SermonOutline Component', () => {
     expect(introThoughtCount).toHaveClass('inline-flex');
     expect(mainThoughtCount).toHaveClass('inline-flex');
     expect(conclThoughtCount).toHaveClass('inline-flex');
-    
+
     // Check the total entries in section headers
     expect(within(introSection).getByText('3 structure.entries')).toBeInTheDocument();
     expect(within(mainSection).getByText('5 structure.entries')).toBeInTheDocument();
@@ -197,29 +197,29 @@ describe('SermonOutline Component', () => {
     };
 
     render(
-      <SermonOutline 
-        sermon={mockSermon} 
+      <SermonOutline
+        sermon={mockSermon}
         onOutlineUpdate={mockOnOutlineUpdate}
         thoughtsPerSermonPoint={mockThoughtsPerPoint}
       />
     );
-    
+
     // Wait for the component to load
     await waitFor(() => {
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
-    
+
     // Check that total thought counts don't appear in section headers
     const introSection = screen.getByTestId('outline-section-introduction');
     expect(within(introSection).queryByText('structure.entries')).not.toBeInTheDocument();
-    
+
     // Find a specific outline point and verify no thought count is shown
     // Note: We can't use queryByText('0') as that might find other elements with "0"
     // Instead check that there's no badge with thought count near the point text
     const introPoint = within(introSection).getByText('Introduction point 1');
     const pointContainer = introPoint.closest('li');
     expect(pointContainer).toBeInTheDocument();
-    
+
     // Check if thought count badge is not present within the point container
     const thoughtBadges = within(pointContainer!).queryAllByText(/^\d+$/);
     expect(thoughtBadges.length).toBe(0);
@@ -227,7 +227,7 @@ describe('SermonOutline Component', () => {
 
   test('calls onOutlineUpdate with correct data when adding a point', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait specifically for the section header and initial point to appear
     const introSectionElement = await screen.findByTestId('outline-section-introduction');
     await screen.findByText('Introduction point 1');
@@ -237,13 +237,13 @@ describe('SermonOutline Component', () => {
 
     // Find the add button using the aria-label that matches the new structure
     const addButton = within(introSectionElement).getByLabelText('structure.addPointButton');
-    
+
     // Click the button to show the input field
     await act(async () => { fireEvent.click(addButton); });
 
     // Now look for the input field with the new placeholder text
     const input = await screen.findByPlaceholderText('structure.addPointPlaceholder');
-    
+
     // Enter text and press Enter
     await act(async () => {
       fireEvent.change(input, { target: { value: 'New intro point' } });
@@ -253,9 +253,9 @@ describe('SermonOutline Component', () => {
     // Verify the API was called correctly
     await waitFor(() => {
       const expectedOutline: SermonOutlineType = {
-          introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: 'New intro point' })],
-          main: [{ id: 'main1', text: 'Main point 1' }],
-          conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
+        introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: 'New intro point' })],
+        main: [{ id: 'main1', text: 'Main point 1' }],
+        conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
       };
       expect(mockUpdateSermonOutline).toHaveBeenCalledWith(mockSermon.id, expectedOutline);
       expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
@@ -263,84 +263,95 @@ describe('SermonOutline Component', () => {
   }, 40000); // Increased timeout to 40 seconds
 
   test('dependency array uses sermon.id instead of sermon object', async () => {
-    const { rerender } = render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate}/>);
+    const { rerender } = render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
     await waitFor(() => expect(mockGetSermonOutline).toHaveBeenCalledTimes(1));
 
     const updatedSermonSameId = { ...mockSermon, title: 'Updated Title' };
     rerender(<SermonOutline sermon={updatedSermonSameId} onOutlineUpdate={mockOnOutlineUpdate} />);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); // Allow potential effects to run
-    expect(mockGetSermonOutline).toHaveBeenCalledTimes(1); 
+    expect(mockGetSermonOutline).toHaveBeenCalledTimes(1);
 
     const newSermonDifferentId = { ...mockSermon, id: 'sermon-456' };
-    (mockGetSermonOutline as jest.Mock).mockResolvedValueOnce({ introduction: [], main: [], conclusion: [] }); 
+    (mockGetSermonOutline as jest.Mock).mockResolvedValueOnce({ introduction: [], main: [], conclusion: [] });
     rerender(<SermonOutline sermon={newSermonDifferentId} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait longer for the second fetch triggered by ID change
     await waitFor(() => {
-      expect(mockGetSermonOutline).toHaveBeenCalledTimes(2); 
-      expect(mockGetSermonOutline).toHaveBeenLastCalledWith('sermon-456'); 
+      expect(mockGetSermonOutline).toHaveBeenCalledTimes(2);
+      expect(mockGetSermonOutline).toHaveBeenLastCalledWith('sermon-456');
     }, { timeout: 15000 }); // Increased timeout to 15s for this specific wait
   }, 15000); // Increase Jest timeout for this test as well, as it involves waiting
 
   test('toggles section expansion when header is clicked', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait for the component to load
     await waitFor(() => {
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
-    
+
     // The sections should be expanded by default because they have content
     const introSection = screen.getByTestId('outline-section-introduction');
-    let introPoints = within(introSection).queryByText('Introduction point 1');
+    const introPoints = within(introSection).queryByText('Introduction point 1');
     expect(introPoints).toBeInTheDocument();
-    
+
     // Click the section header to collapse it
     const introHeader = within(introSection).getByText('structure.introduction');
-    fireEvent.click(introHeader);
-    
+    const headerWrapper = introHeader.closest('div');
+    expect(headerWrapper).toHaveClass('rounded-t-lg');
+
+    await act(async () => {
+      fireEvent.click(introHeader);
+    });
+
+    // When collapsed, it should have rounded-b-lg as well
+    expect(headerWrapper).toHaveClass('rounded-b-lg');
+
     // The points should now be hidden
-    introPoints = within(introSection).queryByText('Introduction point 1');
-    expect(introPoints).not.toBeInTheDocument();
-    
+    expect(within(introSection).queryByText('Introduction point 1')).not.toBeInTheDocument();
+
     // Click again to expand
-    fireEvent.click(introHeader);
-    
+    await act(async () => {
+      fireEvent.click(introHeader);
+    });
+
+    // When expanded, it should not have rounded-b-lg
+    expect(headerWrapper).not.toHaveClass('rounded-b-lg');
+
     // The points should be visible again
-    introPoints = within(introSection).queryByText('Introduction point 1');
-    expect(introPoints).toBeInTheDocument();
+    expect(within(introSection).queryByText('Introduction point 1')).toBeInTheDocument();
   });
 
   test('deletes an outline point when delete button is clicked and confirmed', async () => {
     // Mock confirm to return true (simulating user clicking "OK")
     const originalConfirm = window.confirm;
     window.confirm = jest.fn().mockReturnValue(true);
-    
+
     try {
       render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-      
+
       // Wait for the initial render
       await waitFor(() => {
         expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
       });
-      
+
       // Find the intro section and point
       const introSection = screen.getByTestId('outline-section-introduction');
       const pointElement = within(introSection).getByText('Introduction point 1');
-      
+
       // Get the parent li element
       const listItem = pointElement.closest('li');
       expect(listItem).toBeInTheDocument();
-      
+
       // Hover to reveal delete button (simulated by finding by role)
       const deleteButton = within(listItem!).getByLabelText('common.delete');
-      
+
       // Click the delete button
       fireEvent.click(deleteButton);
-      
+
       // Confirm should have been called with the correct message
       expect(window.confirm).toHaveBeenCalledWith('structure.deletePointConfirm');
-      
+
       // Check if updateSermonOutline was called with the updated outline
       await waitFor(() => {
         const expectedOutline: SermonOutlineType = {
@@ -359,36 +370,36 @@ describe('SermonOutline Component', () => {
 
   test('edits an outline point when edit button is clicked', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait for the initial render
     await waitFor(() => {
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
-    
+
     // Find the intro section and point
     const introSection = screen.getByTestId('outline-section-introduction');
     const pointElement = within(introSection).getByText('Introduction point 1');
-    
+
     // Get the parent li element
     const listItem = pointElement.closest('li');
     expect(listItem).toBeInTheDocument();
-    
+
     // Find the edit button
     const editButton = within(listItem!).getByLabelText('common.edit');
-    
+
     // Click the edit button
     fireEvent.click(editButton);
-    
+
     // The input field should now be visible with the current text
     const editInput = within(introSection).getByPlaceholderText('structure.editPointPlaceholder');
     expect(editInput).toHaveValue('Introduction point 1');
-    
+
     // Change the text and press Enter
     await act(async () => {
       fireEvent.change(editInput, { target: { value: 'Edited introduction point' } });
       fireEvent.keyDown(editInput, { key: 'Enter', code: 'Enter' });
     });
-    
+
     // Check if updateSermonOutline was called with the updated outline
     await waitFor(() => {
       const expectedOutline: SermonOutlineType = {
@@ -404,9 +415,9 @@ describe('SermonOutline Component', () => {
   test('handles error when fetching outline fails', async () => {
     // Mock the service to throw an error
     mockGetSermonOutline.mockRejectedValueOnce(new Error('Failed to fetch'));
-    
+
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    
+
     // Wait for the error message to appear
     await waitFor(() => {
       expect(screen.getByText('errors.fetchOutlineError')).toBeInTheDocument();

@@ -152,7 +152,7 @@ export default function DashboardNav() {
     <nav className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Desktop Layout */}
-        <div className="hidden lg:flex h-16 items-center gap-4">
+        <div className="hidden lg:flex h-16 items-center gap-4 relative">
           {/* Left: Logo */}
           <Link
             href="/dashboard"
@@ -251,7 +251,9 @@ export default function DashboardNav() {
 
           {/* Center: Mode toggle (desktop) */}
           {showWizardButton && isSermonRoot && !prepModeLoading && (
-            <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
+            </div>
           )}
 
           {/* Right: Desktop controls */}

@@ -23,17 +23,17 @@ npm run test:coverage && npm run lint:full
 
 ### Phase 1: Identify Changed Files & Logic
 
-1. **Get all changed files** (staged + unstaged):
+1. **Get ALL changed files** (session-wide: staged + unstaged):
    ```bash
    git diff --name-only
    git diff --name-only --staged
    ```
-   Union both lists. Filter to **testable** files: `*.ts`, `*.tsx` under `frontend/app`, `frontend/locales`, `frontend/utils`, etc. (exclude config, mocks, `*.test.*`, `*.spec.*`).
+   **CRITICAL**: You MUST union both lists. Do not ignore files that were modified earlier in the session and are already staged. Filter to **testable** files: `*.ts`, `*.tsx` under `frontend/app`, `frontend/locales`, `frontend/utils`, etc. (exclude config, mocks, `*.test.*`, `*.spec.*`).
 
 2. **Identify specific line changes**:
-   - Use `git diff -U0` to see exactly which lines were modified.
+   - Use `git diff -U0` and `git diff --staged -U0` to see exactly which lines were modified.
 
-3. **Record** the list of changed files and the **logic blocks** (functions/branches) affected. These are the **primary coverage targets**.
+3. **Record** the list of changed files and the **logic blocks** (functions/branches/CSS classes in TSX) affected. These are the **primary coverage targets**.
 
 ### Phase 2: Baseline Coverage Measurement
 
@@ -50,18 +50,17 @@ npm run test:coverage && npm run lint:full
    - Identify the coverage % (Lines/Statements).
    - **CRUCIAL STEP: Cross-reference your `git diff` line numbers with the "Uncovered Line #s" from the Jest table.**
    - If your changed lines appear in the "Uncovered Line #s", **YOUR NEW LOGIC IS NOT COVERED**.
-   - Example log: `utils/dateFormatter.ts: 50% (Baseline) - Lines 45-50 (NEW) are UNCOVERED`.
 
 ### Phase 3: Add Regression Tests for Changes
 
 6. **Prioritize covering the DIFF**:
-   - Even if the file has 90% coverage, if your **changes** are in the 10% uncovered part, you MUST add tests.
-   - Focus on **newly added branches, edge cases, and bug fixes**.
+   - Even if the file has 100% coverage, if your **changes** involve conditional logic (e.g. `isExpanded ? 'classA' : 'classB'`), you MUST add an **explicit assertion** verifying both sides of that logic.
+   - **MANDATE**: "Silent coverage" (rendering the file without asserting the new behavior) is NOT enough. You must prove the change works as intended.
 
 7. **Write tests** that:
    - Specifically target the **modified lines and logic**.
    - Assert the **fix** for the bug or the **correctness** of the new feature.
-   - Use mock data that reflects the specific scenarios handled in the diff.
+   - Verify that specific classes, states, or effects are applied under the new conditions.
 
 8. **Re-run coverage**:
    ```bash
@@ -70,6 +69,7 @@ npm run test:coverage && npm run lint:full
    Verify:
    - Changed file is **≥80%** overall.
    - **All modified/new lines are covered.**
+   - **The new behavior is explicitly asserted in a test case.**
 
 ### Phase 4: Lint Until Green
 
@@ -80,7 +80,7 @@ npm run test:coverage && npm run lint:full
    This runs: `lint` → `compile` → `lint:unused`.
 
 10. **Fix all lint/compile/unused errors**:
-    - Do not leave any error unfixed.
+    - Do not leave any error unfixed (including `prefer-const`, `no-unused-vars`, etc.).
     - Re-run `npm run lint:full` until it passes.
 
 ### Phase 5: Final Validation & Report
@@ -92,25 +92,27 @@ npm run test:coverage && npm run lint:full
     **Both must pass.**
 
 12. **Generate Final Report**:
-    - You **MUST** provide a comparison showing that the **changes** are specifically covered.
+    - You **MUST** provide a comparison showing that the **changes** are specifically covered AND asserted.
     - Format:
       ```
-      | File | Baseline % | Final % | Changes Covered? | Status |
-      |------|------------|---------|------------------|--------|
+      | File | Baseline % | Final % | Changes Covered & Asserted? | Status |
+      |------|------------|---------|-----------------------------|--------|
       | utils/api.ts | 45% | 85% | Yes (Lines 120-145) | ✅ |
-      | components/Calc.tsx | 100% | 100% | Yes (Regression added) | ✅ |
+      | components/Calc.tsx | 100% | 100% | Yes (Regression + Assertions) | ✅ |
       ```
 
 ---
 
 ## Validation Checklist
 
-- [ ] Changed files AND specific changed line ranges identified via `git diff -U0`.
+- [ ] Union of **ALL** changed files (staged + unstaged) identified.
+- [ ] Specific changed line ranges identified via `git diff -U0` (both staged and unstaged).
 - [ ] `npm run test:coverage` output manually inspected for "Uncovered Line #s".
 - [ ] Confirmed that **none of the modified lines** appear in the "Uncovered Line #s" column.
-- [ ] Every single modified line is explicitly exercised by a test.
+- [ ] **EXPLICIT ASSERTIONS** added for all new conditional logic and visual states.
+- [ ] Every single modified line is explicitly exercised and verified by a test.
 - [ ] File-wide coverage ≥80%.
-- [ ] `npm run lint:full` passes.
+- [ ] `npm run lint:full` passes (no errors, no warnings).
 - [ ] Final run: `npm run test:coverage && npm run lint:full` — both green.
 
 ---

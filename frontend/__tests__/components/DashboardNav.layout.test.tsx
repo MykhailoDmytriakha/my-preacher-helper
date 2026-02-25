@@ -5,9 +5,9 @@ import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 
 jest.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard',
+  usePathname: jest.fn(() => '/dashboard'),
   useRouter: () => ({ replace: jest.fn(), push: jest.fn(), refresh: jest.fn() }),
-  useSearchParams: () => ({ get: () => null, toString: () => '' }),
+  useSearchParams: jest.fn(() => ({ get: jest.fn(() => null), toString: jest.fn(() => '') })),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -27,10 +27,14 @@ jest.mock('@/hooks/useFeedback', () => ({
   })
 }));
 
-jest.mock('@/components/navigation/LanguageSwitcher', () => () => <div/>);
-jest.mock('@/components/navigation/UserProfileDropdown', () => () => <div/>);
-jest.mock('@/components/navigation/MobileMenu', () => () => <div/>);
-jest.mock('@/components/navigation/FeedbackModal', () => () => <div/>);
+jest.mock('@/components/navigation/LanguageSwitcher', () => () => <div />);
+jest.mock('@/components/navigation/UserProfileDropdown', () => () => <div />);
+jest.mock('@/components/navigation/MobileMenu', () => () => <div />);
+jest.mock('@/components/navigation/FeedbackModal', () => () => <div />);
+
+jest.mock('@/hooks/usePrepModeAccess', () => ({
+  usePrepModeAccess: () => ({ hasAccess: true, loading: false })
+}));
 
 describe('DashboardNav layout', () => {
   it('uses fluid container without max-w-7xl', () => {
@@ -45,6 +49,28 @@ describe('DashboardNav layout', () => {
       expect(wrapper.className).toMatch(/sm:px-6/);
       expect(wrapper.className).toMatch(/lg:px-8/);
     }
+  });
+
+  it('centers the ModeToggle when on a sermon page', () => {
+    // Override usePathname specifically for this test
+    const { usePathname } = require('next/navigation');
+    usePathname.mockReturnValue('/sermons/123');
+
+    // We already mocked usePrepModeAccess at the top level
+    render(<DashboardNav />);
+
+    // Desktop wrapper must be relative
+    const desktopWrapper = screen.getByRole('navigation').querySelector('.lg\\:flex.h-16');
+    expect(desktopWrapper).toHaveClass('relative');
+
+    // The ModeToggle should be wrapped in an absolute container
+    // Let's find the button or visual element that has "Feedback" or something else to locate
+    // Actually, mode toggle has some strings based on translations... "wizard.switchToClassic" or similar
+    // We can just find the absolute container directly
+    const modeToggleContainer = desktopWrapper?.querySelector('.absolute.left-1\\/2');
+    expect(modeToggleContainer).toBeInTheDocument();
+    expect(modeToggleContainer).toHaveClass('-translate-x-1/2');
+    expect(modeToggleContainer).toHaveClass('-translate-y-1/2');
   });
 });
 

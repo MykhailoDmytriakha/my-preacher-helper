@@ -546,7 +546,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const disableNetworkActions = !isOnline;
 
   // UI state
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [successNotification, setSuccessNotification] = useState(false);
   const [showAllTopics, setShowAllTopics] = useState(true);

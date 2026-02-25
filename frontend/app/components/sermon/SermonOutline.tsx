@@ -395,7 +395,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border ${colors.border}`}>
         {/* Section Header */}
         <div 
-          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${colors.headerHover}`}
+          className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${!isExpanded ? 'rounded-b-lg' : ''} ${colors.headerHover}`}
         >
           {/* Toggle (title + counters) */}
           <button
