@@ -45,10 +45,25 @@
 *   **Console Log:** Never `console.log` in production code; use `debugLog()`.
 *   **Interactive Nesting:** Never nest interactive elements (buttons, links) inside labels or other interactive containers.
 *   **CSS-Unity Anti-Pattern:** Never use `overflow-hidden` + shared `border-radius` on a wrapper to fake visual unity between independent components. If two components must look like one, the stateful component must own the rendering of both parts via a slot prop (`splitLeft`, `renderHeader`, etc.).
+*   **useState Prop Snapshot Anti-Pattern:** Never rely solely on `useState(prop)` to initialize a field that may arrive after modal mount (stale React Query cache). Always pair with a `useEffect` + dirty-ref guard to sync if the user hasn't edited yet.
 
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-24 Sibling Section Typography Consistency
+**Problem:** The `KnowledgeSection` title appeared noticeably larger (`text-xl`) than its visually adjacent sibling sections in `SermonOutline` (which inherited `text-base`), creating a broken visual hierarchy.
+**Attempts:** Assumed removing the `text-xl` class from the `h2` tag would fall back to the desired size, but `h2` needed explicit matching with the `SermonOutline` `div` header to guarantee identical rendering.
+**Solution:** Explicitly assigned the `text-base font-semibold text-gray-700` classes to the header to perfectly mirror the native rendering of the `SermonOutline` component.
+**Why it worked:** Explicit typography utilities ensure identical visual weight across different DOM elements (`h2` vs `div`), overriding any browser or container-level inheritance.
+**Principle:** When building modular UI sections that visually act as "peers" (e.g., Outline and Knowledge components), explicitly copy the exact typography utility classes (`text-base font-semibold`) to ensure perfect visual unity, regardless of the underlying semantic HTML tags (`h2` vs `div`).
+
+### 2026-02-24 Modal Field Empty Due to Stale React Query Cache
+**Problem:** The "Description" field in `EditSeriesModal` appeared empty even though the series had a description in Firestore. After opening the modal, description would then appear on the detail page as the background refetch completed.
+**Attempts:** Traced all data paths (Firestore → API → React Query → props) — all were correct. `useState(series.description || '')` is theoretically correct but initializes only once.
+**Solution:** Added `useEffect` + `useRef` (dirty flag) in `EditSeriesModal` to re-sync `description` state from the `series` prop whenever it changes, but only if the user hasn't started editing the field yet.
+**Why it worked:** React Query with `staleTime: 0` and `refetchOnMount: 'always'` serves cached (stale) data immediately and triggers a background refetch. If the modal opens before the refetch completes, `useState` snapshots the stale `undefined` description. After refetch, the parent prop updates but `useState` never re-runs. The `useEffect` fills the gap by syncing the latest prop value into the modal's local state.
+**Principle:** When a modal initializes form fields from a prop that may be stale (React Query background refetch), pair `useState(prop)` with a `useEffect` + dirty-ref guard: sync from prop if the user hasn't edited yet, skip if they have.
 
 ### 2026-02-24 Flexible Footer Alignment in Grid Cards
 **Problem:** The statistics blocks at the bottom of the Series Card (`SeriesCard.tsx`) were not aligned when multiple cards with varying content heights were displayed in a grid row.

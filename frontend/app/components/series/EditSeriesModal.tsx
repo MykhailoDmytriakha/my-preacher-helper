@@ -1,7 +1,7 @@
 "use client";
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -22,6 +22,18 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
   const [bookOrTopic, setBookOrTopic] = useState(series.bookOrTopic);
   const [color, setColor] = useState(series.color || '#3B82F6');
   const [status, setStatus] = useState(series.status);
+  // Track whether user has started editing any field.
+  // If not, sync all fields from series prop (handles stale React Query cache on modal open).
+  const formEditedRef = useRef(false);
+  useEffect(() => {
+    if (!formEditedRef.current) {
+      setTitle(series.title);
+      setDescription(series.description || '');
+      setBookOrTopic(series.bookOrTopic);
+      setColor(series.color || '#3B82F6');
+      setStatus(series.status);
+    }
+  }, [series]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
@@ -53,6 +65,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
   const clearError = () => setError(null);
 
   const handleColorSelect = (newColor: string) => {
+    formEditedRef.current = true;
     setColor(newColor);
     setIsColorPickerOpen(false);
   };
@@ -116,6 +129,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                 <TextareaAutosize
                   value={title}
                   onChange={(e) => {
+                    formEditedRef.current = true;
                     setTitle(e.target.value);
                     clearError();
                   }}
@@ -135,6 +149,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                   type="text"
                   value={bookOrTopic}
                   onChange={(e) => {
+                    formEditedRef.current = true;
                     setBookOrTopic(e.target.value);
                     clearError();
                   }}
@@ -152,6 +167,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
               <TextareaAutosize
                 value={description}
                 onChange={(e) => {
+                  formEditedRef.current = true;
                   setDescription(e.target.value);
                   clearError();
                 }}
@@ -169,7 +185,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                 </span>
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as Series['status'])}
+                  onChange={(e) => { formEditedRef.current = true; setStatus(e.target.value as Series['status']); }}
                   className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
                 >
                   {statusOptions.map((option) => (
@@ -189,7 +205,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                     <button
                       key={colorOption}
                       type="button"
-                      onClick={() => setColor(colorOption)}
+                      onClick={() => { formEditedRef.current = true; setColor(colorOption); }}
                       className={`h-9 w-9 rounded-full border-2 transition-all ${
                         color === colorOption
                           ? 'border-blue-600 ring-2 ring-blue-600/20 dark:border-blue-400 dark:ring-blue-400/30 scale-110'

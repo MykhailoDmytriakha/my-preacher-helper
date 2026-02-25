@@ -90,16 +90,211 @@ const AudioRecorder = dynamicImport(
   }
 );
 
+// Formats standalone verse numbers (at start or surrounded by spaces) as superscript
+const formatSuperscriptVerses = (text: string): string => {
+  if (!text) return text;
+  // Superscript number at the very start if followed by a space
+  let result = text.replace(/^(\d{1,3})(?=\s)/, '<sup class="text-gray-300 dark:text-gray-600">$1</sup>');
+  // Superscript numbers that are surrounded by spaces
+  result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
+  return result;
+};
+
+const StructureFilterBadge = ({ structureFilter, t }: { structureFilter: string; t: (key: string) => string }) => {
+  if (structureFilter === 'all') return null;
+  const canonical = normalizeStructureTag(structureFilter);
+  const label = canonical === 'intro'
+    ? getSectionLabel(t, 'introduction')
+    : canonical === 'main'
+      ? getSectionLabel(t, 'main')
+      : canonical === 'conclusion'
+        ? getSectionLabel(t, 'conclusion')
+        : structureFilter;
+  return (
+    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+      {label}
+    </span>
+  );
+};
+
+const ActiveFilters = ({ viewFilter, structureFilter, sortOrder, tagFilters, allowedTags, resetFilters, t }: {
+  viewFilter: string;
+  structureFilter: string;
+  sortOrder: string;
+  tagFilters: string[];
+  allowedTags: { name: string; color: string }[];
+  resetFilters: () => void;
+  t: (key: string) => string;
+}) => {
+  return (
+    <motion.div
+      key="active-filters"
+      className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md"
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.15, ease: 'easeInOut' }}
+      layout={false}
+    >
+      <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+        {t('filters.activeFilters')}:
+      </span>
+      {viewFilter === 'missingTags' && (
+        <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
+          {t('filters.missingTags')}
+        </span>
+      )}
+      <StructureFilterBadge structureFilter={structureFilter} t={t} />
+      {sortOrder === 'structure' && (
+        <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+          {t('filters.sortByStructure') || 'Sorted by ThoughtsBySection'}
+        </span>
+      )}
+      {tagFilters.map((tag: string) => {
+        const tagInfo = allowedTags.find(tInfo => tInfo.name === tag);
+        return (
+          <span
+            key={tag}
+            className="px-2 py-1 text-xs rounded-full"
+            style={{
+              backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
+              color: tagInfo ? getContrastColor(tagInfo.color) : '#000000'
+            }}
+          >
+            {tag}
+          </span>
+        );
+      })}
+      <button
+        onClick={resetFilters}
+        className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
+      >
+        {t('filters.clear')}
+      </button>
+    </motion.div>
+  );
+};
+
+const getInitialUiMode = (modeParam: string | null, id: string): 'classic' | 'prep' => {
+  if (modeParam === 'prep') return 'prep';
+  if (typeof window !== 'undefined') {
+    const savedMode = localStorage.getItem(`sermon-${id}-mode`);
+    if (savedMode === 'prep' || savedMode === 'classic') {
+      return savedMode as 'classic' | 'prep';
+    }
+  }
+  return 'classic';
+};
+
+// Calculate the number of thoughts for each outline point
+const calculateThoughtsPerSermonPoint = (sermon: Sermon | null) => {
+  if (!sermon || !sermon.thoughts || !sermon.outline) return {};
+  const counts: Record<string, number> = {};
+  sermon.thoughts.forEach(thought => {
+    if (thought.outlinePointId) {
+      counts[thought.outlinePointId] = (counts[thought.outlinePointId] || 0) + 1;
+    }
+  });
+  return counts;
+};
+
+const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
+  const isTextContextDone = Boolean(
+    prepDraft?.textContext?.readWholeBookOnceConfirmed &&
+    (prepDraft?.textContext?.contextNotes || '').trim().length > 0 &&
+    (prepDraft?.textContext?.repeatedWords && prepDraft.textContext.repeatedWords.length > 0)
+  );
+
+  const isSpiritualDone = Boolean(prepDraft?.spiritual?.readAndPrayedConfirmed);
+
+  const isExegeticalPlanDone = Boolean(
+    prepDraft?.exegeticalPlan && prepDraft.exegeticalPlan.length > 0 &&
+    prepDraft.exegeticalPlan.some(node =>
+      (node.title || '').trim().length > 0 ||
+      (node.children && node.children.some(child => (child.title || '').trim().length > 0))
+    ) &&
+    prepDraft?.authorIntent && prepDraft.authorIntent.trim().length > 0
+  );
+
+  const isMainIdeaDone = Boolean(
+    prepDraft?.mainIdea?.contextIdea && prepDraft.mainIdea.contextIdea.trim().length > 0 &&
+    prepDraft?.mainIdea?.textIdea && prepDraft.mainIdea.textIdea.trim().length > 0 &&
+    prepDraft?.mainIdea?.argumentation && prepDraft.mainIdea.argumentation.trim().length > 0
+  );
+
+  const isGoalsDone = Boolean(
+    (prepDraft?.timelessTruth || '').trim().length > 0 &&
+    (prepDraft?.preachingGoal?.statement || '').trim().length > 0
+  );
+
+  const isThesisDone = Boolean(
+    (prepDraft?.thesis?.exegetical || '').trim().length > 0 &&
+    (prepDraft?.thesis?.homiletical || '').trim().length > 0 &&
+    (prepDraft?.thesis?.oneSentence || '').trim().length > 0
+  );
+
+  const isHomileticPlanDone = Boolean(
+    (prepDraft?.homileticPlan?.modernTranslation || '').trim().length > 0 &&
+    ((prepDraft?.homileticPlan?.sermonPlan || []).filter(p => (p.title || '').trim().length > 0).length >= 2)
+  );
+
+  return {
+    isSpiritualDone,
+    isTextContextDone,
+    isExegeticalPlanDone,
+    isMainIdeaDone,
+    isGoalsDone,
+    isThesisDone,
+    isHomileticPlanDone
+  };
+};
+
+// Check for inconsistencies between tags and assigned plan points
+const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
+  if (!sermon || !sermon.thoughts || !sermon.outline) return false;
+
+  return sermon.thoughts.some(thought => {
+    // 1. Check for multiple required tags on one thought
+    const usedRequiredTags = thought.tags
+      .map((tag) => normalizeStructureTag(tag))
+      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
+    if (usedRequiredTags.length > 1) {
+      return true; // Inconsistency: multiple required tags
+    }
+
+    // 2. Check for inconsistency between tag and assigned plan point
+    if (!thought.outlinePointId) return false; // If no assigned plan point, no issue
+
+    // Determine the section of the plan point
+    let outlinePointSection: string | undefined;
+
+    if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
+      outlinePointSection = 'introduction';
+    } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
+      outlinePointSection = 'main';
+    } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
+      outlinePointSection = 'conclusion';
+    }
+
+    if (!outlinePointSection) return false; // If section not found, consider it consistent
+
+    // Get the expected tag for the current section
+    const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
+
+    // Check if the thought has the expected tag for the current section
+    const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
+
+    // Check if the thought has tags from other sections
+    const hasOtherSectionTags = ['intro', 'main', 'conclusion']
+      .filter(tag => tag !== expectedTag)
+      .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
+
+    // Inconsistency if no expected tag or other section tags present
+    return !(!hasOtherSectionTags || hasExpectedTag);
+  });
+};
+
 export default function SermonPage() {
-  // Formats standalone verse numbers (at start or surrounded by spaces) as superscript
-  const formatSuperscriptVerses = useCallback((text: string): string => {
-    if (!text) return text;
-    // Superscript number at the very start if followed by a space
-    let result = text.replace(/^(\d{1,3})(?=\s)/, '<sup class="text-gray-300 dark:text-gray-600">$1</sup>');
-    // Superscript numbers that are surrounded by spaces
-    result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
-    return result;
-  }, []);
 
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -112,17 +307,7 @@ export default function SermonPage() {
   // UI mode synced with query param (?mode=prep)
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
-  const [uiMode, setUiMode] = useState<'classic' | 'prep'>(() => {
-    // Initialize from URL param first, then localStorage as fallback
-    if (modeParam === 'prep') return 'prep';
-    if (typeof window !== 'undefined') {
-      const savedMode = localStorage.getItem(`sermon-${id}-mode`);
-      if (savedMode === 'prep' || savedMode === 'classic') {
-        return savedMode as 'classic' | 'prep';
-      }
-    }
-    return 'classic';
-  });
+  const [uiMode, setUiMode] = useState<'classic' | 'prep'>(() => getInitialUiMode(modeParam, id as string));
 
   // Sync UI mode with URL params
   useEffect(() => {
@@ -183,7 +368,7 @@ export default function SermonPage() {
     // Disable layout animations to avoid vertical stretch on filter changes
     <motion.div layout={false} className="space-y-4 sm:space-y-6">
 
-          <div ref={options?.portalRef} className="w-full empty:hidden [&>div]:h-full" />
+      <div ref={options?.portalRef} className="w-full empty:hidden [&>div]:h-full" />
 
       <section>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
@@ -281,67 +466,15 @@ export default function SermonPage() {
         </AnimatePresence>
         <AnimatePresence initial={false}>
           {uiMode === 'classic' && (viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
-            <motion.div
-              key="active-filters"
-              className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md"
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.15, ease: 'easeInOut' }}
-              layout={false}
-            >
-              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                {t('filters.activeFilters')}:
-              </span>
-              {viewFilter === 'missingTags' && (
-                <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
-                  {t('filters.missingTags')}
-                </span>
-              )}
-              {structureFilter !== 'all' && (
-                (() => {
-                  const canonical = normalizeStructureTag(structureFilter);
-                  const label = canonical === 'intro'
-                    ? getSectionLabel(t, 'introduction')
-                    : canonical === 'main'
-                      ? getSectionLabel(t, 'main')
-                      : canonical === 'conclusion'
-                        ? getSectionLabel(t, 'conclusion')
-                        : structureFilter;
-                  return (
-                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-                      {label}
-                    </span>
-                  );
-                })()
-              )}
-              {sortOrder === 'structure' && (
-                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-                  {t('filters.sortByStructure') || 'Sorted by ThoughtsBySection'}
-                </span>
-              )}
-              {tagFilters.map((tag: string) => {
-                const tagInfo = allowedTags.find(t => t.name === tag);
-                return (
-                  <span
-                    key={tag}
-                    className="px-2 py-1 text-xs rounded-full"
-                    style={{
-                      backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
-                      color: tagInfo ? getContrastColor(tagInfo.color) : '#000000'
-                    }}
-                  >
-                    {tag}
-                  </span>
-                );
-              })}
-              <button
-                onClick={resetFilters}
-                className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
-              >
-                {t('filters.clear')}
-              </button>
-            </motion.div>
+            <ActiveFilters
+              viewFilter={viewFilter}
+              structureFilter={structureFilter}
+              sortOrder={sortOrder}
+              tagFilters={tagFilters}
+              allowedTags={allowedTags}
+              resetFilters={resetFilters}
+              t={t as (key: string) => string}
+            />
           )}
         </AnimatePresence>
         {/* Do not animate the thoughts column when toggling filter */}
@@ -654,11 +787,11 @@ export default function SermonPage() {
     });
   }, [activeStepId]);
 
-  // Optional deep link handling (?prepStep=spiritual|textContext|exegeticalPlan|mainIdea|goals|thesis|homileticPlan)
   const prepStepParam = searchParams?.get('prepStep');
   useEffect(() => {
     const target = prepStepParam;
-    if (target === 'spiritual' || target === 'textContext' || target === 'exegeticalPlan' || target === 'mainIdea' || target === 'goals' || target === 'thesis' || target === 'homileticPlan') {
+    const validSteps = ['spiritual', 'textContext', 'exegeticalPlan', 'mainIdea', 'goals', 'thesis', 'homileticPlan'];
+    if (target && validSteps.includes(target as string)) {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
@@ -697,117 +830,22 @@ export default function SermonPage() {
   // Ref for the filter toggle button (passed to controls)
   const filterButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Calculate the number of thoughts for each outline point
-  const calculateThoughtsPerSermonPoint = () => {
-    if (!sermon || !sermon.thoughts || !sermon.outline) return {};
-
-    const counts: Record<string, number> = {};
-
-    // Count thoughts for each outline point ID
-    sermon.thoughts.forEach(thought => {
-      if (thought.outlinePointId) {
-        counts[thought.outlinePointId] = (counts[thought.outlinePointId] || 0) + 1;
-      }
-    });
-
-    return counts;
-  };
-
-  const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint();
+  const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint(sermon);
 
 
 
-  // Completion status helpers
-  const isTextContextDone = Boolean(
-    prepDraft?.textContext?.readWholeBookOnceConfirmed &&
-    (prepDraft?.textContext?.contextNotes || '').trim().length > 0 &&
-    (prepDraft?.textContext?.repeatedWords && prepDraft.textContext.repeatedWords.length > 0)
-  );
-  const isSpiritualDone = Boolean(prepDraft?.spiritual?.readAndPrayedConfirmed);
-  const isExegeticalPlanDone = Boolean(
-    prepDraft?.exegeticalPlan &&
-    prepDraft.exegeticalPlan.length > 0 &&
-    prepDraft.exegeticalPlan.some(node =>
-      (node.title || '').trim().length > 0 ||
-      (node.children && node.children.some(child => (child.title || '').trim().length > 0))
-    ) &&
-    prepDraft?.authorIntent &&
-    prepDraft.authorIntent.trim().length > 0
-  );
-  const isMainIdeaDone = Boolean(
-    prepDraft?.mainIdea?.contextIdea &&
-    prepDraft.mainIdea.contextIdea.trim().length > 0 &&
-    prepDraft?.mainIdea?.textIdea &&
-    prepDraft.mainIdea.textIdea.trim().length > 0 &&
-    prepDraft?.mainIdea?.argumentation &&
-    prepDraft.mainIdea.argumentation.trim().length > 0
-  );
-
-  const isGoalsDone = Boolean(
-    (prepDraft?.timelessTruth || '').trim().length > 0 &&
-    (prepDraft?.preachingGoal?.statement || '').trim().length > 0
-  );
-
-  const isThesisDone = Boolean(
-    (prepDraft?.thesis?.exegetical || '').trim().length > 0 &&
-    (prepDraft?.thesis?.homiletical || '').trim().length > 0 &&
-    (prepDraft?.thesis?.oneSentence || '').trim().length > 0
-  );
-
-  const isHomileticPlanDone = Boolean(
-    (prepDraft?.homileticPlan?.modernTranslation || '').trim().length > 0 &&
-    ((prepDraft?.homileticPlan?.sermonPlan || []).filter(p => (p.title || '').trim().length > 0).length >= 2)
-  );
-
-
-  // Check for inconsistencies between tags and assigned plan points
-  const checkForInconsistentThoughts = (): boolean => {
-    if (!sermon || !sermon.thoughts || !sermon.outline) return false;
-
-    // Check each thought
-    return sermon.thoughts.some(thought => {
-      // 1. Check for multiple required tags on one thought
-      const usedRequiredTags = thought.tags
-        .map((tag) => normalizeStructureTag(tag))
-        .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-      if (usedRequiredTags.length > 1) {
-        return true; // Inconsistency: multiple required tags
-      }
-
-      // 2. Check for inconsistency between tag and assigned plan point
-      if (!thought.outlinePointId) return false; // If no assigned plan point, no issue
-
-      // Determine the section of the plan point
-      let outlinePointSection: string | undefined;
-
-      if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
-        outlinePointSection = 'introduction';
-      } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
-        outlinePointSection = 'main';
-      } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
-        outlinePointSection = 'conclusion';
-      }
-
-      if (!outlinePointSection) return false; // If section not found, consider it consistent
-
-      // Get the expected tag for the current section
-      const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
-
-      // Check if the thought has the expected tag for the current section
-      const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
-
-      // Check if the thought has tags from other sections
-      const hasOtherSectionTags = ['intro', 'main', 'conclusion']
-        .filter(tag => tag !== expectedTag)
-        .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
-
-      // Inconsistency if no expected tag or other section tags present
-      return !(!hasOtherSectionTags || hasExpectedTag);
-    });
-  };
+  const {
+    isTextContextDone,
+    isSpiritualDone,
+    isExegeticalPlanDone,
+    isMainIdeaDone,
+    isGoalsDone,
+    isThesisDone,
+    isHomileticPlanDone
+  } = getPrepCompleteness(prepDraft);
 
   // Check for inconsistencies
-  const hasInconsistentThoughts = checkForInconsistentThoughts();
+  const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(sermon);
 
   // Function to update only the outline part of the sermon state
   const handleOutlineUpdate = (updatedOutline: SermonOutlineType) => {

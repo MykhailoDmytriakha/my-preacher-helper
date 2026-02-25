@@ -63,7 +63,7 @@ describe('StructurePreviewToggle', () => {
 
     const toggle = await screen.findByRole('switch');
     expect(toggle).toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle).not.toBeChecked();
   });
 
   it('renders toggle in enabled state when setting is true', async () => {
@@ -75,7 +75,7 @@ describe('StructurePreviewToggle', () => {
     render(<StructurePreviewToggle />);
 
     const toggle = await screen.findByRole('switch');
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toBeChecked();
     expect(toggle).toHaveClass('bg-blue-600');
   });
 
@@ -87,14 +87,14 @@ describe('StructurePreviewToggle', () => {
 
     await waitFor(() => {
       expect(mockUpdateStructurePreviewAccess).toHaveBeenCalledWith(true);
-      expect(toggle).toHaveAttribute('aria-checked', 'true');
+      expect(toggle).toBeChecked();
     });
   });
 
   it('shows alert when toggle update fails', async () => {
     mockUpdateStructurePreviewAccess.mockRejectedValueOnce(new Error('update failed'));
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => { });
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     render(<StructurePreviewToggle />);
 

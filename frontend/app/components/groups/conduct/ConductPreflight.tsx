@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -17,6 +17,14 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
   const { t } = useTranslation();
   const [localFlow, setLocalFlow] = useState<GroupFlowItem[]>(flow);
   const [totalMeetingMin, setTotalMeetingMin] = useState<number | null>(null);
+  // Sync localFlow from the flow prop when fresh data arrives (handles stale React Query cache).
+  // Once the user edits any duration, stop syncing to preserve their input.
+  const flowEditedRef = useRef(false);
+  useEffect(() => {
+    if (!flowEditedRef.current) {
+      setLocalFlow(flow);
+    }
+  }, [flow]);
 
   const templatesById = useMemo(
     () => new Map(templates.map((tpl) => [tpl.id, tpl])),
@@ -34,6 +42,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
   const someEmpty = hasDurations && localFlow.some((item) => !item.durationMin || item.durationMin <= 0);
 
   const updateDuration = (flowItemId: string, value: string) => {
+    flowEditedRef.current = true;
     const num = value === '' ? null : parseInt(value, 10);
     setLocalFlow((prev) =>
       prev.map((item) =>

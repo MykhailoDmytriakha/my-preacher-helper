@@ -44,6 +44,18 @@ jest.mock('@/providers/AuthProvider', () => ({
   })
 }));
 
+// Mock ColorPickerModal
+jest.mock('@/components/ColorPickerModal', () => {
+  return function MockColorPickerModal({ onOk, onCancel }: any) {
+    return (
+      <div data-testid="mock-color-picker">
+        <button data-testid="color-picker-ok" onClick={() => onOk('#123456')}>OK</button>
+        <button data-testid="color-picker-cancel" onClick={onCancel}>Cancel</button>
+      </div>
+    );
+  };
+});
+
 describe('EditSeriesModal Component', () => {
   const mockSeries = {
     id: 'test-series-id',
@@ -196,6 +208,39 @@ describe('EditSeriesModal Component', () => {
     expect(customColorButton).toHaveAttribute('title', 'Custom color');
   });
 
+  test('handles color picker modal interactions', () => {
+    render(
+      <EditSeriesModal
+        series={mockSeries}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const colorButtons = document.querySelectorAll('button[title]');
+    const customColorButton = colorButtons[8];
+
+    // Click custom color to open modal
+    fireEvent.click(customColorButton);
+    expect(screen.getByTestId('mock-color-picker')).toBeInTheDocument();
+
+    // Click OK with selected color
+    fireEvent.click(screen.getByTestId('color-picker-ok'));
+
+    // Modal should close
+    expect(screen.queryByTestId('mock-color-picker')).not.toBeInTheDocument();
+
+    // Click again to test cancel
+    fireEvent.click(customColorButton);
+    expect(screen.getByTestId('mock-color-picker')).toBeInTheDocument();
+
+    // Click cancel
+    fireEvent.click(screen.getByTestId('color-picker-cancel'));
+
+    // Modal should close
+    expect(screen.queryByTestId('mock-color-picker')).not.toBeInTheDocument();
+  });
+
   test('submitting form with updated data saves correctly', async () => {
     render(
       <EditSeriesModal
@@ -210,6 +255,21 @@ describe('EditSeriesModal Component', () => {
       target: { value: 'Updated Series' }
     });
 
+    // Change description
+    fireEvent.change(screen.getByDisplayValue('Test description'), {
+      target: { value: 'Updated description' }
+    });
+
+    // Change bookOrTopic
+    fireEvent.change(screen.getByDisplayValue('Romans'), {
+      target: { value: 'Genesis' }
+    });
+
+    // Change status
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'active' }
+    });
+
     // Submit the form
     const submitButton = screen.getByRole('button', { name: 'Save Changes' });
     fireEvent.click(submitButton);
@@ -218,10 +278,10 @@ describe('EditSeriesModal Component', () => {
       expect(mockOnUpdate).toHaveBeenCalledWith('test-series-id', {
         title: 'Updated Series',
         theme: 'Updated Series',
-        description: 'Test description',
-        bookOrTopic: 'Romans',
+        description: 'Updated description',
+        bookOrTopic: 'Genesis',
         color: '#3B82F6',
-        status: 'draft'
+        status: 'active'
       });
     });
   });

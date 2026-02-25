@@ -316,8 +316,8 @@ const KnowledgeHeader = ({
   hideToggle?: boolean;
 }) => (
   <div className="flex justify-between items-center mb-0 sm:mb-4 gap-3">
-    <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-      <h2 className="text-xl font-semibold break-words">{title}</h2>
+    <div className="flex items-center gap-2 min-w-0">
+      <h2 className="font-semibold text-base truncate text-gray-700 dark:text-gray-200">{title}</h2>
     </div>
     {!hideToggle && (
       <button
@@ -333,8 +333,7 @@ const KnowledgeHeader = ({
 
 
 
-const CollapsedGenerateContainer = ({
-  hasAnyData,
+const EmptyStateGenerateContainer = ({
   hasEnoughThoughts,
   noInsightsMessage,
   thresholdMessage,
@@ -343,7 +342,6 @@ const CollapsedGenerateContainer = ({
   anyGenerating,
   onGenerate
 }: {
-  hasAnyData: boolean;
   hasEnoughThoughts: boolean;
   noInsightsMessage: string;
   thresholdMessage: string;
@@ -352,36 +350,34 @@ const CollapsedGenerateContainer = ({
   anyGenerating: boolean;
   onGenerate: () => void;
 }) => (
-  hasAnyData ? null : (
-    <div className="mt-3 sm:mt-4">
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 sm:p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
-        <div className="flex-1">
-          {hasEnoughThoughts ? (
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {noInsightsMessage}
-            </p>
-          ) : (
-            <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-              {thresholdMessage}
-            </p>
-          )}
-        </div>
-
-        <button
-          className={`px-4 py-2 sm:py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
-            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed hidden sm:flex'
-            }`}
-          onClick={hasEnoughThoughts ? onGenerate : undefined}
-          disabled={!hasEnoughThoughts || anyGenerating}
-          data-testid="generate-insights-button"
-        >
-          {isGeneratingAll ? <LoadingSpinner /> : null}
-          {generateLabel}
-        </button>
+  <div className="mt-3 sm:mt-4">
+    <div className="flex flex-col items-center sm:items-start gap-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
+      <div className="w-full text-center sm:text-left">
+        {hasEnoughThoughts ? (
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {noInsightsMessage}
+          </p>
+        ) : (
+          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+            {thresholdMessage}
+          </p>
+        )}
       </div>
+
+      <button
+        className={`w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
+          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+          : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+          }`}
+        onClick={hasEnoughThoughts ? onGenerate : undefined}
+        disabled={!hasEnoughThoughts || anyGenerating}
+        data-testid="generate-insights-button"
+      >
+        {isGeneratingAll ? <LoadingSpinner /> : null}
+        {generateLabel}
+      </button>
     </div>
-  )
+  </div>
 );
 
 interface InsightListSectionProps<T> {
@@ -550,7 +546,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const disableNetworkActions = !isOnline;
 
   // UI state
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(true);
   const [successNotification, setSuccessNotification] = useState(false);
   const [showAllTopics, setShowAllTopics] = useState(true);
@@ -702,7 +698,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   // Loading placeholder
   if (loading) {
     return (
-      <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 animate-pulse">
+      <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-pulse">
         <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
         <div className="space-y-3">
           <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
@@ -714,7 +710,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   }
 
   return (
-    <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 relative">
+    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 relative">
       <SuccessNotification show={successNotification} message={t('knowledge.insightsGenerated')} />
 
       <KnowledgeHeader
@@ -723,97 +719,98 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         onToggleExpanded={() => setExpanded((prev) => !prev)}
         showMoreLabel={t('knowledge.showMore')}
         showLessLabel={t('knowledge.showLess')}
-        hideToggle={!hasAnyData}
+        hideToggle={false}
       />
 
 
 
       {expanded ? (
-        <div className="space-y-6">
-          <InsightListSection
-            title={t('knowledge.coveredTopics')}
-            items={topics}
-            showAll={showAllTopics}
-            onToggleShowAll={toggleTopicsVisibility}
-            onRefresh={handleRegenerateTopics}
-            isRefreshing={isGeneratingTopics}
-            disableRefresh={disableRefresh}
-            refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
-            showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
-            hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
-            listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
-            renderItem={(topic) => (
-              <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                <div className="font-medium">{topic}</div>
-              </div>
-            )}
-          />
+        hasAnyData ? (
+          <div className="space-y-6">
+            <InsightListSection
+              title={t('knowledge.coveredTopics')}
+              items={topics}
+              showAll={showAllTopics}
+              onToggleShowAll={toggleTopicsVisibility}
+              onRefresh={handleRegenerateTopics}
+              isRefreshing={isGeneratingTopics}
+              disableRefresh={disableRefresh}
+              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
+              hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
+              listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
+              renderItem={(topic) => (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div className="font-medium">{topic}</div>
+                </div>
+              )}
+            />
 
-          <InsightListSection
-            title={t('knowledge.relatedVerses')}
-            items={relatedVerses}
-            showAll={showAllVerses}
-            onToggleShowAll={toggleVersesVisibility}
-            onRefresh={handleRegenerateVerses}
-            isRefreshing={isGeneratingVerses}
-            disableRefresh={disableRefresh}
-            refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
-            showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
-            hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
-            listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
-            renderItem={(verse) => (
-              <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                <div className="font-medium mb-1">{verse.reference}</div>
-                {verse.relevance && <div className="text-sm">{verse.relevance}</div>}
-              </div>
-            )}
-          />
+            <InsightListSection
+              title={t('knowledge.relatedVerses')}
+              items={relatedVerses}
+              showAll={showAllVerses}
+              onToggleShowAll={toggleVersesVisibility}
+              onRefresh={handleRegenerateVerses}
+              isRefreshing={isGeneratingVerses}
+              disableRefresh={disableRefresh}
+              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
+              hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
+              listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
+              renderItem={(verse) => (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div className="font-medium mb-1">{verse.reference}</div>
+                  {verse.relevance && <div className="text-sm">{verse.relevance}</div>}
+                </div>
+              )}
+            />
 
-          <InsightListSection
-            title={t('knowledge.possibleDirections')}
-            items={possibleDirections}
-            showAll={showAllDirections}
-            onToggleShowAll={toggleDirectionsVisibility}
-            onRefresh={handleRegenerateDirections}
-            isRefreshing={isGeneratingDirections}
-            disableRefresh={disableRefresh}
-            refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
-            showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
-            hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
-            listClassName="space-y-2 mt-2"
-            renderItem={(direction) => (
-              <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                <div className="font-medium mb-1">{direction.area}</div>
-                <div className="text-sm">{direction.suggestion}</div>
-              </div>
-            )}
-          />
+            <InsightListSection
+              title={t('knowledge.possibleDirections')}
+              items={possibleDirections}
+              showAll={showAllDirections}
+              onToggleShowAll={toggleDirectionsVisibility}
+              onRefresh={handleRegenerateDirections}
+              isRefreshing={isGeneratingDirections}
+              disableRefresh={disableRefresh}
+              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
+              hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
+              listClassName="space-y-2 mt-2"
+              renderItem={(direction) => (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div className="font-medium mb-1">{direction.area}</div>
+                  <div className="text-sm">{direction.suggestion}</div>
+                </div>
+              )}
+            />
 
-          <PlanSection
-            title={t('knowledge.suggestedPlan')}
-            sectionHints={sectionHints}
-            refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
-            onRefresh={handleGeneratePlan}
-            isRefreshing={isGeneratingPlan}
-            disableRefresh={disableRefresh}
-            noPlanMessage={t('knowledge.noPlan')}
-            introductionTitle={t('knowledge.planIntroduction')}
-            mainTitle={t('knowledge.planMain')}
-            conclusionTitle={t('knowledge.planConclusion')}
+            <PlanSection
+              title={t('knowledge.suggestedPlan')}
+              sectionHints={sectionHints}
+              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              onRefresh={handleGeneratePlan}
+              isRefreshing={isGeneratingPlan}
+              disableRefresh={disableRefresh}
+              noPlanMessage={t('knowledge.noPlan')}
+              introductionTitle={t('knowledge.planIntroduction')}
+              mainTitle={t('knowledge.planMain')}
+              conclusionTitle={t('knowledge.planConclusion')}
+            />
+          </div>
+        ) : (
+          <EmptyStateGenerateContainer
+            hasEnoughThoughts={hasEnoughThoughts}
+            noInsightsMessage={t('knowledge.noInsights')}
+            thresholdMessage={insightsThresholdMessage}
+            generateLabel={t('knowledge.generate')}
+            isGeneratingAll={isGeneratingAll}
+            anyGenerating={disableRefresh}
+            onGenerate={handleGenerateAllInsights}
           />
-        </div>
-      ) : (
-        <CollapsedGenerateContainer
-          hasAnyData={hasAnyData}
-          hasEnoughThoughts={hasEnoughThoughts}
-          noInsightsMessage={t('knowledge.noInsights')}
-          thresholdMessage={insightsThresholdMessage}
-          generateLabel={t('knowledge.generate')}
-          isGeneratingAll={isGeneratingAll}
-          anyGenerating={disableRefresh}
-          onGenerate={handleGenerateAllInsights}
-        />
-      )}
+        )
+      ) : null}
     </div>
   );
 };
