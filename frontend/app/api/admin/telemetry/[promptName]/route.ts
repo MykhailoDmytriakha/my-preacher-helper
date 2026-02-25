@@ -40,23 +40,23 @@ export async function GET(
   try {
     const { adminDb } = await import("@/config/firebaseAdminConfig");
 
+    // No orderBy to avoid requiring a composite Firestore index — sort in memory instead.
     let query = adminDb
       .collection(TELEMETRY_COLLECTION)
-      .where("promptName", "==", decoded)
-      .orderBy("timestamp", "desc")
-      .limit(limit);
+      .where("promptName", "==", decoded);
 
     if (versionFilter) {
       query = adminDb
         .collection(TELEMETRY_COLLECTION)
         .where("promptName", "==", decoded)
-        .where("promptVersion", "==", versionFilter)
-        .orderBy("timestamp", "desc")
-        .limit(limit);
+        .where("promptVersion", "==", versionFilter);
     }
 
     const snapshot = await query.get();
-    const records = snapshot.docs.map((doc) => doc.data());
+    const records = snapshot.docs
+      .map((doc) => doc.data())
+      .sort((a, b) => ((b.timestamp as string) ?? "").localeCompare((a.timestamp as string) ?? ""))
+      .slice(0, limit);
 
     return NextResponse.json({
       promptName: decoded,

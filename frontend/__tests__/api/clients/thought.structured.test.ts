@@ -40,6 +40,45 @@ describe('generateThoughtStructured', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.DEBUG_MODE = 'false';
+  });
+
+  afterAll(() => {
+    delete process.env.DEBUG_MODE;
+  });
+
+  it('should log debug info when DEBUG_MODE is true', async () => {
+    await jest.isolateModules(async () => {
+      // Arrange
+      process.env.DEBUG_MODE = 'true';
+      const { generateThoughtStructured } = require('@clients/thought.structured');
+      const structuredOutput = require('@clients/structuredOutput');
+      const { logger } = require('@clients/openAIHelpers');
+
+      const mockResponse = {
+        originalText: 'Test transcription',
+        formattedText: 'Formatted',
+        tags: ['Вступление'],
+        meaningPreserved: true,
+      };
+
+      (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+        success: true,
+        data: mockResponse,
+        refusal: null,
+        error: null,
+      });
+
+      // Act
+      await generateThoughtStructured(
+        'Test transcription',
+        mockSermon,
+        availableTags
+      );
+
+      // Assert
+      expect(logger.debug).toHaveBeenCalled();
+    });
   });
 
   it('should return successful result when meaning is preserved', async () => {
@@ -144,6 +183,21 @@ describe('generateThoughtStructured', () => {
     expect(result.meaningSuccessfullyPreserved).toBe(false);
     expect(result.formattedText).toBeNull();
     expect(result.tags).toBeNull();
+  });
+
+  it('should catch errors in runThoughtAttempt', async () => {
+    // Arrange
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(new Error('Fatal error'));
+
+    // Act
+    const result = await generateThoughtStructured(
+      'Test transcription',
+      mockSermon,
+      availableTags
+    );
+
+    // Assert
+    expect(result.meaningSuccessfullyPreserved).toBe(false);
   });
 
   it('should retry when meaning is not preserved', async () => {

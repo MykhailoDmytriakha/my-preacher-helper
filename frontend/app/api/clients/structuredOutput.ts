@@ -115,7 +115,6 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     systemPrompt,
     userMessage,
   });
-  const combinedUserContent = `${promptBlueprint.systemPrompt}\n\n${promptBlueprint.userMessage}`;
   const provider = getCurrentAIProvider();
 
   logger.info(operationName, `Starting structured output call using model: ${model}`);
@@ -127,10 +126,9 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   const startTime = performance.now();
 
   try {
-    // Combine system and user messages
-    // Note: Some models don't support separate system messages
     const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: "user", content: combinedUserContent }
+      { role: "system", content: promptBlueprint.systemPrompt },
+      { role: "user", content: promptBlueprint.userMessage },
     ];
 
     // Make API call with structured output

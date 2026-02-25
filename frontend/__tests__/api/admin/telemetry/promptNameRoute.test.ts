@@ -71,14 +71,13 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             expect(whereMock).toHaveBeenCalledWith('promptName', '==', 'test-prompt');
         });
 
-        it('applies limit and version filter from query', async () => {
+        it('applies version filter from query', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt?limit=10&version=v1', {
                 headers: { 'x-admin-secret': 'test-secret' }
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             await GET(request, { params });
 
-            expect(limitMock).toHaveBeenCalledWith(10);
             expect(whereMock).toHaveBeenCalledWith('promptVersion', '==', 'v1');
         });
 
@@ -100,6 +99,30 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             const params = Promise.resolve({ promptName: 'test' });
             const response = await GET(request, { params });
             expect(response.status).toBe(500);
+        });
+
+        it('returns 403 in production mode', async () => {
+            (process.env as any).NODE_ENV = 'production';
+            const request = new Request('http://localhost/api/admin/telemetry/test', {
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const params = Promise.resolve({ promptName: 'test' });
+            const response = await GET(request, { params });
+            expect(response.status).toBe(403);
+            const data: any = await response.json();
+            expect(data.error).toBe('Not available in production');
+        });
+
+        it('returns 503 if ADMIN_SECRET is not configured', async () => {
+            delete process.env.ADMIN_SECRET;
+            const request = new Request('http://localhost/api/admin/telemetry/test', {
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const params = Promise.resolve({ promptName: 'test' });
+            const response = await GET(request, { params });
+            expect(response.status).toBe(503);
+            const data: any = await response.json();
+            expect(data.error).toBe('ADMIN_SECRET is not configured');
         });
     });
 
@@ -137,6 +160,17 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             const params = Promise.resolve({ promptName: 'test' });
             const response = await DELETE(request, { params });
             expect(response.status).toBe(500);
+        });
+
+        it('applies version filter in DELETE from query', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt?version=v2', {
+                method: 'DELETE',
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+            await DELETE(request, { params });
+
+            expect(whereMock).toHaveBeenCalledWith('promptVersion', '==', 'v2');
         });
     });
 });

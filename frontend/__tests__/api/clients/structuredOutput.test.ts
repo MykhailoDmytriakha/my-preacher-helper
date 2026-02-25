@@ -54,7 +54,7 @@ describe('structuredOutput client', () => {
     process.env.OPENAI_GPT_MODEL = 'gpt-test';
     process.env.GEMINI_MODEL = 'gemini-test';
     process.env.AI_MODEL_TO_USE = 'OPENAI';
-    process.env.DEBUG_MODE = 'false';
+    process.env.DEBUG_MODE = 'true';
 
     buildSimplePromptBlueprint.mockReturnValue({
       promptName: 'test',
@@ -98,7 +98,10 @@ describe('structuredOutput client', () => {
     expect(parseMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'gpt-test',
-        messages: [{ role: 'user', content: 'SYS\n\nUSR' }],
+        messages: [
+          { role: 'system', content: 'SYS' },
+          { role: 'user', content: 'USR' }
+        ],
       })
     );
     expect(zodResponseFormat).toHaveBeenCalledWith(schema, 'test-format');
