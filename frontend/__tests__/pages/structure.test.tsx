@@ -76,6 +76,18 @@ jest.mock('@/components/ExportButtons', () => ({
   default: () => <div data-testid="export-buttons">Export Buttons</div>,
 }));
 
+// Mock RichMarkdownEditor (TipTap) with a plain textarea so getByDisplayValue works
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    <textarea
+      data-testid="mock-rich-editor"
+      value={value}
+      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  ),
+}));
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {

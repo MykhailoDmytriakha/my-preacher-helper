@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -11,6 +11,8 @@ import { SermonPoint, SermonOutline } from '@/models/models';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
+
+import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
 import "@locales/i18n";
 
 interface EditThoughtModalProps {
@@ -278,12 +280,10 @@ export default function EditThoughtModal({
   useScrollLock(true);
 
   const [isDictating, setIsDictating] = useState(false);
-  const [textareaMaxHeight, setTextareaMaxHeight] = useState<number | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const metaRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isChanged =
     text !== initialText ||
     !areStringArraysEqual(tags, initialTags) ||
@@ -342,58 +342,9 @@ export default function EditThoughtModal({
     }
   };
 
-  const computeTextareaMaxHeight = useCallback(() => {
-    const modal = modalRef.current;
-    if (!modal || typeof window === 'undefined') return;
-
-    const maxModalHeight = window.innerHeight * 0.9;
-    const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
-    const metaHeight = metaRef.current?.getBoundingClientRect().height ?? 0;
-    const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 0;
-    const styles = window.getComputedStyle(modal);
-    const paddingY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
-
-    const buffer = 16; // extra spacing for gaps
-    const available = maxModalHeight - headerHeight - metaHeight - footerHeight - paddingY - buffer;
-    setTextareaMaxHeight(Math.max(160, Math.floor(available)));
-  }, []);
-
-  const resizeTextarea = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = 'auto';
-    const scrollHeight = textarea.scrollHeight;
-    const maxHeight = textareaMaxHeight ?? scrollHeight;
-    const nextHeight = Math.min(scrollHeight, maxHeight);
-    textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
-  }, [textareaMaxHeight]);
-
-  useLayoutEffect(() => {
-    computeTextareaMaxHeight();
-  }, [computeTextareaMaxHeight, text, tags, selectedSermonPointId, sermonOutline]);
-
-  useLayoutEffect(() => {
-    resizeTextarea();
-  }, [text, textareaMaxHeight, resizeTextarea]);
-
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleResize = () => computeTextareaMaxHeight();
-    window.addEventListener('resize', handleResize);
-
-    const observer = new ResizeObserver(() => computeTextareaMaxHeight());
-    [headerRef.current, metaRef.current, footerRef.current].forEach((el) => {
-      if (el) observer.observe(el);
-    });
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      observer.disconnect();
-    };
-  }, [computeTextareaMaxHeight]);
+  // We don't need manual textarea resizing logic for TipTap as it grows automatically and we set minHeight.
+  // But we still want to limit modal max height via Tailwind.
+  // Removed `computeTextareaMaxHeight` and `resizeTextarea` as TipTap Prosemirror handles contenteditable height automatically by default with css.
 
   const allSermonPoints = buildAllSermonPoints(sermonOutline, t);
 
@@ -432,15 +383,19 @@ export default function EditThoughtModal({
           </div>
         </div>
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={6}
-          style={textareaMaxHeight ? { maxHeight: `${textareaMaxHeight}px` } : undefined}
-          className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none overflow-y-auto dark:bg-gray-700 dark:text-white"
-          disabled={isSubmitting || isReadOnly}
-        />
+        <div className="flex-1 min-h-[250px] max-h-[500px] overflow-y-auto w-full">
+          {isReadOnly ? (
+            <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
+              <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
+            </div>
+          ) : (
+            <RichMarkdownEditor
+              value={text}
+              onChange={setText}
+              placeholder={t('manualThought.placeholder')}
+            />
+          )}
+        </div>
 
         <div ref={metaRef} className="mt-4 space-y-4">
           {sermonOutline && (

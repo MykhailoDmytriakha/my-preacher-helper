@@ -44,6 +44,18 @@ jest.mock('@/providers/AuthProvider', () => ({
   })
 }));
 
+// Mock RichMarkdownEditor
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    <textarea
+      data-testid="mock-rich-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  ),
+}));
+
 // Mock ColorPickerModal
 jest.mock('@/components/ColorPickerModal', () => {
   return function MockColorPickerModal({ onOk, onCancel }: any) {

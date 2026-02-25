@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { seriesRepository } from '@/api/repositories/series.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
@@ -12,9 +13,8 @@ export async function GET(request: Request) {
     if (!userId) {
       return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
     }
-    
+
     console.log(`GET: Fetching sermons for userId: ${userId} from Firestore...`);
-    // Use the Admin SDK to query Firestore - this bypasses security rules
     const sermonsRef = adminDb.collection('sermons');
     const q = sermonsRef.where("userId", "==", userId);
     const snapshot = await q.get();
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         ...doc.data()
       } as Sermon;
     });
-    
+
     console.log(`GET: Total sermons retrieved: ${sermons.length}`);
     return NextResponse.json(sermons);
   } catch (error) {
@@ -53,7 +53,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
-    // Use the Admin SDK to add a document to Firestore - this bypasses security rules
     const sermonData: Partial<Sermon> = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
     if (seriesId) {
       sermonData.seriesId = seriesId;
@@ -63,9 +62,19 @@ export async function POST(request: Request) {
     }
     const docRef = await adminDb.collection('sermons').add(sermonData);
     console.log("Sermon written with ID:", docRef.id);
-    
-    // Create a new sermon object with the correct ID
-    // FIXED: Spread sermon first, then override the id property to ensure it takes precedence
+
+    // Sync sermon into the series.items array so it appears in the series list.
+    // Previously only sermon.seriesId was saved, causing the sermon to be invisible in the series view.
+    if (seriesId) {
+      try {
+        await seriesRepository.addSermonToSeries(seriesId, docRef.id, seriesPosition);
+        console.log(`Sermon ${docRef.id} linked to series ${seriesId}`);
+      } catch (seriesError) {
+        // Non-fatal: sermon is created, log and continue
+        console.error(`Failed to link sermon ${docRef.id} to series ${seriesId}:`, seriesError);
+      }
+    }
+
     const newSermon = { ...sermon, id: docRef.id };
     console.log("New sermon object after attaching ID:", newSermon);
 

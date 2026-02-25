@@ -9,6 +9,7 @@ import {
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { Series } from "@/models/models";
 
 interface SeriesCardProps {
@@ -127,9 +128,9 @@ export default function SeriesCard({ series }: SeriesCardProps) {
             </span>
           </div>
           {series.description && (
-            <p className="line-clamp-3 text-sm text-gray-500 dark:text-gray-300">
-              {series.description}
-            </p>
+            <div className="line-clamp-3 text-sm text-gray-500 dark:text-gray-300">
+              <MarkdownDisplay content={series.description} compact className="!text-sm !text-gray-500 dark:!text-gray-300 prose-p:my-1 prose-headings:my-1" />
+            </div>
           )}
         </div>
       </div>

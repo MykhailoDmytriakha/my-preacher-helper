@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import ColorPickerModal from '@/components/ColorPickerModal';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Series } from '@/models/models';
 
 interface EditSeriesModalProps {
@@ -164,18 +165,18 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                 {t('workspaces.series.form.description')}
               </span>
-              <TextareaAutosize
-                value={description}
-                onChange={(e) => {
-                  formEditedRef.current = true;
-                  setDescription(e.target.value);
-                  clearError();
-                }}
-                placeholder={t('workspaces.series.form.descriptionPlaceholder')}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
-                minRows={3}
-                maxRows={5}
-              />
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <RichMarkdownEditor
+                  value={description}
+                  onChange={(val) => {
+                    formEditedRef.current = true;
+                    setDescription(val);
+                    clearError();
+                  }}
+                  placeholder={t('workspaces.series.form.descriptionPlaceholder')}
+                  minHeight="120px"
+                />
+              </div>
             </label>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -206,11 +207,10 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                       key={colorOption}
                       type="button"
                       onClick={() => { formEditedRef.current = true; setColor(colorOption); }}
-                      className={`h-9 w-9 rounded-full border-2 transition-all ${
-                        color === colorOption
+                      className={`h-9 w-9 rounded-full border-2 transition-all ${color === colorOption
                           ? 'border-blue-600 ring-2 ring-blue-600/20 dark:border-blue-400 dark:ring-blue-400/30 scale-110'
                           : 'border-gray-200 hover:scale-105 dark:border-gray-700'
-                      }`}
+                        }`}
                       style={{ backgroundColor: colorOption }}
                       title={colorOption}
                     />
@@ -218,9 +218,8 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                   <button
                     type="button"
                     onClick={() => setIsColorPickerOpen(true)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-gradient-to-br from-indigo-500 via-pink-500 to-amber-400 text-white shadow-sm transition hover:scale-105 ${
-                      !colorOptions.includes(color) ? 'ring-2 ring-white/60 dark:ring-gray-900' : ''
-                    }`}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-gradient-to-br from-indigo-500 via-pink-500 to-amber-400 text-white shadow-sm transition hover:scale-105 ${!colorOptions.includes(color) ? 'ring-2 ring-white/60 dark:ring-gray-900' : ''
+                      }`}
                     title="Custom color"
                   >
                     +

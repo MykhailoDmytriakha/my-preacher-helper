@@ -26,13 +26,6 @@ type TagInfo = {
   translationKey?: string
 };
 
-// Constants
-const STRUCTURE_SECTIONS: Record<string, string> = {
-  'introduction': 'Вступление',
-  'main': 'Основная часть',
-  'conclusion': 'Заключение'
-} as const;
-
 // Props for the main component and sub-components
 interface ThoughtCardProps {
   thought: Thought;
@@ -57,6 +50,14 @@ interface WarningMessageProps {
   sectionName?: string;
   actualTag?: string;
 }
+
+const toSectionKey = (canonical: CanonicalStructureId | null): 'introduction' | 'main' | 'conclusion' | undefined => {
+  if (canonical === 'intro') return 'introduction';
+  if (canonical === 'main') return 'main';
+  if (canonical === 'conclusion') return 'conclusion';
+  return undefined;
+};
+
 
 const ThoughtCard = ({
   thought,
@@ -172,18 +173,23 @@ const ThoughtCard = ({
     const warnings = [];
 
     if (hasInconsistentSection && outlinePoint?.section) {
-      const expectedTag = STRUCTURE_SECTIONS[outlinePoint.section];
-      const actualSectionTags = thought.tags.filter(tag =>
-        Object.values(STRUCTURE_SECTIONS).includes(tag) && tag !== expectedTag
-      );
+      const expectedCanonical = normalizeStructureTag(outlinePoint.section);
+      const actualSectionTags = thought.tags.filter(tag => {
+        const canonical = normalizeStructureTag(tag);
+        return canonical !== null && canonical !== expectedCanonical;
+      });
 
       if (actualSectionTags.length > 0) {
+        const rawTag = actualSectionTags[0];
+        const canonical = normalizeStructureTag(rawTag);
+        const sectionKey = toSectionKey(canonical);
+        const displayTag = sectionKey ? getSectionName(sectionKey) : rawTag;
         warnings.push(
           <WarningMessage
             key="inconsistent"
             type="inconsistentSection"
             sectionName={outlinePoint.section}
-            actualTag={actualSectionTags[0]}
+            actualTag={displayTag}
             getSectionName={getSectionName}
           />
         );
@@ -200,6 +206,7 @@ const ThoughtCard = ({
 
     return warnings;
   }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, outlinePoint, thought.tags, getSectionName]);
+
 
   return (
     <motion.div

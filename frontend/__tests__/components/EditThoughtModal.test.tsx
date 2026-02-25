@@ -19,6 +19,18 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
+// Mock the new RichMarkdownEditor which uses TipTap
+jest.mock('@components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    <textarea
+      data-testid="mock-rich-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  ),
+}));
+
 // Mock translations
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
@@ -106,8 +118,8 @@ describe('EditThoughtModal Component', () => {
 
     // Check content textarea
     expect(screen.getByText('Text')).toBeInTheDocument();
-    const textArea = screen.getByDisplayValue('Test thought content');
-    expect(textArea).toBeInTheDocument();
+    const textArea = screen.getByTestId('mock-rich-editor');
+    expect(textArea).toHaveValue('Test thought content');
 
     // Check outline selector
     expect(screen.getByText('SermonOutline Point')).toBeInTheDocument();
@@ -177,7 +189,7 @@ describe('EditThoughtModal Component', () => {
     render(<EditThoughtModal {...mockProps} />);
 
     // Update text input
-    const textInput = screen.getByRole('textbox');
+    const textInput = screen.getByTestId('mock-rich-editor');
     fireEvent.change(textInput, { target: { value: 'Updated thought content' } });
 
     // Add Conclusion tag
@@ -206,7 +218,7 @@ describe('EditThoughtModal Component', () => {
     expect(saveButton).toBeDisabled();
 
     // Make a change
-    const textArea = screen.getByDisplayValue('Test thought content');
+    const textArea = screen.getByTestId('mock-rich-editor');
     fireEvent.change(textArea, { target: { value: 'Updated thought content' } });
 
     // Save button should be enabled now

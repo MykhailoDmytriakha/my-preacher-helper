@@ -13,6 +13,18 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
+// Mock the new RichMarkdownEditor which uses TipTap
+jest.mock('@components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+    <textarea
+      data-testid="mock-rich-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  ),
+}));
+
 // No longer fetching in the component during open when props are provided
 
 const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;

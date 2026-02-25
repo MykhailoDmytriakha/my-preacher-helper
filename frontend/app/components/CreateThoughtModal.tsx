@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -12,7 +11,10 @@ import { Thought, SermonOutline } from '@/models/models';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 import { transcribeThoughtAudio, createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from '@utils/tagUtils';
+
+import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
 import '@locales/i18n';
+
 
 interface CreateThoughtModalProps {
   isOpen: boolean;
@@ -187,15 +189,10 @@ export default function CreateThoughtModal({
               </div>
             )}
 
-            <TextareaAutosize
+            <RichMarkdownEditor
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={setText}
               placeholder={t('manualThought.placeholder')}
-              className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
-              minRows={4}
-              maxRows={14}
-              disabled={isSubmitting}
-              autoFocus
             />
 
             {sermonOutline && (

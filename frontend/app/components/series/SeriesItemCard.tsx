@@ -6,6 +6,7 @@ import { Bars3Icon, BookOpenIcon, UserGroupIcon, XMarkIcon } from '@heroicons/re
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
+import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { formatDate } from '@utils/dateFormatter';
 import { getEffectiveIsPreached } from '@utils/preachDateStatus';
 
@@ -110,11 +111,15 @@ export default function SeriesItemCard({
         </Link>
 
         {subtitle && (
-          <p className="text-sm text-gray-600 dark:text-gray-400 italic line-clamp-1">{subtitle}</p>
+          <div className="line-clamp-1 text-sm italic text-gray-600 dark:text-gray-400">
+            <MarkdownDisplay content={subtitle} compact className="!text-sm !italic prose-p:my-0" />
+          </div>
         )}
 
         {preview && (
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{preview}</p>
+          <div className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
+            <MarkdownDisplay content={preview} compact className="!text-sm prose-p:my-0" />
+          </div>
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

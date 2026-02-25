@@ -29,6 +29,8 @@
 *   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
 *   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
 *   **AI Telemetry Join Point:** Structured text AI calls must go through `callWithStructuredOutput` and emit telemetry as non-blocking side effects.
+*   **Rich Markdown Editor Standard:** Use TipTap headless + `tiptap-markdown` for WYSIWYG editing. Avoid opinionated wrappers (Novel). Mock `RichMarkdownEditor` with a `<textarea>` shim in all Jest test files.
+*   **Entity-Series Dual-Store:** In this app, `entity.seriesId` and `series.items[]` are separate stores. Any write to `entity.seriesId` must be paired with `seriesRepository.addXxxToSeries()` to keep the series list in sync.
 *   **API Response Verification:** Always verify the exact shape of API responses in frontend handlers (especially fallback/polymorphic data) to prevent silent data loss.
 *   **Tabular Numeric Alignment:** Use `tabular-nums` and `font-mono` for numeric counters (e.g., "X / N") to prevent layout shifts when numbers change.
 
@@ -50,6 +52,27 @@
 ---
 
 ## 🆕 Lessons (Inbox) — Только что выучено
+
+### 2026-02-25 TipTap as Headless Rich Markdown Editor
+**Problem:** The app used raw `<textarea>` for sermon thoughts, notes, and series descriptions, unable to provide rich formatting (bold, italic, headings) while preserving raw Markdown in Firestore for AI compatibility.
+**Attempts:** Evaluated Novel (too opinionated UI), Lexical (verbose API for Markdown), Milkdown (smaller ecosystem). All fell short on either Markdown serialization symmetry or React 19 / headless architecture requirements.
+**Solution:** Chose TipTap headless + `tiptap-markdown` extension. Built a reusable `<RichMarkdownEditor value={md} onChange={setMd} />` wrapper and `<RichMarkdownToolbar />` using Lucide icons. Integrated into `AddThoughtManual`, `EditThoughtModal`, `CreateThoughtModal`, `EditSeriesModal`.
+**Why it worked:** TipTap core is fully headless (no CSS opinions), the `tiptap-markdown` extension provides 100% symmetric Markdown serialization (Firestore MD string → editor state → MD string), and avoiding `tippyjs-react`-bound extensions eliminated React 19 JSX transform warnings.
+**Principle:** For WYSIWYG editing in a React 19/Next.js 15 app that stores raw Markdown, use TipTap headless + `tiptap-markdown`. Avoid "Notion clone" wrappers (Novel) that impose opinionated Tailwind prose styles — they violate the CSS-Unity anti-pattern.
+
+### 2026-02-25 Mocking TipTap/contenteditable in Jest
+**Problem:** Jest tests for components using `RichMarkdownEditor` (TipTap) failed because JSDOM doesn't support `contenteditable` properly — TipTap can't initialize, leaving `getByDisplayValue` empty and triggering multiple crash errors.
+**Solution:** Added `jest.mock('@/components/ui/RichMarkdownEditor', ...)` that renders a fallback `<textarea>` with the same `value`/`onChange`/`placeholder` props. Applied this mock pattern to all test files touching components that embed the editor.
+**Why it worked:** The mock preserves the same public API contract (`value`/`onChange`) while replacing the complex `contenteditable` DOM requirement with a native `<textarea>`, which JSDOM handles natively.
+**Principle:** When integrating a WYSIWYG editor (TipTap, Slate, etc.), always create a simple `<textarea>` mock for it immediately and apply it to all test files. The mock must mirror the real component's props contract (`value`, `onChange`, `placeholder`) for test assertions to remain meaningful.
+
+### 2026-02-25 Sermon-to-Series Link: seriesId on Sermon vs items[] on Series
+**Problem:** Sermons created with a `seriesId` selected did not appear in the series "All Elements" list. The sermon had `sermon.seriesId = 'xxx'` set, but the series still showed 0 or fewer items.
+**Attempts:** Investigated `useSeriesDetail` hook (correct), `normalizeSeriesItems` logic (correct). The bug was in the `POST /api/sermons` route.
+**Solution:** Added `await seriesRepository.addSermonToSeries(seriesId, docRef.id)` to `POST /api/sermons` after sermon creation, mirroring what `POST /api/groups` already did for groups. Made the call non-fatal (try/catch) so sermon creation succeeds even if series sync fails.
+**Why it worked:** The series list is driven by `series.items[]` array, not by querying sermons where `sermon.seriesId == seriesId`. Setting `sermon.seriesId` is just metadata; the ground truth for "which items are in this series" is the `series.items` array. The groups API correctly called `addGroupToSeries`; the sermon API was missing the equivalent call.
+**Principle:** In this app, `entity.seriesId` and `series.items[]` are two separate data stores that must be kept in sync. Any operation that sets `entity.seriesId` (create, update) must also call `seriesRepository.addSermonToSeries/addGroupToSeries` to update the series item list — otherwise the entity is invisible in the series view.
+
 
 ### 2026-02-24 Sibling Section Typography Consistency
 **Problem:** The `KnowledgeSection` title appeared noticeably larger (`text-xl`) than its visually adjacent sibling sections in `SermonOutline` (which inherited `text-base`), creating a broken visual hierarchy.

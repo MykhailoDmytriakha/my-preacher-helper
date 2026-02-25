@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
-import "@locales/i18n";
 import { toast } from 'sonner';
+import "@locales/i18n";
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
@@ -16,6 +15,8 @@ import { debugLog } from '@/utils/debugMode';
 import { PlusIcon } from '@components/Icons';
 import { createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
+
+import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
 
 interface AddThoughtManualProps {
   sermonId: string;
@@ -196,15 +197,11 @@ export default function AddThoughtManual({
           <div className="mb-6 flex-grow overflow-auto">
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('editThought.textLabel') || 'Text'}</label>
-              <TextareaAutosize
+              <RichMarkdownEditor
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={setText}
                 placeholder={t('manualThought.placeholder')}
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
-                minRows={3}
-                maxRows={16}
-                required
-                disabled={isSubmitting || disabled}
+                minHeight="200px"
               />
             </div>
 

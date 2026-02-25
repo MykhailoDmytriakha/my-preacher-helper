@@ -28,8 +28,17 @@ jest.mock('next/server', () => ({
   },
 }));
 
+// Mock the series repository to verify it is called when seriesId is set
+const mockAddSermonToSeries = jest.fn().mockResolvedValue(undefined);
+jest.mock('@/api/repositories/series.repository', () => ({
+  seriesRepository: {
+    addSermonToSeries: (...args: unknown[]) => mockAddSermonToSeries(...args),
+  },
+}));
+
 // Import the handlers module directly to mock
 import * as sermonsRouteModule from 'app/api/sermons/route';
+
 
 describe('Sermons API Route', () => {
   let mockRequest: MockRequest;
@@ -119,7 +128,7 @@ describe('Sermons API Route', () => {
       // Act
       const response = await sermonsRouteModule.GET(mockRequest as unknown as Request);
       const responseData = await response.json();
-      
+
       // Assert
       expect(response.status).toBe(401);
       expect(responseData).toHaveProperty('error');
@@ -135,7 +144,7 @@ describe('Sermons API Route', () => {
       // Act
       const response = await sermonsRouteModule.GET(mockRequest as unknown as Request);
       const responseData = await response.json();
-      
+
       // Assert
       expect(response.status).toBe(500);
       expect(responseData).toHaveProperty('error');
@@ -191,7 +200,7 @@ describe('Sermons API Route', () => {
         // Act
         const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
         const responseData = await response.json();
-        
+
         // Assert
         expect(response.status).toBe(400);
         expect(responseData).toHaveProperty('error');
@@ -215,7 +224,7 @@ describe('Sermons API Route', () => {
       // Act
       const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
       const responseData = await response.json();
-      
+
       // Assert
       expect(response.status).toBe(500);
       expect(responseData).toHaveProperty('error');
@@ -229,7 +238,7 @@ describe('Sermons API Route', () => {
       // Act
       const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
       const responseData = await response.json();
-      
+
       // Assert
       expect(response.status).toBe(500);
       expect(responseData).toHaveProperty('error');
@@ -255,7 +264,7 @@ describe('Sermons API Route', () => {
       expect(mockAdd).toHaveBeenCalledWith({
         userId: 'user123',
         title: 'New Sermon',
-        verse: 'Matthew 5:1-12', 
+        verse: 'Matthew 5:1-12',
         date: '2023-02-01',
         thoughts: [] // Should default to empty array
       });
@@ -306,5 +315,69 @@ describe('Sermons API Route', () => {
       expect(responseData.sermon.id).toBe('newSermonId123'); // Should use the new ID
       expect(responseData.sermon.id).not.toBe('existingId'); // Should not keep the old ID
     });
+
+    test('should call addSermonToSeries when seriesId is provided', async () => {
+      // Arrange
+      const sermonData = {
+        userId: 'user123',
+        title: 'New Sermon In A Series',
+        verse: 'John 1:1',
+        date: '2023-02-01',
+        thoughts: [],
+        seriesId: 'series-abc',
+      };
+      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
+      mockAddSermonToSeries.mockResolvedValueOnce(undefined);
+
+      // Act
+      const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
+      const responseData = await response.json();
+
+      // Assert
+      expect(response.status).toBe(200);
+      expect(responseData.sermon.id).toBe('newSermonId123');
+      expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-abc', 'newSermonId123', undefined);
+    });
+
+    test('should NOT call addSermonToSeries when no seriesId is provided', async () => {
+      // Arrange
+      const sermonData = {
+        userId: 'user123',
+        title: 'Standalone Sermon',
+        verse: 'John 1:1',
+        date: '2023-02-01',
+        thoughts: [],
+      };
+      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
+
+      // Act
+      await sermonsRouteModule.POST(mockRequest as unknown as Request);
+
+      // Assert
+      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
+    });
+
+    test('should still return 200 if addSermonToSeries fails (non-fatal)', async () => {
+      // Arrange
+      const sermonData = {
+        userId: 'user123',
+        title: 'Series Sync Failure Sermon',
+        verse: 'Acts 2:1',
+        date: '2023-02-01',
+        thoughts: [],
+        seriesId: 'broken-series-id',
+      };
+      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
+      mockAddSermonToSeries.mockRejectedValueOnce(new Error('Series not found'));
+
+      // Act
+      const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
+      const responseData = await response.json();
+
+      // Assert — sermon creation must succeed even if series sync fails
+      expect(response.status).toBe(200);
+      expect(responseData.sermon.id).toBe('newSermonId123');
+    });
   });
-}); 
+});
+
