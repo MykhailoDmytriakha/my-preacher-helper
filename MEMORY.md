@@ -44,6 +44,7 @@
 *   **Stale Cache:** Never rely on `setQueryData` alone for persistence; always pair with `invalidateQueries` or `cancelQueries`.
 *   **Console Log:** Never `console.log` in production code; use `debugLog()`.
 *   **Interactive Nesting:** Never nest interactive elements (buttons, links) inside labels or other interactive containers.
+*   **CSS-Unity Anti-Pattern:** Never use `overflow-hidden` + shared `border-radius` on a wrapper to fake visual unity between independent components. If two components must look like one, the stateful component must own the rendering of both parts via a slot prop (`splitLeft`, `renderHeader`, etc.).
 
 ---
 
@@ -659,6 +660,13 @@
 **Solution:** Added a `hexToRgb` pure helper that converts `#rrggbb` / `#rgb` to `{r,g,b}`. Applied computed inline styles: `backgroundColor: rgba(r,g,b,0.07)` and `borderColor: rgba(r,g,b,0.28)` in light mode. For dark mode, added an absolutely-positioned overlay div with `rgba(r,g,b,0.13)` + `opacity-0 dark:opacity-100` (Tailwind's `dark:` variant doesn't apply to inline styles, so an overlay div was necessary).
 **Why it worked:** Inline styles bypass Tailwind's purge for dynamic values. The overlay div technique is required for dark-mode dynamic colors because Tailwind's `dark:` variant cannot be applied to dynamically computed `rgba()` values in `style` props.
 **Principle:** For dynamic color tinting with Tailwind dark mode: apply light tint via `style={{ backgroundColor: rgba(..., 0.07) }}`, and apply dark tint via a sibling `div` with `className="opacity-0 dark:opacity-100"` and the same inline background color — because `dark:` variants cannot be applied to dynamic inline style values.
+
+### 2026-02-24 TRIZ+IFR Split Button — CSS Wrapping vs. Deep Refactor
+**Problem:** Two separate UI components (amber button + AudioRecorder) were wrapped in a shared `div` with `overflow-hidden` + `rounded-xl` to visually look like one button. User immediately felt it was "two parts glued together, not one button" — the internal shadows and independent hover states gave away the seam.
+**Attempts:** Added `ring-1` border around wrapper, removed `shadow` from inner button via Tailwind arbitrary selectors `[&_button.min-w-\\[200px\\]]:shadow-none`. Still felt fake.
+**Solution:** Added `splitLeft?: React.ReactNode` prop to `AudioRecorder`. When `splitLeft` is provided and state is `idle`, `AudioRecorder` renders a single `<div className="flex rounded-xl overflow-hidden shadow-lg">` containing both `{splitLeft}` and its own green button inline — one DOM tree, one shadow, one border-radius. When recording starts, `splitLeft` disappears naturally (no external logic needed).
+**Why it worked:** IFR principle: "the system does not exist but the function is performed." The split button is not an external container — it is a rendering mode that `AudioRecorder` itself owns. One component → one DOM tree → true visual unity.
+**Principle:** CSS wrapping (overflow-hidden + shared border-radius) creates visual unity only at the surface. True split-button unity requires the component that owns state to also own the split rendering — pass a `renderLeft`/`splitLeft` slot prop so the component renders both parts in a single DOM subtree.
 
 ---
 

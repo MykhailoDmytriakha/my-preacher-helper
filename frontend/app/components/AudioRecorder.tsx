@@ -590,6 +590,7 @@ interface AudioRecorderProps {
   autoStart?: boolean; // Auto-start recording on mount (useful for popovers)
   hideKeyboardShortcuts?: boolean; // Hide keyboard shortcuts when true
   onRecordingStateChange?: (isActive: boolean) => void; // Callback when recording starts/stops
+  splitLeft?: React.ReactNode; // Amber left part of split button (shown only in idle state)
 }
 
 export const AudioRecorder = ({
@@ -608,6 +609,7 @@ export const AudioRecorder = ({
   autoStart = false,
   hideKeyboardShortcuts = false,
   onRecordingStateChange,
+  splitLeft,
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -1170,58 +1172,77 @@ export const AudioRecorder = ({
   const transcriptionErrorMessage = transcriptionErrorState || transcriptionError || null;
   const shouldShowRetry = Boolean(transcriptionErrorMessage && storedAudioBlob && retryCount < maxRetries);
 
+  const isIdle = recordingState === 'idle';
+
   return (
     <div className={`space-y-4 ${className} ${appliedVariant === "mini" ? "space-y-3" : ""}`}>
-      {/* Main controls */}
-      <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full"}`}>
-        <MainRecordButton
-          show={!isRecording || appliedVariant === "standard"}
-          appliedVariant={appliedVariant}
-          isRecording={isRecording}
-          isPaused={isPaused}
-          isButtonDisabled={isButtonDisabled}
-          recordingState={recordingState}
-          onStart={startRecording}
-          onStop={stopRecording}
-          t={t}
-        />
+      {/* Split button: when splitLeft provided and idle — render as one unified button */}
+      {splitLeft && isIdle ? (
+        <div className="flex rounded-xl overflow-hidden shadow-lg w-full">
+          {splitLeft}
+          <div className="w-px bg-white/20 self-stretch" />
+          <button
+            type="button"
+            onClick={startRecording}
+            disabled={isButtonDisabled}
+            className="flex-1 px-6 py-3 font-medium bg-green-600 hover:bg-green-700 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98]"
+            aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
+            title={`${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
+          >
+            <div className="flex items-center justify-center">
+              <MicFilledIcon className="w-5 h-5 mr-2" />
+              {t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
+            </div>
+          </button>
+        </div>
+      ) : (
+        /* Standard / recording / processing mode */
+        <div className={`${appliedVariant === "mini" ? "flex flex-col gap-3" : "flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full"}`}>
+          <MainRecordButton
+            show={!isRecording || appliedVariant === "standard"}
+            appliedVariant={appliedVariant}
+            isRecording={isRecording}
+            isPaused={isPaused}
+            isButtonDisabled={isButtonDisabled}
+            recordingState={recordingState}
+            onStart={startRecording}
+            onStop={stopRecording}
+            t={t}
+          />
 
-        {/* Keyboard shortcuts tooltip removed: record button already shows this in title */}
+          <RecordingActionButtons
+            isRecording={isRecording}
+            isPaused={isPaused}
+            appliedVariant={appliedVariant}
+            onStop={stopRecording}
+            onPause={pauseRecording}
+            onResume={resumeRecording}
+            onCancel={cancelRecording}
+            t={t}
+          />
 
-        <RecordingActionButtons
-          isRecording={isRecording}
-          isPaused={isPaused}
-          appliedVariant={appliedVariant}
-          onStop={stopRecording}
-          onPause={pauseRecording}
-          onResume={resumeRecording}
-          onCancel={cancelRecording}
-          t={t}
-        />
+          <RetryTranscriptionButton
+            show={shouldShowRetry}
+            onRetry={retryTranscription}
+            appliedVariant={appliedVariant}
+            retryCount={retryCount}
+            maxRetries={maxRetries}
+            t={t}
+          />
 
-        {/* Retry button for transcription errors */}
-        <RetryTranscriptionButton
-          show={shouldShowRetry}
-          onRetry={retryTranscription}
-          appliedVariant={appliedVariant}
-          retryCount={retryCount}
-          maxRetries={maxRetries}
-          t={t}
-        />
-
-        {/* Timer and inline progress — show only while actively recording */}
-        <RecordingProgress
-          isRecording={isRecording}
-          isPaused={isPaused}
-          appliedVariant={appliedVariant}
-          formatTime={formatTime}
-          recordingTime={recordingTime}
-          maxDuration={maxDuration}
-          progressPercentage={progressPercentage}
-          isInGracePeriod={isInGracePeriod}
-          gracePeriodRemaining={gracePeriodRemaining}
-        />
-      </div>
+          <RecordingProgress
+            isRecording={isRecording}
+            isPaused={isPaused}
+            appliedVariant={appliedVariant}
+            formatTime={formatTime}
+            recordingTime={recordingTime}
+            maxDuration={maxDuration}
+            progressPercentage={progressPercentage}
+            isInGracePeriod={isInGracePeriod}
+            gracePeriodRemaining={gracePeriodRemaining}
+          />
+        </div>
+      )}
 
       {/* Error message */}
       <ErrorBanner
@@ -1238,8 +1259,6 @@ export const AudioRecorder = ({
         audioLevel={audioLevel}
         t={t}
       />
-
-      {/* Keyboard shortcuts hint moved to tooltip (see controls row) */}
     </div>
   );
 };

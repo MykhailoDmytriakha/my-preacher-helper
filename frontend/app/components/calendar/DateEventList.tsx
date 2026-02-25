@@ -175,28 +175,28 @@ export default function DateEventList({ month, sermons, groups = [], series = []
                       <Link
                         key={event.id}
                         href={href}
-                        className="group block bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                        className="group block bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all shadow-sm hover:shadow-md overflow-hidden"
                       >
                         <div className="flex flex-col gap-2">
-                          <div className="flex justify-between items-start">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex justify-between items-start gap-2 overflow-hidden">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
                               {isSermon ? (
                                 <BookOpenIcon className="h-4 w-4 text-blue-600 dark:text-blue-300 flex-shrink-0 mt-0.5" />
                               ) : (
                                 <UserGroupIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-300 flex-shrink-0 mt-0.5" />
                               )}
-                              <h4 className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                              <h4 className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate min-w-0">
                                 {title}
                               </h4>
                             </div>
                             {outcome && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 flex-shrink-0 whitespace-nowrap">
                                 {t(`calendar.outcomes.${outcome}`)}
                               </span>
                             )}
                             {isSermon && (
                               <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${isPlannedSermon
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 whitespace-nowrap ${isPlannedSermon
                                   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                                   : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                                   }`}
@@ -223,23 +223,23 @@ export default function DateEventList({ month, sermons, groups = [], series = []
                           )}
 
                           {subtitle && (
-                            <div className="flex items-start gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                              <CalendarDaysIcon className="w-4 h-4 text-gray-400 mt-0.5" />
-                              <div className="break-words whitespace-pre-line flex-1">{subtitle}</div>
+                            <div className="flex items-start gap-1.5 text-sm text-gray-600 dark:text-gray-400 min-w-0 overflow-hidden">
+                              <CalendarDaysIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                              <div className="break-words whitespace-pre-line flex-1 min-w-0 overflow-hidden">{subtitle}</div>
                             </div>
                           )}
 
                           {(location || audience) && (
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400 overflow-hidden">
                               {location && (
-                                <div className="flex items-center gap-1.5 font-medium text-blue-600 dark:text-blue-400">
-                                  <MapPinIcon className="w-4 h-4" />
+                                <div className="flex items-center gap-1.5 font-medium text-blue-600 dark:text-blue-400 min-w-0 max-w-full">
+                                  <MapPinIcon className="w-4 h-4 flex-shrink-0" />
                                   <span className="truncate">{location}</span>
                                 </div>
                               )}
                               {audience && (
-                                <div className="flex items-center gap-1.5">
-                                  <UserIcon className="w-4 h-4 text-gray-400" />
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <UserIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                   <span className="truncate">{audience}</span>
                                 </div>
                               )}

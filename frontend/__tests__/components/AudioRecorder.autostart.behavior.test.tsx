@@ -362,3 +362,53 @@ describe('AudioRecorder matchMedia fallbacks', () => {
     });
   });
 });
+
+describe('AudioRecorder splitLeft prop', () => {
+  it('renders splitLeft content alongside the record button in idle state', () => {
+    const { container } = render(
+      <AudioRecorder
+        onRecordingComplete={jest.fn()}
+        splitLeft={<button data-testid="split-left-btn">Write</button>}
+      />
+    );
+
+    expect(screen.getByTestId('split-left-btn')).toBeInTheDocument();
+    // Split button wrapper should have overflow-hidden
+    const splitWrapper = container.querySelector('.overflow-hidden.rounded-xl');
+    expect(splitWrapper).toBeInTheDocument();
+    // Divider between parts
+    const divider = container.querySelector('.bg-white\\/20');
+    expect(divider).toBeInTheDocument();
+  });
+
+  it('does not render splitLeft during recording state', async () => {
+    render(
+      <AudioRecorder
+        onRecordingComplete={jest.fn()}
+        splitLeft={<button data-testid="split-left-btn">Write</button>}
+      />
+    );
+
+    // Before recording — splitLeft is visible
+    expect(screen.getByTestId('split-left-btn')).toBeInTheDocument();
+
+    // Simulate recording start via keyboard shortcut
+    act(() => {
+      fireEvent.keyDown(document, { ctrlKey: true, code: 'Space' });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('split-left-btn')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders normal record button (no split) when splitLeft is not provided', () => {
+    const { container } = render(
+      <AudioRecorder onRecordingComplete={jest.fn()} />
+    );
+
+    // Split wrapper is a flex div with shadow-lg — not present in normal mode
+    const splitWrapper = container.querySelector('div.flex.rounded-xl.overflow-hidden.shadow-lg');
+    expect(splitWrapper).not.toBeInTheDocument();
+  });
+});

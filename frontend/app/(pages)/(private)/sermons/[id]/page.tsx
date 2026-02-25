@@ -38,7 +38,7 @@ import { getSectionLabel } from '@/lib/sections';
 import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
-import AddThoughtManual from "@components/AddThoughtManual";
+import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
@@ -176,26 +176,14 @@ export default function SermonPage() {
 
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
-  const [isAudioRecorderActive, setIsAudioRecorderActive] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Reusable renderer for classic content (brainstorm, filters, thoughts)
   const renderClassicContent = (options?: { withBrainstorm?: boolean, portalRef?: React.Ref<HTMLDivElement> }) => (
     // Disable layout animations to avoid vertical stretch on filter changes
     <motion.div layout={false} className="space-y-4 sm:space-y-6">
 
-      {/* Input Grouping Area: Audio Recorder and Add Manual Thought */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-white dark:bg-gray-800/40 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-sm">
-        <div ref={options?.portalRef} className="flex-1 w-full empty:hidden [&>div]:h-full [&_button.min-w-\\[200px\\]]:w-full" />
-        <div className={`w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto ${(isAudioRecorderActive || isProcessing) ? 'hidden' : ''}`}>
-          <AddThoughtManual
-            sermonId={sermon!.id}
-            onNewThought={handleNewManualThought}
-            allowedTags={allowedTags}
-            sermonOutline={sermon!.outline}
-            disabled={isReadOnly}
-          />
-        </div>
-      </div>
+          <div ref={options?.portalRef} className="w-full empty:hidden [&>div]:h-full" />
 
       <section>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
@@ -1097,7 +1085,18 @@ export default function SermonPage() {
             transcriptionError={transcriptionError}
             onClearError={handleClearError}
             hideKeyboardShortcuts={uiMode === 'prep'}
-            onRecordingStateChange={setIsAudioRecorderActive}
+            splitLeft={!isReadOnly ? (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="bg-amber-500 hover:bg-amber-600 px-4 self-stretch flex items-center justify-center shrink-0 transition-colors disabled:opacity-70"
+                disabled={isReadOnly}
+                title={t('manualThought.addManual')}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            ) : undefined}
           />
         </AutoHeight>,
         (uiMode === 'prep' ? prepPortal : classicPortal)!
@@ -1112,7 +1111,18 @@ export default function SermonPage() {
             transcriptionError={transcriptionError}
             onClearError={handleClearError}
             hideKeyboardShortcuts={uiMode === 'prep'}
-            onRecordingStateChange={setIsAudioRecorderActive}
+            splitLeft={!isReadOnly ? (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="bg-amber-500 hover:bg-amber-600 px-4 self-stretch flex items-center justify-center shrink-0 transition-colors disabled:opacity-70"
+                disabled={isReadOnly}
+                title={t('manualThought.addManual')}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            ) : undefined}
           />
         </div>
       )}
@@ -1189,15 +1199,7 @@ export default function SermonPage() {
                             />
                           </div>
                         </div>
-                        <div className={(isAudioRecorderActive || isProcessing) ? 'hidden' : ''}>
-                          <AddThoughtManual
-                            sermonId={sermon!.id}
-                            onNewThought={handleNewManualThought}
-                            allowedTags={allowedTags}
-                            sermonOutline={sermon!.outline}
-                            disabled={isReadOnly}
-                          />
-                        </div>
+
                       </div>
                       <div className="space-y-5">
                         {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
@@ -1683,6 +1685,15 @@ export default function SermonPage() {
           onClose={() => setEditingModalData(null)}
         />
       )}
+      <CreateThoughtModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        sermonId={sermon.id}
+        onNewThought={handleNewManualThought}
+        allowedTags={allowedTags}
+        sermonOutline={sermon.outline}
+        disabled={isReadOnly}
+      />
     </div>
   );
 }

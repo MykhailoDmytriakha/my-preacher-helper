@@ -464,6 +464,10 @@
     "savingError": "Error saving",
     "reservedTagName": "This name is reserved for structure tags"
   },
+  "createThought": {
+    "title": "New Thought",
+    "dirtyGuard": "You have unsaved text. Close anyway?"
+  },
   "manualThought": {
     "addManual": "Add Manual Thought",
     "placeholder": "Enter your thought...",

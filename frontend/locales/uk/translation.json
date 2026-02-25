@@ -464,6 +464,10 @@
     "savingError": "Помилка збереження",
     "reservedTagName": "Це ім'я зарезервовано для структурних тегів"
   },
+  "createThought": {
+    "title": "Нова думка",
+    "dirtyGuard": "Є незбережений текст. Закрити?"
+  },
   "manualThought": {
     "addManual": "Додати думку вручну",
     "placeholder": "Введіть вашу думку...",
