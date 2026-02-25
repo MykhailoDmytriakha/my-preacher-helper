@@ -296,9 +296,8 @@ const StandardRecordingControls = ({
           ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-900/50'
           : 'border-yellow-500 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600 dark:hover:bg-yellow-900/50'
           } transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 ${isPaused ? 'focus:ring-green-500' : 'focus:ring-yellow-500'
-          } focus:ring-offset-2`}
+          }`}
         aria-label={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
-        title={isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       >
         {isPaused ? t(AUDIO_TRANSLATION_KEYS.RESUME_RECORDING) : t(AUDIO_TRANSLATION_KEYS.PAUSE_RECORDING)}
       </button>
@@ -312,7 +311,6 @@ const StandardRecordingControls = ({
         }}
         className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-all duration-200 hover:scale-105 active:scale-100 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
         aria-label={t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
-        title={`${t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)} (Esc)`}
       >
         {t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
       </button>
