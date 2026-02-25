@@ -357,7 +357,7 @@ describe('PrepModeToggle Component', () => {
               await waitFor(() => {
                 expect(toggle).toHaveClass('bg-blue-600');
                 const thumb = toggle.querySelector('span');
-                expect(thumb).toHaveClass('translate-x-6'); // Thumb position for enabled
+                expect(thumb).toHaveClass('translate-x-5'); // Thumb position for enabled
               });
             }
           },
@@ -376,7 +376,7 @@ describe('PrepModeToggle Component', () => {
               await waitFor(() => {
                 expect(toggle).toHaveClass('bg-gray-200');
                 const thumb = toggle.querySelector('span');
-                expect(thumb).toHaveClass('translate-x-1'); // Thumb position for disabled
+                expect(thumb).toHaveClass('translate-x-0'); // Thumb position for disabled
               });
             }
           }

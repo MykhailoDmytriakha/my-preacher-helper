@@ -112,4 +112,40 @@ describe('SeriesCard', () => {
     expect(screen.getByText('workspaces.series.form.bookOrTopic')).toBeInTheDocument();
     expect(screen.getByText('workspaces.series.form.statuses.draft')).toBeInTheDocument();
   });
+
+  it('renders with a 6-digit hex accent color applying tinted card style', () => {
+    const seriesWithHex6: Series = {
+      ...mockSeries,
+      color: '#ff5733',
+    };
+    const { container } = render(<SeriesCard series={seriesWithHex6} />);
+    // The outer div element should have inline style with rgba background
+    const card = container.firstElementChild as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(card.style.backgroundColor).toMatch(/rgba\(255,\s*87,\s*51/);
+    expect(card.style.borderColor).toMatch(/rgba\(255,\s*87,\s*51/);
+  });
+
+  it('renders with a 3-digit shorthand hex accent color', () => {
+    const seriesWithHex3: Series = {
+      ...mockSeries,
+      color: '#f53',
+    };
+    const { container } = render(<SeriesCard series={seriesWithHex3} />);
+    const card = container.firstElementChild as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(card.style.backgroundColor).toMatch(/rgba\(255,\s*85,\s*51/);
+  });
+
+  it('uses default blue tint when color is absent', () => {
+    const seriesNoColor: Series = {
+      ...mockSeries,
+      color: undefined,
+    };
+    const { container } = render(<SeriesCard series={seriesNoColor} />);
+    const card = container.firstElementChild as HTMLElement;
+    expect(card).not.toBeNull();
+    // Falls back to default #2563EB => rgba(37, 99, 235, ...)
+    expect(card.style.backgroundColor).toMatch(/rgba\(37,\s*99,\s*235/);
+  });
 });

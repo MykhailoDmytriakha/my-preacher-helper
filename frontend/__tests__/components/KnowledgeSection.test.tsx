@@ -334,18 +334,19 @@ describe('KnowledgeSection Component', () => {
       sectionHints: mockSectionHints
     });
 
-    render(<KnowledgeSection sermon={mockSermonWithoutInsights} updateSermon={mockUpdateSermon} />);
-    
+    // Use sermon with insights so hasAnyData=true and the toggle button is visible
+    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
       jest.advanceTimersByTime(600);
     });
-    
+
     // Expand the section - wrap in act()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     });
-    
+
     // Click the plan generate button - wrap in act()
     await act(async () => {
       const refreshButtons = screen.getAllByLabelText('Refresh');

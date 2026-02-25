@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -6,10 +6,15 @@ import BackLink from '@components/settings/BackLink';
 
 // --- Mocks --- //
 
-jest.mock('next/link', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return ({ children, href }: any) => <a href={href}>{children}</a>;
-});
+const mockRouterBack = jest.fn();
+const mockRouterPush = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    back: mockRouterBack,
+    push: mockRouterPush,
+  }),
+}));
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -24,35 +29,68 @@ jest.mock('@components/Icons', () => ({
 
 describe('BackLink', () => {
 
-  it('renders with default label and correct href', () => {
-    const destination = '/dashboard';
-    render(<BackLink to={destination} />);
-
-    // Check icon is present
-    expect(screen.getByTestId('back-arrow-icon')).toBeInTheDocument();
-
-    // Check default text (using the translation key as mock output)
-    const linkElement = screen.getByRole('link', { name: /settings.backToDashboard/i });
-    expect(linkElement).toBeInTheDocument();
-
-    // Check href attribute
-    expect(linkElement).toHaveAttribute('href', destination);
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('renders with custom label and correct href', () => {
-    const destination = '/previous-page';
+  it('renders a button (not a link) with default label', () => {
+    render(<BackLink to="/dashboard" />);
+
+    expect(screen.getByTestId('back-arrow-icon')).toBeInTheDocument();
+
+    const button = screen.getByRole('button', { name: /settings.backToDashboard/i });
+    expect(button).toBeInTheDocument();
+  });
+
+  it('renders with custom label', () => {
     const customLabel = 'Go Back';
-    render(<BackLink to={destination} label={customLabel} />);
+    render(<BackLink to="/previous-page" label={customLabel} />);
 
-    // Check icon is present
     expect(screen.getByTestId('back-arrow-icon')).toBeInTheDocument();
-
-    // Check custom label text, including the icon text in the name calculation
-    const linkElement = screen.getByRole('link', { name: `← ${customLabel}` });
-    expect(linkElement).toBeInTheDocument();
-
-    // Check href attribute
-    expect(linkElement).toHaveAttribute('href', destination);
+    expect(screen.getByRole('button', { name: /Go Back/ })).toBeInTheDocument();
   });
 
-}); 
+  it('renders without to prop using default fallback', () => {
+    render(<BackLink />);
+    expect(screen.getByRole('button')).toBeInTheDocument();
+  });
+
+  it('calls router.back() when history.length > 1', () => {
+    Object.defineProperty(window, 'history', {
+      writable: true,
+      value: { length: 5 },
+    });
+
+    render(<BackLink to="/dashboard" />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(mockRouterBack).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it('calls router.push(to) when history.length <= 1', () => {
+    Object.defineProperty(window, 'history', {
+      writable: true,
+      value: { length: 1 },
+    });
+
+    render(<BackLink to="/dashboard" />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/dashboard');
+    expect(mockRouterBack).not.toHaveBeenCalled();
+  });
+
+  it('calls router.push("/") as default fallback when no to prop and history.length <= 1', () => {
+    Object.defineProperty(window, 'history', {
+      writable: true,
+      value: { length: 1 },
+    });
+
+    render(<BackLink />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/');
+  });
+
+});

@@ -41,6 +41,8 @@ describe('GroupsFeatureToggle', () => {
       updatingPrepMode: false,
       updateAudioGenerationAccess: jest.fn(),
       updatingAudioGeneration: false,
+      updateStructurePreviewAccess: jest.fn(),
+      updatingStructurePreview: false,
     });
   });
 
@@ -54,6 +56,8 @@ describe('GroupsFeatureToggle', () => {
       updatingPrepMode: false,
       updateAudioGenerationAccess: jest.fn(),
       updatingAudioGeneration: false,
+      updateStructurePreviewAccess: jest.fn(),
+      updatingStructurePreview: false,
     } as any);
 
     render(<GroupsFeatureToggle />);
@@ -83,8 +87,8 @@ describe('GroupsFeatureToggle', () => {
 
   it('shows alert when toggle update fails', async () => {
     mockUpdateGroupsAccess.mockRejectedValueOnce(new Error('update failed'));
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => { });
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     render(<GroupsFeatureToggle />);
 

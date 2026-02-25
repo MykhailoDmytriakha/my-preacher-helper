@@ -5,7 +5,8 @@ import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"; // Import useCallback
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
@@ -32,6 +33,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { getSectionLabel } from '@/lib/sections';
 import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
@@ -102,6 +104,7 @@ export default function SermonPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
+  const { settings: userSettings } = useUserSettings(user?.uid);
   const isOnline = useOnlineStatus();
   const isReadOnly = !isOnline;
 
@@ -135,7 +138,8 @@ export default function SermonPage() {
   const { sermon, setSermon, loading, error } = useSermon(id);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
-
+  const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
+  const [prepPortal, setPrepPortal] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (sermon?.preparation) setPrepDraft(sermon.preparation);
@@ -172,11 +176,27 @@ export default function SermonPage() {
 
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
+  const [isAudioRecorderActive, setIsAudioRecorderActive] = useState(false);
 
   // Reusable renderer for classic content (brainstorm, filters, thoughts)
-  const renderClassicContent = (options?: { withBrainstorm?: boolean }) => (
+  const renderClassicContent = (options?: { withBrainstorm?: boolean, portalRef?: React.Ref<HTMLDivElement> }) => (
     // Disable layout animations to avoid vertical stretch on filter changes
     <motion.div layout={false} className="space-y-4 sm:space-y-6">
+
+      {/* Input Grouping Area: Audio Recorder and Add Manual Thought */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-white dark:bg-gray-800/40 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700/60 shadow-sm">
+        <div ref={options?.portalRef} className="flex-1 w-full empty:hidden [&>div]:h-full [&_button.min-w-\\[200px\\]]:w-full" />
+        <div className={`w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto ${(isAudioRecorderActive || isProcessing) ? 'hidden' : ''}`}>
+          <AddThoughtManual
+            sermonId={sermon!.id}
+            onNewThought={handleNewManualThought}
+            allowedTags={allowedTags}
+            sermonOutline={sermon!.outline}
+            disabled={isReadOnly}
+          />
+        </div>
+      </div>
+
       <section>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -231,8 +251,6 @@ export default function SermonPage() {
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
-          <div className="flex items-center gap-2">
             <AnimatePresence initial={false}>
               {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
                 <motion.button
@@ -252,13 +270,6 @@ export default function SermonPage() {
                 </motion.button>
               )}
             </AnimatePresence>
-            <AddThoughtManual
-              sermonId={sermon!.id}
-              onNewThought={handleNewManualThought}
-              allowedTags={allowedTags}
-              sermonOutline={sermon!.outline}
-              disabled={isReadOnly}
-            />
           </div>
         </div>
         <AnimatePresence initial={false}>
@@ -1074,19 +1085,37 @@ export default function SermonPage() {
         />
       </div>
 
-      {/* Single persistent recorder with smooth height transition */}
-      <AutoHeight>
-        <AudioRecorder
-          onRecordingComplete={handleNewRecording}
-          isProcessing={isProcessing}
-          onRetry={handleRetryTranscription}
-          retryCount={retryCount}
-          maxRetries={3}
-          transcriptionError={transcriptionError}
-          onClearError={handleClearError}
-          hideKeyboardShortcuts={uiMode === 'prep'}
-        />
-      </AutoHeight>
+      {/* Single persistent recorder with smooth height transition teleported via portal to the correct active slide */}
+      {(uiMode === 'prep' ? prepPortal : classicPortal) ? createPortal(
+        <AutoHeight className="w-full">
+          <AudioRecorder
+            onRecordingComplete={handleNewRecording}
+            isProcessing={isProcessing}
+            onRetry={handleRetryTranscription}
+            retryCount={retryCount}
+            maxRetries={3}
+            transcriptionError={transcriptionError}
+            onClearError={handleClearError}
+            hideKeyboardShortcuts={uiMode === 'prep'}
+            onRecordingStateChange={setIsAudioRecorderActive}
+          />
+        </AutoHeight>,
+        (uiMode === 'prep' ? prepPortal : classicPortal)!
+      ) : (
+        <div className="hidden">
+          <AudioRecorder
+            onRecordingComplete={handleNewRecording}
+            isProcessing={isProcessing}
+            onRetry={handleRetryTranscription}
+            retryCount={retryCount}
+            maxRetries={3}
+            transcriptionError={transcriptionError}
+            onClearError={handleClearError}
+            hideKeyboardShortcuts={uiMode === 'prep'}
+            onRecordingStateChange={setIsAudioRecorderActive}
+          />
+        </div>
+      )}
 
       {false && (
         <motion.div
@@ -1160,13 +1189,15 @@ export default function SermonPage() {
                             />
                           </div>
                         </div>
-                        <AddThoughtManual
-                          sermonId={sermon!.id}
-                          onNewThought={handleNewManualThought}
-                          allowedTags={allowedTags}
-                          sermonOutline={sermon!.outline}
-                          disabled={isReadOnly}
-                        />
+                        <div className={(isAudioRecorderActive || isProcessing) ? 'hidden' : ''}>
+                          <AddThoughtManual
+                            sermonId={sermon!.id}
+                            onNewThought={handleNewManualThought}
+                            allowedTags={allowedTags}
+                            sermonOutline={sermon!.outline}
+                            disabled={isReadOnly}
+                          />
+                        </div>
                       </div>
                       <div className="space-y-5">
                         {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
@@ -1573,7 +1604,7 @@ export default function SermonPage() {
                     isReadOnly={isReadOnly}
                   />
                   <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
-                  {sermon!.structure && <StructurePreview sermon={sermon!} />}
+                  {sermon!.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon!} />}
                 </motion.div>
               ) : (
                 <motion.div
@@ -1584,7 +1615,7 @@ export default function SermonPage() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                  {renderClassicContent()}
+                  {renderClassicContent({ portalRef: setClassicPortal })}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1604,11 +1635,11 @@ export default function SermonPage() {
           {/* Slide 1: Preparation layout (left) */}
           <div className="basis-1/2 shrink-0">
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
-              <div className="lg:col-span-2">
+              <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderPrepContent()}
               </div>
-              <div className="space-y-6">
-                {renderClassicContent({ withBrainstorm: false })}
+              <div className="order-1 lg:order-2 space-y-6">
+                {renderClassicContent({ withBrainstorm: false, portalRef: setPrepPortal })}
               </div>
             </div>
           </div>
@@ -1616,10 +1647,10 @@ export default function SermonPage() {
           {/* Slide 2: Classic layout (right) */}
           <div className="basis-1/2 shrink-0">
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 pl-px`}>
-              <div className="lg:col-span-2">
-                {renderClassicContent()}
+              <div className="order-2 lg:order-1 lg:col-span-2">
+                {renderClassicContent({ portalRef: setClassicPortal })}
               </div>
-              <div className="space-y-6">
+              <div className="order-1 lg:order-2 space-y-6">
                 <div className="hidden lg:block">
                   <StructureStats
                     sermon={sermon!}
@@ -1635,7 +1666,7 @@ export default function SermonPage() {
                   isReadOnly={isReadOnly}
                 />
                 <KnowledgeSection sermon={sermon!} updateSermon={handleSermonUpdate} />
-                {sermon!.structure && <StructurePreview sermon={sermon!} />}
+                {sermon!.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon!} />}
               </div>
             </div>
           </div>

@@ -10,6 +10,7 @@ import DebugModeToggle from "@/components/settings/DebugModeToggle";
 import GroupsFeatureToggle from "@/components/settings/GroupsFeatureToggle";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
+import StructurePreviewToggle from "@/components/settings/StructurePreviewToggle";
 import TagsSection from "@/components/settings/TagsSection";
 import UserSettingsSection from "@/components/settings/UserSettingsSection";
 import SettingsNav from "@components/settings/SettingsNav";
@@ -48,6 +49,7 @@ export default function SettingsPage() {
             <UserSettingsSection user={user} />
             <PrepModeToggle />
             <AudioGenerationToggle />
+            <StructurePreviewToggle />
             <GroupsFeatureToggle />
             <DebugModeToggle />
           </div>
@@ -59,6 +61,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UserSettingsSection user={user} />
             <PrepModeToggle />
+            <StructurePreviewToggle />
             <GroupsFeatureToggle />
             <DebugModeToggle />
           </div>

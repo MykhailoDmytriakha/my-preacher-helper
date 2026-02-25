@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 
@@ -15,7 +16,7 @@ import {
 } from "@/services/insights.service";
 import { debugLog } from "@/utils/debugMode";
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
-import { ChevronIcon, RefreshIcon } from '@components/Icons';
+import { RefreshIcon } from '@components/Icons';
 
 // Translation key constants to avoid duplicate strings
 const TRANSLATION_KNOWLEDGE_REFRESH = 'knowledge.refresh';
@@ -304,36 +305,33 @@ const KnowledgeHeader = ({
   expanded,
   onToggleExpanded,
   showMoreLabel,
-  showLessLabel
+  showLessLabel,
+  hideToggle = false
 }: {
   title: string;
   expanded: boolean;
   onToggleExpanded: () => void;
   showMoreLabel: string;
   showLessLabel: string;
+  hideToggle?: boolean;
 }) => (
-  <div className="flex justify-between items-center mb-4 gap-3">
+  <div className="flex justify-between items-center mb-0 sm:mb-4 gap-3">
     <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
       <h2 className="text-xl font-semibold break-words">{title}</h2>
     </div>
-    <button
-      onClick={onToggleExpanded}
-      className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-      aria-label={expanded ? showLessLabel : showMoreLabel}
-    >
-      <ChevronIcon className={`transform ${expanded ? 'rotate-180' : ''}`} />
-    </button>
+    {!hideToggle && (
+      <button
+        onClick={onToggleExpanded}
+        className="p-1 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 rounded-full transition-colors text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        aria-label={expanded ? showLessLabel : showMoreLabel}
+      >
+        <ChevronDownIcon className={`h-5 w-5 transform transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+    )}
   </div>
 );
 
-const CollapsedHint = ({ expanded, message }: { expanded: boolean; message: string }) => {
-  if (expanded) return null;
-  return (
-    <p className="text-gray-600 dark:text-gray-400 text-sm">
-      {message}
-    </p>
-  );
-};
+
 
 const CollapsedGenerateContainer = ({
   hasAnyData,
@@ -354,25 +352,25 @@ const CollapsedGenerateContainer = ({
   anyGenerating: boolean;
   onGenerate: () => void;
 }) => (
-  <div className="mt-4 text-center">
-    {!hasAnyData ? (
-      <>
-        {hasEnoughThoughts ? (
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            {noInsightsMessage}
-          </p>
-        ) : null}
-
-        {!hasEnoughThoughts ? (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md">
-            <p>{thresholdMessage}</p>
-          </div>
-        ) : null}
+  hasAnyData ? null : (
+    <div className="mt-3 sm:mt-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 sm:p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
+        <div className="flex-1">
+          {hasEnoughThoughts ? (
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {noInsightsMessage}
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+              {thresholdMessage}
+            </p>
+          )}
+        </div>
 
         <button
-          className={`px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 w-auto mx-auto ${hasEnoughThoughts
-            ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white'
-            : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+          className={`px-4 py-2 sm:py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
+            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed hidden sm:flex'
             }`}
           onClick={hasEnoughThoughts ? onGenerate : undefined}
           disabled={!hasEnoughThoughts || anyGenerating}
@@ -381,9 +379,9 @@ const CollapsedGenerateContainer = ({
           {isGeneratingAll ? <LoadingSpinner /> : null}
           {generateLabel}
         </button>
-      </>
-    ) : null}
-  </div>
+      </div>
+    </div>
+  )
 );
 
 interface InsightListSectionProps<T> {
@@ -716,7 +714,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   }
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 relative">
+    <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 relative">
       <SuccessNotification show={successNotification} message={t('knowledge.insightsGenerated')} />
 
       <KnowledgeHeader
@@ -725,9 +723,10 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         onToggleExpanded={() => setExpanded((prev) => !prev)}
         showMoreLabel={t('knowledge.showMore')}
         showLessLabel={t('knowledge.showLess')}
+        hideToggle={!hasAnyData}
       />
 
-      <CollapsedHint expanded={expanded} message={t('knowledge.clickToExpand')} />
+
 
       {expanded ? (
         <div className="space-y-6">

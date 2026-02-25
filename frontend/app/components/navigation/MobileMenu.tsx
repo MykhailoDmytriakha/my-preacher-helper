@@ -1,12 +1,14 @@
 'use client';
 
+import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
-import "@locales/i18n";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
+import ThemeModeToggle from "@/components/navigation/ThemeModeToggle";
 import { getNavItemTheme } from '@/utils/themeColors';
+import "@locales/i18n";
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -31,7 +33,9 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
   return (
     <div className="lg:hidden">
       <div className="px-2 pt-2 pb-3 space-y-1 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex justify-center py-2">
+        <div className="flex items-center justify-center gap-4 py-3">
+          <ThemeModeToggle variant="compact" />
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
           <LanguageSwitcher />
         </div>
         <div className="space-y-1">
@@ -71,10 +75,11 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
         </div>
         <button
           onClick={onLogout}
-          className="w-full px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700 text-center"
+          className="w-full px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700 flex items-center justify-center gap-2"
         >
+          <ArrowRightOnRectangleIcon className="h-5 w-5" aria-hidden="true" />
           <span suppressHydrationWarning={true}>
-            {t('navigation.logout')}
+            {t('navigation.logout_account', { defaultValue: 'Выйти из аккаунта' })}
           </span>
         </button>
       </div>

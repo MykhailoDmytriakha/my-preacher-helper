@@ -4,6 +4,7 @@
     "guest": "Guest User",
     "settings": "Settings",
     "logout": "Logout",
+    "logout_account": "Logout Account",
     "series": "Series",
     "studies": "Studies",
     "groups": "Groups",
@@ -301,7 +302,7 @@
     "conclusion": "Conclusion"
   },
   "settings": {
-    "backToDashboard": "Back to Dashboard",
+    "backToDashboard": "Back",
     "title": "Settings",
     "userSettings": "User Settings",
     "prepMode": {
@@ -315,6 +316,10 @@
     "groups": {
       "title": "Groups Workspace (Beta)",
       "description": "Enable access to the Groups workspace and related navigation"
+    },
+    "structurePreview": {
+      "title": "Structure Preview (Beta)",
+      "description": "Show the structure preview panel on the sermon details page"
     },
     "debugMode": {
       "title": "Debug Mode",

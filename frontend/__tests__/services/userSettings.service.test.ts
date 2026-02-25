@@ -3,7 +3,9 @@ import {
   updatePrepModeAccess,
   hasPrepModeAccess,
   updateGroupsAccess,
-  hasGroupsAccess
+  hasGroupsAccess,
+  updateStructurePreviewAccess,
+  hasStructurePreviewAccess
 } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
 import { setDebugModeEnabled } from '@/utils/debugMode';
@@ -378,6 +380,125 @@ describe('User Settings Service - Prep Mode Functions', () => {
               mockFetch.mockRejectedValueOnce(new Error('Network error'));
               const result = await hasGroupsAccess('user1');
               expect(result).toBe(false);
+            }
+          }
+        ],
+        { beforeEachScenario: resetScenario }
+      );
+    });
+  });
+
+  describe('updateStructurePreviewAccess', () => {
+    it('updates structure preview access successfully and handles errors', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'resolves immediately for empty userId',
+            run: async () => {
+              await expect(updateStructurePreviewAccess('', true)).resolves.toBeUndefined();
+              expect(mockFetch).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'successfully updates structure preview to enabled',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+
+              await expect(updateStructurePreviewAccess('user1', true)).resolves.toBeUndefined();
+              expect(mockFetch).toHaveBeenCalledWith('/api/user/settings', expect.objectContaining({
+                method: 'PUT',
+                body: JSON.stringify({ userId: 'user1', enableStructurePreview: true }),
+              }));
+            }
+          },
+          {
+            name: 'successfully updates structure preview to disabled',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+
+              await expect(updateStructurePreviewAccess('user1', false)).resolves.toBeUndefined();
+              expect(mockFetch).toHaveBeenCalledWith('/api/user/settings', expect.objectContaining({
+                body: JSON.stringify({ userId: 'user1', enableStructurePreview: false }),
+              }));
+            }
+          },
+          {
+            name: 'throws on API error response',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Internal Server Error' });
+              await expect(updateStructurePreviewAccess('user1', true)).rejects.toThrow();
+            }
+          },
+          {
+            name: 'throws on network error',
+            run: async () => {
+              mockFetch.mockRejectedValueOnce(new Error('Network error'));
+              await expect(updateStructurePreviewAccess('user1', true)).rejects.toThrow('Network error');
+            }
+          },
+          {
+            name: 'throws when browser is offline',
+            run: async () => {
+              Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+              await expect(updateStructurePreviewAccess('user1', true)).rejects.toThrow();
+              Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+            }
+          }
+        ],
+        { beforeEachScenario: resetScenario }
+      );
+    });
+  });
+
+  describe('hasStructurePreviewAccess', () => {
+    it('returns structure preview access state', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'returns false for empty user id',
+            run: async () => {
+              const result = await hasStructurePreviewAccess('');
+              expect(result).toBe(false);
+              expect(mockFetch).not.toHaveBeenCalled();
+            }
+          },
+          {
+            name: 'returns true when structure preview is enabled',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: jest.fn().mockResolvedValue({ settings: { enableStructurePreview: true } })
+              });
+              const result = await hasStructurePreviewAccess('user1');
+              expect(result).toBe(true);
+            }
+          },
+          {
+            name: 'returns false when structure preview is not set',
+            run: async () => {
+              mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: jest.fn().mockResolvedValue({ settings: {} })
+              });
+              const result = await hasStructurePreviewAccess('user1');
+              expect(result).toBe(false);
+            }
+          },
+          {
+            name: 'returns false on network errors',
+            run: async () => {
+              mockFetch.mockRejectedValueOnce(new Error('Network error'));
+              const result = await hasStructurePreviewAccess('user1');
+              expect(result).toBe(false);
+            }
+          },
+          {
+            name: 'returns false when browser is offline',
+            run: async () => {
+              Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+              const result = await hasStructurePreviewAccess('user1');
+              expect(result).toBe(false);
+              Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
             }
           }
         ],

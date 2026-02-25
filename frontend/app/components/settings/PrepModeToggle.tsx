@@ -91,16 +91,14 @@ export default function PrepModeToggle() {
         </div>
         <button
           onClick={handleToggle}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
-          }`}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'
+            }`}
           role="switch"
           aria-checked={enabled}
         >
           <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${enabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
           />
         </button>
       </div>

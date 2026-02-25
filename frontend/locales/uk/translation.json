@@ -4,6 +4,7 @@
     "guest": "Гостьовий користувач",
     "settings": "Налаштування",
     "logout": "Вийти",
+    "logout_account": "Вийти з акаунта",
     "series": "Серії",
     "studies": "Вивчення",
     "groups": "Групи",
@@ -301,7 +302,7 @@
     "conclusion": "Висновок"
   },
   "settings": {
-    "backToDashboard": "Повернутися до панелі керування",
+    "backToDashboard": "Назад",
     "title": "Налаштування",
     "userSettings": "Налаштування користувача",
     "prepMode": {
@@ -315,6 +316,10 @@
     "groups": {
       "title": "Workspace груп (Beta)",
       "description": "Увімкнути доступ до workspace груп і пов'язаної навігації"
+    },
+    "structurePreview": {
+      "title": "Попередній перегляд структури (Beta)",
+      "description": "Показувати панель попереднього перегляду структури на сторінці проповіді"
     },
     "debugMode": {
       "title": "Режим налагодження",
@@ -988,7 +993,7 @@
     "back": "Назад",
     "backToPlan": "Назад до плану",
     "backToSermon": "Назад до проповіді",
-    "backToDashboard": "Назад до панелі",
+    "backToDashboard": "Назад",
     "copyAll": "Копіювати все",
     "goToOutline": "Перейти до плану",
     "remove": "Видалити",

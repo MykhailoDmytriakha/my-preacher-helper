@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -6,6 +6,12 @@ import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { TestProviders } from '@test-utils/test-providers';
 import { createAudioThought } from '@services/thought.service';
 import '@testing-library/jest-dom';
+
+// Render portals inline so AudioRecorder stays in the React tree without DOM moves
+jest.mock('react-dom', () => ({
+  ...jest.requireActual('react-dom'),
+  createPortal: (node: React.ReactNode) => node,
+}));
 
 // Mock next/navigation - useSearchParams overridable per test
 const mockUseSearchParams = jest.fn();
@@ -478,7 +484,6 @@ describe('Sermon Detail Page', () => {
 
   describe('Audio Recorder', () => {
     it('retries transcription after initial failure', async () => {
-      const user = userEvent.setup();
       const createAudioThoughtMock = createAudioThought as jest.Mock;
       createAudioThoughtMock
         .mockRejectedValueOnce(new Error('Transcription failed'))
@@ -490,18 +495,21 @@ describe('Sermon Detail Page', () => {
         </TestProviders>
       );
 
-      await user.click(screen.getByText('Mock Record'));
+      // AudioRecorder is now teleported via portal; wait for the portal ref callback
+      // re-render to settle, then use fireEvent which works reliably with portals
+      await waitFor(() => expect(screen.getByText('Mock Record')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Mock Record'));
       await waitFor(() => {
         expect(createAudioThoughtMock).toHaveBeenCalledTimes(1);
       });
 
-      await user.click(screen.getByText('Mock Retry'));
+      fireEvent.click(screen.getByText('Mock Retry'));
       await waitFor(() => {
         expect(createAudioThoughtMock).toHaveBeenCalledTimes(2);
         expect(defaultUseSermonReturn.setSermon).toHaveBeenCalled();
       });
 
-      await user.click(screen.getByText('Mock Clear'));
+      fireEvent.click(screen.getByText('Mock Clear'));
     });
   });
 

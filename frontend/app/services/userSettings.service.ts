@@ -387,3 +387,56 @@ export async function hasGroupsAccess(userId: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Update user's structure preview feature flag
+ * @param userId The user ID
+ * @param enabled Whether structure preview should be enabled
+ */
+export async function updateStructurePreviewAccess(userId: string, enabled: boolean): Promise<void> {
+  try {
+    if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, enableStructurePreview: enabled }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update structure preview access: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating structure preview access:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if user has access to structure preview
+ * @param userId The user ID
+ * @returns Boolean indicating if user has structure preview access
+ */
+export async function hasStructurePreviewAccess(userId: string): Promise<boolean> {
+  try {
+    if (!userId) {
+      return false; // Not accessible to guests by default
+    }
+
+    if (isBrowserOffline()) {
+      return false;
+    }
+
+    const settings = await getUserSettings(userId);
+    return settings?.enableStructurePreview || false;
+  } catch (error) {
+    console.error('Error checking structure preview access:', error);
+    return false;
+  }
+}

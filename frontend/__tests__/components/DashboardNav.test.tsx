@@ -91,6 +91,7 @@ jest.mock('react-i18next', () => ({
     t: (key: string) => {
       const translations: { [key: string]: string } = {
         'navigation.dashboard': 'Dashboard',
+        'navigation.sermons': 'Sermons',
         'navigation.settings': 'Settings',
         'navigation.logout': 'Logout',
         'navigation.guest': 'Guest',
@@ -182,8 +183,9 @@ describe('DashboardNav Component', () => {
 
     render(<DashboardNav />);
 
-    // On dashboard page, dashboard text should NOT be visible
-    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+    // On dashboard page, the dynamic title should show "Sermons"
+    const sermonsTitle = screen.getAllByText('Sermons');
+    expect(sermonsTitle.length).toBeGreaterThan(0);
 
     // Use getAllByTestId instead of getByTestId to handle multiple matches
     const languageSwitchers = screen.getAllByTestId('language-switcher');
@@ -203,8 +205,10 @@ describe('DashboardNav Component', () => {
 
     render(<DashboardNav />);
 
-    // On non-dashboard pages, dashboard link should be visible
-    expect(screen.getByLabelText('Dashboard')).toBeInTheDocument();
+    // mock active item should be 'Sermons' since it matches dashboardMatcher
+    // On non-dashboard pages that match sermons, dynamic link "Sermons" should be visible
+    const sermonsTitle = screen.getAllByText('Sermons');
+    expect(sermonsTitle.length).toBeGreaterThan(0);
 
   });
 

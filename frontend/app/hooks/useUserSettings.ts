@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { getUserSettings, updatePrepModeAccess, updateAudioGenerationAccess } from '@/services/userSettings.service';
+import { getUserSettings, updatePrepModeAccess, updateAudioGenerationAccess, updateStructurePreviewAccess } from '@/services/userSettings.service';
 
 import type { UserSettings } from '@/models/models';
 
@@ -59,6 +59,21 @@ export function useUserSettings(userId: string | null | undefined) {
     },
   });
 
+  const updateStructurePreviewMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      mutationGuard(() => {
+        if (!userId) {
+          throw new Error('No user');
+        }
+        return updateStructurePreviewAccess(userId, enabled);
+      }),
+    onSuccess: (_data, enabled) => {
+      queryClient.setQueryData<UserSettings | null>(buildQueryKey(userId), (prev) =>
+        prev ? { ...prev, enableStructurePreview: enabled } : prev
+      );
+    },
+  });
+
   return {
     settings: settingsQuery.data ?? null,
     loading: settingsQuery.isLoading,
@@ -68,5 +83,7 @@ export function useUserSettings(userId: string | null | undefined) {
     updatingPrepMode: updatePrepModeMutation.isPending,
     updateAudioGenerationAccess: updateAudioGenerationMutation.mutateAsync,
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
+    updateStructurePreviewAccess: updateStructurePreviewMutation.mutateAsync,
+    updatingStructurePreview: updateStructurePreviewMutation.isPending,
   };
 }

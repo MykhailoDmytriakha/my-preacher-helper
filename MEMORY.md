@@ -635,7 +635,33 @@
 **Why it worked:** The test now verifies the *outcome* of the render (text is present) rather than an implementation detail (key is passed), which is more robust.
 **Principle:** **Test Rendered Reality:** When testing UI with i18n mocks that return fallbacks, assert against the fallback text (what the user sees) rather than the translation key.
 
+### 2026-02-24 Toggle Switch: Overflow Is Not Optional
+**Problem:** All 5 settings toggle switches rendered broken — enabled state showed the thumb cut off on the right edge; disabled state showed a barely-visible gray circle (white thumb on light-gray background).
+**Attempts:** The original pattern used `h-4 w-4 / translate-x-6 / translate-x-1` without `overflow-hidden` on the pill container.
+**Solution:** Fixed all toggles to use `h-5 w-5 / translate-x-5 / translate-x-0` with `border-2 border-transparent` on the pill (gives extra 4px room), `flex-shrink-0`, focus rings, and `shadow-lg` on the thumb.
+**Why it worked:** `translate-x-6` (24px) + `w-4` (16px) = 40px right edge, but the pill is only `w-11` (44px) with padding, so the thumb technically fit — but visually the pill container had no `overflow-hidden`, so the thumb animated outside the pill's visible area on some renderers. The correct Headless UI pattern keeps the thumb 1px inside on each side.
+**Principle:** For toggle switches: use `border-2 border-transparent` on the pill (not `overflow-hidden`), `translate-x-5 / translate-x-0` for `w-11` rails, and `h-5 w-5` thumbs. This is the Headless UI canonical pattern.
+
+### 2026-02-24 Smart Back Navigation: router.back() with URL Fallback
+**Problem:** The Settings page "Back" button always linked statically to `/dashboard`, ignoring that users navigated there from sermons, series, and other pages.
+**Solution:** Replaced the `<Link href={to}>` with a `<button onClick>` that calls `router.back()` when `window.history.length > 1`, and falls back to `router.push(to)` when history is empty (direct page load). Made the `to` prop optional with `/` as default.
+**Why it worked:** `window.history.length > 1` reliably detects whether the user has a previous page to return to. `router.back()` restores the browser's native back behavior (position, scroll, state).
+**Principle:** For "Back" navigation in settings/modal pages, prefer `router.back()` over a hardcoded URL. Always keep a fallback URL for direct-load cases where history stack is empty.
+
+### 2026-02-24 Beta Feature Toggle Pattern (UserSettings + Settings Page)
+**Problem:** New beta features (Structure Preview) needed to be hidden by default and only accessible via user account settings — the same pattern as Prep Mode and Audio Generation.
+**Solution:** (1) Add `enableStructurePreview?: boolean` to `UserSettings` model. (2) Add `updateStructurePreviewAccess` + `hasStructurePreviewAccess` to `userSettings.service.ts`. (3) Expose `updateStructurePreviewAccess` from `useUserSettings` hook. (4) Create `StructurePreviewToggle.tsx` following the `PrepModeToggle` template. (5) Add i18n keys. (6) Import into `settings/page.tsx`.
+**Why it worked:** Following the existing pattern (Prep Mode, Audio Generation, Groups) ensured consistent architecture, Firestore schema, and UI placement.
+**Principle:** New beta feature flags follow a strict 5-step pattern: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`. Use `PrepModeToggle` as the canonical template.
+
+### 2026-02-24 Series Card Tinted Backgrounds with hex-to-rgba
+**Problem:** Series cards all looked the same (white/gray-800) despite each series having a unique `color` field shown only as a tiny 2.5px dot in the header.
+**Solution:** Added a `hexToRgb` pure helper that converts `#rrggbb` / `#rgb` to `{r,g,b}`. Applied computed inline styles: `backgroundColor: rgba(r,g,b,0.07)` and `borderColor: rgba(r,g,b,0.28)` in light mode. For dark mode, added an absolutely-positioned overlay div with `rgba(r,g,b,0.13)` + `opacity-0 dark:opacity-100` (Tailwind's `dark:` variant doesn't apply to inline styles, so an overlay div was necessary).
+**Why it worked:** Inline styles bypass Tailwind's purge for dynamic values. The overlay div technique is required for dark-mode dynamic colors because Tailwind's `dark:` variant cannot be applied to dynamically computed `rgba()` values in `style` props.
+**Principle:** For dynamic color tinting with Tailwind dark mode: apply light tint via `style={{ backgroundColor: rgba(..., 0.07) }}`, and apply dark tint via a sibling `div` with `className="opacity-0 dark:opacity-100"` and the same inline background color — because `dark:` variants cannot be applied to dynamic inline style values.
+
 ---
+
 
 ## 🔄 Short-Term Memory (Processing) — На осмыслении
 
@@ -1027,3 +1053,7 @@
 - Calendar Date Integrity: Keep preach dates as date-only (`YYYY-MM-DD`) and derive month markers + right-panel list + analytics from one normalized calendar event pipeline.
 - Dashboard Optimistic Pipeline: Use `useDashboardOptimisticSermons` to centralize optimistic mutations and render sync state in `app/components/dashboard/SermonCard.tsx` with retry/dismiss controls.
 - Comments: English only in code
+- Beta Feature Toggles: Follow 5-step pattern: `models.ts` (add `enable*?: boolean`) → `userSettings.service.ts` (add `update*Access` + `has*Access`) → `useUserSettings.ts` (expose mutation) → `components/settings/*Toggle.tsx` (use `PrepModeToggle` as template) → `settings/page.tsx` (import and render).
+- Dynamic Color Tinting (Tailwind + Dark Mode): For light mode, use inline style `backgroundColor: rgba(r,g,b,0.07)`. For dark mode, use an absolutely-positioned overlay `div` with `className="opacity-0 dark:opacity-100"` and the same inline rgba background — Tailwind `dark:` variants cannot be applied to dynamic inline `style` values.
+- Back Navigation: Use `router.back()` when `window.history.length > 1`, with `router.push(fallbackUrl)` for direct-load cases. Expose via `BackLink.tsx` component with optional `to` prop.
+- Toggle Switch Canonical Pattern: On `w-11` rail, use `border-2 border-transparent` + `flex-shrink-0` + focus ring. Thumb: `h-5 w-5 translate-x-5 / translate-x-0 shadow-lg`. Reference: Headless UI Switch component spec.

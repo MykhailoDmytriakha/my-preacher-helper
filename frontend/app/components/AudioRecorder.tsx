@@ -589,6 +589,7 @@ interface AudioRecorderProps {
   variant?: "standard" | "mini"; // New prop for mini version
   autoStart?: boolean; // Auto-start recording on mount (useful for popovers)
   hideKeyboardShortcuts?: boolean; // Hide keyboard shortcuts when true
+  onRecordingStateChange?: (isActive: boolean) => void; // Callback when recording starts/stops
 }
 
 export const AudioRecorder = ({
@@ -606,6 +607,7 @@ export const AudioRecorder = ({
   variant = "standard", // Default to standard version
   autoStart = false,
   hideKeyboardShortcuts = false,
+  onRecordingStateChange,
 }: AudioRecorderProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -615,6 +617,12 @@ export const AudioRecorder = ({
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
   const [isMobileView, setIsMobileView] = useState(false);
+
+  // Notify parent of recording state
+  useEffect(() => {
+    onRecordingStateChange?.(isRecording || isInitializing);
+  }, [isRecording, isInitializing, onRecordingStateChange]);
+
 
   // Grace period state
   const gracePeriodDuration = getAudioGracePeriod();
