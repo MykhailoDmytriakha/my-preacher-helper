@@ -2,7 +2,7 @@
 
 ## 🔗 **Ссылка на приложение**
 
-<https://my-preacher-helper.vercel.com/>
+<https://my-preacher-helper.com/>
 
 ## 🔗 **Что это за приложение и зачем оно нужно?**
 
