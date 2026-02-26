@@ -100,7 +100,7 @@ describe('PublicRoute', () => {
     );
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/dashboard');
+      expect(mockReplace).toHaveBeenCalledWith('/sermons');
     });
 
     expect(screen.queryByText('Public Content')).not.toBeInTheDocument();
@@ -147,7 +147,7 @@ describe('PublicRoute', () => {
     );
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/dashboard');
+      expect(mockReplace).toHaveBeenCalledWith('/sermons');
     });
 
     expect(screen.queryByText('Public Content')).not.toBeInTheDocument();

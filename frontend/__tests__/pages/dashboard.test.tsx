@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import React from 'react';
 
-import DashboardPage from '@/(pages)/(private)/dashboard/page';
+import SermonsPage from '@/(pages)/(private)/sermons/page';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -56,7 +56,7 @@ jest.mock('next/navigation', () => ({
     prefetch: jest.fn(),
   }),
   useSearchParams: () => mockUseSearchParams(),
-  usePathname: () => '/dashboard',
+  usePathname: () => '/sermons',
 }));
 
 // Define mock sermons
@@ -161,7 +161,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-describe('Dashboard Page', () => {
+describe('Sermons Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Default hook return values
@@ -189,7 +189,7 @@ describe('Dashboard Page', () => {
           {
             name: 'shows heading and stats',
             run: async () => {
-              render(<DashboardPage />);
+              render(<SermonsPage />);
               await waitFor(() => {
                 expect(screen.getByRole('heading', { name: /My Sermons/i })).toBeInTheDocument();
                 expect(screen.getByTestId('dashboard-stats')).toHaveTextContent('Mocked Stats (3)');
@@ -199,7 +199,7 @@ describe('Dashboard Page', () => {
           {
             name: 'renders sermon grid with active sermons by default',
             run: async () => {
-              render(<DashboardPage />);
+              render(<SermonsPage />);
               await waitFor(() => {
                 // Should show active sermons (1 and 3)
                 expect(screen.getByTestId('sermon-grid')).toBeInTheDocument();
@@ -220,7 +220,7 @@ describe('Dashboard Page', () => {
     it('switches between Active, All, and Preached tabs', async () => {
       // Setup initial state: tab=null -> active
       mockUseSearchParams.mockReturnValue({ get: () => null });
-      const { rerender } = render(<DashboardPage />);
+      const { rerender } = render(<SermonsPage />);
 
       // Initially Active tab - should show active sermons only
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -229,11 +229,11 @@ describe('Dashboard Page', () => {
 
       // Click All tab
       fireEvent.click(screen.getByText('All'));
-      expect(mockPush).toHaveBeenCalledWith('/dashboard?tab=all');
+      expect(mockPush).toHaveBeenCalledWith('/sermons?tab=all');
 
       // Simulate router update
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      rerender(<DashboardPage />);
+      rerender(<SermonsPage />);
 
       // Should show all sermons
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -242,11 +242,11 @@ describe('Dashboard Page', () => {
 
       // Click Preached tab
       fireEvent.click(screen.getByText('Preached'));
-      expect(mockPush).toHaveBeenCalledWith('/dashboard?tab=preached');
+      expect(mockPush).toHaveBeenCalledWith('/sermons?tab=preached');
 
       // Simulate router update
       mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
-      rerender(<DashboardPage />);
+      rerender(<SermonsPage />);
 
       // Should show Preached sermon only
       expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
@@ -299,14 +299,14 @@ describe('Dashboard Page', () => {
         refresh: jest.fn(),
       });
 
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // Simulate switching to preached tab directly via props or mock, 
       // but since we rely on URL, we just mock the return value for this test scenario:
       mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
 
       // Re-render to pick up new mock value
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // We don't need to click anymore since we forced the state via mock
       // fireEvent.click(screen.getByText('Preached')); 
@@ -319,7 +319,7 @@ describe('Dashboard Page', () => {
 
   describe('Search Functionality', () => {
     it('filters sermons', async () => {
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       const searchInput = screen.getByPlaceholderText('Search sermons...');
       fireEvent.change(searchInput, { target: { value: 'Sermon 1' } });
@@ -330,7 +330,7 @@ describe('Dashboard Page', () => {
 
     it('matches by thought text', async () => {
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
 
@@ -343,7 +343,7 @@ describe('Dashboard Page', () => {
 
     it('matches by thought tags', async () => {
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
 
@@ -357,7 +357,7 @@ describe('Dashboard Page', () => {
 
     it('shows snippet for thought match', async () => {
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
 
@@ -369,7 +369,7 @@ describe('Dashboard Page', () => {
 
     it('shows snippet for tag match', async () => {
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
 
@@ -389,7 +389,7 @@ describe('Dashboard Page', () => {
         refresh: jest.fn(),
       });
 
-      render(<DashboardPage />);
+      render(<SermonsPage />);
       expect(screen.getByTestId('dashboard-stats-skeleton')).toBeInTheDocument();
       expect(screen.getAllByTestId('sermon-card-skeleton').length).toBeGreaterThan(0);
     });
@@ -404,7 +404,7 @@ describe('Dashboard Page', () => {
         refresh: jest.fn(),
       });
 
-      render(<DashboardPage />);
+      render(<SermonsPage />);
       expect(screen.getByText('No sermons yet')).toBeInTheDocument();
     });
   });
@@ -412,16 +412,16 @@ describe('Dashboard Page', () => {
   describe('Interactions', () => {
     it('handles tab change to active explicitly', async () => {
       mockUseSearchParams.mockReturnValue({ get: () => 'all' });
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       fireEvent.click(screen.getByText('Active Sermons'));
-      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+      expect(mockPush).toHaveBeenCalledWith('/sermons');
     });
 
     it('handles sermon actions', async () => {
       const { deleteSermonFromCache, updateSermonCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
 
-      render(<DashboardPage />);
+      render(<SermonsPage />);
 
       // Delete
       fireEvent.click(screen.getByTestId('delete-sermon-1'));

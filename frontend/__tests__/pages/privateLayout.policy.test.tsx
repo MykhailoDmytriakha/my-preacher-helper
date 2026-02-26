@@ -15,8 +15,8 @@ jest.mock('@dnd-kit/core', () => ({
   useDroppable: () => ({ setNodeRef: jest.fn(), isOver: false }),
   useSensors: (...args: any[]) => args,
   useSensor: (...args: any[]) => args[0],
-  PointerSensor: function PointerSensor() {},
-  KeyboardSensor: function KeyboardSensor() {},
+  PointerSensor: function PointerSensor() { },
+  KeyboardSensor: function KeyboardSensor() { },
 }));
 jest.mock('@dnd-kit/sortable', () => ({
   SortableContext: ({ children }: any) => <div>{children}</div>,
@@ -30,7 +30,7 @@ jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'sermon-1' }),
   useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
   useSearchParams: () => ({ get: () => 'sermon-1' }),
-  usePathname: () => '/dashboard',
+  usePathname: () => '/sermons',
 }));
 
 // Mock useDashboardSermons to prevent React Query errors
@@ -71,7 +71,7 @@ jest.mock('@/components/Column', () => () => <div data-testid="col" />);
 jest.mock('@/components/SortableItem', () => () => <div data-testid="item" />);
 
 // Import pages directly
-import DashboardPage from '@/(pages)/(private)/dashboard/page';
+import SermonsPage from '@/(pages)/(private)/sermons/page';
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
@@ -90,7 +90,7 @@ function expectNoPageLevelShell(container: HTMLElement) {
 
 describe('Private pages adhere to single-shell policy', () => {
   const cases: Array<[string, React.ComponentType<any>]> = [
-    ['dashboard', DashboardPage],
+    ['sermons', SermonsPage],
     ['sermons/[id]', SermonDetailPage],
     ['sermons/[id]/plan', SermonPlanPage],
     ['structure', StructurePage],

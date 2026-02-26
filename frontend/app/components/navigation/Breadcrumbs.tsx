@@ -13,7 +13,7 @@ import '@locales/i18n';
 
 // Route constants
 const ROUTES = {
-  DASHBOARD: '/dashboard',
+  DASHBOARD: '/sermons',
 } as const;
 
 type BreadcrumbItem = {
@@ -95,7 +95,7 @@ type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
 type GroupData = ReturnType<typeof useGroupDetail>['group'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
-  segment === 'dashboard' || (index === 0 && Boolean(segmentLabels[segment]));
+  segment === 'sermons' || (index === 0 && Boolean(segmentLabels[segment]));
 
 type BuildSegmentCrumbParams = {
   segment: string;
@@ -231,7 +231,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       return [];
     }
 
-    if (!pathname || pathname === '/' || pathname === ROUTES.DASHBOARD) {
+    if (!pathname || pathname === '/' || pathname === ROUTES.DASHBOARD || pathname === '/dashboard') {
       return [];
     }
 
@@ -257,7 +257,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
         href: rootConfig.href
       });
     } else if (firstSegment === 'dashboard') {
-      // For dashboard sub-routes, use Sermons as root
+      // Legacy /dashboard path — use Sermons as root
       crumbs.push({
         label: t('navigation.sermons', { defaultValue: 'Sermons' }),
         href: ROUTES.DASHBOARD

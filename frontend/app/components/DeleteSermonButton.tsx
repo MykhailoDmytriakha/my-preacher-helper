@@ -27,7 +27,7 @@ export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: Del
       await deleteSermon(sermonId);
       console.log(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
       // Redirect to dashboard immediately after deletion
-      window.location.href = '/dashboard';
+      window.location.href = '/sermons';
     } catch (error) {
       console.error('DeleteSermonButton: Error deleting sermon:', error);
       alert('Не удалось удалить проповедь');

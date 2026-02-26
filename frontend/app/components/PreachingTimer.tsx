@@ -195,12 +195,12 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
     } else {
-      router.push(exitFallbackPath ?? '/dashboard');
+      router.push(exitFallbackPath ?? '/sermons');
     }
   }, [router, exitFallbackPath]);
 
   const handleDashboardNavigation = useCallback(() => {
-    router.push('/dashboard');
+    router.push('/sermons');
   }, [router]);
 
   // Timer Logic
@@ -486,14 +486,14 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
         </div>
 
         {/* Inline Timer Presets */}
-      {showInlinePresets && (
-        <InlineTimerPresets
-          onSelectDuration={handleSelectDuration}
-          onOpenCustomPicker={handleOpenCustomPicker}
-          onOpenSectionPicker={handleOpenSectionPicker}
-          onClose={handleCloseInlinePresets}
-        />
-      )}
+        {showInlinePresets && (
+          <InlineTimerPresets
+            onSelectDuration={handleSelectDuration}
+            onOpenCustomPicker={handleOpenCustomPicker}
+            onOpenSectionPicker={handleOpenSectionPicker}
+            onClose={handleCloseInlinePresets}
+          />
+        )}
       </nav>
 
       {/* Custom Time Picker Modal */}

@@ -6,13 +6,13 @@ jest.mock('next/navigation', () => ({
   redirect: (path: string) => redirectMock(path),
 }));
 
-describe('Sermons index redirect', () => {
-  it('redirects /sermons to /dashboard', async () => {
+describe('Dashboard redirect', () => {
+  it('redirects /dashboard to /sermons', async () => {
     // Import after mocks
-    const SermonsIndexRedirect = (await import('@/(pages)/(private)/sermons/page')).default;
+    const DashboardRedirect = (await import('@/(pages)/(private)/dashboard/page')).default;
     // Render triggers redirect (component returns null after redirect)
-    SermonsIndexRedirect();
-    expect(redirectMock).toHaveBeenCalledWith('/dashboard');
+    DashboardRedirect();
+    expect(redirectMock).toHaveBeenCalledWith('/sermons');
   });
 });
 

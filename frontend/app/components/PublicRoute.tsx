@@ -10,9 +10,9 @@ interface PublicRouteProps {
   redirectTo?: string;
 }
 
-export default function PublicRoute({ 
-  children, 
-  redirectTo = '/dashboard' 
+export default function PublicRoute({
+  children,
+  redirectTo = '/sermons'
 }: PublicRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();

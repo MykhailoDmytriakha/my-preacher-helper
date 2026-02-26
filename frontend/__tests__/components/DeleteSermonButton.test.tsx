@@ -97,7 +97,7 @@ describe('DeleteSermonButton', () => {
 
     // Check redirection
     await waitFor(() => {
-       expect(window.location.href).toBe('/dashboard');
+       expect(window.location.href).toBe('/sermons');
     });
 
      // Check button state reverts (though it redirects immediately)
@@ -124,7 +124,7 @@ describe('DeleteSermonButton', () => {
     expect(deleteSermon).toHaveBeenCalledWith(sermonId);
 
     await waitFor(() => {
-       expect(window.location.href).toBe('/dashboard');
+       expect(window.location.href).toBe('/sermons');
     });
 
      await waitFor(() => {

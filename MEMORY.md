@@ -706,6 +706,13 @@
 **Why it worked:** IFR principle: "the system does not exist but the function is performed." The split button is not an external container — it is a rendering mode that `AudioRecorder` itself owns. One component → one DOM tree → true visual unity.
 **Principle:** CSS wrapping (overflow-hidden + shared border-radius) creates visual unity only at the surface. True split-button unity requires the component that owns state to also own the split rendering — pass a `renderLeft`/`splitLeft` slot prop so the component renders both parts in a single DOM subtree.
 
+### 2026-02-26 Canonical URL Migration: /dashboard → /sermons
+**Problem:** The app's main sermons list was served at `/dashboard` (a legacy name), while `/sermons` merely redirected to `/dashboard`. This inverted the semantic expectations — users and navigation all pointed to `/dashboard` instead of the more intuitive `/sermons`.
+**Attempts:** N/A — no false starts; the approach was clear: swap the pages and update all hardcoded references.
+**Solution:** (1) Moved full page content from `/dashboard/page.tsx` to `/sermons/page.tsx`. (2) Replaced `/dashboard/page.tsx` with a `redirect('/sermons')` for backward compatibility. (3) Found and updated all 8 source files referencing `/dashboard` as a navigation target (`navConfig.ts`, `Breadcrumbs.tsx`, `PublicRoute.tsx`, `page.tsx` (landing), `DeleteSermonButton.tsx`, `PreachingTimer.tsx`). (4) Updated 5 test files to import the new page location and expect `/sermons` URLs. All 2660 tests pass; lint clean.
+**Why it worked:** A systematic grep-first approach (`/dashboard` in quotes) found every hardcoded reference before changing anything. Keeping the old page as a redirect ensures backward compatibility with bookmarks and browser history.
+**Principle:** When migrating a canonical URL, first find all references via grep, then: (1) move the real content to the new URL, (2) make the old URL a `redirect()`, (3) update all hardcoded navigation references, (4) update tests last — they're a safety net, not a source of truth. Always preserve the old URL as a redirect for backward compatibility.
+
 ---
 
 

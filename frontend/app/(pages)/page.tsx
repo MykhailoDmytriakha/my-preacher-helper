@@ -23,7 +23,7 @@ export default function Home() {
     try {
       setLoadingProvider('google');
       await signInWithGoogle();
-      router.push('/dashboard');
+      router.push('/sermons');
     } catch (error) {
       console.error('Login error', error);
     } finally {
@@ -36,7 +36,7 @@ export default function Home() {
     try {
       setLoadingProvider('test');
       await signInWithEmailAndPassword(auth, 'testuser@example.com', 'TestPassword123');
-      router.push('/dashboard');
+      router.push('/sermons');
     } catch (error) {
       console.error('Test login failed:', error);
     } finally {
