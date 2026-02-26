@@ -855,34 +855,33 @@ Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can
 CRITICAL PRINCIPLES:
 1. **INSTANT RECOGNITION**: Each point should be immediately recognizable and trigger memory recall
 2. **MINIMAL WORDS, MAXIMUM MEANING**: Use concise, powerful phrases that capture the essence
-3. **VISUAL SCANNING**: ThoughtsBySection for quick visual scanning during preaching
+3. **VISUAL SCANNING**: Structure for quick visual scanning during preaching
 4. **MEMORY TRIGGERS**: Use keywords and phrases that instantly recall the full context
 5. **ACTIONABLE FORMAT**: Each point should guide the preacher on what to say next
 
 FORMAT REQUIREMENTS:
-- Use **bold** for main concepts and key theological terms
+- Use **bold** SPARINGLY: maximum 1-2 words per bullet that are the single most important trigger. If a bullet has no clear standout word — use no bold at all. Do NOT bold every keyword.
+- DO NOT use **bold** inside ### headings — headings are already visually prominent and bold inside them breaks markdown rendering.
 - Use *italic* for Bible references and supporting details
 - Use bullet points (*) for quick scanning
 - Keep main points to 3-6 words maximum (unless Style permits otherwise)
-- Use clear, memorable phrases that capture the essence
-- ThoughtsBySection for logical flow that's easy to follow during preaching
+- STRICT: Maximum 3 bullet points per ### block. If a thought has more content, distill to the 3 most critical memory triggers. One bullet = one trigger. If it needs more than 5 words — cut it.
 
 ${getStyleInstructions(style)}
 
 ${getStructuredBlocksInstructions()}
 
-MANDATORY BIBLE VERSE REQUIREMENT: 
-CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
-Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
-The preacher must be able to read the full verse directly from the plan without opening a Bible.
+BIBLE VERSE REQUIREMENT:
+For every Bible reference explicitly present in the THOUGHTS: write the verse text inline.
+- If the verse is SHORT (≤ 2 sentences): write the complete text.
+- If the verse is LONG (> 2 sentences): write the first sentence + "..." + the key final clause + reference. The preacher must be able to scan it in 3 seconds while speaking.
 Allowed sources: ONLY the THOUGHTS for this outline point, the OUTLINE POINT TEXT, and provided KEY FRAGMENTS.
 Treat SERMON TITLE and SCRIPTURE as context only. Do NOT quote or introduce content from them unless the exact Bible reference also appears in the THOUGHTS or in the OUTLINE POINT TEXT.
-
 
 LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the provided THOUGHTS. DO NOT translate.
 ${languageDirective}
 
-IMPORTANT: 
+IMPORTANT:
 1. Always generate the plan in the SAME LANGUAGE as the THOUGHTS text. Do not translate.
 2. Focus ONLY on the specific outline point and its related thoughts.
 3. Maintain the theological perspective and vocabulary from the original thoughts.
@@ -890,13 +889,13 @@ IMPORTANT:
 5. Organize ideas in a logical sequence that will help with sermon delivery.
 6. Include only the key ideas that come directly from the THOUGHTS.
 7. Format the response using Markdown:
-   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading MUST be a clear, practical, and descriptive title that immediately tells the preacher what this section is about.
+   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading must be an ACTION SIGNAL or KEY IDEA — a short phrase that tells the preacher WHAT TO SAY OR DO NEXT (e.g. "Задать вопрос", "Иллюстрация: аэродинамика"). NOT a description of the theme. NEVER repeat or paraphrase the outlinePointText in a heading.
    - Use only a single level of bullet points (* ) for supporting details.
 8. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
 9. STRICT: Create EXACTLY the same number of main points (###) as the number of THOUGHTS provided (one heading per thought, in order). Do not add extra headings.
 10. STRICT: Bullet points must paraphrase or quote phrases from the corresponding THOUGHT and/or provided key fragments. Do not introduce new subpoints that are not grounded in that THOUGHT.
 11. CRITICAL: Explain connections and applications only if they are already present in the THOUGHTS.
-12. CRITICAL: Include ALL Bible verses and quotes COMPLETELY ONLY IF they are explicitly present in the THOUGHTS. Do not invent new references.
+12. CRITICAL: Include Bible verses ONLY IF they are explicitly present in the THOUGHTS. Do not invent new references.
 ${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments into your response as supporting details, NOT as the main content. Key fragments should complement and enhance the broader ideas from the thoughts, not dominate them.' : ''}
 ${context?.previousPoint ? `14. Context Connection: Ensure the opening of this point flows naturally from the previous point context provided.` : ''}
 
@@ -1114,8 +1113,8 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v1",
-      expectedLanguage: languageInfo.languageRequirementLabel,
+      promptVersion: "v2",
+      expectedLanguage: languageInfo.isCyrillic ? "ru" : "en",
       systemPrompt,
       userMessage,
       context: inputInfo,
