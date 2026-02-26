@@ -81,6 +81,41 @@ describe('generateThoughtStructured', () => {
     });
   });
 
+  it('should trim content preview in debug log when content is very long', async () => {
+    await jest.isolateModules(async () => {
+      process.env.DEBUG_MODE = 'true';
+      const { generateThoughtStructured } = require('@clients/thought.structured');
+      const structuredOutput = require('@clients/structuredOutput');
+      const { logger } = require('@clients/openAIHelpers');
+
+      const longContent = 'A'.repeat(301);
+      const mockResponse = {
+        originalText: longContent,
+        formattedText: 'Formatted',
+        tags: ['Вступление'],
+        meaningPreserved: true,
+      };
+
+      (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+        success: true,
+        data: mockResponse,
+        refusal: null,
+        error: null,
+      });
+
+      await generateThoughtStructured(longContent, mockSermon, availableTags);
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'GenerateThoughtStructured',
+        'Starting generation',
+        expect.objectContaining({
+          contentPreview: expect.stringContaining('...'),
+        })
+      );
+      expect(logger.debug.mock.calls[0][2].contentPreview.length).toBeLessThanOrEqual(303);
+    });
+  });
+
   it('should return successful result when meaning is preserved', async () => {
     // Arrange
     const mockResponse = {

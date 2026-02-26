@@ -135,7 +135,7 @@ async function runThoughtAttempt(params: {
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "thought",
-      promptVersion: "v2",
+      promptVersion: "v3",
       systemPrompt: thoughtSystemPrompt,
       userMessage,
       context: {

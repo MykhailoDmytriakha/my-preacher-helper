@@ -113,7 +113,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       ref={filterRef}
       // Stop pointer/touch in capture so global outside handlers don’t run.
       // Allow click to bubble so React onChange for radios/checkboxes fires.
@@ -124,17 +124,54 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
       data-testid="thought-filter-controls"
     >
       <div className="py-1 divide-y divide-gray-200 dark:divide-gray-700">
-        {/* View options */}
+        {/* Sort order */}
         <div className="px-4 py-2">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-medium">{t('filters.viewOptions')}</h3>
-            <button 
+            <h3 className="text-sm font-medium">{t('filters.sortOrder') || 'Sort Order'}</h3>
+            <button
               onClick={() => { resetFilters(); }}
               className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
             >
               {t('filters.reset')}
             </button>
           </div>
+          <div className="mt-2 space-y-2">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name={`sortOrder-${uid}`}
+                value="date"
+                checked={sortOrder === 'date'}
+                onChange={() => { setSortOrder('date'); }}
+                className="h-4 w-4 text-blue-600"
+              />
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
+            </label>
+            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
+              <input
+                type="radio"
+                name={`sortOrder-${uid}`}
+                value="structure"
+                checked={sortOrder === 'structure'}
+                onChange={() => { setSortOrder('structure'); }}
+                className="h-4 w-4 text-blue-600"
+                disabled={!hasStructureTags}
+              />
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                {t('filters.sortByStructure') || 'By ThoughtsBySection (Intro → Main → Conclusion)'}
+                {!hasStructureTags && (
+                  <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                    ({t('filters.requiresStructureTags') || 'Requires structure tags'})
+                  </span>
+                )}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* View options */}
+        <div className="px-4 py-2">
+          <h3 className="text-sm font-medium mb-2">{t('filters.viewOptions')}</h3>
           <div className="mt-2 space-y-2">
             <label className="flex items-center">
               <input
@@ -160,7 +197,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             </label>
           </div>
         </div>
-        
+
         {/* ThoughtsBySection filter */}
         <div className="px-4 py-2">
           <h3 className="text-sm font-medium">
@@ -201,44 +238,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
             ))}
           </div>
         </div>
-        
-        {/* Sort order */}
-        <div className="px-4 py-2">
-          <h3 className="text-sm font-medium">{t('filters.sortOrder') || 'Sort Order'}</h3>
-          <div className="mt-2 space-y-2">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name={`sortOrder-${uid}`}
-                value="date"
-                checked={sortOrder === 'date'}
-                onChange={() => { setSortOrder('date'); }}
-                className="h-4 w-4 text-blue-600"
-              />
-              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
-            </label>
-            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
-              <input
-                type="radio"
-                name={`sortOrder-${uid}`}
-                value="structure"
-                checked={sortOrder === 'structure'}
-                onChange={() => { setSortOrder('structure'); }}
-                className="h-4 w-4 text-blue-600"
-                disabled={!hasStructureTags}
-              />
-              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                {t('filters.sortByStructure') || 'By ThoughtsBySection (Intro → Main → Conclusion)'}
-                {!hasStructureTags && (
-                  <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                    ({t('filters.requiresStructureTags') || 'Requires structure tags'})
-                  </span>
-                )}
-              </span>
-            </label>
-          </div>
-        </div>
-        
+
         {/* Tag filter */}
         <div className="px-4 py-2">
           <h3 className="text-sm font-medium">{t('filters.byTags')}</h3>
@@ -247,16 +247,16 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
               // Hide structure tags here; they are controlled by the section above
               .filter(tag => normalizeStructureTag(tag.name) === null)
               .map(tag => (
-              <label key={tag.name} className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={tagFilters.includes(tag.name)}
-                  onChange={() => { toggleTagFilter(tag.name); }}
-                  className="h-4 w-4 text-blue-600"
-                />
-                <span className="ml-2 text-sm" style={{ color: tag.color }}>{tag.name}</span>
-              </label>
-            ))}
+                <label key={tag.name} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={tagFilters.includes(tag.name)}
+                    onChange={() => { toggleTagFilter(tag.name); }}
+                    className="h-4 w-4 text-blue-600"
+                  />
+                  <span className="ml-2 text-sm" style={{ color: tag.color }}>{tag.name}</span>
+                </label>
+              ))}
           </div>
         </div>
       </div>

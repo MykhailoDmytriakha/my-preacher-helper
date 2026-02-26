@@ -227,7 +227,7 @@ describe('polishTranscription', () => {
 
         // Assert
         expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
-            expect.stringContaining('text cleaning assistant'),
+            expect.stringContaining('writing assistant'),
             expect.stringContaining('Test transcription'),
             expect.any(Object),
             expect.objectContaining({
@@ -237,7 +237,7 @@ describe('polishTranscription', () => {
     });
 
     it('should include language and scripture rules in the system prompt', async () => {
-        // Arrange
+        // ... (existing test)
         const mockResponse = {
             polishedText: 'Polished text.',
             meaningPreserved: true,
@@ -250,10 +250,8 @@ describe('polishTranscription', () => {
             error: null,
         });
 
-        // Act
         await polishTranscription('Test transcription');
 
-        // Assert
         const callArgs = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
         const systemPrompt = callArgs[0] as string;
 
@@ -263,5 +261,41 @@ describe('polishTranscription', () => {
         expect(systemPrompt).toContain('KJV');
         expect(systemPrompt).toContain('Russian Synodal');
         expect(systemPrompt).toContain('Ogienko');
+    });
+
+    it('should log debug info when DEBUG_MODE is true', async () => {
+        await jest.isolateModules(async () => {
+            process.env.DEBUG_MODE = 'true';
+            const { polishTranscription } = require('@clients/polishTranscription.structured');
+            const structuredOutput = require('@clients/structuredOutput');
+            const { logger } = require('@clients/openAIHelpers');
+
+            const loggerSpy = jest.spyOn(logger, 'debug');
+
+            const mockResponse = {
+                polishedText: 'Polished text.',
+                meaningPreserved: true,
+            };
+
+            (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+                success: true,
+                data: mockResponse,
+                refusal: null,
+                error: null,
+            });
+
+            await polishTranscription('Test transcription');
+
+            expect(loggerSpy).toHaveBeenCalledWith(
+                'PolishTranscription',
+                'Starting polish',
+                expect.objectContaining({
+                    transcriptionLength: expect.any(Number),
+                    transcriptionPreview: expect.any(String),
+                })
+            );
+
+            process.env.DEBUG_MODE = 'false';
+        });
     });
 });

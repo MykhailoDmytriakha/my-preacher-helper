@@ -250,7 +250,7 @@ const SermonPointPlaceholder: React.FC<{
                 </button>
               )}
               {/* Quick help for outline point */}
-              <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />
+              {containerId === 'main' && <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />}
               <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
                 {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
               </span>

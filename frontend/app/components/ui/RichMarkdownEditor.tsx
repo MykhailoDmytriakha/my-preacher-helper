@@ -35,7 +35,7 @@ export function RichMarkdownEditor({
         editorProps: {
             attributes: {
                 class:
-                    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none min-h-[inherit] w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500',
+                    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500',
             },
         },
         onUpdate: ({ editor }) => {
@@ -64,12 +64,12 @@ export function RichMarkdownEditor({
     }
 
     return (
-        <div className="flex flex-col w-full rounded-xl overflow-hidden shadow-sm" style={{ minHeight }}>
+        <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
             <RichMarkdownToolbar editor={editor} />
-            <div className="flex-1 cursor-text flex focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent dark:focus-within:ring-indigo-400">
+            <div className="flex-1 cursor-text flex flex-col focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent dark:focus-within:ring-indigo-400">
                 <EditorContent
                     editor={editor}
-                    className="w-full flex-1"
+                    className="w-full flex-1 flex flex-col"
                     style={{ minHeight: 'inherit' }}
                     onClick={() => editor.chain().focus().run()}
                 />

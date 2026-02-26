@@ -100,5 +100,27 @@ describe('ThoughtFilterControls', () => {
     expect(screen.queryByText(STRUCTURE_TAGS.INTRODUCTION)).not.toBeInTheDocument();
     expect(screen.queryByText(STRUCTURE_TAGS.CONCLUSION)).not.toBeInTheDocument();
   });
+
+  it('renders blocks in the correct order with the reset button at the top', () => {
+    const resetFilters = jest.fn();
+    render(<ThoughtFilterControls {...makeProps({ resetFilters })} />);
+
+    const menu = screen.getByTestId('thought-filter-controls');
+    const sections = within(menu).getAllByRole('heading', { level: 3 });
+
+    // Verify section order
+    expect(sections[0]).toHaveTextContent('filters.sortOrder');
+    expect(sections[1]).toHaveTextContent('filters.viewOptions');
+    expect(sections[2]).toHaveTextContent(/filters.byStructure/);
+    expect(sections[3]).toHaveTextContent('filters.byTags');
+
+    // Verify Reset button is in the first section (Sort Order)
+    const firstSection = sections[0].parentElement;
+    expect(within(firstSection!).getByText('filters.reset')).toBeInTheDocument();
+
+    // Verify clicking reset works
+    fireEvent.click(within(firstSection!).getByText('filters.reset'));
+    expect(resetFilters).toHaveBeenCalled();
+  });
 });
 

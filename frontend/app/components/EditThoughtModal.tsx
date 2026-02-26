@@ -354,7 +354,14 @@ export default function EditThoughtModal({
   // Determine which outline points to show based on containerSection
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
 
-  const availableTags = allowedTags.filter(t => !tags.includes(t.name));
+  const availableTags = allowedTags.filter(allowedTag =>
+    !tags.some(selectedTag => {
+      if (allowedTag.name === selectedTag) return true;
+      const normAllowed = normalizeStructureTag(allowedTag.name);
+      const normSelected = normalizeStructureTag(selectedTag);
+      return normAllowed !== null && normAllowed === normSelected;
+    })
+  );
 
   const modalContent = (
     <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
@@ -383,7 +390,7 @@ export default function EditThoughtModal({
           </div>
         </div>
 
-        <div className="flex-1 min-h-[250px] max-h-[500px] overflow-y-auto w-full">
+        <div className="flex-1 min-h-[250px] max-h-[500px] overflow-y-auto w-full flex flex-col">
           {isReadOnly ? (
             <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
               <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>

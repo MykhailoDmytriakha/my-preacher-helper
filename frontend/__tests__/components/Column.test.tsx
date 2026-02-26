@@ -89,6 +89,8 @@ jest.mock('react-i18next', () => ({
           'structure.markAsReviewed': 'Mark as reviewed',
           'structure.markAsUnreviewed': 'Mark as unreviewed',
           'structure.outlineHelp.ariaLabel': 'Quick help for outline point',
+          'structure.introductionInfo.ariaLabel': 'Introduction guidance',
+          'structure.conclusionInfo.ariaLabel': 'Conclusion guidance',
           'common.generating': 'Generating...',
           'errors.saveOutlineError': 'Failed to save outline',
           'common.save': 'Save',
@@ -97,7 +99,7 @@ jest.mock('react-i18next', () => ({
           'common.delete': 'Delete',
           'buttons.saving': 'Saving'
         };
-        return translations[key] || key;
+        return translations[key] || options?.defaultValue || key;
       }
     };
   }
@@ -1319,6 +1321,43 @@ describe('Column Component', () => {
         ],
         { afterEachScenario: cleanup }
       );
+    });
+
+    it('renders OutlinePointGuidanceTooltip only in main section', () => {
+      const mockPoints = [{ id: 'p1', text: 'Some Point' }];
+
+      // Test introduction - should have SectionGuidance but NOT OutlinePointGuidance
+      const { rerender } = render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={[]}
+          isFocusMode={true}
+          outlinePoints={mockPoints}
+        />
+      );
+
+      // SermonSectionGuidanceTooltip should be present
+      expect(screen.getByLabelText('Introduction guidance')).toBeInTheDocument();
+      // OutlinePointGuidanceTooltip should NOT be present
+      expect(screen.queryByLabelText('Quick help for outline point')).not.toBeInTheDocument();
+
+      // Test main - SHOULD have OutlinePointGuidance but NO SectionGuidance
+      rerender(
+        <Column
+          id="main"
+          title="Main Part"
+          items={[]}
+          isFocusMode={true}
+          outlinePoints={mockPoints}
+        />
+      );
+
+      // SermonSectionGuidanceTooltip should NOT be present
+      expect(screen.queryByLabelText('Introduction guidance')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Conclusion guidance')).not.toBeInTheDocument();
+      // OutlinePointGuidanceTooltip SHOULD be present
+      expect(screen.getByLabelText('Quick help for outline point')).toBeInTheDocument();
     });
   });
 });

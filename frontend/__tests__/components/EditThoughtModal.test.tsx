@@ -288,4 +288,25 @@ describe('EditThoughtModal Component', () => {
     render(<EditThoughtModal {...mockProps} />);
     expect(useScrollLock).toHaveBeenCalledWith(true);
   });
-}); 
+
+  test('filters out canonical structure tag aliases from available tags', () => {
+    const allowedTags = [
+      { name: 'intro', color: '#FF6B6B', translationKey: 'tags.introduction' },
+      { name: 'Introduction', color: '#FF6B6B', translationKey: 'tags.introduction' },
+      { name: 'main', color: '#1DD1A1', translationKey: 'tags.mainPart' }
+    ];
+
+    const props = {
+      ...mockProps,
+      allowedTags,
+      initialTags: ['intro']
+    };
+
+    render(<EditThoughtModal {...props} />);
+
+    // Since 'intro' (Introduction) is selected, its alias 'Introduction' should NOT be in the available tags list
+    // We expect only 'Main Part' to be available for adding
+    expect(screen.queryByLabelText('Add tag Introduction')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Add tag Main Part')).toBeInTheDocument();
+  });
+});

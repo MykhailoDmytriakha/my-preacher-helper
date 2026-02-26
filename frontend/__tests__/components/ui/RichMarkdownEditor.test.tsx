@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 
 // CRITICAL: All jest.mock calls must come before imports.
 // Mock TipTap and extension modules to prevent JSDOM crashes.
@@ -85,5 +85,45 @@ describe('RichMarkdownEditor', () => {
         expect(TiptapReact.useEditor).toHaveBeenCalledWith(
             expect.objectContaining({ content: 'initial text' })
         );
+    });
+
+    it('calls onChange when the editor is updated', () => {
+        const onChange = jest.fn();
+        const mockEditor = getMockEditor();
+        mockEditor.storage.markdown.getMarkdown.mockReturnValue('updated markdown');
+
+        render(<RichMarkdownEditor value="" onChange={onChange} />);
+
+        // Get the onUpdate callback from useEditor calls
+        const { onUpdate } = (TiptapReact.useEditor as jest.Mock).mock.calls[0][0];
+
+        // Simulate the update
+        onUpdate({ editor: mockEditor });
+
+        expect(onChange).toHaveBeenCalledWith('updated markdown');
+    });
+
+    it('updates editor content when the value prop changes', () => {
+        const mockEditor = getMockEditor();
+        // Initially returns old value
+        mockEditor.storage.markdown.getMarkdown.mockReturnValue('old value');
+
+        const { rerender } = render(<RichMarkdownEditor value="old value" onChange={jest.fn()} />);
+
+        // We want to trigger the sync effect. value="new value" but editor still says "old value"
+        mockEditor.storage.markdown.getMarkdown.mockReturnValue('old value');
+
+        // Use fake timers to catch the setTimeout(0)
+        jest.useFakeTimers();
+
+        rerender(<RichMarkdownEditor value="new value" onChange={jest.fn()} />);
+
+        // Trigger the timers
+        act(() => {
+            jest.runAllTimers();
+        });
+
+        expect(mockEditor.commands.setContent).toHaveBeenCalledWith('new value');
+        jest.useRealTimers();
     });
 });
