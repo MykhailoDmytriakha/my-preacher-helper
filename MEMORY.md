@@ -1,1112 +1,267 @@
 # Project Memory (Project Operating Manual)
 
-> **Принцип:** Memory — это не хранилище, а pipeline обучения.
-> **Flow:** Lessons (сырые) → Short-Term (осмысление) → Long-Term (инструкции)
+> **Pipeline:** Lessons (raw) → Short-Term (analysis) → Long-Term (protocols). Read this first on every session start.
 
 ---
 
 ## 🧠 Principles (Context Engineering)
 
-> **Concept:** OpenAI "Context Engineering". Instead of reading all code, the agent reads these Principles.
-> **Goal:** High-level "Map", strict Conventions, and immutable Axioms. **Read this first.**
-
-### 🗺️ Architecture Map (The "Where")
+### 🗺️ Architecture Map
 *   **Structure:** `app/` (Next.js 15 App Router) | `api/` (Server Actions/Routes) | `utils/` (Pure Logic).
-*   **State Hierarchy:** React Query (Server/Async) > URL Params (Nav/Bookmarks) > Zustand (Global Client) > Context (Dependency Injection).
-*   **Data Flow:** Firestore (Backend Truth) → IndexedDB (Offline Persistence) → React Query (Memory Cache) → UI.
+*   **State Hierarchy:** React Query (Server/Async) > URL Params (Nav/Bookmarks) > Zustand (Global Client) > Context (DI).
+*   **Data Flow:** Firestore → IndexedDB (Offline) → React Query (Memory Cache) → UI.
 *   **AI Stack:** OpenAI (`gpt-4o`, `gpt-4o-mini`, `tts-1`) | Zod Schema Validation (Strict) | Client-side Streaming.
 
-### 📐 Coding Conventions (The "How")
-*   **Strict Boundaries:** Use `zod` for ALL external data limits (API, AI, Forms). Types must strictly match Zod schemas.
-*   **Localization:** `i18next` with `useTranslation`. Transactional updates (EN+RU+UK). No ICU plural syntax (use `_one`, `_other` keys).
-*   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. Use `data-testid` for stable anchors. For AI chains, use **Sequence-Aware Mocking** to verify context passing.
-*   **Strict Change Coverage:** Maintain **100% test coverage** for all newly added or modified lines (diff). Overall file coverage must remain **≥80%**. Run `npm run test:coverage && npm run lint:full` from root to verify.
-*   **Optimistic Sync UX:** For optimistic list mutations, apply local state immediately, keep transient sync metadata (`pending`/`error`) separate from domain entities, and always provide rollback + retry paths on failure.
-*   **Color Scheme Compliance:** Use tokens from `@/utils/themeColors` (e.g., `SERMON_SECTION_COLORS`, `UI_COLORS`, `TIMER_CONTROL_COLORS`). Do not hardcode colors. Section-specific UI must reflect section colors.
-*   **React Hooks:** Rules of Hooks Absolute. Logic Complexity > 20 → Extract to Custom Hook.
-*   **Normalization:** Always transform external metadata (tags, labels, user input) to a canonical, lowercase format before logical matching.
-*   **File Structure:** Vertical Slices (Feature Folder: `page.tsx`, `hooks/`, `utils/`, `components/`) > Horizontal Layers.
-*   **Unified Batch Pattern:** Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating to prevent data duplication.
-*   **Debug Logging Scope:** `debugLog` is frontend-only. Backend/server code should not use `debugLog`.
-*   **AI Telemetry Join Point:** Structured text AI calls must go through `callWithStructuredOutput` and emit telemetry as non-blocking side effects.
-*   **Rich Markdown Editor Standard:** Use TipTap headless + `tiptap-markdown` for WYSIWYG editing. Avoid opinionated wrappers (Novel). Mock `RichMarkdownEditor` with a `<textarea>` shim in all Jest test files.
-*   **Entity-Series Dual-Store:** In this app, `entity.seriesId` and `series.items[]` are separate stores. Any write to `entity.seriesId` must be paired with `seriesRepository.addXxxToSeries()` to keep the series list in sync.
-*   **API Response Verification:** Always verify the exact shape of API responses in frontend handlers (especially fallback/polymorphic data) to prevent silent data loss.
-*   **Tabular Numeric Alignment:** Use `tabular-nums` and `font-mono` for numeric counters (e.g., "X / N") to prevent layout shifts when numbers change.
+### 📐 Coding Conventions
+*   **Zod Boundaries:** Use `zod` for ALL external data (API, AI, Forms). Types must match Zod schemas.
+*   **i18n:** `i18next` + `useTranslation`. Transactional updates (EN+RU+UK). Use `_one`/`_other` keys, NOT ICU plural syntax.
+*   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. `data-testid` for anchors. **Sequence-Aware Mocking** for AI chains.
+*   **Coverage:** **100% test coverage** on new/modified lines (diff). Overall ≥80%. Run `npm run test:coverage && npm run lint:full`.
+*   **Optimistic Sync:** Apply local state immediately, keep transient sync metadata (`pending`/`error`) separate from domain entities, always provide rollback + retry.
+*   **Colors:** Use tokens from `@/utils/themeColors`. Never hardcode.
+*   **Hooks:** Rules of Hooks Absolute. Complexity > 20 → Extract to Custom Hook.
+*   **Normalization:** Always transform external metadata to canonical lowercase before matching.
+*   **File Structure:** Vertical Slices (Feature Folder) > Horizontal Layers.
+*   **Batch Pattern:** Favor single "full-state" API request over parallel "partial-state" when backend state is interconnected.
+*   **Debug Logging:** `debugLog` is frontend-only. Backend must not use it.
+*   **AI Telemetry:** Structured AI calls go through `callWithStructuredOutput`, emit telemetry as non-blocking side effects.
+*   **Rich Editor:** TipTap headless + `tiptap-markdown` for WYSIWYG. Mock `RichMarkdownEditor` with `<textarea>` in Jest.
+*   **Entity-Series Sync:** `entity.seriesId` and `series.items[]` are separate stores. Any write to `seriesId` must pair with `seriesRepository.addXxxToSeries()`.
+*   **API Verification:** Always verify exact shape of API responses in frontend handlers.
+*   **Tabular Alignment:** Use `tabular-nums` + `font-mono` for numeric counters to prevent layout shifts.
 
-### ⚖️ Domain Axioms (The "Why")
-*   **Offline-First:** UX must never block on network. Read from Cache (IndexedDB) immediately. Sync later. Use `networkMode: 'offlineFirst'`.
-*   **Sermon Integrity:** The "Outline" (Structure) is the source of truth for ordering. Tags are metadata. Logic: Outline → Structure → Tags.
-*   **User Control:** "Heavy" AI actions require explicit triggers (Buttons), not auto-magic/implicit effects.
-*   **Session-Log:** One Chat = One Session Log. Single Source of Truth for Context.
+### ⚖️ Domain Axioms
+*   **Offline-First:** UX never blocks on network. Read from Cache immediately. `networkMode: 'offlineFirst'`.
+*   **Sermon Integrity:** Outline (Structure) is source of truth for ordering. Logic: Outline → Structure → Tags.
+*   **User Control:** Heavy AI actions require explicit buttons, not auto-magic.
+*   **Session-Log:** One Chat = One Session Log = Single Source of Truth.
 
-### ⛔ Anti-Patterns (The "Never")
-*   **Implicit AI Parsing:** Never parse AI text with Regex. Always use JSON Mode / Structured Output.
-*   **Conditional Hooks:** Never return early (`if (loading) return...`) before hook definitions.
-*   **Stale Cache:** Never rely on `setQueryData` alone for persistence; always pair with `invalidateQueries` or `cancelQueries`.
-*   **Console Log:** Never `console.log` in production code; use `debugLog()`.
-*   **Interactive Nesting:** Never nest interactive elements (buttons, links) inside labels or other interactive containers.
-*   **CSS-Unity Anti-Pattern:** Never use `overflow-hidden` + shared `border-radius` on a wrapper to fake visual unity between independent components. If two components must look like one, the stateful component must own the rendering of both parts via a slot prop (`splitLeft`, `renderHeader`, etc.).
-*   **useState Prop Snapshot Anti-Pattern:** Never rely solely on `useState(prop)` to initialize a field that may arrive after modal mount (stale React Query cache). Always pair with a `useEffect` + dirty-ref guard to sync if the user hasn't edited yet.
+### ⛔ Anti-Patterns
+*   **Implicit AI Parsing:** Never parse AI text with Regex. Use JSON Mode / Structured Output.
+*   **Conditional Hooks:** Never return early before hook definitions.
+*   **Stale Cache:** Never rely on `setQueryData` alone; always pair with `invalidateQueries` or `cancelQueries`.
+*   **Console Log:** Never `console.log` in prod; use `debugLog()`.
+*   **Interactive Nesting:** Never nest buttons/links inside labels or other interactive containers.
+*   **CSS-Unity Hack:** Never use `overflow-hidden` + shared `border-radius` to fake unity. Use slot props (`splitLeft`, `renderHeader`).
+*   **useState Prop Snapshot:** Never rely solely on `useState(prop)` for data that arrives after mount. Pair with `useEffect` + dirty-ref guard.
 
 ---
 
-## 🆕 Lessons (Inbox) — Только что выучено
-
-### 2026-02-25 TipTap as Headless Rich Markdown Editor
-**Problem:** The app used raw `<textarea>` for sermon thoughts, notes, and series descriptions, unable to provide rich formatting (bold, italic, headings) while preserving raw Markdown in Firestore for AI compatibility.
-**Attempts:** Evaluated Novel (too opinionated UI), Lexical (verbose API for Markdown), Milkdown (smaller ecosystem). All fell short on either Markdown serialization symmetry or React 19 / headless architecture requirements.
-**Solution:** Chose TipTap headless + `tiptap-markdown` extension. Built a reusable `<RichMarkdownEditor value={md} onChange={setMd} />` wrapper and `<RichMarkdownToolbar />` using Lucide icons. Integrated into `AddThoughtManual`, `EditThoughtModal`, `CreateThoughtModal`, `EditSeriesModal`.
-**Why it worked:** TipTap core is fully headless (no CSS opinions), the `tiptap-markdown` extension provides 100% symmetric Markdown serialization (Firestore MD string → editor state → MD string), and avoiding `tippyjs-react`-bound extensions eliminated React 19 JSX transform warnings.
-**Principle:** For WYSIWYG editing in a React 19/Next.js 15 app that stores raw Markdown, use TipTap headless + `tiptap-markdown`. Avoid "Notion clone" wrappers (Novel) that impose opinionated Tailwind prose styles — they violate the CSS-Unity anti-pattern.
-
-### 2026-02-25 Mocking TipTap/contenteditable in Jest
-**Problem:** Jest tests for components using `RichMarkdownEditor` (TipTap) failed because JSDOM doesn't support `contenteditable` properly — TipTap can't initialize, leaving `getByDisplayValue` empty and triggering multiple crash errors.
-**Solution:** Added `jest.mock('@/components/ui/RichMarkdownEditor', ...)` that renders a fallback `<textarea>` with the same `value`/`onChange`/`placeholder` props. Applied this mock pattern to all test files touching components that embed the editor.
-**Why it worked:** The mock preserves the same public API contract (`value`/`onChange`) while replacing the complex `contenteditable` DOM requirement with a native `<textarea>`, which JSDOM handles natively.
-**Principle:** When integrating a WYSIWYG editor (TipTap, Slate, etc.), always create a simple `<textarea>` mock for it immediately and apply it to all test files. The mock must mirror the real component's props contract (`value`, `onChange`, `placeholder`) for test assertions to remain meaningful.
-
-### 2026-02-25 Sermon-to-Series Link: seriesId on Sermon vs items[] on Series
-**Problem:** Sermons created with a `seriesId` selected did not appear in the series "All Elements" list. The sermon had `sermon.seriesId = 'xxx'` set, but the series still showed 0 or fewer items.
-**Attempts:** Investigated `useSeriesDetail` hook (correct), `normalizeSeriesItems` logic (correct). The bug was in the `POST /api/sermons` route.
-**Solution:** Added `await seriesRepository.addSermonToSeries(seriesId, docRef.id)` to `POST /api/sermons` after sermon creation, mirroring what `POST /api/groups` already did for groups. Made the call non-fatal (try/catch) so sermon creation succeeds even if series sync fails.
-**Why it worked:** The series list is driven by `series.items[]` array, not by querying sermons where `sermon.seriesId == seriesId`. Setting `sermon.seriesId` is just metadata; the ground truth for "which items are in this series" is the `series.items` array. The groups API correctly called `addGroupToSeries`; the sermon API was missing the equivalent call.
-**Principle:** In this app, `entity.seriesId` and `series.items[]` are two separate data stores that must be kept in sync. Any operation that sets `entity.seriesId` (create, update) must also call `seriesRepository.addSermonToSeries/addGroupToSeries` to update the series item list — otherwise the entity is invisible in the series view.
-
-
-### 2026-02-24 Sibling Section Typography Consistency
-**Problem:** The `KnowledgeSection` title appeared noticeably larger (`text-xl`) than its visually adjacent sibling sections in `SermonOutline` (which inherited `text-base`), creating a broken visual hierarchy.
-**Attempts:** Assumed removing the `text-xl` class from the `h2` tag would fall back to the desired size, but `h2` needed explicit matching with the `SermonOutline` `div` header to guarantee identical rendering.
-**Solution:** Explicitly assigned the `text-base font-semibold text-gray-700` classes to the header to perfectly mirror the native rendering of the `SermonOutline` component.
-**Why it worked:** Explicit typography utilities ensure identical visual weight across different DOM elements (`h2` vs `div`), overriding any browser or container-level inheritance.
-**Principle:** When building modular UI sections that visually act as "peers" (e.g., Outline and Knowledge components), explicitly copy the exact typography utility classes (`text-base font-semibold`) to ensure perfect visual unity, regardless of the underlying semantic HTML tags (`h2` vs `div`).
-
-### 2026-02-24 Modal Field Empty Due to Stale React Query Cache
-**Problem:** The "Description" field in `EditSeriesModal` appeared empty even though the series had a description in Firestore. After opening the modal, description would then appear on the detail page as the background refetch completed.
-**Attempts:** Traced all data paths (Firestore → API → React Query → props) — all were correct. `useState(series.description || '')` is theoretically correct but initializes only once.
-**Solution:** Added `useEffect` + `useRef` (dirty flag) in `EditSeriesModal` to re-sync `description` state from the `series` prop whenever it changes, but only if the user hasn't started editing the field yet.
-**Why it worked:** React Query with `staleTime: 0` and `refetchOnMount: 'always'` serves cached (stale) data immediately and triggers a background refetch. If the modal opens before the refetch completes, `useState` snapshots the stale `undefined` description. After refetch, the parent prop updates but `useState` never re-runs. The `useEffect` fills the gap by syncing the latest prop value into the modal's local state.
-**Principle:** When a modal initializes form fields from a prop that may be stale (React Query background refetch), pair `useState(prop)` with a `useEffect` + dirty-ref guard: sync from prop if the user hasn't edited yet, skip if they have.
-
-### 2026-02-24 Flexible Footer Alignment in Grid Cards
-**Problem:** The statistics blocks at the bottom of the Series Card (`SeriesCard.tsx`) were not aligned when multiple cards with varying content heights were displayed in a grid row.
-**Attempts:** Addressed the issue after user observation.
-**Solution:** Wrapped the header and main content of `SeriesCard` in a `div` with `flex flex-1 flex-col`.
-**Why it worked:** `flex-1` allows the main content wrapper to grow and occupy all available free space within the card, pushing the footer (the statistics block) to the absolute bottom of the container. This ensures uniform alignment across all cards in the grid.
-**Principle:** To align footer elements at the bottom of dynamic-height grid cards, wrap the main content in a `flex-1` container to push the static footer downward.
-
-### 2026-02-24 Headless UI Jest DOM Errors
-**Problem:** Tests for `GroupsPage` failed with unhandled ref errors after replacing native `window.confirm` with a `@headlessui/react` `Transition`-based modal.
-**Attempts:** Tried rendering the real component in JSDOM, which expects real DOM nodes for transition measurements.
-**Solution:** Mocked the specific `ConfirmModal` UI component in test files (`jest.mock('@/components/ui/ConfirmModal', ...)`).
-**Why it worked:** Bypasses complex real-DOM requirements of Headless UI's animation libraries during pure logic tests.
-**Principle:** When refactoring native UI (like `window.confirm`) to complex libraries (like Headless UI), immediately mock the new UI component in Jest to isolate logic tests from virtual-DOM animation crashes.
-
-### 2026-02-23 React Query Optimistic Sync & Transient Render Destruction
-**Problem:** The group details page form flickered, continuously wiped user input during auto-save, and sometimes completely unmounted into a full-page Skeleton loader.
-**Attempts:** Added `invalidateQueries` which fixed the cache sync but caused the flicker.
-**Solution:** (1) Switched `invalidateQueries()` to `cancelQueries()` + `refetchType: 'none'`. (2) Removed `isFetching` from the `loading` boolean export in custom hooks. (3) Stabilized debounce callbacks with refs in `useAutoSave` to prevent infinitely regenerating `debounce` instances on every keystroke.
-**Why it worked:** `refetchType: 'none'` marks the optimistic cache as stale (triggering IndexedDB sync) without firing an immediate background refetch that overwrites local state. Removing `isFetching` prevents the UI from falling back to initial loading states during these background syncs. Ref-based debouncing ensures function identity remains stable across renders.
-**Principle:** For optimistic auto-save forms, use `cancelQueries` + `refetchType: 'none'` to persist cache without refetching, and never include `isFetching` in the primary `loading` state that drives full-page skeletons.
-
-### 2026-02-23 UI Simplification via TRIZ
-**Problem:** The study notes interface had too many action buttons (AI, Edit, Delete, Share, Copy) immediately visible on the card, creating cognitive friction.
-**Attempts:** Tried making them smaller or transparent.
-**Solution:** Removed primary actions (Delete, Edit, AI) from the card header entirely. Moved "Delete" into a ⋯ (ellipsis) menu inside the note editor page itself. Kept card click as the primary navigation to Edit mode.
-**Why it worked:** Matches TRIZ "Trimming/Local Quality" — secondary functions were moved closer to their actual usage context (the full editor) offloading the primary list view. Reduces accidental destructive clicks.
-**Principle:** Whenever a list item view exceeds 3 primary discrete actions, aggressively migrate destructive and contextual functions into a dedicated detailed view or a ⋯ (ellipsis) dropdown.
-
-### 2026-02-23 Testing Library React DOM Duplication (nuqs mock)
-**Problem:** Tests for `StudiesPage` failed with `TestingLibraryElementError: Found multiple elements` after `nuqs` (url state library) replaced local `useState`. Calling `render(<StudiesPage />)` multiple times in the test duplicated the DOM because static generic mocks failed to trigger native virtual-DOM replacement.
-**Solution:** Rewrote the `nuqs` mock to encapsulate a true `React.useState` reference internally, allowing pure natural `waitFor` and component re-renders from `fireEvent` triggers without manually invoking `render(...)` again.
-**Principle:** When mocking React state synchronization libraries (like `nuqs`, routers), wrap the mock return values in a native `React.useState` initialization block rather than static globals. This aligns Testing Library behavior with React's native reconciliation lifecycle.
-
-### 2026-02-23 Translation JSON Duplicate Key Corruptions
-**Problem:** Next.js development build and Jest suites crashed with `SyntaxError: Expected ',' or '}'` at arbitrary byte sizes during runtime compilation.
-**Cause:** Manual merging or automated re-generation of duplicate translation keys within the locale `.json` files aggregated values without commas (e.g. `"openLink": "Open""cancel": "Cancel",`), effectively bypassing IDE linters but breaking the webpack JSON parser.
-**Solution:** Deleted the nested trailing duplicate `aiAnalyze` object keys in all locale versions (`en`, `ru`, `uk`) and formatted the trailing commas correctly.
-**Principle:** Translation objects are strictly validated by webpack loaders. Avoid duplicating nested translation trees across JSON hierarchies as merging engines can produce syntactically un-compilable strings.
-
-### 2026-02-23 AI Population Logic: Conditional Field Updates
-**Problem:** Tests for AI analysis failed to verify title population because the note already had a title ("Current Note"), and the implementation used `if (!title.trim())` to avoid overwriting user edits.
-**Solution:** Updated tests to explicitly `fireEvent.change(titleInput, { target: { value: '' } })` before triggering AI analysis.
-**Principle:** **User-Respecting AI:** AI actions should generally append to or fill empty fields rather than overwrite existing user content. Tests for these features must explicitly clear targeted fields to verify auto-population.
-
-### 2026-02-23 Refactoring to Reduce Cognitive Complexity (Editor Page)
-**Problem:** `StudyNoteEditorPage` had cognitive complexity > 20 due to interleaved filtering, navigation, and rendering logic, making it hard to maintain and causing linting warnings.
-**Solution:** Extracted logic into `useFilteredNotes` hook.
-**Principle:** When component complexity exceeds 20, extract side-effect/state-management logic into custom hooks to preserve declarativeness and improve testability.
-
-### 2026-02-23 Global Layout Breadcrumb De-duplication
-**Problem:** Adding breadcrumbs to the editor page content created duplication with the app's global breadcrumb bar.
-**Solution:** Removed the page-level breadcrumbs and relied on the global layout.
-**Principle:** Audit global layout components before adding redundant navigation to child pages to avoid visual clutter and maintain hierarchy consistency.
-
-### 2026-02-23 UI Collision: Separation in Space (Header vs Floating)
-**Problem:** Floating pagination buttons physically obscured text on the far edges of a `max-w-full` canvas.
-**Solution:** Moved the navigation controls into the sticky header as compact icon buttons (`h-5 w-5`).
-**Principle:** **Separation in Space:** Instead of creating new floating layers that risk collision with content, utilize existing "safe zones" like the sticky header for secondary navigation controls.
-
-### 2026-02-16 API Response Contract Mismatch
-**Problem:** Transcribed text was missing from notes because the frontend expected a `transcription` key, but the API returned `polishedText` or `originalText`.
-**Solution:** Updated the frontend handler to check for `polishedText || originalText` based on the actual API response shape.
-**Principle:** **API Contract Verification:** Always verify and type the exact shape of API responses in frontend handlers, especially when the backend returns fallback data structures.
-
-### 2026-02-16 Interactive Element Nesting (Button in Label)
-**Problem:** The "Stop Recording" button was unresponsive because it was nested inside a `<label>` element, causing event propagation conflicts.
-**Solution:** Moved the `FocusRecorderButton` outside of the `<label>` and used flexbox for layout alignment.
-**Principle:** **Semantic Nesting:** Never nest interactive elements (buttons) inside labels or other interactive containers; it breaks event handling and violates HTML semantics.
-
-### 2026-02-14 Tree Hierarchy Management: Pure Utils for Complex Structures
-**Problem:** Implementing "Promote/Demote" (indent/outdent) logic for nested tree structures prone to index bugs and state corruption during re-parenting.
-**Solution:** Isolated structural logic into pure functions (`promoteNode`, `demoteNode`) using DFS for context lookup. Implemented keyboard shortcuts (`Cmd+Arrow`) for UX parity with professional editors.
-**Why it worked:** Pure utilities enabled 100% branch coverage of edge cases (root level limits, boundary siblings) independent of React's render cycle.
-**Principle:** Separate tree traversal (search) from structural transformation (mutation) in nested models to ensure logic portability and 100% testable boundaries.
-
-### 2026-02-14 High-Latency Debounced Sync: UX Feedback is Mandatory
-**Problem:** Auto-saving large state objects (like exegetical plans) on every change causes excessive Firestore writes and transient UI "stutter" during heavy edits.
-**Solution:** Implemented a 15-second debounced auto-save with an explicit user toggle and a "Saving..." status indicator.
-**Why it worked:** The long debounce reduces write volume while the visual feedback manages user expectations regarding "truth" persistence.
-**Principle:** For complex model sync, favor a high-latency debounce (15s+) combined with clear "in-flight" indicators and an opt-out toggle for performance-sensitive users.
-
-### 2026-02-14 JSDOM Crypto Mocking: Object.defineProperty is the Scalpel
-**Problem:** Modern ID generation using `crypto.randomUUID` fails in JSDOM/Jest environments because `global.crypto` is often undefined or has read-only properties.
-**Solution:** Used `Object.defineProperty(global, 'crypto', { value: { randomUUID: jest.fn() }, writable: true, configurable: true })` to safely inject the mock.
-**Why it worked:** `defineProperty` bypasses the "read-only" assignment guard typical of global browser objects in JSDOM.
-**Principle:** To mock global, environment-locked browser APIs (crypto, location, navigator), use `Object.defineProperty` with `configurable: true` to ensure clean injection and cleanup.
-
-### 2026-02-11 Dashboard Optimistic Flow: Separate Domain Data from Sync Metadata
-**Problem:** Dashboard mutations looked "optimistic" only after API success, so users could not see pending/error states and had no inline recovery when writes failed.
-**Attempts:** The previous flow used post-success cache updates plus `alert/confirm`, which hid transient sync failures at card level.
-**Solution:** Introduced `useDashboardOptimisticSermons` as a single mutation layer with temporary entities, per-sermon sync state, rollback on failure, and retry/dismiss actions propagated to dashboard cards.
-**Why it worked:** Separating sync metadata from sermon domain data enabled immediate pending/error rendering without polluting persisted models, while rollback kept cache consistency across failure paths.
-**Principle:** In optimistic list UIs, keep domain entities and sync metadata separate; every optimistic write must have rollback and user-visible recovery.
-
-### 2026-02-10 Calendar Date Drift: Marker/List Must Share One Pipeline
-**Problem:** Calendar showed planned sermon on different days (e.g., marker on 26 while right panel showed 15) and dashboard planned date formatting leaked time fragments.
-**Attempts:** Hardened day-marker CSS placement and added diagnostics, but mismatch persisted because marker and list logic still consumed different date sources.
-**Solution:** Enforced date-only (`YYYY-MM-DD`) normalization across API/repository + utilities and rebuilt calendar month payload from one normalized source (`sermons[].preachDates`) used by markers, list, and analytics; `sermonStatusByDate` remains fallback-only when event payload lacks current date.
-**Why it worked:** Removing parallel date pipelines eliminated source divergence and timezone/time-component drift, so every calendar surface resolves the same day key.
-**Principle:** For calendar consistency, normalize preach dates to `YYYY-MM-DD` and drive markers, lists, and counters from one shared normalized event map.
-
-### 2026-02-06 Structured Prompt Telemetry Join Point
-**Problem:** Prompt quality was hard to improve systematically because AI calls were a black box: no consistent record of prompt blocks, context, model, or outputs per run.
-**Attempts:** Partial migration to structured output without unified analytics capture was not enough for post-hoc diagnosis.
-**Solution:** Introduced a modular `promptBuilder` + centralized `aiTelemetry` at the structured join point (`callWithStructuredOutput`) with non-blocking Firestore writes.
-**Why it worked:** Every structured call now produces comparable, queryable artifacts (input blueprint + output envelope + latency/provider/model), enabling block-level prompt tuning without changing user-facing flow.
-**Principle:** For prompt optimization, treat each AI call as an observable transaction at one join point: modular input blueprint in, normalized telemetry envelope out.
-
-### 2026-02-03 Jest Fake Timers Cleanup
-**Problem:** Timer-based hooks (with `setInterval`) can leak fake timers across tests and cause flaky behavior.
-**Attempts:** None.
-**Solution:** When a test uses `jest.useFakeTimers()`, always restore with `jest.useRealTimers()` in `afterEach`.
-**Why it worked:** Restoring real timers resets the global timer state so later tests run with default timing behavior.
-**Principle:** Tests that enable fake timers must always restore real timers in `afterEach` to avoid cross-test interference.
-
-### 2026-02-02 Calendar Book Parsing False Positives
-**Problem:** Sermons referencing "1Пет" were misclassified under "Иисус Навин" because fuzzy matching treated words like "Иисуса" inside verse text as book tokens.
-**Attempts:** Added multi-book parsing and prefix matching; false positives persisted.
-**Solution:** Limit fuzzy prefix matching to short tokens (<=4 chars) and require a numeric chapter token after a book match (or allow book-only input).
-**Why it worked:** Common words inside verse text no longer qualify as book matches, while abbreviations remain detectable.
-**Principle:** For scripture parsing, accept fuzzy prefix matches only for short tokens and confirm with a chapter number to avoid false positives.
-
-### 2026-02-02 Scripture References Hidden by Line Clamp
-**Problem:** Calendar list items and the book modal truncated multi-verse text, hiding additional references.
-**Attempts:** None.
-**Solution:** Remove `line-clamp-2` and use `whitespace-pre-line` so full verse text renders inside scrollable containers.
-**Why it worked:** The container already limits height and scrolls; removing clamp reveals all references without breaking layout.
-**Principle:** When full scripture text is required, avoid clamping; rely on container scrolling and `whitespace-pre-line` for safe multi-line display.
-
-### 2026-02-01 PDF Export Rasterization Detection
-**Problem:** Exported PDF looked like images and text was not selectable/searchable.
-**Evidence:** `pdfimages -list` showed one full-page image per page; `pdftotext` returned empty content.
-**Cause:** html2canvas → jsPDF `addImage` pipeline rasterizes the DOM into page-sized images.
-**Solution:** Use PDF structure inspection tools (`pdfimages`, `pdffonts`, `pdftotext`) to confirm raster vs text. For true text PDFs, switch to a text/vector export pipeline (e.g., jsPDF text API with embedded UTF-8 fonts).
-**Principle:** **PDF Forensics First**: Validate export type (raster vs text) using `pdfimages`/`pdftotext` before changing rendering logic; it prevents chasing styling when the core pipeline is the issue.
- 
-### 2026-02-01 Prevention of Duplicate Audio Generations
-**Problem:** Duplicate audio chunks appeared in the database after regenerating "All Sections" in the audio wizard.
-**Attempts:** Initial system used parallel `fetch` calls from the frontend for each section, but the backend optimized each section by merging it with existing chunks, leading to a "fan-out" of duplicates on the client.
-**Solution:** Unified the frontend requests into a single API call when `sections === 'all'`. The backend already handles sections sequentially.
-**Why it worked:** A single request aligns the client's state with the backend's sequential source of truth, preventing the "fan-out" duplication caused by multiple parallel merges of shared state.
-**Principle:** **Unified Batch Processing**: Favor a single "full-state" API request over multiple parallel "partial-state" requests when the backend state is interconnected or self-aggregating.
-
-### 2026-02-01 Refactoring to Reduce Cognitive Complexity
-**Problem:** `DashboardPage` had high cognitive complexity (23 > 20) due to mixed state management, filtering logic, and complex rendering ternaries.
-**Solution:** (1) Extracted filtering/sorting logic into `useFilteredSermons` hook. (2) Extracted conditional rendering (Loading/Empty/Grid) into `DashboardContent` component.
-**Why it worked:** Splitting "Data Preparation" (Hook) from "Data Presentation" (Component) and "Conditional Rendering" (Sub-cmp) removed nested branches from the main controller.
-**Principle:** When a component is too complex, extract: Logic -> Custom Hook, Rendering -> Sub-component. Specifically, replacing nested ternaries in JSX `return` with a dedicated `Content` component that uses early returns is a huge complexity win.
-
-### 2026-02-01 Hierarchical Sermon Sorting Logic
-**Problem:** `getSortedThoughts` ignored `sermon.outline`. Thoughts assigned to outline points were treated as orphans, leading to incorrect ordering when no manual structure existed.
-**Solution:** Refactored utility to resolve order by: (1) Manual Structure, (2) Outline Points order, (3) Tag-based orphans.
-**Why it worked:** Explicitly iterating through the outline points array before gathering leftovers ensures the UI respects the hierarchical relationship of the sermon model.
-**Principle:** **Hierarchical Data Resolution**: When multiple sources of truth exist, resolve them in descending order of user intentionality (Manual > Planned > Metadata).
-
-### 2026-02-01 Tag Normalization & Aliasing
-**Problem:** Normalization logic for sermon sections was case-sensitive and missed camelCase variants like `mainPart`, causing "orphaned" thoughts even when tagged correctly.
-**Solution:** Added `mainpart` to the canonical alias map and enforced lowercasing during normalization.
-**Why it worked:** Canonical matching now captures all variations of "Main Part" regardless of casing.
-**Principle:** **Pre-processing Normalization**: Always transform external/user metadata (tags, input) to a canonical, lowercase, space-normalized format before logical lookups.
-
-### 2026-02-01 Sequence-Aware Mocking for AI Chains
-**Problem:** Testing sequential AI loops (context passing) with standard mocks led to race conditions where the Nth call received the wrong mock value.
-**Solution:** Used `mockResolvedValueOnce` chains to simulate sequential API responses and `toHaveBeenNthCalledWith` to verify that the Nth call correctly received the (N-1)th output as `previousContext`.
-**Why it worked:** FIFO mock consumption mirrors the sequential `for...of` loop execution.
-**Principle:** To verify stateful chain integrity (e.g. "short-term memory" in AI), use discrete mock responses and positional argument assertions.
-
-### 2026-02-01 Jest Transform Issue with New Files
-**Problem:** Newly created test files in `__tests__` failed with "SyntaxError: Cannot use import statement outside a module", while existing files worked fine. Resetting cache didn't help.
-**Cause:** Likely a Jest/Babel configuration caching issue or strict transform pattern match that didn't pick up the new file immediately.
-**Solution:** Merged the new tests into an existing, working test file (`ExportButtons.test.tsx`) instead of fighting the configuration.
-**Why it worked:** The existing file was already being correctly transformed by the test runner.
-**Principle:** When the build system fights you on file recognition, merging into a known-good context is often a faster path to value than debugging the toolchain.
-
-### 2026-02-01 Safe Global Mocking in Jest
-**Problem:** `Object.assign(navigator, ...)` failed or was unsafe for mocking `clipboard` in strict environments (JSDOM/TypeScript readonly properties).
-**Solution:** Used `Object.defineProperty(navigator, 'clipboard', { value: ... })` which bypasses assignment checks and allows defining usually read-only properties for testing.
-**Why it worked:** `defineProperty` is the standard way to override read-only properties in JavaScript environments.
-**Principle:** Always use `Object.defineProperty` to mock global browser APIs (`navigator`, `window.URL`) to ensure compatibility and avoid "read-only property" errors.
-
-### 2026-02-01 Context-Aware Audio Generation
-**Problem:** Parallel generation of sermon audio chunks resulted in disjointed, "robotic" transitions because the AI didn't know what it had just said in the previous chunk.
-**Solution:** Switched from `Promise.all` (parallel) to a sequential `for...of` loop. Captured the last ~1000 characters of chunk N and passed it as `previousContext` to the prompt for chunk N+1, explicitly instructing the AI to create a natural transition.
-**Why it worked:** Giving the AI "short-term memory" of its own previous output allows it to generate connective tissue (transitions) that makes the whole speech sound cohesive, even if generated in parts.
-**Principle:** For long-form AI content generation where coherence matters, favor sequential processing with context passing ("tail context") over faster parallel processing. Coherence requires state.
-
-### 2026-02-01 Coverage for Skeletons
-**Problem:** `DashboardStatsSkeleton` had 0% coverage despite being used in `DashboardPage`, because the page test explicitly mocked it.
-**Solution:** (1) Added `data-testid` to the Skeleton component. (2) Removed the mock from the page test. (3) Updated the test to expect the real component via `getByTestId`.
-**Why it worked:** The test now renders the actual skeleton code (divs, classes), registering as coverage.
-**Principle:** To cover visual-only components (skeletons, icons) in integration tests, do not mock them; instead, give them stable test IDs and let them render.
-
-### 2026-02-01 Mobile Subpixel Rendering Seams
-**Problem:** A thin vertical line appeared on the left edge of the "Classic Mode" sermon view on mobile.
-**Cause:** The container used `width: 200%` and `x: -50%` to slide content. On some mobile viewports, subpixel rendering caused a 1px gap/bleed from the adjacent slide.
-**Solution:** Overshift the slide by 1px using `x: calc(-50% - 1px)` and add `pl-px` to the inner container to compensate for the content clipping.
-**Why it worked:** The 1px overlap covers the subpixel gap, and the padding restores the visual alignment of the content.
-**Principle:** When using percentage-based transforms for sliders (`x: -50%`), beware of subpixel rendering gaps on mobile; use a 1px overlap (`calc`) to mask the seam.
-
-### 2026-02-01 Dashboard Tabs Wrapping
-**Problem:** Dashboard tabs overflowed horizontally on narrow mobile screens (390px), breaking the layout.
-**Solution:** Switched from `flex-nowrap` + `space-x` to `flex-wrap` + `gap`. Updated styling to use "pills" on mobile for clearer touch targets in a multiline layout.
-**Why it worked:** `flex-wrap` allows tabs to flow naturally onto a second line, and `gap` ensures consistent spacing both horizontally and vertically.
-**Principle:** For navigation tabs that may exceed viewport width on mobile, prefer `flex-wrap` + `gap` over scrolling or hiding, unless horizontal swipe is an explicit design choice.
-
-### 2026-02-01 Export Action Layout Alignment
-**Problem:** "Word" export button (short label) rendered significantly smaller than "PDF" (longer label) and "Preach" (icon only) in the sermon header flex container.
-**Solution:** Enforced equal width for all action slots using `flex-1 basis-0 min-w-[64px]` and a shared `ActionButton` base component.
-**Why it worked:** `flex-1 basis-0` forces Flexbox to distribute available space equally regardless of content size, provided the content fits or wraps.
-**Principle:** To visually equalize a row of buttons with varying label lengths (Text vs Icon), use `flex-1 basis-0` on their containers rather than relying on padding or content size.
-
-### 2026-02-01 Dashboard Word Export: Plan Badge vs Disabled Button
-**Problem:** Dashboard showed the "Есть план" badge, but the Word export button was disabled.
-**Attempts:** Verified UI state; traced export gating to `planData` being missing on the card.
-**Solution:** Build `planData` from `sermon.draft || sermon.plan` in `SermonCard` and pass it into `ExportButtons`, aligning gating with plan presence.
-**Why it worked:** Word export now receives the same structured plan data used to determine plan readiness, so enabled state matches the badge.
-**Principle:** Feature availability must be driven by the same source of truth as its UI indicators to avoid UX mismatches.
-
-### 2026-02-01 Export i18n Coverage: UI + Document Strings
-**Problem:** Some export UI labels/tooltips/aria and Word document strings remained hardcoded, causing partial localization.
-**Attempts:** Initial i18n pass missed new strings and export-only text.
-**Solution:** Added export-specific i18n keys (buttons, tooltips, aria) and localized Word headers/date/filename/placeholder, with safe fallbacks for tests.
-**Why it worked:** All export-facing strings now come from i18n with locale-aware dates, so language switches don’t leave stray English/Russian text.
-**Principle:** Export UI and output must be fully i18n-driven, with safe fallbacks for non-initialized i18n contexts.
-
-### 2026-02-01 Tooltip Clipping: SermonCard Overflow
-**Problem:** Dashboard export tooltip was clipped by the SermonCard border.
-**Attempts:** None.
-**Solution:** Switched SermonCard container to `overflow-visible` so tooltips can render outside the card boundary.
-**Why it worked:** Tooltips are absolutely positioned and need overflow visible or a portal to escape the card bounds.
-**Principle:** Containers hosting tooltips should not use overflow clipping unless the tooltip is rendered in a portal.
-
-### 2026-02-01 Jest Mock: Named Export Fidelity
-**Problem:** New Column tests crashed with "Element type is invalid" because a mocked component resolved to `undefined`.
-**Attempts:** Mocked the component as a default export while the real code imported a named export.
-**Solution:** Match the module's export shape in the mock (export the named symbol).
-**Why it worked:** React components must resolve to a valid function; mismatched export shapes yield `undefined` at render time.
-**Principle:** Jest mocks must mirror the real module's export shape (named vs default) or React will render `undefined`.
-
-### 2026-01-31 Word Export: Language-Independent Structured Data Flow
-**Problem:** Word export relied on parsing markdown strings with regex to find headers like "Вступление" (Introduction). This broke when the UI language changed, as headers were translated, leading to empty exports or missing sections.
-**Attempts:** Initially tried adding more language aliases to the parser, but realized it was a fragile approach.
-**Solution:** (1) Removed `parseMarkdownPlan` entirely. (2) Added a structured `planData` prop (matching the `PlanData` interface) to the `ExportButtons` component. (3) Updated pages (`PlanPage`, `StructurePage`) to construct and pass this object directly.
-**Why it worked:** Business logic now operates on stable, typed data objects instead of volatile UI text. The export logic no longer cares about the language of the headers in the markdown; it just map-joins the structured points.
-**Principle:** Never use UI-facing localized strings (headers, labels) as anchor points for data extraction or business logic. Use structured, technical data as the source of truth.
-
-### 2026-01-31 Export Connectivity: Standardizing Prop Flow across Workspaces
-**Problem:** `ExportButtons` had inconsistent data sources depending on whether it was in a Column (Focus Mode) or on the Plan Page, making it hard to maintain consistent Word formatting.
-**Solution:** (1) Standardized on `planData={planData}` and `focusedSection={id}` props. (2) Updated `Column.tsx` to pass these down. (3) Modified `wordExport.ts` to accept `focusedSection` for filtering.
-**Why it worked:** Explicit props make component behavior predictable and testable. Filtering at the export utility level ensures that global metadata (title, verses) is always included even in section-specific exports.
-**Principle:** When a component is used in multiple contexts (dashboard, focus mode, detail page), synchronize its data requirements through explicit, unified props rather than generic "blob" getters.
-
-### 2026-01-31 Middleware CORS tests failing on Vercel (CI)
-**Problem:** Middleware tests passed locally but failed on Vercel build: `Access-Control-Allow-Origin` was expected `http://localhost:3000` but received `null`.
-**Cause:** On Vercel, `process.env.CORS_ALLOWED_ORIGINS` is set (e.g. to production domain only). The tests assumed default env (unset), so the middleware used DEFAULT_ALLOWED_ORIGINS (which includes localhost). In CI, the env was set, so localhost was not in the allowed list.
-**Solution:** In tests that assert behavior for a specific origin (e.g. localhost), explicitly `delete process.env.CORS_ALLOWED_ORIGINS` so the middleware falls back to DEFAULT_ALLOWED_ORIGINS. Save/restore env in beforeEach/afterEach so tests are isolated and don't leak state.
-**Why it worked:** Tests no longer depend on the runner's environment; they control the env for each case.
-**Principle:** Tests that rely on `process.env` for behavior (e.g. CORS allowed list) must set or clear the relevant env inside the test (or beforeEach) and restore in afterEach so they pass in any CI/CD environment (Vercel, GitHub Actions, etc.).
-
-### 2026-01-31 Skeleton Loader vs Empty State Logic
-**Problem:** Skeleton loader persisted even when data fetching was complete (but empty/null), preventing the "Sermon not found" state from showing and failing tests.
-**Attempts:** Initial logic was too broad: `if (loading || (!sermon && !error))`, showing skeleton for both loading and missing data.
-**Solution:** Strict separation: Only show Skeleton if `loading` is true. Handle `!sermon` explicitly as a separate "Not Found" state.
-**Why it worked:** "Loading" implies an active process; "Not Found" is a terminal state. Conflating them prevents the UI from settling into the terminal state.
-**Principle:** Do not use "Skeleton" for "Empty/Missing" states. Skeleton is for *waiting*; Empty State is for *result*.
-
-### 2026-01-31 React Hooks: Conditional Return Placement
-**Problem:** A "Rendered more hooks than during the previous render" error occurred when a conditional return for a skeleton state was placed before `useCallback` hook definitions.
-**Attempts:** Initially moved the return logic to handle the visibility glitch, but forgot about the Rules of Hooks.
-**Solution:** Moved the conditional `if (loading || ...)` return statement to the very end of the hook block, after all `useState`, `useEffect`, and `useCallback` declarations.
-**Why it worked:** React requires all hooks to be called in the same order on every render. Placing conditional returns after all hooks ensures that the set of hooks called is consistent for that render.
-**Principle:** Always place conditional "early returns" (skeletons, loading, error screens) *after* all hook definitions in a component.
-
-### 2026-01-31 UI State: Persistence via URL Query Parameters
-**Problem:** Dashboard tab state (Active/Preached/All) was lost when navigating to a sermon detail page and back because it was managed by local `useState`.
-**Attempts:** Proposed and implemented a switch to URL-driven state.
-**Solution:** Replaced `useState` with `useSearchParams()` to read the state and `useRouter().push()` to update it.
-**Why it worked:** The URL is part of the browser's history and persists across navigation, unlike component state which is destroyed when unmounting.
-**Principle:** For UI filters/tabs that should persist across navigation or be bookmarkable, prefer URL query parameters over local component state.
-
-### 2026-01-31 Testing: Mocking Next.js 15 Navigation Hooks
-**Problem:** Dashboard tests failed after switching to `useSearchParams` and `useRouter` because the `next/navigation` hooks were not mocked.
-**Attempts:** Initially forgot to add mocks; later added basic `jest.mock`.
-**Solution:** Implemented explicit mocks for `useRouter` (returning `push`, `replace`, etc.) and `useSearchParams` (returning an object with a `get` method). Tests use `mockUseSearchParams.mockReturnValue({ get: () => 'tab-id' })` to control the simulated URL state.
-**Why it worked:** Providing a controlled mock allows tests to simulate different URL parameters and verify that the component responds correctly without requiring a real browser navigation environment.
-**Principle:** When component logic depends on URL parameters via `useSearchParams`, explicitly mock the hook to return a controllable object with a `get` method in tests.
-
-### 2026-01-31 React Hooks: Destructuring missing data from useSermon
-**Problem:** TypeScript error when trying to use `error` from `useSermon` because it wasn't being destructured in `page.tsx`, even though the hook returned it.
-**Solution:** Added `error` to the destructuring list of `useSermon(id)`.
-**Principle:** Always destructure all necessary state/flags from custom hooks to ensure type safety and handle error branches correctly.
-
-
-### 2026-01-30 React Query: Server-First Race Condition Fix
-**Problem:** `useServerFirstQuery` logic caused infinite loading because `serverFetchedRef` was resetting to false on re-renders, while `shouldReveal` didn't account for `queryResult.isSuccess` independently.
-**Attempts:** Added debug logging to trace state; discovered `serverFetchedRef` flip-flopping.
-**Solution:** Updated `shouldReveal` to check `(serverFetchedRef.current || (queryResult.isSuccess && queryResult.data !== undefined))`. Updated `isLoading` to respect `shouldReveal`.
-**Why it worked:** Explicitly checking `isSuccess` + `data` ensures that once data is available, we show it, even if the "first fetch" ref flag was lost or reset during a render cycle.
-**Principle:** Reliability > Flags. For loading states, always prefer derived truth (`isSuccess && data`) over mutable imperative flags (`useRef`), or combine them defensively.
-
-### 2026-01-30 Testing: Mocking Local Modules and ReferenceErrors
-**Problem:** Tests failing with `ReferenceError: debugLog is not defined` after adding it to source code, because the mock in `series-detail.test.tsx` was incomplete or using `requireActual` incorrectly for a module with named exports.
-**Attempts:** Tried mocking with `requireActual`, resulted in element not found errors implying the mock wasn't working as expected.
-**Solution:** Simplified the mock to a plain object returning `jest.fn()` for all exports, removing `requireActual`.
-**Why it worked:** Jest's module resolution can be tricky with partial mocks. A clean, explicit mock object ensures the test environment has exactly what it needs without side effects from the actual module.
-**Principle:** When mocking simple utility modules causes ReferenceErrors, prefer a full explicit mock object over `requireActual` to eliminate module resolution complexity.
-
-### 2026-01-30 Jest Mocks: Parallel Requests Consumption
-**Problem:** `StepByStepWizard` test failed because "Generate Audio" button never appeared. The test mocked sequential steps (Optimize -> Save -> Generate), but the component fired 3 parallel optimization requests (Intro/Main/Conclusion).
-**Attempts:** Added standard sequential mocks; test failed as the "Save" mock was consumed by the 2nd parallel optimization request, breaking the flow.
-**Solution:** Updated the mock chain to provide 3 discrete `mockResolvedValueOnce` responses for the parallel optimization step *before* adding the mock for the subsequent "Save" step.
-**Why it worked:** `fetch` mocks are consumed FIFO. Parallel requests consume N mocks immediately. If the chain is too short, subsequent logical steps receive the wrong response or undefined.
-**Principle:** When a component executes parallel requests (e.g. `Promise.all`), explicitly mock N responses for that batch before mocking the next sequential step.
-
-### 2026-01-26 React Query: Hybrid Ref/State for Synchronous Data Availability and Async Re-renders
-**Problem:** In `useServerFirstQuery`, a pure `useState` for `serverFetched` status caused a one-render-cycle delay. This broke tests that checked the state immediately after `act()` and caused UI desynchronization when data was updated via `setQueryData` (which doesn't trigger the `queryFn` where the state was normally set).
-**Attempts:** Initially used only `useRef` (fixed tests but broke re-renders on manual cache updates) and then only `useState` (fixed re-renders but broke tests).
-**Solution:** Implemented a hybrid approach: (1) Use `useRef` for immediate "serverFetched" status during the `queryFn` execution. (2) Use a `renderTrigger` (state) and `useEffect` to force a re-render when the cache is updated externally (monitored via `dataUpdatedAt`). (3) Added synchronous state reset on key changes to prevent showing stale data from previous keys.
-**Why it worked:** The `ref` provides the "truth" immediately for logic and tests, while the `state` ensures the UI actually reacts to that truth when it changes outside of the hook's own query lifecycle.
-**Principle:** When wrapping shared queries that must hide stale cache, use a hybrid Ref/State pattern to provide immediate state access for logic while maintaining React's declarative re-render guarantees.
-
-### 2026-01-26 React Query: Solving "Disappear-Reappear" Flicker with Strict Online-First logic
-**Problem:** Marking a sermon as preached caused it to flicker (disappear then reappear). This was a race condition: `invalidateQueries` triggered a background refetch that returned stale data (Firestore eventual consistency) before the server update Propagated, overwriting the local optimistic update.
-**Attempts:** Initially used `setQueryData` + `invalidateQueries` (previous project standard) to ensure IndexedDB sync.
-**Solution:** (1) Implemented strict Online-First logic in `useServerFirstQuery`: never show cached data when online until fresh fetch completes. (2) Replaced immediate invalidation with `cancelQueries` (stops stale refetches) followed by `invalidateQueries({ refetchType: 'none' })`. (3) Removed redundant component-layer invalidations.
-**Why it worked:** `refetchType: 'none'` marks the query as stale (ensuring IndexedDB sync) without triggering the immediate "stale" refetch that caused the flicker. `cancelQueries` protects the local state from overwrites.
-**Principle:** When performing optimistic updates in an eventually consistent environment, use `cancelQueries` and `invalidateQueries({ refetchType: 'none' })` to maintain local UI integrity while ensuring background persistence.
-
-### 2026-01-26 Architectural Fix: Canonical structural tags for language independence
-**Problem:** Features like "missing tag" warnings, search, and statistics broke when switching languages because they relied on hardcoded localized strings (e.g., "Основная часть"). Additionally, a race condition in Focus Mode caused new thoughts to lose their structural context during save.
-**Attempts:** Initially tried adding more localized aliases, but realized it was a losing battle against language scale.
-**Solution:** (1) Introduced canonical IDs (`intro`, `main`, `conclusion`) in Firestore and logic. (2) Updated `ThoughtCard`, `StructureStats`, and `OutlinePointSelector` to use `normalizeStructureTag` bridge. (3) Unified export logic to use current user's translation for header matching. (4) Resolved race condition in `useSermonActions.ts` by deriving the next state structure during the mutation payload construction.
-**Why it worked:** Decoupling business logic from UI labels ensures consistent behavior regardless of the user's interface language. Explicitly passing IDs instead of UI strings eliminates ambiguity.
-**Principle:** Always use canonical technical IDs for logical operations (validation, search, mapping) and keep localized strings strictly for the display layer.
-
-### 2026-01-26 Data Consistency: Respecting structure-driven order over individual positions
-**Problem:** Thoughts in Focus Mode sidebar appeared in a different sequence than on the main sermon page because `useSermonStructureData` was re-sorting items by their `position` field, overriding the order defined in the `structure` object.
-**Attempts:** Unified the layout and badge positions, then identified the sorting mismatch in the data hook.
-**Solution:** Removed redundant `sortByPosition` calls in `useSermonStructureData.ts`. The `structure` object (the array of IDs from DnD) is now the absolute source of truth for the sequence.
-**Why it worked:** DnD operations update the array of IDs representing the order; re-sorting by individual fields can revert or break this manual sequence if positions are out of sync.
-**Principle:** When an explicit order is provided via a container mapping (e.g., `structure`), treat that mapping as the primary source of truth for sequence instead of individual item fields.
-
-### 2026-01-26 UI Consistency: Aligning Sidebar elements across modes
-**Problem:** Focus Mode sidebar had a layout discrepancy (badge before icons) and different badge behavior (hover-only) compared to the main page.
-**Attempts:** Rearranged elements and Unified styles with the main page.
-**Solution:** Swapped badge and icon positions in `Column.tsx` to match `SermonOutline.tsx`. Moved the badge outside the hover-only container to ensure constant visibility while preserving Focus Mode color themes per user preference.
-**Why it worked:** Standardizing the functional order of actions and info (icons → badge) creates a predictable UX across different views of the same data.
-**Principle:** Maintain consistent functional ordering of interactive elements (e.g., actions always before/after metadata) across different view modes.
-
-### 2026-01-25 Session logs: One chat → one session file
-**Problem:** Multiple session logs were created for a single chat, splitting progress and decisions across files.
-**Attempts:** Continued logging in parallel files, then had to reconcile entries manually.
-**Solution:** Merged all entries into a single session log and added an explicit rule in `AGENTS.md` to enforce “one chat = one session log”.
-**Why it worked:** A single log becomes the source of truth, avoiding fragmented context and duplicated work.
-**Principle:** For each chat, maintain exactly one session log; if duplicates appear, merge them immediately and tighten the protocol.
-
-### 2026-01-21 React Query: Server-first mask must handle shared observers
-**Problem:** Series badge disappeared on Dashboard even though `/api/series` returned data; debug logs showed count flipping from 7 to 0.
-**Attempts:** Enabled server-first reads with `useServerFirstQuery`, added uid resolution to run the series query.
-**Solution:** Track `dataUpdatedAt` inside `useServerFirstQuery` and mark `serverFetched` when data updates, not only when the local `queryFn` runs.
-**Why it worked:** When multiple components subscribe to the same query, only one observer runs the `queryFn`; others never set `serverFetchedRef` and masked data as empty. Using `dataUpdatedAt` detects cache updates for every observer.
-**Principle:** In shared-query hooks, derive “server-fetched” state from cache update signals (e.g., `dataUpdatedAt`), not only from local `queryFn` execution.
-
-### 2026-01-21 Testing: Coverage-driven test fixes need typed mocks + fresh queries
-**Problem:** Coverage tests failed or TypeScript compile failed after adding new tests due to stale DOM references and strict mock typings (read-only fields, wrong arg types).
-**Attempts:** Clicked container instead of checkbox; used require() in tests; passed wrong mock args and tried to assign to readonly fields.
-**Solution:** Re-query DOM elements after state updates, click the checkbox directly, use static imports, and loosen mock typings/casts for readonly fields and params.
-**Why it worked:** React state updates are async and DOM refs go stale; TypeScript enforces readonly and exact signatures for mocks, so typings must match the real hook/service contracts.
-**Principle:** When tests fail after adding coverage, re-query the DOM after state changes and align mock typings with real signatures (use typed jest.fn and safe casts for readonly fields).
-
-### 2026-01-18 Implementation: Fixed Dashboard Preached Status Sync Issue
-**Problem:** Sermon preached status wasn't updating immediately in dashboard after marking as preached/unpreached - status showed old state for several seconds before refreshing.
-**Attempts:** Initially investigated cache race conditions, examined PersistQueryClientProvider behavior, checked timing between API calls and cache updates.
-**Solution:** Added proper query invalidation for dashboard cache ['sermons', uid] in OptionMenu component's handleTogglePreached and handleSavePreachDate functions, ensuring both calendar and dashboard caches update simultaneously.
-**Why it worked:** OptionMenu was only invalidating calendar cache ['calendarSermons'] but dashboard uses ['sermons', uid] - adding the missing invalidation ensures immediate UI sync across all components.
-**Principle:** When updating shared data across multiple components with different query keys, invalidate ALL relevant query keys to prevent UI desynchronization and stale data display.
-
-### 2026-01-18 Implementation: Fixed All 6 Cache Desync Issues Across App
-**Problem:** Applied invalidateQueries pattern to all 6 locations with setQueryData cache desynchronization: useSermon.setSermon, useSeriesDetail operations (reorder/add/remove), and useDashboardSermons cache functions.
-**Attempts:** Systematically added queryClient.invalidateQueries() after all setQueryData calls affecting persisted data, ensuring guaranteed cache synchronization through successful refetch pattern.
-**Solution:** Consistent application of setQueryData + invalidateQueries pattern across all optimistic update locations, guaranteeing persisted cache sync and eliminating data loss on app restarts.
-**Why it worked:** Single reliable pattern (invalidateQueries after setQueryData) applied uniformly, leveraging React Query's built-in cache persistence for successful queries, with minimal code changes and comprehensive test coverage.
-**Principle:** When implementing optimistic updates with setQueryData, always immediately follow with invalidateQueries for the same key to guarantee persisted cache synchronization and prevent data loss.
-
-### 2026-01-18 Research: Found 3 More Locations with Same Cache Desync Pattern
-**Problem:** Investigated other setQueryData usage patterns, found 3 additional locations with same persisted cache desynchronization issue affecting sermon editing, series management, and dashboard.
-**Attempts:** Systematically analyzed all setQueryData usage across codebase, identified patterns where invalidateQueries missing, confirmed same root cause applies to multiple features.
-**Solution:** Documented critical issues in useSermon.setSermon (sermon page updates), useSeriesDetail.updateDetailCache (series reordering), and useDashboardSermons cache functions (dashboard UI) - all need invalidateQueries addition.
-**Why it worked:** Comprehensive pattern analysis revealed systematic issue across optimistic update implementations, confirming root cause affects multiple user workflows beyond initial focus mode fix.
-**Principle:** When implementing optimistic updates with setQueryData, always pair with invalidateQueries to ensure persisted cache synchronization, otherwise data loss occurs on app restart.
-
-### 2026-01-18 Implementation: IndexedDB Cache Sync Fix Applied
-**Problem:** Applied invalidateQueries after setQueryData in setSermon method to fix persisted cache desynchronization, ensuring thought order persistence across app restarts.
-**Attempts:** Modified useSermonStructureData.ts to combine setQueryData (immediate UI feedback) with invalidateQueries (guaranteed persisted cache sync), tested with existing test suite.
-**Solution:** Added queryClient.invalidateQueries(["sermon", sermonId]) after setQueryData to ensure every sermon state update triggers refetch and persisted cache synchronization.
-**Why it worked:** Simple one-line addition following standard React Query patterns guarantees cache persistence without complex PersistQueryClientProvider modifications, with minimal performance trade-off.
-**Principle:** When fixing cache synchronization issues, prefer adding invalidateQueries to existing setQueryData calls rather than modifying dehydration logic, as it guarantees proper persistence through standard query lifecycle.
-
-### 2026-01-18 Impact Analysis: Simple Solution for IndexedDB Cache Sync Issues
-**Problem:** Analyzed full impact of IndexedDB persisted cache desynchronization affecting sermon data persistence, identified invalidateQueries as simple reliable fix.
-**Attempts:** Mapped complete system dependencies and downstream effects, found medium blast radius isolated to sermon workflow, designed minimal-change solution using standard React Query patterns.
-**Solution:** Replace setQueryData with invalidateQueries for sermon updates to guarantee persisted cache synchronization with server state, ensuring thought order persistence across app restarts.
-**Why it worked:** Systematic impact mapping revealed invalidateQueries as lowest-risk, highest-reliability fix that follows existing app patterns and guarantees cache sync without complex PersistQueryClientProvider modifications.
-**Principle:** When fixing persisted cache synchronization issues, prefer standard React Query invalidation patterns over complex cache manipulation, as they guarantee proper dehydration and persistence.
-
-### 2026-01-18 IndexedDB Cache Desynchronization Breaking Data Persistence
-**Problem:** User correctly identified that thought order changes were saved locally but lost on restart due to IndexedDB persisted cache not syncing with setQueryData updates.
-**Attempts:** Investigated PersistQueryClientProvider behavior, found that setQueryData updates in-memory cache but persisted cache only saves queries with status 'success', causing desynchronization.
-**Solution:** Identified that PersistQueryClientProvider's shouldDehydrateQuery filter prevents local setQueryData updates from persisting to IndexedDB, causing data loss on app restart.
-**Why it worked:** Systematic investigation validated user's hypothesis 100%, tracing from setQueryData behavior through dehydration filters to cache restoration overwrite mechanism.
-**Principle:** When using PersistQueryClientProvider, setQueryData updates don't persist to IndexedDB unless the query has status 'success'; use invalidateQueries or mutations for reliable persistence.
-
-### 2026-01-18 Thought Order Loss Due to Cache Race Conditions
-**Problem:** User sets thought order (1,2,3) but finds it reverted (3,1,2) after returning later, due to race condition between debounced position saves and React Query cache invalidation.
-**Attempts:** Investigated position persistence, found it working correctly; identified race between 500ms debounced saves and 30s staleTime causing refetch before saves complete.
-**Solution:** Identified primary root cause as `refetchOnMount: 'always'` + `staleTime: 30s` + 500ms debounce creating 29.5s race window where refetch loads old positions before debounced saves complete.
-**Why it worked:** Systematic 150% investigation traced from user symptoms through cache timing to specific code lines, revealing the race condition window and optimistic update conflicts.
-**Principle:** When optimistic updates use debounced saves, ensure cache invalidation timing doesn't create race windows where refetch can load stale data before pending saves complete.
-
-### 2026-01-18 Focus Mode Thoughts Jumping Root Cause Analysis
-**Problem:** Thoughts were jumping in focus mode when adding thoughts or over time, suspected to be related to recent IndexedDB changes.
-**Attempts:** Investigated IndexedDB persistence, React Query cache behavior, URL navigation patterns, and component mounting cycles.
-**Solution:** Identified primary root cause as global React Query `refetchOnMount: 'always'` setting from January 18 cache fix, causing excessive refetches on every component mount during UI interactions.
-**Why it worked:** Systematic 150% investigation (100% core + 50% context) traced the issue from user symptoms through configuration changes to specific code lines, establishing 95% confidence in the primary root cause.
-**Principle:** When investigating UI jumping or unexpected re-renders, always check global data fetching configuration changes first, as `refetchOnMount: 'always'` can cause excessive network requests during component interactions.
-
-### 2026-01-17 Tooltip Boundary Detection Implementation
-**Problem:** OutlinePointGuidanceTooltip was extending beyond scrollable container boundaries, causing poor UX where tooltip content would be cut off or not visible.
-**Attempts:** Initially considered fixed positioning, but needed container-aware positioning within scrollable areas.
-**Solution:** Implemented boundary detection using getBoundingClientRect() to measure container bounds, with automatic repositioning from above→below button when insufficient space, and horizontal alignment adjustments to prevent overflow.
-**Why it worked:** Absolute positioning with z-index works for global positioning, but scrollable containers require measuring container bounds relative to viewport and trigger position; useEffect with DOM measurements enables dynamic repositioning.
-**Principle:** For tooltips in scrollable containers, implement boundary detection using container.closest('.scrollable-class') and getBoundingClientRect() measurements, with fallback positioning strategies (above→below, left→right adjustments).
-
-### 2026-01-17 AddThoughtManual button disabled offline due to useTags enabled condition
-**Problem:** "Добавить мысль вручную" button stopped working on production after IndexDB offline mode addition because useTags had `enabled: Boolean(userId) && isOnline`, preventing cache reads offline.
-**Attempts:** Analyzed AddThoughtManual component logic, traced dataReady calculation, identified useTags offline behavior.
-**Solution:** Changed useTags query to `enabled: Boolean(userId)` and `networkMode: isOnline ? 'online' : 'offlineFirst'` to allow persisted cache reads when offline while preventing network requests.
-**Why it worked:** React Query with persisted cache can serve data offline, but `enabled: false` prevents both fetching and cache reading; `networkMode: 'offlineFirst'` allows cache-first behavior offline.
-**Principle:** For offline-capable queries, use `networkMode: 'offlineFirst'` instead of disabling queries offline to preserve cache access while preventing network requests.
-
-### 2026-01-17 Dynamic Debug Logging Pattern Implementation
-**Problem:** Need user-controllable debug logging without console pollution in production.
-**Attempts:** Considered conditional console.log calls, but needed centralized control.
-**Solution:** Implemented `debugLog()` utility from `@/utils/debugMode` with user toggle in settings. Applied pattern to AddThoughtManual component for troubleshooting.
-**Why it worked:** Single source of truth for debug state, persisted in localStorage, allows users to enable detailed logging without code changes.
-**Principle:** Use `debugLog()` instead of `console.log` for user-controllable debugging with settings UI toggle.
-
-### 2026-01-16 Faster offline fallback requires shorter Workbox timeout
-**Problem:** Offline navigation felt inconsistent because Workbox waited too long before falling back to cache.
-**Attempts:** Observed slow/offline behavior with default `networkTimeoutSeconds` values.
-**Solution:** Set Workbox `networkTimeoutSeconds` to 1 for HTML, RSC, and default runtime caches.
-**Why it worked:** A shorter timeout triggers cache fallback quickly when the network is unavailable or flaky.
-**Principle:** For reliable offline UX, keep Workbox `networkTimeoutSeconds` low so cache wins fast on bad networks.
-
-### 2026-01-15 Offline structure requires React Query cache alignment
-**Problem:** `/sermons/[id]/structure` and focus mode showed "Sermon not found" offline because data initialization returned early and bypassed persisted cache.
-**Attempts:** Traced data flow, confirmed direct `getSermonById`/`getSermonOutline` usage and offline early-return path.
-**Solution:** Align `useSermonStructureData` with React Query cache, remove offline early-return, and read outline from query cache or `sermon.outline`.
-**Why it worked:** Persisted React Query cache is the only durable offline data source; removing the early return allows the hook to hydrate from cache.
-**Principle:** Offline pages must read from persisted React Query cache instead of short-circuiting on offline status.
-
-### 2026-01-15 React Query tests require QueryClientProvider
-**Problem:** Plan page tests started failing with "No QueryClient set" after migrating to React Query hooks.
-**Solution:** Wrap PlanPage renders in tests with `QueryClientProvider` using a test `QueryClient`.
-**Principle:** Any test that renders components calling `useQueryClient`/React Query hooks must provide a QueryClient via provider.
-
-### 2026-01-15 Ignore generated Workbox in ESLint
-**Problem:** `public/workbox-*.js` generated by PWA tooling triggered ESLint errors and duplicate-string warnings.
-**Solution:** Add `public/workbox-*.js` to ESLint ignores and allow CommonJS `require` in `next.config.js`.
-**Principle:** Treat generated build artifacts as lint-ignored sources and explicitly allow config-level CommonJS where required.
-
-### 2026-01-14 Calendar Analytics Refactor Verified
-**Problem:** `AnalyticsSection.tsx` exceeded `sonarjs/cognitive-complexity`, and a safe refactor needed high-confidence behavior parity.
-**Attempts:** Researched refactor options and verified existing behavior boundaries via tests and data flow inspection.
-**Solution:** Extracted analytics computation into `calendarAnalytics.ts`, split logic into pure helpers, expanded unit tests, ran full test suite + lint, and manually compared prod vs localhost.
-**Why it worked:** Moving complex logic into pure utilities reduced complexity without UI changes; tests plus manual parity check validated behavior.
-**Principle:** To reduce cognitive complexity safely, extract pure logic into utilities, keep UI thin, and validate with targeted tests plus full-suite and real-world parity checks.
-
-### 2026-01-14 KnowledgeSection Refresh Should Update sectionHints
-**Problem:** Refresh button in “Suggested Plan” visually referenced section hints but called full-plan generation, so UI appeared unchanged when sectionHints existed.
-**Attempts:** Investigated UI triggers and backend routes to verify actual API calls.
-**Solution:** Wire the refresh action to `generateThoughtsBasedPlan` (`POST /api/insights/plan`) and update tests to assert this call.
-**Why it worked:** The button now refreshes the data source it renders (`insights.sectionHints`), eliminating the mismatch between UI expectations and side effects.
-**Principle:** Refresh actions must update the same data source that the UI section renders; otherwise users perceive a “no-op” and confusion.
-
-### 2026-01-11 Decoupling Complex Component Logic (Refactoring Protocol 150)
-**Problem:** `handleSaveEdit` in `page.tsx` had a cognitive complexity of 42 due to nested loops, redundant state checks, and interleaved server/UI logic.
-**Attempts:** Initially extracted logic to sub-functions within the component, which reduced complexity but didn't improve testability or structural clarity.
-**Solution:** (1) Extracted pure data transformation helpers (`findOutlinePoint`, `buildItemForUI`) to `utils/structure.ts`. (2) Extracted interaction handlers and related state (`handleSaveEdit`, `handleCreateNewThought`, etc.) to a custom hook `useSermonActions.ts`. (3) Verified with 174 targeted unit tests and manual browser validation.
-**Why it worked:** Custom hooks allow encapsulating related state and effects, making the main component declarative. Pure utilities in separate files enable 100% test coverage without component overhead.
-**Principle:** When a component's handler logic exceeds complexity limits, decouple stateful interactions into custom hooks and pure business logic into utilities for isolation and testability.
-
-### 2026-01-12 Testing Async UI Interaction updates
-**Problem:** Test failed to find a newly added tag element after simulated user input, despite using `waitFor`.
-**Attempts:** `userEvent.type` + `userEvent.click` failed to update state fast enough for `getByText`.
-**Solution:** (1) Use `fireEvent.change` for reliable input value setting in JSDOM. (2) Use `await screen.findByText` instead of `getByText` to leverage built-in retry mechanisms for element appearance.
-**Why it worked:** `fireEvent` is synchronous and direct; `findBy` queries are async and poll the DOM, handling React's render cycle delays automatically.
-**Principle:** When asserting the presence of elements appearing after an interaction, prefer `await screen.findBy*` over `waitFor(() => screen.getBy*)` for cleaner and more reliable tests.
-
-### 2026-01-11 JSDOM window override for SSR branches
-**Problem:** Needed to cover the `typeof window === 'undefined'` branch in share URL tests, but JSDOM always provides `window`.
-**Solution:** Override `global.window` using `Object.defineProperty` during the test and restore it afterward.
-**Principle:** To exercise SSR-only branches in JSDOM, temporarily redefine `window` with `Object.defineProperty` instead of direct assignment.
-
-### 2026-01-11 CSS Grid Header Alignment
-**Problem:** Column headers didn't match values vertically in a table using CSS Grid due to calculating widths based on different content (text vs buttons).
-**Solution:** Use fixed pixel widths for all metadata/action columns and only one `1fr` column for the primary flexible content.
-**Why it worked:** Constraining all but one column ensures identical grid calculation for both header and rows regardless of inner content size.
-**Principle:** For perfect Grid alignment between header and rows, use fixed widths for all metadata columns and only a single `1fr` column for flexible content.
-
-### 2026-01-11 i18n labels update after mount in ThemeModeToggle
-**Problem:** Theme mode tests failed because translated labels render after mount, and duplicate labels exist in sr-only elements.
-**Attempts:** `getByText('System')` assertions failed with multiple matches and timing issues.
-**Solution:** Use `waitFor` for mounted text and `getAllByText` (or more specific queries) to handle duplicates.
-**Why it worked:** The component updates labels in `useEffect`, so waiting avoids race conditions; multiple matches are expected by design.
-**Principle:** For i18n/mounted labels, use `waitFor` and `getAllByText` (or scoped queries) instead of assuming unique immediate text.
-
-### 2026-01-11 Testing conditional visual states in UI components
-**Problem:** Needed to test conditional styling (emerald vs gray) for share link icon based on hasShareLink prop, but no existing pattern for testing CSS classes in complex conditional logic.
-**Solution:** Use `screen.getByRole('button', { name: 'aria-label' })` to target the specific button, then `expect(button).toHaveClass('expected-classes')` for each conditional class, testing both light and dark variants separately.
-**Why it worked:** RTL's className assertions work reliably for conditional Tailwind classes; testing both states (hasShareLink true/false) ensures complete coverage.
-**Principle:** For conditional visual states, test both true/false branches with explicit className assertions on targeted elements using ARIA labels for reliable selection.
-
-### 2026-01-07 AudioRecorder test timing + matchMedia typing
-**Problem:** New AudioRecorder coverage tests failed (keyboard shortcut stop didn’t fire; TypeScript complained about matchMedia mocks with undefined addEventListener).
-**Attempts:** Triggered Ctrl+Space twice and asserted completion; mocked matchMedia with missing methods.
-**Solution:** Wait for the stop button to render before sending the stop shortcut; cast legacy matchMedia mocks via `as unknown as MediaQueryList`.
-**Why it worked:** The UI needs to transition to recording state before stop is handled; TS needs an explicit bridge when mocks intentionally omit interface members.
-**Principle:** For async UI keyboard flows, wait for state-driven DOM before asserting side effects; when mocking partial Web APIs in TS, use `unknown` casts to satisfy structural typing.
-
-### 2026-01-11 Testing dynamic UI class changes in React
-**Problem:** Tests for dynamic modal width and drawer expansion failed because assertions used stale element references or fired before state updates finished.
-**Attempts:** `expect(modalContainer).toHaveClass(...)` failed even after `userEvent.type`.
-**Solution:** (1) Re-find the element inside `waitFor` to ensure it targets the updated DOM node. (2) Use `data-testid` for stable selection. (3) Use `fireEvent.change` for large text blocks instead of `userEvent.type` to speed up tests.
-**Why it worked:** React re-renders might replace the DOM node; `waitFor` + fresh query ensures we check the latest state.
-**Principle:** For dynamic UI class assertions, always re-query the element inside `waitFor` and use stable `data-testid` anchors.
-
-### 2026-01-11 Threshold logic ordering for auto-expansion
-**Problem:** Drawer wouldn't expand to fullscreen because the `medium` threshold (1000) was checked before `fullscreen` (2000) in an `if/else if` block.
-**Solution:** Reorder logic to check the largest/most specific threshold first.
-**Principle:** When implementing multi-threshold triggers, always evaluate conditions from most restrictive (largest) to least restrictive.
-
-### 2026-01-11 exhaustive-deps vs functional updates
-**Problem:** `useEffect` for auto-expansion had a lint warning because `size` was used in the logic but omitted from deps to avoid loops.
-**Solution:** Use the functional update pattern `setSize((prev) => ...)` to read the current state without including it in the dependency array.
-**Principle:** To avoid `exhaustive-deps` warnings and unnecessary effect re-runs when state logic depends on previous state, use the functional update pattern.
-
-### 2026-01-15 Use lcov.info for accurate per-file coverage
-**Problem:** `coverage-summary.json` was stale after `npm run test`, making per-file coverage checks unreliable.
-**Solution:** Read `frontend/coverage/lcov.info` directly to compute per-file line coverage (e.g., for `plan/page.tsx`).
-**Principle:** In this repo, trust `lcov.info` as the source of truth for per-file coverage when validating thresholds.
-
-### 2026-01-15 Max coverage for complex DnD handler
-**Problem:** `useStructureDnd` needed the highest possible test coverage, but several branches were hard to reach.
-**Attempts:** Added targeted DragOver/DragEnd tests across container/item/placeholder cases and inspected remaining uncovered lines.
-**Solution:** Covered 95.77% lines and 85.4% branches with focused event-shape tests; documented remaining branches as unreachable without invalid inputs.
-**Why it worked:** Simulating realistic DnD event payloads exercised nearly all paths; the remaining branches require impossible states under normal inputs.
-**Principle:** For complex event handlers, use targeted event-shape tests and accept unreachable branches rather than forcing invalid inputs just to hit 100%.
+## 🆕 Lessons (Inbox) — Extracted Principles
+
+> One-line principles. History in git blame. Newest first.
+
+- **2026-02-26 URL Migration (/dashboard→/sermons):** Grep all hardcoded refs first → move content to new URL → redirect old URL → update tests last. Always preserve old URL as redirect.
+- **2026-02-25 TipTap Headless:** For WYSIWYG with raw Markdown storage, TipTap headless + `tiptap-markdown` gives 100% symmetric MD serialization. Avoid "Notion clone" wrappers (Novel).
+- **2026-02-25 TipTap Jest Mock:** Always mock WYSIWYG editors (`RichMarkdownEditor`) with `<textarea>` in Jest — JSDOM can't handle `contenteditable`.
+- **2026-02-25 Series Dual-Store Bug:** Setting `entity.seriesId` is metadata only. Must also call `seriesRepository.addXxxToSeries()` — series list is driven by `series.items[]`, not by querying entities.
+- **2026-02-24 Sibling Typography:** When UI sections act as visual peers, explicitly copy typography classes across different semantic tags (`h2` vs `div`).
+- **2026-02-24 Modal Stale Cache:** `useState(prop)` initializes once. If prop arrives late (React Query refetch), pair with `useEffect` + dirty-ref to sync.
+- **2026-02-24 Grid Card Footer Alignment:** Wrap main content in `flex-1` to push footer to bottom across dynamic-height cards.
+- **2026-02-24 Headless UI in Jest:** Mock `ConfirmModal` (Headless UI) in tests — JSDOM can't handle transition measurements.
+- **2026-02-24 Toggle Switch Pattern:** `w-11` rail + `border-2 border-transparent` + `h-5 w-5` thumb + `translate-x-5/translate-x-0`. Headless UI canonical.
+- **2026-02-24 Smart Back Nav:** `router.back()` when `history.length > 1`, else `router.push(fallback)`. Via `BackLink.tsx`.
+- **2026-02-24 Beta Feature Toggle:** 5-step: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`.
+- **2026-02-24 Dynamic Color Tinting:** Light: inline `rgba(r,g,b,0.07)`. Dark: overlay `div` with `opacity-0 dark:opacity-100` — Tailwind `dark:` can't apply to dynamic inline styles.
+- **2026-02-24 TRIZ Split Button:** CSS wrapping fakes unity. True split-button: component that owns state renders both parts via `splitLeft` slot prop → single DOM tree.
+- **2026-02-23 React Query Optimistic Sync:** Use `cancelQueries` + `refetchType: 'none'` for persistence without refetch flicker. Never include `isFetching` in loading state for skeletons.
+- **2026-02-23 TRIZ UI Simplification:** When list item > 3 actions, migrate destructive/contextual functions to detail view or ⋯ menu.
+- **2026-02-23 nuqs Mock Pattern:** Mock URL state libraries with internal `React.useState`, not static globals — aligns with React reconciliation.
+- **2026-02-23 Translation Duplicate Keys:** Duplicate keys in locale JSON produce syntax errors at webpack parse time; enforce uniqueness.
+- **2026-02-23 AI Conditional Fields:** AI should fill empty fields, not overwrite user content. Tests must clear fields before asserting auto-population.
+- **2026-02-23 Cognitive Complexity:** Extract state/effects into custom hooks when complexity > 20.
+- **2026-02-23 Global Breadcrumbs:** Audit global layout before adding page-level navigation — avoid duplication.
+- **2026-02-23 Separation in Space:** Use existing safe zones (sticky header) for controls instead of floating layers that risk collision.
+- **2026-02-16 API Contract Mismatch:** Frontend must check `polishedText || originalText` — never assume a single key name.
+- **2026-02-16 Button in Label:** Never nest interactive elements inside `<label>` — breaks event propagation.
+- **2026-02-14 Tree Hierarchy Utils:** Separate tree traversal (search) from structural transformation (mutation) for portability and testability.
+- **2026-02-14 High-Latency Auto-Save:** For complex model sync, debounce 15s+ with "Saving..." indicator and opt-out toggle.
+- **2026-02-14 JSDOM Crypto Mock:** Use `Object.defineProperty(global, 'crypto', ...)` — bypasses read-only assignment guard.
+- **2026-02-11 Dashboard Optimistic Flow:** Separate domain entities from sync metadata. Every optimistic write needs rollback + user-visible recovery.
+- **2026-02-10 Calendar Date Drift:** Normalize preach dates to `YYYY-MM-DD`. Drive markers/list/analytics from one shared event map.
+- **2026-02-06 Prompt Telemetry:** Modular `promptBuilder` + centralized `aiTelemetry` at `callWithStructuredOutput` join point. Non-blocking Firestore writes.
+- **2026-02-03 Jest Fake Timers:** Always restore with `jest.useRealTimers()` in `afterEach`.
+- **2026-02-02 Book Parsing:** Fuzzy prefix match only for short tokens (≤4 chars) + require chapter number to avoid false positives.
+- **2026-02-02 Scripture Line Clamp:** Remove `line-clamp`; use `whitespace-pre-line` + container scroll for full text.
+- **2026-02-01 PDF Forensics:** Validate export type (raster vs text) with `pdfimages`/`pdftotext` before changing rendering logic.
+- **2026-02-01 Duplicate Audio Prevention:** Single "full-state" API request when `sections === 'all'` — prevents fan-out duplication.
+- **2026-02-01 Cognitive Complexity Fix:** Extract Logic → Custom Hook, Rendering → Sub-component, nested ternaries → Content component with early returns.
+- **2026-02-01 Hierarchical Sorting:** Resolve order by: Manual Structure > Outline Points order > Tag-based orphans.
+- **2026-02-01 Tag Normalization:** Add all camelCase variants to alias map + enforce lowercasing.
+- **2026-02-01 Sequence-Aware Mocking:** Use `mockResolvedValueOnce` chains + `toHaveBeenNthCalledWith` for AI chain testing.
+- **2026-02-01 Jest Transform Fix:** When build system fights new file recognition, merge into known-good test file.
+- **2026-02-01 Safe Global Mocking:** `Object.defineProperty(navigator, 'clipboard', ...)` for read-only browser APIs.
+- **2026-02-01 Context-Aware Audio:** Sequential processing with tail context (~1000 chars) for coherent AI speech. Coherence requires state.
+- **2026-02-01 Skeleton Coverage:** Don't mock visual-only components — give them `data-testid` and let them render.
+- **2026-02-01 Subpixel Seams:** For percentage-based transforms, 1px overlap (`calc`) masks mobile subpixel gaps.
+- **2026-02-01 Tab Wrapping:** Mobile tabs: `flex-wrap` + `gap` over `flex-nowrap` + scroll.
+- **2026-02-01 Equal Button Width:** `flex-1 basis-0 min-w-[64px]` for buttons with varying labels.
+- **2026-02-01 Feature Gating Consistency:** Feature availability must use same source of truth as its UI indicator.
+- **2026-02-01 Export i18n:** All export UI + document strings through i18n + locale-aware dates. Safe fallbacks for tests.
+- **2026-02-01 Tooltip Clipping:** Containers with tooltips need `overflow-visible` or portal rendering.
+- **2026-02-01 Named Export Mocks:** Jest mocks must mirror module export shape (named vs default) or React renders `undefined`.
+- **2026-01-31 Structured Data over Localized Strings:** Never use UI-facing localized strings as data extraction anchors. Use typed data objects.
+- **2026-01-31 Unified Props:** When component used in multiple contexts, synchronize data through explicit unified props.
+- **2026-01-31 CORS Test Env:** Tests relying on `process.env` must set/clear in beforeEach and restore in afterEach.
+- **2026-01-31 Skeleton ≠ Empty State:** Skeleton = waiting (loading). Empty State = terminal result. Never conflate.
+- **2026-01-31 Conditional Return Placement:** All early returns (skeleton/loading/error) after ALL hook definitions.
+- **2026-01-31 URL State Persistence:** For filters/tabs persisting across navigation, use URL params over `useState`.
+- **2026-01-31 Next.js Nav Mocks:** Mock `useRouter` (push/replace) + `useSearchParams` (get method) for URL-driven tests.
+- **2026-01-30 Server-First Race Fix:** Derive "server-fetched" from `isSuccess && data` defensively, not just imperative `useRef` flags.
+- **2026-01-30 Simplified Utility Mocks:** When partial mocks cause ReferenceErrors, use full explicit mock objects over `requireActual`.
+- **2026-01-30 Parallel Mock Consumption:** Parallel requests consume N mocks FIFO — mock N responses for each batch before next sequential step.
+- **2026-01-26 Hybrid Ref/State:** `useRef` for immediate status (tests, sync logic) + `useState` trigger for declarative UI reactivity to `dataUpdatedAt`.
+- **2026-01-26 Cancel+Invalidate Pattern:** `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })` prevents flicker in eventually consistent environments.
+- **2026-01-26 Canonical Structural Tags:** Use canonical IDs (`intro`, `main`, `conclusion`) in logic. Localized strings only for display.
+- **2026-01-26 Structure-Driven Order:** `structure` array of IDs is primary ordering truth. Never re-sort by individual `position` fields.
+- **2026-01-26 Sidebar Consistency:** Maintain consistent functional ordering (icons → badge) across view modes.
+- **2026-01-25 One Chat = One Session Log:** If duplicates appear, merge immediately.
+- **2026-01-21 Shared Observer Masking:** Derive "server-fetched" from `dataUpdatedAt`, not just local `queryFn` execution.
+- **2026-01-21 Coverage Test Fixes:** Re-query DOM after state updates. Align mock typings with real signatures.
+- **2026-01-18 Multi-Key Invalidation:** When updating shared data across components with different query keys, invalidate ALL relevant keys.
+- **2026-01-18 Cache Desync Pattern:** `setQueryData` + `invalidateQueries` across all optimistic locations. Applied to 6 locations app-wide.
+- **2026-01-18 Focus Mode Jumping:** Global `refetchOnMount: 'always'` causes excessive refetches. Check global data config first when debugging UI jumping.
+- **2026-01-17 Tooltip Boundary Detection:** For scrollable containers, use `getBoundingClientRect()` + automatic repositioning (above→below, left→right).
+- **2026-01-17 Offline Query Guard:** Use `networkMode: 'offlineFirst'` instead of `enabled: false` offline — preserves cache access.
+- **2026-01-17 Debug Logging:** `debugLog()` from `@/utils/debugMode` with user toggle in settings.
+- **2026-01-16 Workbox Timeout:** Set `networkTimeoutSeconds: 1` for fast offline fallback.
+- **2026-01-15 Offline Structure:** Offline pages must read from persisted React Query cache, not short-circuit on offline status.
+- **2026-01-15 QueryClientProvider in Tests:** Any component using React Query hooks requires `QueryClientProvider` in test wrapper.
+- **2026-01-15 Workbox ESLint:** Add `public/workbox-*.js` to ESLint ignores.
+- **2026-01-15 lcov.info:** Trust `frontend/coverage/lcov.info` for per-file line coverage verification.
+- **2026-01-15 DnD Coverage Ceiling:** Accept unreachable branches (~95%) rather than forcing invalid inputs for 100%.
+- **2026-01-14 Analytics Refactor:** Extract pure logic into utilities, keep UI thin, validate with tests + real-world parity.
+- **2026-01-14 Refresh Must Match Data Source:** Refresh actions must update the same data source the UI section renders.
+- **2026-01-12 Async UI Testing:** `fireEvent.change` for reliable input. `await screen.findBy*` over `waitFor(() => getBy*)`.
+- **2026-01-11 JSDOM window override:** `Object.defineProperty(global, 'window', ...)` for SSR branch coverage.
+- **2026-01-11 CSS Grid Alignment:** Fixed widths for metadata columns, single `1fr` for flexible content.
+- **2026-01-11 i18n Mount Timing:** Use `waitFor` + `getAllByText` for labels that render after mount.
+- **2026-01-11 Conditional Visual States:** Test both true/false branches with className assertions via ARIA labels.
+- **2026-01-11 Threshold Ordering:** Multi-threshold triggers: evaluate from most restrictive (largest) to least.
+- **2026-01-11 exhaustive-deps Fix:** Functional update `setState(prev => ...)` to read state without dependency.
+- **2026-01-11 Decoupling Complex Logic:** Extract stateful interactions → custom hooks, pure logic → utilities. Verify with targeted tests.
+- **2026-01-07 AudioRecorder Test Timing:** Wait for state-driven DOM before keyboard assertions. `as unknown as MediaQueryList` for partial Web API mocks.
+- **2026-01-11 Dynamic UI Class Tests:** Re-query inside `waitFor` + `data-testid` anchors for dynamic class assertions.
+- **2026-02-01 Mocking next/server:** Mock `NextRequest`/`NextResponse` in Jest for Route Handler tests.
+- **2026-02-01 toBeEnabled Before Click:** Always `waitFor(() => expect(btn).toBeEnabled())` before clicking async-dependent buttons.
+- **2026-02-02 Coverage Blind Spots:** High project-wide coverage hides zero-coverage cliffs in specific files. Enforce ≥80% per file.
+- **2026-02-02 Test Rendered Reality:** With i18n mocks returning fallbacks, assert against rendered text, not translation keys.
 
 ---
 
-### 2026-02-01 Mocking next/server in Jest
-**Problem:** `route.test.ts` failed with `Response.json is not a function` because Jest's environment (JSDOM/node) doesn't polyfill the complete Next.js Request/Response API.
-**Solution:** Explicitly mock `next/server` with a custom `NextRequest` class and `NextResponse` object that mimics the production API's behavior (`json()` method).
-**Why it worked:** The test environment now has a working implementation of the API surface used by the route handler.
-**Principle:** For Next.js Route Handlers tested in Jest, mocking `next/server` is often more reliable than relying on partial polyfills.
-
-### 2026-02-01 Race Conditions in UI Tests (toBeEnabled)
-**Problem:** `StepByStepWizard` test failed because it clicked "Generate Audio" immediately after an async state update, but the button was still disabled/loading or not fully interactive.
-**Solution:** Added `expect(btn).toBeEnabled()` inside a `waitFor` block before the click action.
-**Why it worked:** `waitFor` retries until the assertion passes, effectively waiting for the async state to settle and the UI to become interactive.
-**Principle:** Always verify that a button is interactive (`toBeEnabled()`) inside `waitFor` before clicking it in tests, especially if its state depends on async operations.
-
-### 2026-02-02 Coverage Blind Spots in Utility Files
-**Problem:** `exportContent.ts` had passing tests but only 56% coverage, effectively hiding the broken "Plan" export logic which had zero tests.
-**Attempts:** Relied on existing test suite which passed, overlooking that the specific "Plan" branch was never entered.
-**Solution:** Enforced strict ≥80% coverage for changed files. This forced writing new tests that immediately revealed the logic gap.
-**Why it worked:** Coverage metrics are a heatmap of confidence; forcing green on the specific file ensures no logic branch is left behind.
-**Principle:** **Coverage Blind Spots:** High project-wide coverage can hide zero-coverage cliffs in specific files; enforce strict per-file thresholds (≥80%) for modified files to reveal these gaps.
-
-### 2026-02-02 Test Fidelity vs Translation Mocks
-**Problem:** `ExportTxtModal` test failed because it queried for a button by its translation key (`export.formatMarkdown`), but the mock was configured to return the fallback text ("Markdown").
-**Solution:** Updated the test assertion to query for the rendered text ("Markdown"), matching what the user (and the DOM) actually sees.
-**Why it worked:** The test now verifies the *outcome* of the render (text is present) rather than an implementation detail (key is passed), which is more robust.
-**Principle:** **Test Rendered Reality:** When testing UI with i18n mocks that return fallbacks, assert against the fallback text (what the user sees) rather than the translation key.
-
-### 2026-02-24 Toggle Switch: Overflow Is Not Optional
-**Problem:** All 5 settings toggle switches rendered broken — enabled state showed the thumb cut off on the right edge; disabled state showed a barely-visible gray circle (white thumb on light-gray background).
-**Attempts:** The original pattern used `h-4 w-4 / translate-x-6 / translate-x-1` without `overflow-hidden` on the pill container.
-**Solution:** Fixed all toggles to use `h-5 w-5 / translate-x-5 / translate-x-0` with `border-2 border-transparent` on the pill (gives extra 4px room), `flex-shrink-0`, focus rings, and `shadow-lg` on the thumb.
-**Why it worked:** `translate-x-6` (24px) + `w-4` (16px) = 40px right edge, but the pill is only `w-11` (44px) with padding, so the thumb technically fit — but visually the pill container had no `overflow-hidden`, so the thumb animated outside the pill's visible area on some renderers. The correct Headless UI pattern keeps the thumb 1px inside on each side.
-**Principle:** For toggle switches: use `border-2 border-transparent` on the pill (not `overflow-hidden`), `translate-x-5 / translate-x-0` for `w-11` rails, and `h-5 w-5` thumbs. This is the Headless UI canonical pattern.
-
-### 2026-02-24 Smart Back Navigation: router.back() with URL Fallback
-**Problem:** The Settings page "Back" button always linked statically to `/dashboard`, ignoring that users navigated there from sermons, series, and other pages.
-**Solution:** Replaced the `<Link href={to}>` with a `<button onClick>` that calls `router.back()` when `window.history.length > 1`, and falls back to `router.push(to)` when history is empty (direct page load). Made the `to` prop optional with `/` as default.
-**Why it worked:** `window.history.length > 1` reliably detects whether the user has a previous page to return to. `router.back()` restores the browser's native back behavior (position, scroll, state).
-**Principle:** For "Back" navigation in settings/modal pages, prefer `router.back()` over a hardcoded URL. Always keep a fallback URL for direct-load cases where history stack is empty.
-
-### 2026-02-24 Beta Feature Toggle Pattern (UserSettings + Settings Page)
-**Problem:** New beta features (Structure Preview) needed to be hidden by default and only accessible via user account settings — the same pattern as Prep Mode and Audio Generation.
-**Solution:** (1) Add `enableStructurePreview?: boolean` to `UserSettings` model. (2) Add `updateStructurePreviewAccess` + `hasStructurePreviewAccess` to `userSettings.service.ts`. (3) Expose `updateStructurePreviewAccess` from `useUserSettings` hook. (4) Create `StructurePreviewToggle.tsx` following the `PrepModeToggle` template. (5) Add i18n keys. (6) Import into `settings/page.tsx`.
-**Why it worked:** Following the existing pattern (Prep Mode, Audio Generation, Groups) ensured consistent architecture, Firestore schema, and UI placement.
-**Principle:** New beta feature flags follow a strict 5-step pattern: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`. Use `PrepModeToggle` as the canonical template.
-
-### 2026-02-24 Series Card Tinted Backgrounds with hex-to-rgba
-**Problem:** Series cards all looked the same (white/gray-800) despite each series having a unique `color` field shown only as a tiny 2.5px dot in the header.
-**Solution:** Added a `hexToRgb` pure helper that converts `#rrggbb` / `#rgb` to `{r,g,b}`. Applied computed inline styles: `backgroundColor: rgba(r,g,b,0.07)` and `borderColor: rgba(r,g,b,0.28)` in light mode. For dark mode, added an absolutely-positioned overlay div with `rgba(r,g,b,0.13)` + `opacity-0 dark:opacity-100` (Tailwind's `dark:` variant doesn't apply to inline styles, so an overlay div was necessary).
-**Why it worked:** Inline styles bypass Tailwind's purge for dynamic values. The overlay div technique is required for dark-mode dynamic colors because Tailwind's `dark:` variant cannot be applied to dynamically computed `rgba()` values in `style` props.
-**Principle:** For dynamic color tinting with Tailwind dark mode: apply light tint via `style={{ backgroundColor: rgba(..., 0.07) }}`, and apply dark tint via a sibling `div` with `className="opacity-0 dark:opacity-100"` and the same inline background color — because `dark:` variants cannot be applied to dynamic inline style values.
-
-### 2026-02-24 TRIZ+IFR Split Button — CSS Wrapping vs. Deep Refactor
-**Problem:** Two separate UI components (amber button + AudioRecorder) were wrapped in a shared `div` with `overflow-hidden` + `rounded-xl` to visually look like one button. User immediately felt it was "two parts glued together, not one button" — the internal shadows and independent hover states gave away the seam.
-**Attempts:** Added `ring-1` border around wrapper, removed `shadow` from inner button via Tailwind arbitrary selectors `[&_button.min-w-\\[200px\\]]:shadow-none`. Still felt fake.
-**Solution:** Added `splitLeft?: React.ReactNode` prop to `AudioRecorder`. When `splitLeft` is provided and state is `idle`, `AudioRecorder` renders a single `<div className="flex rounded-xl overflow-hidden shadow-lg">` containing both `{splitLeft}` and its own green button inline — one DOM tree, one shadow, one border-radius. When recording starts, `splitLeft` disappears naturally (no external logic needed).
-**Why it worked:** IFR principle: "the system does not exist but the function is performed." The split button is not an external container — it is a rendering mode that `AudioRecorder` itself owns. One component → one DOM tree → true visual unity.
-**Principle:** CSS wrapping (overflow-hidden + shared border-radius) creates visual unity only at the surface. True split-button unity requires the component that owns state to also own the split rendering — pass a `renderLeft`/`splitLeft` slot prop so the component renders both parts in a single DOM subtree.
-
-### 2026-02-26 Canonical URL Migration: /dashboard → /sermons
-**Problem:** The app's main sermons list was served at `/dashboard` (a legacy name), while `/sermons` merely redirected to `/dashboard`. This inverted the semantic expectations — users and navigation all pointed to `/dashboard` instead of the more intuitive `/sermons`.
-**Attempts:** N/A — no false starts; the approach was clear: swap the pages and update all hardcoded references.
-**Solution:** (1) Moved full page content from `/dashboard/page.tsx` to `/sermons/page.tsx`. (2) Replaced `/dashboard/page.tsx` with a `redirect('/sermons')` for backward compatibility. (3) Found and updated all 8 source files referencing `/dashboard` as a navigation target (`navConfig.ts`, `Breadcrumbs.tsx`, `PublicRoute.tsx`, `page.tsx` (landing), `DeleteSermonButton.tsx`, `PreachingTimer.tsx`). (4) Updated 5 test files to import the new page location and expect `/sermons` URLs. All 2660 tests pass; lint clean.
-**Why it worked:** A systematic grep-first approach (`/dashboard` in quotes) found every hardcoded reference before changing anything. Keeping the old page as a redirect ensures backward compatibility with bookmarks and browser history.
-**Principle:** When migrating a canonical URL, first find all references via grep, then: (1) move the real content to the new URL, (2) make the old URL a `redirect()`, (3) update all hardcoded navigation references, (4) update tests last — they're a safety net, not a source of truth. Always preserve the old URL as a redirect for backward compatibility.
-
----
-
-
-## 🔄 Short-Term Memory (Processing) — На осмыслении
-
-> Lessons которые нужно обработать. Группировать похожие, извлекать принципы.
-
-### Focus Mode & Sermon Structure Integrity (3 lessons)
-**Common Pattern:** Desynchronization between Focus Mode UI and sermon data models, often due to locale-specific logic or sorting overrides.
-- Canonical structural tags (2026-01-26)
-- Respecting structure-driven order (2026-01-26)
-- Aligning Sidebar elements (2026-01-26)
-
-**Emerging Principle:** Focus mode is a specialized view of core sermon data; it must consume the same canonical IDs and sequence ordering as the main workspace to prevent phantom bugs.
-
-### UI/UX Consistency & Refactoring (3 lessons)
-**Common Pattern:** UI changes that affect layout, alignment, and component structure
-- Badge alignment in wrapped outline titles (2026-01-04)
-- Focus sidebar refactor boundaries (2026-01-04)
-- Safe UI modularization preserves DOM (2026-01-05)
-
-**Emerging Principle:** UI refactoring requires preserving DOM structure and testing logical sections across all modes.
-
-### Testing Quality & Coverage (5 lessons)
-**Common Pattern:** Test failures and coverage gaps after changes
-- Coverage requires changed-line verification (2026-01-04)
-- Duplicate label tests need specific queries (2026-01-05)
-- Mock override must beat default beforeEach (2026-01-05)
-- Compile failures from typed test fixtures (2026-01-05)
-- Dynamic UI class test failures (2026-01-11)
-- Coverage ceiling for DnD handlers with normalized inputs (2026-01-15)
-
-**Emerging Principle:** Tests must explicitly verify changed lines of dynamic UI (widths/heights) using fresh queries inside `waitFor` and stable anchors.
-
-### Offline Mode Implementation Patterns (6 lessons)
-**Common Pattern:** Offline functionality broken by aggressive online-only guards and cache access issues
-|- AddThoughtManual button disabled offline due to useTags enabled condition (2026-01-17)
-|- Offline structure requires React Query cache alignment (2026-01-15)
-|- React Query tests require QueryClientProvider (2026-01-15)
-|- Faster offline fallback requires shorter Workbox timeout (2026-01-16)
-|- Ignore generated Workbox in ESLint (2026-01-15)
-|- Offline banner requires offline status hook (2026-01-15)
-
-**Emerging Principle:** Offline features require: (1) `networkMode: 'offlineFirst'` for cache-first queries, (2) QueryClientProvider in tests, (3) Short Workbox timeouts, (4) Proper ESLint ignores for generated files.
-
-### Logic Decoupling & Protocol 150 (3 lessons)
-**Common Pattern:** Extracting logic from monolithic components and validating with multi-layered testing.
-- Refactor handleSaveEdit logic extraction (2026-01-11)
-- Plan prompt refactor regression guard (2026-01-04)
-- Calendar Analytics pure-logic extraction + parity verification (2026-01-14)
-
-**Emerging Principle:** Decoupling logic into hooks/utils reduces cognitive complexity and enables focused tests; reinforce with full-suite + parity checks for confidence.
-
-### Data Consistency (1 lesson)
-**Pattern:** Export order divergence from UI order
-- Export order mismatch in focus mode (2026-01-04)
-
-**Emerging Principle:** Export ordering should match UI ordering source to prevent divergence.
-
-### Dashboard Sync & Optimistic Consistency (3 lessons)
-**Common Pattern:** Dashboard data feels inconsistent when mutations are treated as one-shot requests instead of a full sync lifecycle (`pending` -> `success/error` -> recovery).
-- Dashboard preached status sync issue fixed (2026-01-18)
-- IndexedDB cache desync issues across app fixed (2026-01-18)
-- Dashboard optimistic sync metadata + retry/dismiss flow (2026-02-11)
-
-**Emerging Principle:** Dashboard mutations should be modeled as explicit sync state machines with optimistic apply, rollback, and recovery controls.
-
-### Refactoring Safety (1 lesson)
-**Pattern:** Regression after helper extraction
-- Plan prompt refactor regression guard (2026-01-04)
-
-**Emerging Principle:** After helper extraction, audit downstream usage and add targeted tests for new paths.
-
-
----
-
-## 💎 Long-Term Memory (Operating Protocols) — Интернализированные правила
-
-> Инструкции по взаимодействию с проектом. Формат: "Контекст → Протокол → Причина"
-
-### 📝 Debugging Protocols
-
-**Debug Logging**
-*   **Context:** Debug logging is used to track the flow of data and the state of the application.
-*   **Protocol:** Use `debugLog` for logging debug messages.
-*   **Reasoning:** Debug logging is used to track the flow of data and the state of the application.
-
-### 🔧 Code Quality & Linting Protocols
-
-**String Duplication Management**
-*   **Context:** Проект использует SonarJS правила.
-*   **Protocol:** При появлении 3+ одинаковых строк — **ОБЯЗАТЕЛЬНО** выносить в константу в начале файла.
-*   **Reasoning:** Предотвращает ошибки копипасты и усложнение поддержки (`sonarjs/no-duplicate-string`).
-
-**Cognitive Complexity Control**
-*   **Context:** React компоненты и бизнес-логика.
-*   **Protocol:** Если Cognitive Complexity > 20 (или warning):
-    *   JSX: Выносить условные блоки в отдельные компоненты/рендер-хелперы.
-    *   Logic: Использовать map/object lookups вместо вложенных тернарников.
-*   **Reasoning:** Поддерживаемость кода. В React условный рендеринг в основном теле компонента сильно увеличивает сложность.
-
-**Component Prop Cleanup**
-*   **Context:** Удаление неиспользуемых пропсов.
-*   **Protocol:** Действовать каскадно: Interface → Destructuring → Usage (grep) → Tests.
-*   **Reasoning:** Оставленные "висячие" пропсы создают путаницу в API компонента.
-
-**ESLint-Induced Test Failures**
-*   **Context:** Автоматические фиксы линтера.
-*   **Protocol:** После применения ESLint fixes — **НЕМЕДЛЕННО** запускать тесты.
-*   **Reasoning:** Авто-фиксы могут ломать логику (например, перемещение хуков или изменение порядка импортов).
-
-### 🧪 Testing Protocols
-
-**Jest Mocking Architecture**
-*   **Context:** Module loading phase в Jest.
-*   **Protocol:** В `jest.mock()` использовать **ТОЛЬКО** строковые литералы. Переменные объявлять внутри фабрики или использовать `doMock`.
-*   **Reasoning:** Переменные вне мока не инициализированы в момент поднятия мока (`ReferenceError`).
-
-**Named Export Mock Fidelity**
-*   **Context:** React components imported as named exports.
-*   **Protocol:** Jest mocks must export the same named symbol (not default) when the real module uses named exports.
-*   **Reasoning:** Mismatched export shapes yield `undefined` components and "Element type is invalid" render failures.
-
-**Browser API Simulation**
-*   **Context:** JSDOM окружение.
-*   **Protocol:** Для API, отсутствующих в JSDOM (`matchMedia`, `ResizeObserver`, `clipboard`):
-    *   Создавать полные моки с методами-заглушками.
-    *   Тестировать fallback-сценарии (если API недоступно).
-*   **Reasoning:** Компоненты падают при рендеринге без этих API.
-
-**Framework Constraints Priority**
-*   **Context:** Конфликт "Чистый код" vs "Требования тестов".
-*   **Protocol:** Если требования Jest/RTL конфликтуют с красотой кода (например, дублирование моков) — **ВЫБИРАТЬ ТРЕБОВАНИЯ ТЕСТОВ**.
-*   **Reasoning:** Работающие тесты важнее эстетики в тестовой инфраструктуре.
-
-**Coverage Scope for Types**
-*   **Context:** Jest coverage with TypeScript models/interfaces.
-*   **Protocol:** Exclude types-only modules from `collectCoverageFrom`. Cover only executable runtime code; remove the exclusion if a file gains runtime logic.
-*   **Reasoning:** Types are erased at compile time, so coverage can never hit them.
-
-**Agent-Created Tests Must Run**
-*   **Context:** Я добавляю новые тесты.
-*   **Protocol:** Всегда запускать созданные мной тесты до ответа пользователю; добиваться green.
-*   **Reasoning:** Пользователь ожидает подтвержденный результат и зеленый тестовый статус.
-
-**Translation Mocking**
-*   **Context:** `react-i18next` тесты.
-*   **Protocol:** Мокать `t` функцию так, чтобы она возвращала ключ или интерполировала параметры, если они переданы.
-*   **Reasoning:** Тесты часто проверяют наличие конкретного текста, который зависит от переданных переменных.
-
-### 🔄 React & State Management Protocols
-
-**useEffect Safety**
-*   **Context:** Dependency arrays.
-*   **Protocol:** **НИКОГДА** не использовать вычисляемые объекты/массивы в deps. Конвертировать ID массивов в строки (`ids.join(',')`) или использовать `useMemo`.
-*   **Reasoning:** Бесконечные циклы ре-рендеринга из-за нестабильных ссылок.
-
-**State Transition Integrity**
-*   **Context:** Отслеживание изменений стейта (например, открытие таймера).
-*   **Protocol:** Использовать `useRef` для хранения предыдущего значения и сравнивать с текущим внутри эффекта.
-*   **Reasoning:** Эффекты запускаются чаще, чем кажется. Ref гарантирует реакцию только на *изменение*.
-
-**Hook Import Verification**
-*   **Context:** Добавление `useMemo`/`useCallback`.
-*   **Protocol:** После добавления хука — **ЯВНО** проверить секцию импортов.
-*   **Reasoning:** Runtime crash (`React.useMemo is not a function`) — частая ошибка при рефакторинге.
-
-**Protocol 151: Online-First, Offline-Cache Strategy**
-*   **Context:** Shared queries with persistent local cache (IndexedDB) and eventually consistent backend (Firestore).
-*   **Concept:** Приоритет актуальности данных при наличии сети над скоростью первоначальной отрисовки из кэша. Система не доверяет локальному кэшу в онлайн-режиме до подтверждения от сервера, предотвращая отображение устаревших (stale) состояний, но мгновенно переключается на кэш при потере связи, обеспечивая непрерывность работы.
-*   **Protocol:** 
-    1.  **Fetching:** Use `useServerFirstQuery` wrapper to hide cached data when online until fresh server data arrives. Reveal internal cache only when offline or if a fetch fails.
-    2.  **Implementation:** Use a **Hybrid Ref/State** pattern in wrappers. Use `useRef` for immediate "serverFetched" status (needed for tests and synchronous logic) and `useState` (render trigger) for declarative UI reactivity to external cache updates (`dataUpdatedAt`).
-    3.  **Mutations/Updates:** Always use: `await cancelQueries(key)` → `setQueryData(key, updater)` → `invalidateQueries({ queryKey: key, refetchType: 'none' })`.
-*   **Reasoning:** Background refetches in eventually consistent systems often return stale data before a server update propagates, causing "disappear-reappear" flickers. This protocol ensures local UI integrity during the consistency window while maintaining durable offline support via marking queries as "success" for IndexedDB persistence without triggering an immediate destructive refetch.
-
-### 🎨 UI/UX Design System Standards
-
-**Modal Auto-Grow with Scoped Scroll**
-*   **Context:** Модальные формы, где textarea должна расти до лимита и скроллиться только она.
-*   **Protocol:** Делать фиксированные header/meta/footer + textarea; считать max-height textarea как `90vh - header - meta - footer - padding`; авто-растягивать textarea до лимита; включать scroll **только** внутри textarea после достижения лимита.
-*   **Reasoning:** Убирает вложенные скроллы и предотвращает UI скачки, сохраняя ожидаемый UX (скроллится только целевой блок).
-
-**Multi-line Truncation**
-*   **Context:** Текст в списках/карточках (особенно с иконками).
-*   **Protocol:** Использовать: `line-clamp-X` + `break-words` + `flex-1` (или `min-w-0`). **ИЗБЕГАТЬ** `truncate` (только для 1 строки).
-*   **Reasoning:** `truncate` ломает верстку если текст длиннее одной строки, скрывая важный контекст.
-
-**Stable DOM Structure**
-*   **Context:** Conditional rendering (Empty vs Loaded states).
-*   **Protocol:** Поддерживать одинаковый корневой тег (обычно `div`) и структуру оберток для обоих состояний.
-*   **Reasoning:** Предотвращает Layout Shifts и упрощает CSS селекторы/тесты.
-
-**Input Interaction Consistency**
-*   **Context:** Интерактивные элементы (теги, ссылки).
-*   **Protocol:** Любой кликабельный инпут должен поддерживать: Click + Keyboard (Enter).
-*   **Reasoning:** Accessibility (a11y) requirement.
-
-**Card Actions Hierarchy**
-*   **Context:** Длинные списки или контент.
-*   **Protocol:** Кнопки действий (Edit/Delete) размещать в **Header**, а не внизу.
-*   **Reasoning:** Пользователь не должен скроллить 10к слов чтобы найти кнопку редактирования.
-
-**Tooltip Overflow Safety**
-*   **Context:** Tooltip/Popover внутри карточек и контейнеров.
-*   **Protocol:** Не использовать `overflow-hidden` на контейнерах, где tooltip выходит за границы. Альтернатива — рендер в portal.
-*   **Reasoning:** Иначе tooltip визуально обрезается и теряет информативность.
-
-### 📆 Calendar Module Protocols
-
-**View vs Selection Separation**
-*   **Context:** Навигация календаря.
-*   **Protocol:** Разделять `viewedMonth` (что видим) и `selectedDate` (что выбрали). Передавать `viewedMonth` в дочерние списки.
-*   **Reasoning:** Пользователь может смотреть события января, выбрав дату в декабре. Списки должны показывать январь.
-
-**Single Source Date Pipeline**
-*   **Context:** Маркеры месяца, правая панель событий и аналитика календаря.
-*   **Protocol:** Нормализовать даты проповедей до `YYYY-MM-DD` на границе API/Repository и строить month-view/list/analytics из одного нормализованного `eventsByDate` пайплайна. Внешние status maps использовать только как fallback, если в event payload нет текущей даты.
-*   **Reasoning:** Убирает расхождения по дням (левый календарь vs правый список) и исключает смещения из-за времени/таймзоны.
-
-**Series Integration Consistency**
-*   **Context:** Вторичные представления (Календарь, Агенда).
-*   **Protocol:** Наследовать визуальные паттерны (цвета серий, бейджи) из Dashboard. Использовать `useSeries`.
-*   **Reasoning:** Пользователь должен узнавать серию проповеди мгновенно, вне зависимости от экрана.
-
-**Book Parsing Guardrails**
-*   **Context:** Calendar analytics book distribution from freeform `sermon.verse` text.
-*   **Protocol:** Accept book matches only when followed by a chapter number (or when the input is book-only) and keep fuzzy prefix matching to short tokens (<=4 chars).
-*   **Reasoning:** Prevents accidental matches on common words like "Иисуса" while preserving abbreviation support.
-
-### 🌍 Localization (i18n) Protocols
-
-**Native Pluralization Rule**
-*   **Context:** Next.js + i18next engine.
-*   **Protocol:** Использовать суффиксы `_one`, `_few`, `_many`, `_other`. **ЗАПРЕЩЕНО** использовать ICU синтаксис `{{count, plural...}}` внутри строки.
-*   **Reasoning:** ICU формат часто вызывает ошибки парсинга/гидратации в текущем стеке.
-
-**Transactional Updates**
-*   **Context:** Добавление/изменение ключей.
-*   **Protocol:** `grep` ключа → Обновление **ВСЕХ ТРЕХ** файлов (`en`, `ru`, `uk`) в одном коммите.
-*   **Reasoning:** CI тесты покрытия переводов упадут, если пропустить язык.
-
-**Export Output Localization**
-*   **Context:** Экспорт документов (Word/PDF/TXT) и экспортные UI-элементы (кнопки, тултипы, aria labels).
-*   **Protocol:** Все текстовые элементы экспорта должны идти через i18n ключи, а дата форматироваться по локали пользователя. Запрещено хардкодить язык в экспортируемых документах или экспортных UI-ярлыках.
-*   **Reasoning:** Экспорт — часть пользовательского интерфейса; локаль не должна ломать читаемость и ожидания пользователя.
-
-### 🔧 Developer Experience Protocols
-
-**Dynamic Debug Logging**
-*   **Context:** Отладка в production с пользовательским контролем.
-*   **Protocol:** Используй `debugLog()` из `@/utils/debugMode` вместо прямого `console.log`. Логирование включается/выключается через настройки пользователя (Debug Mode Toggle).
-*   **Auto-Fix Rule:** Любой `console.log` в прод‑коде заменять на `debugLog()` без запроса подтверждения.
-*   **Reasoning:** Позволяет пользователям включать подробное логирование для troubleshooting без засорения production консоли. Сохраняет performance когда отключено.
-
-### 🧭 Architecture & Navigation Protocols
-
-**Next.js 15 Async Params**
-*   **Context:** Динамические роуты.
-*   **Protocol:** Всегда `await params` перед использованием. Тип: `Promise<{ id: string }>`.
-*   **Reasoning:** Требование Next.js 15. Синхронный доступ вызывает ворнинги/ошибки.
-
-### 🤖 AI Integration Protocols
-
-**Structured Output Enforcement**
-*   **Context:** Генерация данных (мысли, теги).
-*   **Protocol:** Использовать только `zodResponseFormat` + `beta.chat.completions.parse()`.
-*   **Reasoning:** Regex/JSON parsing из текста ненадежны. Zod гарантирует схему.
-
-**Prompt Blueprint Modularity**
-*   **Context:** Анализ и улучшение промптов по блокам (language/context/style/instructions).
-*   **Protocol:** Собирать system/user prompt как blueprint из именованных блоков (`blockId`, `category`, `source`, `hash`, `length`) и передавать в join point.
-*   **Reasoning:** Блочная структура делает качество промпта измеряемым и позволяет улучшать конкретные модули без полной переписи.
-
-**Non-Blocking Telemetry Sidecar**
-*   **Context:** Логирование AI telemetry не должно ломать пользовательский флоу.
-*   **Protocol:** Писать telemetry в Firestore асинхронно (best-effort); любые ошибки persistence не влияют на основной AI response path.
-*   **Reasoning:** Observability полезна только если не деградирует reliability и latency основного функционала.
-
-**Scripture Reference Handling**
-*   **Context:** Парсинг библейских ссылок.
-*   **Protocol:** Запрашивать названия книг **НА АНГЛИЙСКОМ** в промптах.
-*   **Reasoning:** Наш `referenceParser.ts` работает с английскими названиями для унификации.
-
-**UI Refactoring Preservation**
-*   **Context:** Рефакторинг UI компонентов с DOM-сенситивными тестами.
-*   **Protocol:** Сохраняй ключевые классы/DOM структуру и проверяй логические секции в обоих режимах.
-*   **Reasoning:** Предотвращает поломку UI и тестов при рефакторинге фокус-мода.
-
-
-**Test Coverage Verification**
-*   **Context:** Проверка что изменения покрыты тестами.
-*   **Protocol:** Добавляй таргетированные тесты для новых DOM структур/классов и проверяй покрытие измененных строк.
-*   **Reasoning:** Зеленые тесты могут не покрывать логику; явные assertions гарантируют выполнение.
-
-**Mock Override Strategy**
-*   **Context:** Переопределение shared моков в тестах.
-*   **Protocol:** Используй `mockReturnValue` или reset внутри теста для полного переопределения beforeEach мока.
-*   **Reasoning:** Гарантирует использование intended данных, а не дефолтного fallback.
-
-**UI Label Duplication Handling**
-*   **Context:** Тесты с повторяющимися лейблами в UI.
-*   **Protocol:** Используй `getAllByText` или специфические селекторы когда UI дублирует лейблы.
-*   **Reasoning:** Тесты перестают предполагать уникальность и соответствуют rendered DOM.
-
-**Type-Safe Test Fixtures**
-*   **Context:** TypeScript тесты с неполными моками.
-*   **Protocol:** Трактуй test fixtures как first-class types — обновляй моки вместе с изменениями модели.
-*   **Reasoning:** Tests являются частью TS программы; соблюдение контрактов модели убирает структурные ошибки.
-
-**Export Order Alignment**
-*   **Context:** Согласование порядка экспорта с UI порядком.
-*   **Protocol:** Когда UI порядок определяется `ThoughtsBySection`, экспорт должен использовать тот же источник порядка.
-*   **Reasoning:** Предотвращает расхождения между UI и экспортированными данными.
-
-**Helper Extraction Audit**
-*   **Context:** Рефакторинг с извлечением helper функций.
-*   **Protocol:** После извлечения хелперов проверяй downstream использование и добавляй таргетированные тесты для новых путей.
-*   **Reasoning:** Рефакторинг сохраняет поведение, новые тесты ловят пропущенные handoff между outputs.
+## 💎 Long-Term Memory (Operating Protocols)
+
+> Format: **Name:** instruction. *(reason)*
+
+### 📝 Debugging
+- **Debug Logging:** Use `debugLog()` from `@/utils/debugMode`, never `console.log`. Auto-replace any `console.log` found.
+
+### 🔧 Code Quality
+- **String Duplication:** 3+ identical strings → extract to constant. *(sonarjs/no-duplicate-string)*
+- **Cognitive Complexity > 20:** JSX → extract sub-components. Logic → map/object lookups over nested ternaries.
+- **Prop Cleanup:** Interface → Destructuring → Usage (grep) → Tests. Remove orphaned props cascadingly.
+- **Post-Lint Test Run:** After ESLint auto-fixes, IMMEDIATELY run tests. *(auto-fixes can break logic)*
+
+### 🧪 Testing
+- **Jest Mock Hoisting:** `jest.mock()` uses ONLY string literals. Variables inside factory or use `doMock`. *(ReferenceError at hoist time)*
+- **Named Export Fidelity:** Mock must export same symbol shape (named vs default) as real module. *(undefined component otherwise)*
+- **Browser API Simulation:** For missing JSDOM APIs (`matchMedia`, `ResizeObserver`, `clipboard`) create full mocks with stub methods. Test fallbacks.
+- **Framework > Aesthetics:** Jest/RTL requirements win over "clean code" in test infrastructure.
+- **Types-Only Exclusion:** Exclude types-only modules from `collectCoverageFrom`. Add back if file gains runtime logic.
+- **Agent Tests Must Run:** Always run created tests and achieve green before responding.
+- **Translation Mock:** `t` function must return key or interpolate params if passed.
+
+### 🔄 React & State
+- **useEffect Deps:** NEVER use computed objects/arrays. Convert to `.join(',')` or `useMemo`. *(infinite render loops)*
+- **State Transitions:** Use `useRef` for previous value, compare in effect to react only on change.
+- **Hook Import Check:** After adding `useMemo`/`useCallback`, verify import section. *(runtime crash otherwise)*
+- **Online-First Protocol (151):** `useServerFirstQuery` hides cached data online until fresh fetch. Hybrid Ref/State: `useRef` for immediate status + `useState` for UI reactivity via `dataUpdatedAt`. Mutations: `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })`. *(prevents stale-data flicker in eventually consistent systems while maintaining offline support)*
+
+### 🎨 UI/UX
+- **Modal Auto-Grow:** Fixed header/meta/footer + textarea. `max-height: 90vh - fixed parts`. Scroll inside textarea only.
+- **Multi-line Truncation:** `line-clamp-X` + `break-words` + `flex-1`/`min-w-0`. Avoid `truncate` (single-line only).
+- **Stable DOM:** Same root tag structure for Empty vs Loaded states. *(prevents layout shifts)*
+- **Input Consistency:** Every clickable input must support Click + Keyboard (Enter). *(a11y)*
+- **Card Actions:** Edit/Delete in Header, not footer. *(user shouldn't scroll to find actions)*
+- **Tooltip Safety:** No `overflow-hidden` on tooltip containers. Use portal if needed.
+
+### 📆 Calendar
+- **View vs Selection:** Separate `viewedMonth` (what we see) from `selectedDate` (what was clicked). Pass `viewedMonth` to children.
+- **Single Date Pipeline:** Normalize to `YYYY-MM-DD` at API boundary. Build month-view/list/analytics from one `eventsByDate` pipeline.
+- **Series Consistency:** Inherit visual patterns (series colors, badges) from Dashboard via `useSeries`.
+- **Book Parsing:** Fuzzy prefix only for short tokens (≤4 chars) + require chapter number.
+
+### 🌍 i18n
+- **Pluralization:** `_one`/`_few`/`_many`/`_other` suffixes. NO ICU syntax.
+- **Transactional Updates:** `grep` key → update ALL THREE locale files (en/ru/uk) in one commit.
+- **Export Strings:** All export UI + document text through i18n + locale-aware dates. No hardcoded language.
+
+### 🧭 Architecture
+- **Next.js 15 Params:** Always `await params` before use. Type: `Promise<{ id: string }>`.
+
+### 🤖 AI Integration
+- **Structured Output:** Only `zodResponseFormat` + `beta.chat.completions.parse()`. No regex/JSON parsing from text.
+- **Prompt Blueprints:** Build system/user prompt as blueprint from named blocks (`blockId`, `category`, `source`, `hash`, `length`).
+- **Telemetry Sidecar:** Write to Firestore async (best-effort). Errors must not affect AI response path.
+- **Scripture References:** Request book names IN ENGLISH in prompts. *(referenceParser.ts uses English)*
+- **UI Refactor Safety:** Preserve key classes/DOM structure. Check logical sections in both modes.
+- **Test Coverage:** Add targeted tests for new DOM structures. Green tests ≠ covered logic.
+- **Mock Override:** Use `mockReturnValue` or reset inside test to fully override `beforeEach` mock.
+- **Label Duplicates:** Use `getAllByText` or specific selectors when UI duplicates labels.
+- **Type-Safe Fixtures:** Treat test fixtures as first-class types — update mocks with model changes.
+- **Export Order:** Use same ordering source (`ThoughtsBySection`) for export as for UI.
+- **Helper Extraction Audit:** After extraction, audit downstream usage + add targeted tests for new paths.
 
 ---
 
 ## 📋 Memory Management Rules
 
-### Pipeline Processing
-
-1. **New lessons** → записывать в Lessons (Inbox) СРАЗУ
-2. **3+ похожих lessons** → группировать в Short-Term для осмысления
-3. **Extracted principle** → переместить в Long-Term как Протокол
-4. **Processed lessons** → архивировать или удалять
-
-### Session Logs
-
-- **Single source:** Весь прогресс/исследования/решения идут в `.sessions/SESSION_[date]-[name].md`
-- **Session State:** Не используется в MEMORY.md
-
-### Session Start Checklist
-
-- [ ] **Review Protocols:** Прочитать Long-Term Memory (инструкции к проекту)
-- [ ] **Check Inbox:** Есть ли необработанные уроки?
-- [ ] **Load Session Log:** Открыть актуальный `.sessions/SESSION_[date]-[name].md`
-
-### Session End Checklist
-
-- [ ] **Capture Lessons:** Были ли решены неочевидные проблемы? → Inbox
-- [ ] **Update Session Log:** Записать текущий прогресс и решения в `.sessions/SESSION_[date]-[name].md`
-- [ ] **Commit:** Сохранить изменения MEMORY.md
+1. New lesson → Lessons Inbox immediately
+2. 3+ similar lessons → group, extract principle → Long-Term Protocol
+3. Processed lessons → archive or delete
+4. Session logs: `.sessions/SESSION_[date]-[name].md` — single source per chat
+5. **Session Start:** Read Long-Term Memory → Check Inbox → Load Session Log
+6. **Session End:** Capture lessons → Update Session Log → Commit
 
 ---
 
 ## 🏗️ Project Architecture Quick Reference
 
 **Key Directories:**
-- `app/components/navigation/` - DashboardNav, Breadcrumbs, navConfig
-- `app/components/skeletons/` - Loading UI placeholders (Grid/Focus modes)
-- `app/hooks/useDashboardOptimisticSermons.ts` - Dashboard optimistic mutation orchestrator (create/edit/delete/preach-status)
-- `app/models/dashboardOptimistic.ts` - Dashboard sync-state domain types (`pending`/`error`, operation tracking)
-- `locales/{en,ru,uk}/translation.json` - All UI strings
-- `config/schemas/zod/` - AI structured output schemas
-- `api/clients/` - AI integration clients
-- `app/(pages)/(private)/` - Auth-protected pages via `ProtectedRoute` layout
-- `app/(pages)/share/` - Public share pages (no auth)
-- `app/api/share/` - Public API endpoints (no auth, must sanitize output)
+- `app/components/navigation/` — DashboardNav, Breadcrumbs, navConfig
+- `app/components/skeletons/` — Loading UI placeholders
+- `app/hooks/useDashboardOptimisticSermons.ts` — Optimistic mutation orchestrator
+- `app/models/dashboardOptimistic.ts` — Sync-state types (`pending`/`error`)
+- `locales/{en,ru,uk}/translation.json` — All UI strings
+- `config/schemas/zod/` — AI structured output schemas
+- `api/clients/` — AI integration clients
+- `app/(pages)/(private)/` — Auth-protected pages
+- `app/(pages)/share/` — Public share pages (no auth)
+- `app/api/share/` — Public API endpoints (sanitize output)
 
-**Workspaces:**
-- `/dashboard` - Sermons list (main workspace)
-- `/series` - Series management
-- `/studies` - Bible notes workspace
-- `/groups` - Groups workspace (preview)
-- `/settings` - User settings
+**Workspaces:** `/sermons` (main) | `/series` | `/studies` | `/groups` (preview) | `/settings`
 
-**Sermon Structure Architecture:**
-- `app/(pages)/(private)/sermons/[id]/structure/hooks/` - Feature-specific hooks (e.g., `useSermonActions`, `usePersistence`)
-- `app/(pages)/(private)/sermons/[id]/structure/utils/` - Pure logic (e.g., `findOutlinePoint`, `buildItemForUI`)
-- `app/(pages)/(private)/sermons/[id]/structure/page.tsx` - Main page orchestrator
+**Sermon Structure:**
+- `sermons/[id]/structure/hooks/` — `useSermonActions`, `usePersistence`
+- `sermons/[id]/structure/utils/` — `findOutlinePoint`, `buildItemForUI`
+- `sermons/[id]/structure/page.tsx` — Main orchestrator
 
-- `app/(pages)/(private)/studies/constants.ts` - Shared study note constants and width utilities
-- `app/(pages)/(private)/studies/[id]/page.tsx` - Study Note Editor page (dedicated workspace)
-- `app/hooks/useFilteredNotes.ts` - Specialized hook for Bible note filtering and pagination logic
+**Studies:** `studies/constants.ts` (widths) | `studies/[id]/page.tsx` (editor) | `hooks/useFilteredNotes.ts`
 
 **Key Patterns:**
-- Tests: `npm run test` (NOT `npx jest` directly)
-- Colors: Use `@/utils/themeColors`, never hardcode
-- Auto-resize: Use `react-textarea-autosize` for growing textareas with `minRows`/`maxRows`
-- Modal Width: Use `getNoteModalWidth` helper for dynamic max-width based on content
-- Debug Logging: Use `debugLog()` from `@/utils/debugMode` instead of `console.log` for user-controllable debugging
-- Audio Generation Workflow: Sequential optimization in `api/sermons/[id]/audio/optimize/route.ts` using "tail context" for coherent transitions. Unified Batch Pattern (single request from client) prevents data duplication. Final TTS generation (parallel) in `api/sermons/[id]/audio/generate/route.ts`.
-- AI Prompt Analytics: `app/api/clients/promptBuilder.ts` builds modular prompt blueprints; `app/api/clients/structuredOutput.ts` is the canonical structured join point; `app/api/clients/aiTelemetry.ts` persists normalized input/output envelopes in Firestore (`ai_prompt_telemetry`) as best-effort non-blocking sidecar.
-- Structural Logic: Use `tagUtils.ts` (canonical IDs) and `sermonSorting.ts` (hierarchical order: Manual > Outline > Tags) for any logic involving sermon sections.
-- Reliable Persistence: Use the pattern `await cancelQueries` -> `setQueryData` -> `invalidateQueries({ refetchType: 'none' })` to ensure IndexedDB sync without flickering. Combine with `useServerFirstQuery` (Hybrid Ref/State pattern) to strictly prioritize server data while online.
-- Calendar Date Integrity: Keep preach dates as date-only (`YYYY-MM-DD`) and derive month markers + right-panel list + analytics from one normalized calendar event pipeline.
-- Dashboard Optimistic Pipeline: Use `useDashboardOptimisticSermons` to centralize optimistic mutations and render sync state in `app/components/dashboard/SermonCard.tsx` with retry/dismiss controls.
+- Tests: `npm run test` (NOT `npx jest`)
+- Colors: `@/utils/themeColors`, never hardcode
+- Auto-resize: `react-textarea-autosize` with `minRows`/`maxRows`
+- Modal Width: `getNoteModalWidth` helper
+- Debug: `debugLog()` from `@/utils/debugMode`
+- Audio: Sequential optimization with tail context → unified batch from client → parallel TTS
+- AI Analytics: `promptBuilder.ts` → `structuredOutput.ts` (join point) → `aiTelemetry.ts` (Firestore sidecar)
+- Structural Logic: `tagUtils.ts` (canonical IDs) + `sermonSorting.ts` (Manual > Outline > Tags)
+- Persistence: `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })` + `useServerFirstQuery`
+- Calendar: Date-only `YYYY-MM-DD` → one normalized pipeline
+- Dashboard Optimistic: `useDashboardOptimisticSermons` + `SermonCard.tsx` retry/dismiss
 - Comments: English only in code
-- Beta Feature Toggles: Follow 5-step pattern: `models.ts` (add `enable*?: boolean`) → `userSettings.service.ts` (add `update*Access` + `has*Access`) → `useUserSettings.ts` (expose mutation) → `components/settings/*Toggle.tsx` (use `PrepModeToggle` as template) → `settings/page.tsx` (import and render).
-- Dynamic Color Tinting (Tailwind + Dark Mode): For light mode, use inline style `backgroundColor: rgba(r,g,b,0.07)`. For dark mode, use an absolutely-positioned overlay `div` with `className="opacity-0 dark:opacity-100"` and the same inline rgba background — Tailwind `dark:` variants cannot be applied to dynamic inline `style` values.
-- Back Navigation: Use `router.back()` when `window.history.length > 1`, with `router.push(fallbackUrl)` for direct-load cases. Expose via `BackLink.tsx` component with optional `to` prop.
-- Toggle Switch Canonical Pattern: On `w-11` rail, use `border-2 border-transparent` + `flex-shrink-0` + focus ring. Thumb: `h-5 w-5 translate-x-5 / translate-x-0 shadow-lg`. Reference: Headless UI Switch component spec.
+- Beta Toggles: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`
+- Dynamic Color Tinting: Light = inline `rgba()`, Dark = overlay div with `opacity-0 dark:opacity-100`
+- Back Nav: `BackLink.tsx` with `router.back()` + fallback
+- Toggle Switch: `w-11` rail, `h-5 w-5` thumb, `translate-x-5/translate-x-0`, Headless UI spec
