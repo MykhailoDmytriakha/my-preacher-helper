@@ -125,41 +125,72 @@ export default function SeriesPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="rounded-full bg-blue-100 p-2.5 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200">
-            <BookOpenIcon className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.total')}</p>
-            <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.total}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="rounded-full bg-emerald-100 p-2.5 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200">
-            <ClipboardDocumentListIcon className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.active')}</p>
-            <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.active}</p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {/* Total Series */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-blue-100 p-2 dark:bg-blue-900/40 sm:mr-4 sm:p-3">
+              <BookOpenIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.series.stats.total')}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-2xl">
+                {stats.total}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="rounded-full bg-amber-100 p-2.5 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200">
-            <ClockIcon className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.drafts')}</p>
-            <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.drafts}</p>
+
+        {/* Active */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-indigo-100 p-2 dark:bg-indigo-900/40 sm:mr-4 sm:p-3">
+              <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.series.stats.active')}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-indigo-600 dark:text-indigo-300 sm:text-2xl">
+                {stats.active}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="rounded-full bg-purple-100 p-2.5 text-purple-700 dark:bg-purple-900/60 dark:text-purple-200">
-            <CheckCircleIcon className="h-5 w-5" />
+
+        {/* Drafts */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-amber-100 p-2 dark:bg-amber-900/40 sm:mr-4 sm:p-3">
+              <ClockIcon className="h-5 w-5 text-amber-600 dark:text-amber-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.series.stats.drafts')}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-amber-600 dark:text-amber-300 sm:text-2xl">
+                {stats.drafts}
+              </span>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('workspaces.series.stats.completed')}</p>
-            <p className="text-xl font-semibold text-gray-900 dark:text-gray-50">{stats.completed}</p>
+        </div>
+
+        {/* Completed */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-emerald-100 p-2 dark:bg-emerald-900/40 sm:mr-4 sm:p-3">
+              <CheckCircleIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.series.stats.completed')}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-emerald-600 dark:text-emerald-300 sm:text-2xl">
+                {stats.completed}
+              </span>
+            </div>
           </div>
         </div>
       </div>

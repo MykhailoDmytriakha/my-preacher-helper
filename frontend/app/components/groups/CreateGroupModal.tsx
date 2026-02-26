@@ -47,6 +47,10 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
     try {
       setSaving(true);
       const now = new Date().toISOString();
+      const prayerTemplate = createTemplate('prayer', {
+        title: t('workspaces.groups.defaults.prayer', { defaultValue: 'Prayer' }),
+        status: 'empty',
+      });
       const topicTemplate = createTemplate('topic', {
         title: t('workspaces.groups.defaults.mainTopic', { defaultValue: 'Main topic' }),
         status: 'draft',
@@ -57,12 +61,12 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
       });
       const meetingDates = firstMeetingDate
         ? [
-            {
-              id: generateMeetingDateId(),
-              date: firstMeetingDate,
-              createdAt: now,
-            },
-          ]
+          {
+            id: generateMeetingDateId(),
+            date: firstMeetingDate,
+            createdAt: now,
+          },
+        ]
         : [];
 
       await onCreate({
@@ -70,8 +74,12 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
         title: title.trim(),
         description: description.trim() || undefined,
         status: 'draft',
-        templates: [topicTemplate, scriptureTemplate],
-        flow: [createFlowItem(topicTemplate.id, 1), createFlowItem(scriptureTemplate.id, 2)],
+        templates: [prayerTemplate, topicTemplate, scriptureTemplate],
+        flow: [
+          createFlowItem(prayerTemplate.id, 1),
+          createFlowItem(topicTemplate.id, 2),
+          createFlowItem(scriptureTemplate.id, 3),
+        ],
         meetingDates,
         createdAt: now,
         updatedAt: now,

@@ -38,8 +38,8 @@ describe('CreateGroupModal', () => {
     expect(payload.userId).toBe('user-1');
     expect(payload.title).toBe('Group A');
     expect(payload.description).toBe('Notes');
-    expect(payload.templates).toHaveLength(2);
-    expect(payload.flow).toHaveLength(2);
+    expect(payload.templates).toHaveLength(3);
+    expect(payload.flow).toHaveLength(3);
     expect(payload.meetingDates).toHaveLength(1);
     expect(payload.meetingDates[0].date).toBe('2026-02-14');
     expect(onClose).toHaveBeenCalledTimes(1);

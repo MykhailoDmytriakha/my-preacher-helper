@@ -853,7 +853,17 @@
     "totalDuration": "Total Duration"
   },
   "calendar": {
-    "title": "Preach Calendar",
+    "title": "Preaching Calendar",
+    "description": "Schedule sermons, allocate speakers, and keep the team in sync on ministry plans.",
+    "legend": {
+      "sermons": "Sermons",
+      "groups": "Groups"
+    },
+    "views": {
+      "month": "Month",
+      "week": "Week",
+      "agenda": "Agenda"
+    },
     "today": "Today",
     "goToToday": "Go to current month",
     "monthView": "Month",
@@ -886,6 +896,11 @@
     "totalSermonsWord_few": "sermons",
     "totalSermonsWord_many": "sermons",
     "totalSermonsWord_other": "sermons",
+    "totalGroupsWord": "group",
+    "totalGroupsWord_one": "group",
+    "totalGroupsWord_few": "groups",
+    "totalGroupsWord_many": "groups",
+    "totalGroupsWord_other": "groups",
     "outcomes": {
       "excellent": "Excellent",
       "good": "Good",
@@ -897,6 +912,7 @@
       "year": "Year",
       "allYears": "All years",
       "totalPreachings": "Total Preachings",
+      "totalGroups": "Groups",
       "quickSummary": "Quick Summary",
       "pendingDateEntry": "Pending Date Entry",
       "plannedPreachings": "Planned preachings",
@@ -1606,7 +1622,8 @@
       },
       "defaults": {
         "mainTopic": "Main topic",
-        "scripture": "Scripture passages"
+        "scripture": "Scripture passages",
+        "prayer": "Prayer focus"
       },
       "templates": {
         "title": "Block templates",

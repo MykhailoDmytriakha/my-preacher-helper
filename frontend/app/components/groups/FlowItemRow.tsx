@@ -184,7 +184,7 @@ export default function FlowItemRow({
                         }
                         setMenuOpen((prev) => !prev);
                     }}
-                    className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 focus:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                    className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 opacity-100 focus:opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                     aria-label={t('common.more', { defaultValue: 'More options' })}
                 >
                     <EllipsisVerticalIcon className="h-5 w-5" />

@@ -31,6 +31,10 @@ interface PreachCalendarProps {
     onDateSelect: (date: Date) => void;
     currentMonth?: Date;
     onMonthChange?: (month: Date) => void;
+    filterSermons?: boolean;
+    filterGroups?: boolean;
+    onToggleSermons?: () => void;
+    onToggleGroups?: () => void;
 }
 
 export default function PreachCalendar({
@@ -39,9 +43,13 @@ export default function PreachCalendar({
     selectedDate,
     onDateSelect,
     currentMonth,
-    onMonthChange
+    onMonthChange,
+    filterSermons = true,
+    filterGroups = true,
+    onToggleSermons,
+    onToggleGroups
 }: PreachCalendarProps) {
-    const { i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
 
     const getDateLocale = () => {
         switch (i18n.language) {
@@ -103,32 +111,50 @@ export default function PreachCalendar({
         });
     }, [eventsByDate, derivedSermonStatusByDate, sermonStatusByDate, effectiveSermonStatusByDate]);
 
-    const hasEvents = (date: Date) => {
+    const hasSermonsDate = (date: Date) => {
+        if (!filterSermons) return false;
         const dateStr = format(date, DATE_KEY_FORMAT);
-        const events = eventsByDate[dateStr];
-        if (!events || events.length === 0) {
-            return false;
-        }
-
-        // If this date already has sermon status markers, suppress generic event dot
-        // to avoid duplicate indicators (planned/preached + generic).
+        const events = eventsByDate[dateStr] || [];
+        const hasSermonEvent = events.some(hasCurrentPreachDate);
         const sermonStatus = getSermonStatusForDate(dateStr);
         const hasSermonStatus = ((sermonStatus?.planned || 0) + (sermonStatus?.preached || 0)) > 0;
-        return !hasSermonStatus;
+        return hasSermonEvent || hasSermonStatus;
+    };
+
+    const hasGroupsDate = (date: Date) => {
+        if (!filterGroups) return false;
+        const dateStr = format(date, DATE_KEY_FORMAT);
+        const events = eventsByDate[dateStr] || [];
+        // Groups are events without currentPreachDate
+        return events.some(event => !hasCurrentPreachDate(event));
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 overflow-hidden flex flex-col items-center">
             <style>{`
         .rdp {
-          --rdp-cell-size: 45px;
+          --rdp-cell-size: 38px; /* Slightly smaller for narrower viewports on desktop/tablet */
           --rdp-accent-color: #3b82f6;
           --rdp-background-color: #eff6ff;
           margin: 0;
         }
+        @media (min-width: 1280px) {
+          .rdp {
+            --rdp-cell-size: 45px; /* Original size for larger screens */
+          }
+        }
         .rdp-day_selected, .rdp-day_selected:focus-visible, .rdp-day_selected:hover {
           color: white;
           background-color: var(--rdp-accent-color);
+        }
+        .rdp-caption {
+          padding-left: 8px;
+          padding-right: 8px;
+        }
+        .rdp-caption_label {
+          padding-left: 16px;
+          padding-right: 8px;
+          overflow: visible;
         }
         .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
           background-color: var(--rdp-background-color);
@@ -136,12 +162,11 @@ export default function PreachCalendar({
         .dark .rdp {
           --rdp-background-color: #1e293b;
         }
-        .has-event .rdp-day_button,
-        .has-planned .rdp-day_button,
-        .has-preached .rdp-day_button {
+        .has-sermon .rdp-day_button,
+        .has-group .rdp-day_button {
           position: relative;
         }
-        .has-event .rdp-day_button::after {
+        .has-sermon .rdp-day_button::before {
           content: '';
           position: absolute;
           bottom: 4px;
@@ -150,9 +175,9 @@ export default function PreachCalendar({
           width: 4px;
           height: 4px;
           border-radius: 50%;
-          background-color: #3b82f6;
+          background-color: #3b82f6; /* bg-blue-500 */
         }
-        .has-planned .rdp-day_button::before {
+        .has-group .rdp-day_button::after {
           content: '';
           position: absolute;
           bottom: 4px;
@@ -161,32 +186,18 @@ export default function PreachCalendar({
           width: 4px;
           height: 4px;
           border-radius: 50%;
-          background-color: #f59e0b;
+          background-color: #10b981; /* bg-emerald-500 */
         }
-        .has-preached .rdp-day_button::after {
-          content: '';
-          position: absolute;
-          bottom: 4px;
-          left: 50%;
+        .has-sermon.has-group .rdp-day_button::before {
+          left: calc(50% - 3px);
           transform: translateX(-50%);
-          width: 4px;
-          height: 4px;
-          border-radius: 50%;
-          background-color: #3b82f6;
         }
-        .has-planned.has-preached .rdp-day_button::before {
-          left: calc(50% - 6px);
-          transform: none;
+        .has-sermon.has-group .rdp-day_button::after {
+          left: calc(50% + 3px);
+          transform: translateX(-50%);
         }
-        .has-planned.has-preached .rdp-day_button::after {
-          left: calc(50% + 2px);
-          transform: none;
-        }
-        .rdp-day_selected.has-event .rdp-day_button::after {
-          background-color: white;
-        }
-        .rdp-day_selected.has-planned .rdp-day_button::before,
-        .rdp-day_selected.has-preached .rdp-day_button::after {
+        .rdp-day_selected.has-sermon .rdp-day_button::before,
+        .rdp-day_selected.has-group .rdp-day_button::after {
           background-color: white;
         }
       `}</style>
@@ -198,23 +209,43 @@ export default function PreachCalendar({
                 onMonthChange={onMonthChange}
                 locale={getDateLocale()}
                 modifiers={{
-                    hasEvent: (date) => hasEvents(date),
-                    hasPlanned: (date) => {
-                        const dateStr = format(date, DATE_KEY_FORMAT);
-                        return getSermonStatusForDate(dateStr).planned > 0;
-                    },
-                    hasPreached: (date) => {
-                        const dateStr = format(date, DATE_KEY_FORMAT);
-                        return getSermonStatusForDate(dateStr).preached > 0;
-                    }
+                    hasSermon: (date) => hasSermonsDate(date),
+                    hasGroup: (date) => hasGroupsDate(date)
                 }}
                 modifiersClassNames={{
-                    hasEvent: "has-event",
-                    hasPlanned: "has-planned",
-                    hasPreached: "has-preached"
+                    hasSermon: "has-sermon",
+                    hasGroup: "has-group"
                 }}
-                className="mx-auto"
+                className="w-full flex justify-center"
             />
+
+            {/* Legend Toggles */}
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 w-full flex flex-wrap justify-center gap-2 px-1">
+                <button
+                    onClick={onToggleSermons}
+                    className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full transition-colors ${filterSermons
+                        ? 'bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800 opacity-50'
+                        }`}
+                >
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-blue-500 shrink-0"></div>
+                    <span className={`text-[11px] sm:text-xs font-medium whitespace-nowrap ${filterSermons ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {t('calendar.legend.sermons', { defaultValue: 'Sermons' })}
+                    </span>
+                </button>
+                <button
+                    onClick={onToggleGroups}
+                    className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full transition-colors ${filterGroups
+                        ? 'bg-emerald-50 dark:bg-emerald-900/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800 opacity-50'
+                        }`}
+                >
+                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 shrink-0"></div>
+                    <span className={`text-[11px] sm:text-xs font-medium whitespace-nowrap ${filterGroups ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {t('calendar.legend.groups', { defaultValue: 'Groups' })}
+                    </span>
+                </button>
+            </div>
         </div>
     );
 }

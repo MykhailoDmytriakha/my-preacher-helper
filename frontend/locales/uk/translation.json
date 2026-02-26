@@ -854,6 +854,16 @@
   },
   "calendar": {
     "title": "Календар проповідей",
+    "description": "Плануйте проповіді, розподіляйте спікерів і тримайте команду в курсі розкладу служінь.",
+    "legend": {
+      "sermons": "Проповіді",
+      "groups": "Групи"
+    },
+    "views": {
+      "month": "Місяць",
+      "week": "Тиждень",
+      "agenda": "Список"
+    },
     "today": "Сьогодні",
     "goToToday": "Перейти до поточного місяця",
     "monthView": "Місяць",
@@ -886,6 +896,11 @@
     "totalSermonsWord_few": "проповіді",
     "totalSermonsWord_many": "проповідей",
     "totalSermonsWord_other": "проповідей",
+    "totalGroupsWord": "група",
+    "totalGroupsWord_one": "група",
+    "totalGroupsWord_few": "групи",
+    "totalGroupsWord_many": "груп",
+    "totalGroupsWord_other": "груп",
     "outcomes": {
       "excellent": "Відмінно",
       "good": "Добре",
@@ -897,6 +912,7 @@
       "year": "Рік",
       "allYears": "Усі роки",
       "totalPreachings": "Всього проповідей",
+      "totalGroups": "Групи",
       "quickSummary": "Швидка зведення",
       "pendingDateEntry": "Очікує введення дати",
       "plannedPreachings": "Заплановані проповіді",
@@ -1610,7 +1626,8 @@
       },
       "defaults": {
         "mainTopic": "Основна тема",
-        "scripture": "Місця Писання"
+        "scripture": "Місця Писання",
+        "prayer": "Молитва"
       },
       "templates": {
         "title": "Шаблони блоків",

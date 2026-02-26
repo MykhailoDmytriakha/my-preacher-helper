@@ -338,10 +338,10 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getAllByText('Main topic')[0]);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Block Name')).toBeInTheDocument();
+      expect(screen.getByLabelText('Block Name (Template)')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('Block Name'), { target: { value: 'Updated Block' } });
+    fireEvent.change(screen.getByLabelText('Block Name (Template)'), { target: { value: 'Updated Block' } });
     fireEvent.change(screen.getByLabelText('Duration (min)'), { target: { value: '30' } });
     fireEvent.click(screen.getByTitle('Filled'));
 

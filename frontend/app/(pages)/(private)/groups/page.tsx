@@ -1,6 +1,12 @@
 'use client';
 
-import { PlusIcon } from '@heroicons/react/24/outline';
+import {
+  CheckCircleIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -195,32 +201,73 @@ export default function GroupsPage() {
         </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('workspaces.groups.stats.total', { defaultValue: 'Total groups' })}
-          </p>
-          <span className="mt-2 block text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</span>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {/* Total Groups */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-blue-100 p-2 dark:bg-blue-900/40 sm:mr-4 sm:p-3">
+              <UserGroupIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.groups.stats.total', { defaultValue: 'Total groups' })}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-2xl">
+                {stats.total}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('workspaces.groups.stats.active', { defaultValue: 'Active' })}
-          </p>
-          <span className="mt-2 block text-2xl font-bold text-blue-600 dark:text-blue-300">{stats.active}</span>
+
+        {/* Active */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-indigo-100 p-2 dark:bg-indigo-900/40 sm:mr-4 sm:p-3">
+              <PlayIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.groups.stats.active', { defaultValue: 'Active' })}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-indigo-600 dark:text-indigo-300 sm:text-2xl">
+                {stats.active}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('workspaces.groups.stats.draft', { defaultValue: 'Draft' })}
-          </p>
-          <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">{stats.drafts}</span>
+
+        {/* Drafts */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-amber-100 p-2 dark:bg-amber-900/40 sm:mr-4 sm:p-3">
+              <PencilIcon className="h-5 w-5 text-amber-600 dark:text-amber-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.groups.stats.draft', { defaultValue: 'Draft' })}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-amber-600 dark:text-amber-300 sm:text-2xl">
+                {stats.drafts}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('workspaces.groups.stats.completed', { defaultValue: 'Completed' })}
-          </p>
-          <span className="mt-2 block text-2xl font-bold text-emerald-600 dark:text-emerald-300">
-            {stats.completed}
-          </span>
+
+        {/* Completed */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
+          <div className="flex items-center">
+            <div className="mr-3 flex-shrink-0 rounded-full bg-emerald-100 p-2 dark:bg-emerald-900/40 sm:mr-4 sm:p-3">
+              <CheckCircleIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 sm:h-6 sm:h-6" />
+            </div>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+                {t('workspaces.groups.stats.completed', { defaultValue: 'Completed' })}
+              </p>
+              <span className="mt-1 block text-xl font-bold text-emerald-600 dark:text-emerald-300 sm:text-2xl">
+                {stats.completed}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -9,6 +9,16 @@ jest.mock('react-i18next', () => ({
     }),
 }));
 
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+        <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+        />
+    ),
+}));
+
 const mockFlowItem: GroupFlowItem = {
     id: 'f1',
     templateId: 't1',

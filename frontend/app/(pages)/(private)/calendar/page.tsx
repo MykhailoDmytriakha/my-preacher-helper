@@ -32,6 +32,8 @@ export default function CalendarPage() {
     const [view, setView] = useState<'month' | 'agenda' | 'analytics'>('month');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedSermon, setSelectedSermon] = useState<(Sermon & { currentPreachDate?: PreachDate }) | null>(null);
+    const [filterSermons, setFilterSermons] = useState(true);
+    const [filterGroups, setFilterGroups] = useState(true);
 
     // We fetch a wide range for the calendar, or just let the hook handle it
     // For now, let's fetch everything the hook provides
@@ -73,12 +75,22 @@ export default function CalendarPage() {
     );
 
     const selectedMonth = format(currentMonth, 'yyyy-MM');
-    const sermonsForSelectedMonth = Object.entries(normalizedSermonsByDate)
-        .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
-        .flatMap(([, sermons]) => sermons);
-    const groupsForSelectedMonth = Object.entries(groupsByDate)
-        .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
-        .flatMap(([, groupsList]) => groupsList);
+    const sermonsForSelectedMonth = useMemo(
+        () => filterSermons
+            ? Object.entries(normalizedSermonsByDate)
+                .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
+                .flatMap(([, sermons]) => sermons)
+            : [],
+        [filterSermons, normalizedSermonsByDate, selectedMonth]
+    );
+    const groupsForSelectedMonth = useMemo(
+        () => filterGroups
+            ? Object.entries(groupsByDate)
+                .filter(([dateStr]) => dateStr.startsWith(selectedMonth))
+                .flatMap(([, groupsList]) => groupsList)
+            : [],
+        [filterGroups, groupsByDate, selectedMonth]
+    );
 
     const calendarEventsByDate = useMemo(
         () => ({
@@ -219,6 +231,10 @@ export default function CalendarPage() {
                                 onDateSelect={setSelectedDate}
                                 currentMonth={currentMonth}
                                 onMonthChange={handleMonthChange}
+                                filterSermons={filterSermons}
+                                filterGroups={filterGroups}
+                                onToggleSermons={() => setFilterSermons(!filterSermons)}
+                                onToggleGroups={() => setFilterGroups(!filterGroups)}
                             />
                         )}
 
@@ -250,6 +266,16 @@ export default function CalendarPage() {
                                             <span className="text-amber-600 dark:text-amber-400">{t('calendar.analytics.pendingDateEntry')}</span>
                                             <span className="font-bold text-amber-900 dark:text-amber-100">
                                                 {pendingSermons.length}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {groupsForSelectedMonth.length > 0 && (
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-emerald-600 dark:text-emerald-400">
+                                                {t('calendar.analytics.totalGroups', { defaultValue: 'Группы' })}
+                                            </span>
+                                            <span className="font-bold text-emerald-900 dark:text-emerald-100">
+                                                {groupsForSelectedMonth.length}
                                             </span>
                                         </div>
                                     )}

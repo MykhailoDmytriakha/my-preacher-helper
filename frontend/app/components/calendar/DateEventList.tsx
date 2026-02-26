@@ -123,16 +123,28 @@ export default function DateEventList({ month, sermons, groups = [], series = []
     {} as Record<string, Array<SermonEvent | GroupEvent>>
   );
 
-  const sortedDates = Object.keys(eventsByDate).sort();
-  const totalEvents = sermonEvents.length + groupEvents.length;
+  const sortedDates = Object.keys(eventsByDate).sort().reverse();
+  const totalSermons = sermonEvents.length;
+  const totalGroups = groupEvents.length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formattedMonth}</h2>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          {totalEvents} {t('calendar.totalSermonsWord', { count: totalEvents })}
-        </span>
+        <div className="flex items-center gap-3">
+          {totalSermons > 0 && (
+            <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+              {totalSermons} {t('calendar.totalSermonsWord', { count: totalSermons })}
+            </span>
+          )}
+          {totalGroups > 0 && (
+            <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+              {totalGroups} {t('calendar.totalGroupsWord', { count: totalGroups, defaultValue: totalGroups === 1 ? 'группа' : 'групп' })}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-6">

@@ -854,6 +854,16 @@
   },
   "calendar": {
     "title": "Календарь проповедей",
+    "description": "Планируйте проповеди, распределяйте темы и держите команду в курсе расписания служений.",
+    "legend": {
+      "sermons": "Проповеди",
+      "groups": "Группы"
+    },
+    "views": {
+      "month": "Месяц",
+      "week": "Неделя",
+      "agenda": "Список"
+    },
     "today": "Сегодня",
     "goToToday": "Перейти к текущему месяцу",
     "monthView": "Месяц",
@@ -886,6 +896,11 @@
     "totalSermonsWord_few": "проповеди",
     "totalSermonsWord_many": "проповедей",
     "totalSermonsWord_other": "проповедей",
+    "totalGroupsWord": "группа",
+    "totalGroupsWord_one": "группа",
+    "totalGroupsWord_few": "группы",
+    "totalGroupsWord_many": "групп",
+    "totalGroupsWord_other": "групп",
     "outcomes": {
       "excellent": "Отлично",
       "good": "Хорошо",
@@ -897,6 +912,7 @@
       "year": "Год",
       "allYears": "Все годы",
       "totalPreachings": "Всего проповедей",
+      "totalGroups": "Группы",
       "quickSummary": "Краткая сводка",
       "pendingDateEntry": "Ожидает ввода даты",
       "plannedPreachings": "Запланированные проповеди",
@@ -1610,7 +1626,8 @@
       },
       "defaults": {
         "mainTopic": "Основная тема",
-        "scripture": "Места Писания"
+        "scripture": "Места Писания",
+        "prayer": "Молитва"
       },
       "templates": {
         "title": "Шаблоны блоков",
