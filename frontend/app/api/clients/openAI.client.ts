@@ -5,7 +5,8 @@ import {
   sortingSystemPrompt,
   createSortingUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
-  planSystemPrompt, createPlanUserMessage
+  planSystemPrompt, createPlanUserMessage,
+  planPointContentSystemPrompt, createPlanPointContentUserMessage
 } from "@/config/prompts";
 import {
   DirectionsResponseSchema,
@@ -840,202 +841,32 @@ function getPlanPointLanguageInfo(
   };
 }
 
-function buildPlanPointSystemPrompt(options: {
+function buildPlanPointSystemPrompt(_options: {
   style: PlanStyle;
   languageDirective: string;
   keyFragments: string[];
   context?: PlanContext;
 }): string {
-  const { style, languageDirective, keyFragments, context } = options;
-
-  return `You are a sermon planning assistant specializing in creating memory-friendly outlines for preachers.
-
-Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can be quickly scanned during sermon delivery.
-
-CRITICAL PRINCIPLES:
-1. **INSTANT RECOGNITION**: Each point should be immediately recognizable and trigger memory recall
-2. **MINIMAL WORDS, MAXIMUM MEANING**: Use concise, powerful phrases that capture the essence
-3. **VISUAL SCANNING**: Structure for quick visual scanning during preaching
-4. **MEMORY TRIGGERS**: Use keywords and phrases that instantly recall the full context
-5. **ACTIONABLE FORMAT**: Each point should guide the preacher on what to say next
-
-FORMAT REQUIREMENTS:
-- Use **bold** SPARINGLY: maximum 1-2 words per bullet that are the single most important trigger. If a bullet has no clear standout word — use no bold at all. Do NOT bold every keyword.
-- DO NOT use **bold** inside ### headings — headings are already visually prominent and bold inside them breaks markdown rendering.
-- Use *italic* for Bible references and supporting details
-- Use bullet points (*) for quick scanning
-- Keep main points to 3-6 words maximum (unless Style permits otherwise)
-- STRICT: Maximum 3 bullet points per ### block. If a thought has more content, distill to the 3 most critical memory triggers. One bullet = one trigger. If it needs more than 5 words — cut it.
-
-${getStyleInstructions(style)}
-
-${getStructuredBlocksInstructions()}
-
-BIBLE VERSE REQUIREMENT:
-For every Bible reference explicitly present in the THOUGHTS: write the verse text inline.
-- If the verse is SHORT (≤ 2 sentences): write the complete text.
-- If the verse is LONG (> 2 sentences): write the first sentence + "..." + the key final clause + reference. The preacher must be able to scan it in 3 seconds while speaking.
-Allowed sources: ONLY the THOUGHTS for this outline point, the OUTLINE POINT TEXT, and provided KEY FRAGMENTS.
-Treat SERMON TITLE and SCRIPTURE as context only. Do NOT quote or introduce content from them unless the exact Bible reference also appears in the THOUGHTS or in the OUTLINE POINT TEXT.
-
-LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the provided THOUGHTS. DO NOT translate.
-${languageDirective}
-
-IMPORTANT:
-1. Always generate the plan in the SAME LANGUAGE as the THOUGHTS text. Do not translate.
-2. Focus ONLY on the specific outline point and its related thoughts.
-3. Maintain the theological perspective and vocabulary from the original thoughts.
-4. STRICT: Do not add new theological content, ideas, names, facts or Bible references that are not explicitly present in the THOUGHTS or the OUTLINE POINT TEXT. If something is missing, OMIT it.
-5. Organize ideas in a logical sequence that will help with sermon delivery.
-6. Include only the key ideas that come directly from the THOUGHTS.
-7. Format the response using Markdown:
-   - Use ### for main points (DO NOT include the outline point itself as a heading). Each ### heading must be an ACTION SIGNAL or KEY IDEA — a short phrase that tells the preacher WHAT TO SAY OR DO NEXT (e.g. "Задать вопрос", "Иллюстрация: аэродинамика"). NOT a description of the theme. NEVER repeat or paraphrase the outlinePointText in a heading.
-   - Use only a single level of bullet points (* ) for supporting details.
-8. The sequence of the generated main points (###) and their corresponding bullet points MUST strictly follow the order of the input THOUGHT texts provided in the user message.
-9. STRICT: Create EXACTLY the same number of main points (###) as the number of THOUGHTS provided (one heading per thought, in order). Do not add extra headings.
-10. STRICT: Bullet points must paraphrase or quote phrases from the corresponding THOUGHT and/or provided key fragments. Do not introduce new subpoints that are not grounded in that THOUGHT.
-11. CRITICAL: Explain connections and applications only if they are already present in the THOUGHTS.
-12. CRITICAL: Include Bible verses ONLY IF they are explicitly present in the THOUGHTS. Do not invent new references.
-${keyFragments.length > 0 ? '13. NATURALLY integrate the provided key fragments into your response as supporting details, NOT as the main content. Key fragments should complement and enhance the broader ideas from the thoughts, not dominate them.' : ''}
-${context?.previousPoint ? `14. Context Connection: Ensure the opening of this point flows naturally from the previous point context provided.` : ''}
-
-Your response should be a simple outline optimized for quick preaching reference.`;
+  // Use the new modular system prompt which is optimized for quality and caching
+  return planPointContentSystemPrompt;
 }
 
-function buildPlanPointUserMessage(options: {
-  sermonTitle: string;
-  sermonVerse: string;
+/**
+ * Build the user message for a single sermon plan point generation attempt.
+ * Delegates to the modular createPlanPointContentUserMessage.
+ */
+function buildPlanPointUserMessage(input: {
   outlinePointText: string;
-  relatedThoughtsTexts: string[];
-  sectionName: string;
-  keyFragments: string[];
-  context?: PlanContext;
-  formatExample: string;
-  languageRequirementLabel: string;
-  isCyrillic: boolean;
+  thoughts: (ThoughtInStructure | string)[];
+  keyFragments?: string[];
 }): string {
-  const {
-    sermonTitle,
-    sermonVerse,
-    outlinePointText,
-    relatedThoughtsTexts,
-    sectionName,
-    keyFragments,
-    context,
-    formatExample,
-    languageRequirementLabel,
-    isCyrillic
-  } = options;
-
-  return `Create a PREACHING-FRIENDLY plan for the following point in the ${sectionName.toUpperCase()} section that can be quickly scanned during sermon delivery:
-
-SERMON TITLE: ${sermonTitle}
-SCRIPTURE (TEXT BANK — use only when the same reference appears in THOUGHTS or OUTLINE POINT): ${sermonVerse}
-
-${context?.previousPoint ? `PREVIOUS POINT (Context Only): "${context.previousPoint.text}"` : ''}
-OUTLINE POINT: "${outlinePointText}"
-${context?.nextPoint ? `NEXT POINT (Context Only): "${context.nextPoint.text}"` : ''}
-
-${keyFragments.length > 0 ? `==== SUPPORTING KEY FRAGMENTS ====
-The following key fragments should be naturally integrated as supporting details to enhance the broader ideas:
-${keyFragments.map(frag => `- "${frag}"`).join('\n')}
-====================================
-
-` : ''}Based on these related thoughts (maintain this order in your plan):
-${relatedThoughtsTexts.map((text, index) => `THOUGHT ${index + 1}: ${text}`).join('\n\n')}
-
-CRITICAL REQUIREMENTS FOR PREACHING:
-
-1. **MEMORY-FRIENDLY FORMAT**: 
-   - Each main point should be short and catchy
-   - Use **bold** for key concepts that trigger memory
-   - Use *italic* for Bible references and supporting details
-   - Create visual hierarchy for quick scanning
-
-2. **INSTANT RECOGNITION**:
-   - Every point should be immediately recognizable
-   - Use memorable phrases that capture the essence
-   - Include memory triggers that recall full context
-   - Make each point actionable for the preacher
-
-3. **QUICK SCANNING STRUCTURE**:
-   - Use bullet points (*) for easy visual scanning
-   - Keep subpoints to 1-2 words maximum
-   - Use clear transitions between ideas
-   - ThoughtsBySection for logical preaching flow
-
-4. **PREACHING OPTIMIZATION**:
-   - Focus on what the preacher needs to SAY
-   - Include key theological terms in **bold**
-   - Highlight Bible verses in *italic*
-   - Use action-oriented language
-
-MANDATORY BIBLE VERSE REQUIREMENT: 
-CRITICAL: For every Bible reference mentioned, you MUST write out the COMPLETE TEXT of the verse(s) in the plan, not just the reference. 
-Example: Instead of "Деян. 3:6", write "Деян. 3:6: «Серебра и золота нет у меня, а что имею, то даю тебе: во имя Иисуса Христа Назарея встань и ходи»"
-The preacher must be able to read the full verse directly from the plan without opening a Bible.
-
-THOUGHT FLOW REQUIREMENT:
-Create a logical flow of thought development, showing how one idea naturally flows into the next. Each point should build upon the previous one, creating a smooth narrative progression rather than just a list of disconnected points.
-${context?.previousPoint ? `Specifically, ensure the first thought connects smoothly with the previous point "${context.previousPoint.text}".` : ''}
-
-LANGUAGE REQUIREMENT: Generate in the SAME LANGUAGE as the THOUGHTS. DO NOT translate.
-${isCyrillic ? 'For Cyrillic languages, absolutely do not use Latin letters anywhere in the output.' : ''}
-
-IMPORTANT INSTRUCTIONS:
-1. Generate the plan in the ${languageRequirementLabel} detected from the THOUGHTS.
-2. Provide only main points (###) and a single level of bullet points (* ) - DO NOT create a deeply nested hierarchy.
-3. Keep it concise - only high-level structure, not detailed development.
-4. Create exactly ${relatedThoughtsTexts.length} main headings (###) — one per THOUGHT in the same order. No extra headings.
-5. Bullet points must be derived from the same THOUGHT’s text or key fragments. Do not invent new content.
-6. Add scripture references in *italic* and key theological concepts in **bold**, but only if they already exist in the THOUGHTS or the OUTLINE POINT TEXT.
-7. Make sure this plan fits within the ${sectionName} section of a sermon.
-8. DO NOT include the outline point itself ("${outlinePointText}") as a heading or title in your response.
-9. CRITICAL: Each main point heading (###) MUST be a clear, practical, and descriptive title that immediately tells the preacher what this section is about.
-10. CRITICAL: The order of the main points (###) and their content in your plan MUST strictly follow the order of the provided THOUGHTS above.
-11. STRICT: Do not add examples, claims, or Bible verses that were not mentioned in the THOUGHTS.
-12. If any content would require invention, write nothing for that part instead of inventing.
-13. Ensure every bullet can be traced back to wording in THOUGHTS or key fragments.
-${keyFragments.length > 0 ? '14. CRITICAL: Integrate key fragments naturally as supporting details, not as main content. They should complement the broader ideas from the thoughts.' : ''}
-
-FORMAT EXAMPLE:
-${formatExample}
-
-FINAL CHECK: Each point should be scannable in under 2 seconds and immediately trigger the full context for the preacher.`;
+  return createPlanPointContentUserMessage(
+    input.outlinePointText,
+    input.thoughts,
+    input.keyFragments
+  );
 }
 
-function trimPlanPointHeadings(
-  content: string,
-  thoughtsCount: number,
-  keyFragmentsCount: number
-): string {
-  try {
-    const maxHeadings = keyFragmentsCount > 0 ? Number.MAX_SAFE_INTEGER : thoughtsCount;
-    let headingCount = 0;
-    const lines = content.split(/\r?\n/);
-    const kept: string[] = [];
-    let keepingBlock = true;
-
-    for (const line of lines) {
-      if (/^###\s/.test(line.trim())) {
-        headingCount += 1;
-        if (headingCount <= maxHeadings) {
-          keepingBlock = true;
-          kept.push(line);
-        } else {
-          keepingBlock = false;
-        }
-        continue;
-      }
-
-      if (keepingBlock) kept.push(line);
-    }
-
-    return kept.join("\n");
-  } catch {
-    return content;
-  }
-}
 
 /**
  * Generate plan content for a specific outline point based on related thoughts
@@ -1087,16 +918,9 @@ export async function generatePlanPointContent(
 
     // Prepare the user message
     const userMessage = buildPlanPointUserMessage({
-      sermonTitle,
-      sermonVerse,
       outlinePointText,
-      relatedThoughtsTexts,
-      sectionName,
-      keyFragments,
-      context,
-      formatExample: languageInfo.formatExample,
-      languageRequirementLabel: languageInfo.languageRequirementLabel,
-      isCyrillic: languageInfo.isCyrillic
+      thoughts: relatedThoughtsTexts,
+      keyFragments
     });
 
     // Log operation info
@@ -1113,7 +937,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v2",
+      promptVersion: "v3",
       expectedLanguage: languageInfo.isCyrillic ? "ru" : "en",
       systemPrompt,
       userMessage,
@@ -1136,11 +960,10 @@ export async function generatePlanPointContent(
       return { content: "", success: false };
     }
 
-    let content = result.data.content.trim();
+    const content = result.data.content.trim();
 
     // Post-process: limit the number of main headings (###) to the number of THOUGHTS
     // But if key fragments are present, allow more headings as AI may need them for better structure
-    content = trimPlanPointHeadings(content, relatedThoughtsTexts.length, keyFragments.length);
 
     return { content, success: content.length > 0 };
   } catch (error) {
