@@ -336,6 +336,16 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.getByTestId('plan-conclusion-right-section')).toBeInTheDocument();
   });
 
+  it('wires section header action through layout context (switch to structure)', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+    const switchButtons = screen.getAllByTitle('Switch to ThoughtsBySection view');
+    fireEvent.click(switchButtons[0]);
+
+    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/structure');
+  });
+
   it('renders immersive view when planView=immersive', async () => {
     mockSearchParams = new URLSearchParams('planView=immersive');
     renderWithQueryClient(<SermonPlanPage />);

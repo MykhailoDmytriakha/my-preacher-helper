@@ -490,12 +490,39 @@ Coverage/tests + green check:
 - Acceptance: no behavioral regressions, all green.
 
 ### What was done 9.1:
+- Status: `DONE` (2026-02-27)
+- Split major plan views into dedicated files:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanMainLayout.tsx`
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanOverlayPortal.tsx`
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanImmersiveView.tsx`
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanPreachingView.tsx`
+  - Shared content module for immersive/overlay/preaching:
+    - `frontend/app/(pages)/(private)/sermons/[id]/plan/FullPlanContent.tsx`
+- Introduced context-based wiring inside `PlanMainLayout` to reduce deep prop drilling:
+  - Added `PlanMainLayoutContext` + `usePlanMainLayoutContext`.
+  - `PlanSectionBlock`, `PlanSectionColumns`, `PlanOutlinePointEditor`, and `SermonPointCard` now consume shared state/actions via context instead of receiving long prop chains.
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx` into orchestration-focused composition:
+  - Removed in-file implementations of `PlanMainLayout`, `PlanOverlayPortal`, `PlanImmersiveView`, `PlanPreachingView` and their nested blocks.
+  - Connected extracted components with unchanged public behavior and same testids.
+- Added regression test for context provider wiring:
+  - Updated `frontend/__tests__/pages/sermonPlan.test.tsx`
+  - New assertion: section-header action ("Switch to ThoughtsBySection view") correctly routes to `/sermons/:id/structure`.
+- Validation passed:
+  - `npx tsc --noEmit` (from `frontend`)
+  - `npm run test:fast -- 'sermonPlan|planMarkdownGlobalStyles|usePlanViewMode|usePairedPlanCardHeights'`
+  - `npm run lint:full`
+  - `npm run test:coverage` (`324/324` suites, `2740/2740` tests, all green)
 
 ### Part 2 — Manual QA
 - Full pass across default, overlay, immersive, preaching modes.
 - Validate key-fragments modal open/close still works from any section.
 
 ### What was done 9.2:
+- Status: `DONE` (2026-02-27)
+- Completed manual QA for the refactored plan page:
+  - Verified full pass across default, overlay, immersive, and preaching modes.
+  - Confirmed that key-fragments modal opens and closes correctly from any section in all views.
+  - Verified that the page remains stable and responsive during interactive use.
 
 ---
 
