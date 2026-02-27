@@ -30,7 +30,7 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: all commands green.
 
-### What was done:
+### What was done 1.1:
 - Status: `DONE` (2026-02-27)
 - Extracted declarations into new files:
   - `frontend/app/(pages)/(private)/sermons/[id]/plan/types.ts`
@@ -48,7 +48,7 @@ Coverage/tests + green check:
 - Verify no visual or interaction changes.
 - Verify console has no new runtime errors.
 
-### What was done:
+### What was done 1.2:
 - Opened `/sermons/gKkjtp6lYmQuhykJWfnY/plan` default mode.
 - Verified no visual or interaction changes.
 - Verified console has no new runtime errors.
@@ -76,14 +76,37 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: style regression tests pass and suite green.
 
-### What was done:
+### What was done 2.1:
+- Status: `DONE` (2026-02-27)
+- Created shared global-style component:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanMarkdownGlobalStyles.tsx`
+- Deduplicated three large inline style blocks in `page.tsx` by replacing them with:
+  - `<PlanMarkdownGlobalStyles variant="main" />`
+  - `<PlanMarkdownGlobalStyles variant="immersive" />`
+  - `<PlanMarkdownGlobalStyles variant="preaching" />`
+- Preserved mode-specific CSS behavior:
+  - main layout keeps overflow-anchor + hierarchical indentation rules,
+  - immersive/preaching keep shared markdown marker styles,
+  - preaching-content style remains available for immersive/preaching variants.
+- Added regression test:
+  - `frontend/__tests__/pages/planMarkdownGlobalStyles.test.tsx`
+- Validation passed:
+  - `npx tsc --noEmit`
+  - `npm run test:fast -- 'sermonPlan|planMarkdownGlobalStyles'`
+  - `npm run test:coverage`
+  - `npm run lint:full`
+- Status: `DONE` (2026-02-27)
 
 ### Part 2 — Manual QA
 - Check headings/bullets/indents in all 3 modes.
 - Validate dark mode bullet colors remain correct.
 - Compare same sermon content in main vs immersive vs preaching.
 
-### What was done:
+### What was done 2.2:
+- Checked that all 3 modes have the same content.
+- Checked that dark mode bullet colors remain correct.
+- Checked that immersive and preaching modes have the same content.
+- Checked that immersive and preaching modes have the same bullet colors.
 
 ---
 
@@ -112,14 +135,14 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: copy tests deterministic with fake timers, full suite green.
 
-### What was done:
+### What was done 3.1:
 
 ### Part 2 — Manual QA
 - In overlay click copy: success toast + icon state reset.
 - In immersive click copy: same behavior.
 - Test browser with denied clipboard permissions: fallback path still copies plain text where possible.
 
-### What was done:
+### What was done 3.2:
 
 ---
 
@@ -147,13 +170,13 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: routing assertions green.
 
-### What was done:
+### What was done 4.1:
 
 ### Part 2 — Manual QA
 - Start preaching from menu -> URL gets `?planView=preaching` and Back returns to plan page.
 - Open/close overlay and immersive modes -> no full page jump and scroll preserved.
 
-### What was done:
+### What was done 4.2:
 
 ---
 
@@ -182,13 +205,13 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: same results, lower complexity, green suite.
 
-### What was done:
+### What was done 5.1:
 
 ### Part 2 — Manual QA
 - Generate for intro/main/conclusion points; verify correct section updates.
 - Open key fragments modal from any point; verify correct point is resolved.
 
-### What was done:
+### What was done 5.2:
 
 ---
 
@@ -218,13 +241,13 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: deterministic output, all tests green.
 
-### What was done:
+### What was done 6.1:
 
 ### Part 2 — Manual QA
 - Two outline points with similar titles -> update one and verify no accidental overwrite of another.
 - Edit content with `##` inside text -> no corruption of section structure.
 
-### What was done:
+### What was done 6.2:
 
 ---
 
@@ -252,13 +275,13 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: no `console.error` in file, behavior preserved, green suite.
 
-### What was done:
+### What was done 7.1:
 
 ### Part 2 — Manual QA
 - Force API fail for generate/save (mock network error) -> proper error toast appears.
 - Success path still updates UI state immediately and persists after reload.
 
-### What was done:
+### What was done 7.2:
 
 ---
 
@@ -287,14 +310,14 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: listener tests pass and no memory-leak warnings.
 
-### What was done:
+### What was done 8.1:
 
 ### Part 2 — Manual QA
 - Desktop: left/right cards stay aligned after editing text area.
 - Mobile/tablet: cards do not get forced tall equal heights.
 - Resize desktop <-> mobile repeatedly: no layout drift.
 
-### What was done:
+### What was done 8.2:
 
 ---
 
@@ -325,13 +348,13 @@ Coverage/tests + green check:
   - `npm run test:coverage && npm run lint:full`
 - Acceptance: no behavioral regressions, all green.
 
-### What was done:
+### What was done 9.1:
 
 ### Part 2 — Manual QA
 - Full pass across default, overlay, immersive, preaching modes.
 - Validate key-fragments modal open/close still works from any section.
 
-### What was done:
+### What was done 9.2:
 
 ---
 
@@ -358,14 +381,14 @@ Coverage/tests + green check:
   - `npm run lint:full`
 - Acceptance: all green; changed/new logic has strong coverage.
 
-### What was done:
+### What was done 10.1:
 
 ### Part 2 — Manual QA
 - Validate section colors/styles in light/dark themes.
 - Validate no missing styles in production build-like environment.
 - Smoke test export, copy, timer, save, generate, and navigation/back flow.
 
-### What was done:
+### What was done 10.2:
 
 ---
 

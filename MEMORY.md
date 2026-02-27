@@ -57,6 +57,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-27 Global CSS Dedup by Variant:** When one page has repeated `style jsx global` blocks across view modes, extract a shared style component with explicit `variant` flags for mode-specific extras to prevent style drift while preserving behavior.
 - **2026-02-27 Import Grouping After Extraction:** When moving page-local constants/types to sibling files, keep explicit blank lines between alias imports (`@/...`) and relative imports (`./...`), and between value/type imports, or `import/order` will fail in lint gate.
 - **2026-02-27 Headless UI v2 Mocking:** Always mock `@headlessui/react` in JSDOM tests to avoid ref-forwarding and focus-trap errors; ensure mocks include `DialogPanel`, `DialogBackdrop`, and use named exports where appropriate.
 - **2026-02-27 ConfirmModal vs window.confirm:** When replacing `window.confirm()` with a custom `ConfirmModal`, always remove the `window.confirm()` from the parent handler too — otherwise both fire sequentially: custom modal confirms, then system dialog appears.
