@@ -150,6 +150,7 @@ export default function CreateThoughtModal({
       <div
         className={
           "absolute inset-0 overflow-y-auto bg-white dark:bg-gray-800 " +
+          "sm:bg-transparent sm:dark:bg-transparent " +
           "sm:inset-auto sm:relative sm:top-0 sm:left-0 sm:overflow-visible " +
           "sm:flex sm:items-center sm:justify-center sm:min-h-screen sm:p-4"
         }

@@ -364,4 +364,14 @@ describe('EditThoughtModal Component', () => {
     expect(toast.error).toHaveBeenCalledWith('Recorder error');
     expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false');
   });
+
+  test('scroll container has mobile bg-white and sm:bg-transparent override to avoid white desktop background', () => {
+    render(<EditThoughtModal {...mockProps} />);
+    // EditThoughtModal has no role="dialog" — traverse up from heading
+    const heading = screen.getByText('Edit Thought');
+    const scrollContainer = heading.closest('.overflow-y-auto');
+    expect(scrollContainer?.className).toContain('bg-white');
+    expect(scrollContainer?.className).toContain('sm:bg-transparent');
+    expect(scrollContainer?.className).toContain('sm:dark:bg-transparent');
+  });
 });
