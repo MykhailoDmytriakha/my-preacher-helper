@@ -98,7 +98,7 @@ export default function FullPlanContent({
     return `inset(0 0 ${hideFromBottom}% 0)`;
   }, [timerState]);
 
-  const getProgressOverlayClasses = useCallback((phase: TimerPhase): string => {
+  const getProgressOverlayClasses = useCallback((phase: Exclude<TimerPhase, "finished">): string => {
     const baseClasses = "progress-overlay";
 
     if (phase === "introduction") {
@@ -107,10 +107,7 @@ export default function FullPlanContent({
     if (phase === "main") {
       return `${baseClasses} progress-overlay-main${completingPhase === "main" ? " completing" : ""}`;
     }
-    if (phase === "conclusion") {
-      return `${baseClasses} progress-overlay-conclusion${completingPhase === "conclusion" ? " completing" : ""}`;
-    }
-    return baseClasses;
+    return `${baseClasses} progress-overlay-conclusion${completingPhase === "conclusion" ? " completing" : ""}`;
   }, [completingPhase]);
 
   const getProgressOverlayStyles = useCallback((phase: TimerPhase): React.CSSProperties => {

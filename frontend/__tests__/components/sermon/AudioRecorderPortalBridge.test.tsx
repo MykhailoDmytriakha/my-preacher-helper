@@ -51,4 +51,41 @@ describe('AudioRecorderPortalBridge', () => {
     expect(screen.getByTestId('recorder-disabled')).toHaveTextContent('false');
     expect(screen.getByTitle('Add manual thought')).toBeEnabled();
   });
+
+  it('renders into portal target and reacts to ResizeObserver updates', () => {
+    const portalTarget = document.createElement('div');
+    document.body.appendChild(portalTarget);
+
+    const disconnect = jest.fn();
+    const observe = jest.fn((element: Element) => {
+      expect(element).toBeInstanceOf(HTMLDivElement);
+      observerCallback?.([{ contentRect: { height: 222 } } as ResizeObserverEntry], {} as ResizeObserver);
+    });
+    let observerCallback:
+      | ((entries: ResizeObserverEntry[], observer: ResizeObserver) => void)
+      | null = null;
+
+    Object.defineProperty(window, 'ResizeObserver', {
+      configurable: true,
+      writable: true,
+      value: jest.fn().mockImplementation((cb: (entries: ResizeObserverEntry[], observer: ResizeObserver) => void) => {
+        observerCallback = cb;
+        return { observe, disconnect };
+      }),
+    });
+
+    const { unmount } = render(
+      <AudioRecorderPortalBridge
+        {...commonProps}
+        portalTarget={portalTarget}
+        isReadOnly={false}
+      />
+    );
+
+    expect(portalTarget).toHaveTextContent('false');
+    expect(observe).toHaveBeenCalled();
+
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
+  });
 });

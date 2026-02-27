@@ -50,4 +50,15 @@ describe("buildSectionOutlineMarkdown", () => {
       "## Second in outline\n\nB\n\n## First in map\n\nA\n\n## Third in outline\n\nC"
     );
   });
+
+  it("returns empty string when section has no outline points", () => {
+    const result = buildSectionOutlineMarkdown({
+      orderedOutlinePoints: [],
+      outlinePointsContentById: {
+        p1: "Unused",
+      },
+    });
+
+    expect(result).toBe("");
+  });
 });

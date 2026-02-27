@@ -88,7 +88,29 @@ jest.mock('@/services/sermon.service', () => ({
 }));
 
 // Mock child components (if any are direct children of the page)
-jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div data-testid="key-fragments-modal">Mocked Key Fragments Modal</div>);
+jest.mock('@/components/plan/KeyFragmentsModal', () => {
+  const React = require('react');
+  return function MockKeyFragmentsModal(props: any) {
+    return (
+      <div data-testid="key-fragments-modal">
+        Mocked Key Fragments Modal
+        <button
+          type="button"
+          data-testid="key-fragments-update-thought"
+          onClick={() => props.onThoughtUpdate?.({
+            id: 't1',
+            text: 'Updated Thought',
+            outlinePointId: 'intro-p1',
+            tags: ['introduction'],
+            keyFragments: ['frag1'],
+          })}
+        >
+          Update thought
+        </button>
+      </div>
+    );
+  };
+});
 jest.mock('@/components/plan/PlanStyleSelector', () => () => <div data-testid="plan-style-selector">Mocked Plan Style Selector</div>);
 jest.mock('@/components/plan/ViewPlanMenu', () => {
   const React = require('react');
@@ -129,6 +151,21 @@ jest.mock('@/components/PreachingTimer', () => {
   };
 });
 jest.mock('@/components/FloatingTextScaleControls', () => () => <div data-testid="floating-text-controls">Mocked Floating Text Controls</div>);
+jest.mock('react-textarea-autosize', () => {
+  const React = require('react');
+  return function MockTextareaAutosize(props: any) {
+    const { onChange, onHeightChange, ...rest } = props;
+    return (
+      <textarea
+        {...rest}
+        onChange={(event) => {
+          onChange?.(event);
+          onHeightChange?.((event.target as HTMLTextAreaElement).scrollHeight ?? 0);
+        }}
+      />
+    );
+  };
+});
 
 // Mock i18n with the specific translations needed for this test
 const translate = (key: string, options?: { defaultValue?: string }) => {
@@ -497,6 +534,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
     expect(introOutline).toContain('## Intro Point 1\n\nUpdated Intro Content');
     expect((introOutline.match(/## Intro Point 1/g) || []).length).toBe(1);
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith('Point saved');
+    });
   });
 
   it('shows error toast when generate request fails', async () => {
@@ -559,6 +599,82 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(mockToast.error).toHaveBeenCalledWith('Failed to save point');
     });
+  });
+
+  it('updates local plan state when generate request succeeds', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-left-section');
+
+    const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
+    fireEvent.click(generateButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith('Content generated');
+    });
+
+    expect(screen.getAllByText('Mock Generated Content').length).toBeGreaterThan(0);
+  });
+
+  it('opens key fragments modal for an outline point', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-left-section');
+
+    const keyFragmentButtons = screen.getAllByTitle('Mark Key Fragments');
+    fireEvent.click(keyFragmentButtons[0]);
+
+    expect(await screen.findByTestId('key-fragments-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('key-fragments-update-thought'));
+    await waitFor(() => {
+      expect(screen.getByText('Updated Thought')).toBeInTheDocument();
+    });
+  });
+
+  it('handles copy fallback exceptions and reports copy error', async () => {
+    mockSearchParams = new URLSearchParams('planView=overlay');
+
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: jest.fn().mockRejectedValue(new Error('clipboard denied')),
+        write: jest.fn().mockRejectedValue(new Error('clipboard write denied')),
+      },
+      configurable: true,
+    });
+
+    const originalCreateRange = document.createRange;
+    document.createRange = jest.fn().mockImplementation(() => ({
+      selectNodeContents: () => {
+        throw new Error('range fail');
+      },
+    })) as unknown as typeof document.createRange;
+
+    Object.defineProperty(document, 'execCommand', {
+      value: jest.fn(() => {
+        throw new Error('exec command failed');
+      }),
+      writable: true,
+      configurable: true,
+    });
+
+    // Force advanced clipboard branch check path.
+    Object.defineProperty(window, 'ClipboardItem', {
+      value: function ClipboardItem() {},
+      configurable: true,
+      writable: true,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('sermon-plan-overlay');
+
+    const copyButtons = screen.getAllByTitle('copy.copyFormatted');
+    await act(async () => {
+      fireEvent.click(copyButtons[0]);
+    });
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('plan.copyError');
+    });
+
+    document.createRange = originalCreateRange;
   });
 
   it('enters preaching mode with push (not replace) so back() returns to plan', async () => {

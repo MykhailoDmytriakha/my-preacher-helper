@@ -74,12 +74,10 @@ jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart }: a
   </div>
 ));
 
-jest.mock('@components/EditThoughtModal', () => ({ isOpen, onSave }: any) => (
-  isOpen ? (
-    <div data-testid="edit-thought-modal">
-      <button onClick={() => onSave('Updated text', ['tag1'], undefined)}>Mock Save</button>
-    </div>
-  ) : null
+jest.mock('@components/EditThoughtModal', () => ({ onSave }: any) => (
+  <div data-testid="edit-thought-modal">
+    <button onClick={() => onSave('Updated text', ['main'], 'main-1')}>Mock Save</button>
+  </div>
 ));
 
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: any) => (
@@ -119,23 +117,81 @@ jest.mock('@/services/thought.service', () => ({
 }));
 
 // Mock prep components to test callbacks
-jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ onSavePassageSummary }: any) => (
-  <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
+jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({
+  onSavePassageSummary,
+  onToggleReadWholeBookOnce,
+  onSaveContextNotes,
+  onSaveRepeatedWords,
+}: any) => (
+  <div>
+    <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
+    <button data-testid="toggle-read-book" onClick={() => onToggleReadWholeBookOnce(true)}>Toggle Read Book</button>
+    <button data-testid="save-context-notes" onClick={() => onSaveContextNotes('context-notes')}>Save Context Notes</button>
+    <button data-testid="save-repeated-words" onClick={() => onSaveRepeatedWords(['word'])}>Save Repeated Words</button>
+  </div>
 ));
-jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ onSave }: any) => (
-  <button data-testid="save-exegetical" onClick={() => onSave([])}>Save Exegetical</button>
+jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({
+  onChange,
+  onSave,
+  onSaveAuthorIntent,
+}: any) => (
+  <div>
+    <button data-testid="change-exegetical" onClick={() => onChange([{ id: 'n1', title: 'node', children: [] }])}>Change Exegetical</button>
+    <button data-testid="save-exegetical" onClick={() => onSave([])}>Save Exegetical</button>
+    <button data-testid="save-author-intent" onClick={() => onSaveAuthorIntent('intent')}>Save Author Intent</button>
+  </div>
 ));
-jest.mock('@/components/sermon/prep/MainIdeaStepContent', () => ({ onSaveTextIdea }: any) => (
-  <button data-testid="save-main-idea" onClick={() => onSaveTextIdea('idea')}>Save Main Idea</button>
+jest.mock('@/components/sermon/prep/MainIdeaStepContent', () => ({
+  onSaveTextIdea,
+  onSaveContextIdea,
+  onSaveArgumentation,
+}: any) => (
+  <div>
+    <button data-testid="save-main-idea" onClick={() => onSaveTextIdea('idea')}>Save Main Idea</button>
+    <button data-testid="save-context-idea" onClick={() => onSaveContextIdea('context idea')}>Save Context Idea</button>
+    <button data-testid="save-argumentation" onClick={() => onSaveArgumentation('argumentation')}>Save Argumentation</button>
+  </div>
 ));
-jest.mock('@/components/sermon/prep/GoalsStepContent', () => ({ onSaveGoalStatement }: any) => (
-  <button data-testid="save-goals" onClick={() => onSaveGoalStatement('goal')}>Save Goal</button>
+jest.mock('@/components/sermon/prep/GoalsStepContent', () => ({
+  onSaveGoalStatement,
+  onSaveTimelessTruth,
+  onSaveChristConnection,
+  onSaveGoalType,
+}: any) => (
+  <div>
+    <button data-testid="save-goals" onClick={() => onSaveGoalStatement('goal')}>Save Goal</button>
+    <button data-testid="save-timeless-truth" onClick={() => onSaveTimelessTruth('truth')}>Save Timeless Truth</button>
+    <button data-testid="save-christ-connection" onClick={() => onSaveChristConnection('connection')}>Save Christ Connection</button>
+    <button data-testid="save-goal-type" onClick={() => onSaveGoalType('know')}>Save Goal Type</button>
+  </div>
 ));
-jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ onSaveHomiletical }: any) => (
-  <button data-testid="save-thesis" onClick={() => onSaveHomiletical('thesis')}>Save Thesis</button>
+jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({
+  onSaveHomiletical,
+  onSaveExegetical,
+  onSavePluralKey,
+  onSaveTransitionSentence,
+  onSaveOneSentence,
+  onSaveSermonInOneSentence,
+}: any) => (
+  <div>
+    <button data-testid="save-thesis" onClick={() => onSaveHomiletical('thesis')}>Save Thesis</button>
+    <button data-testid="save-thesis-exegetical" onClick={() => onSaveExegetical('exegetical')}>Save Thesis Exegetical</button>
+    <button data-testid="save-plural-key" onClick={() => onSavePluralKey('plural')}>Save Plural Key</button>
+    <button data-testid="save-transition-sentence" onClick={() => onSaveTransitionSentence('transition')}>Save Transition Sentence</button>
+    <button data-testid="save-one-sentence" onClick={() => onSaveOneSentence('one sentence')}>Save One Sentence</button>
+    <button data-testid="save-sermon-one-sentence" onClick={() => onSaveSermonInOneSentence('sermon one sentence')}>Save Sermon One Sentence</button>
+  </div>
 ));
-jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({ onSaveModernTranslation }: any) => (
-  <button data-testid="save-homiletic" onClick={() => onSaveModernTranslation('translation')}>Save Homiletic</button>
+jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({
+  onSaveModernTranslation,
+  onSaveUpdatedPlan,
+  onSaveSermonPlan,
+}: any) => (
+  <div>
+    <button data-testid="save-homiletic" onClick={() => onSaveModernTranslation('translation')}>Save Homiletic</button>
+    <button data-testid="save-updated-plan" onClick={() => onSaveUpdatedPlan(['updated'])}>Save Updated Plan</button>
+    <button data-testid="save-sermon-plan" onClick={() => onSaveSermonPlan(['sermon plan'])}>Save Sermon Plan</button>
+  </div>
 ));
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => () => <div data-testid="spiritual-step">Spiritual Step</div>);
 
@@ -151,6 +207,10 @@ jest.mock('@/services/sermon.service', () => ({
     isPreached: false,
   }),
   updateSermonPreparation: jest.fn().mockResolvedValue({}),
+}));
+
+jest.mock('@/services/structure.service', () => ({
+  updateStructure: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Mock i18n
@@ -563,11 +623,28 @@ describe('Sermon Detail Page', () => {
       // Attempt to click all known buttons if present
       const knownButtons = [
         'save-passage-summary',
+        'toggle-read-book',
+        'save-context-notes',
+        'save-repeated-words',
+        'change-exegetical',
         'save-exegetical',
+        'save-author-intent',
         'save-main-idea',
+        'save-context-idea',
+        'save-argumentation',
         'save-goals',
+        'save-timeless-truth',
+        'save-christ-connection',
+        'save-goal-type',
         'save-thesis',
-        'save-homiletic'
+        'save-thesis-exegetical',
+        'save-plural-key',
+        'save-transition-sentence',
+        'save-one-sentence',
+        'save-sermon-one-sentence',
+        'save-homiletic',
+        'save-updated-plan',
+        'save-sermon-plan',
       ];
 
       for (const btnId of knownButtons) {
@@ -583,6 +660,63 @@ describe('Sermon Detail Page', () => {
 
 
       expect(require('@/services/sermon.service').updateSermonPreparation).toHaveBeenCalled();
+    });
+
+    it('updates structure when edited thought moves to a different section', async () => {
+      const useSermonMock = require('@/hooks/useSermon').default;
+      const setSermon = jest.fn();
+      const sermonWithThought = {
+        id: 'sermon-123',
+        title: 'Test Sermon',
+        verse: 'John 3:16',
+        date: '2023-01-01',
+        thoughts: [
+          { id: 'thought-1', text: 'Original thought', tags: ['introduction'], outlinePointId: 'intro-1', date: '2024-01-01' },
+        ],
+        isPreached: false,
+        preparation: {},
+        structure: { introduction: ['thought-1'], main: [], conclusion: [] },
+        thoughtsBySection: { introduction: ['thought-1'], main: [], conclusion: [] },
+        outline: {
+          introduction: [{ id: 'intro-1', text: 'Intro point' }],
+          main: [{ id: 'main-1', text: 'Main point' }],
+          conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }],
+        },
+      };
+      useSermonMock.mockReturnValue({
+        sermon: sermonWithThought,
+        loading: false,
+        setSermon,
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue(sermonWithThought.thoughts),
+        error: null,
+      });
+
+      const { deleteThought, updateThought } = require('@/services/thought.service');
+      const { updateStructure } = require('@/services/structure.service');
+      (deleteThought as jest.Mock).mockResolvedValue(undefined);
+      (updateThought as jest.Mock).mockResolvedValue(undefined);
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('thought-list').length).toBeGreaterThan(0);
+      });
+
+      fireEvent.click(screen.getAllByText('Mock Edit Start')[0]);
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-thought-modal')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Mock Save'));
+
+      await waitFor(() => {
+        expect(updateThought).toHaveBeenCalled();
+        expect(updateStructure).toHaveBeenCalled();
+      });
     });
   });
 });

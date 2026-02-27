@@ -141,6 +141,38 @@ describe("usePlanActions", () => {
     expect(onGenerated).not.toHaveBeenCalled();
   });
 
+  it("shows not-found toast when outline point cannot be resolved", async () => {
+    const setGeneratingId = jest.fn();
+    const onGenerated = jest.fn();
+    const onSaved = jest.fn();
+
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon,
+        planStyle: "memory",
+        outlineLookup: {
+          ...outlineLookup,
+          byPointId: {},
+        },
+        generatedContent: {},
+        t,
+        setGeneratingId,
+        onGenerated,
+        onSaved,
+      })
+    );
+
+    await act(async () => {
+      await result.current.generateSermonPointContent("missing-point");
+    });
+
+    expect(mockToast.error).toHaveBeenCalledWith("errors.outlinePointNotFound");
+    expect(mockGeneratePlanPointContent).not.toHaveBeenCalled();
+    expect(onGenerated).not.toHaveBeenCalled();
+    expect(setGeneratingId).toHaveBeenNthCalledWith(1, "missing-point");
+    expect(setGeneratingId).toHaveBeenLastCalledWith(null);
+  });
+
   it("builds deterministic combined section text on save and calls onSaved", async () => {
     mockSaveSermonPlan.mockResolvedValue(undefined);
 
@@ -203,5 +235,66 @@ describe("usePlanActions", () => {
 
     expect(mockToast.error).toHaveBeenCalledWith("errors.failedToSavePoint");
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("builds fallback empty plan object when sermon.plan is absent", async () => {
+    mockSaveSermonPlan.mockResolvedValue(undefined);
+    const onSaved = jest.fn();
+
+    const sermonWithoutPlan = {
+      ...sermon,
+      plan: undefined,
+      outline: {
+        introduction: [{ id: "p1", text: "Intro 1" }],
+        main: [],
+        conclusion: [],
+      },
+    };
+
+    const outlineLookupSinglePoint = {
+      ...outlineLookup,
+      pointsBySection: {
+        introduction: [{ id: "p1", text: "Intro 1" }],
+        main: [],
+        conclusion: [],
+      },
+      pointIdsBySection: {
+        introduction: ["p1"],
+        main: [],
+        conclusion: [],
+      },
+    };
+
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon: sermonWithoutPlan,
+        planStyle: "memory",
+        outlineLookup: outlineLookupSinglePoint,
+        generatedContent: {},
+        t,
+        setGeneratingId: jest.fn(),
+        onGenerated: jest.fn(),
+        onSaved,
+      })
+    );
+
+    await act(async () => {
+      await result.current.saveSermonPoint("p1", "Fresh intro", "introduction");
+    });
+
+    expect(mockSaveSermonPlan).toHaveBeenCalledWith({
+      sermonId: "sermon-1",
+      plan: {
+        introduction: {
+          outline: "## Intro 1\n\nFresh intro",
+          outlinePoints: { p1: "Fresh intro" },
+        },
+        main: { outline: "" },
+        conclusion: { outline: "" },
+      },
+    });
+    expect(onSaved).toHaveBeenCalled();
+    expect(mockToast.success).toHaveBeenCalledWith("plan.pointSaved");
+    expect(mockToast.success).not.toHaveBeenCalledWith("Section saved: Introduction");
   });
 });

@@ -40,6 +40,7 @@ describe("usePairedPlanCardHeights", () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     window.requestAnimationFrame = originalRaf;
   });
 
@@ -108,5 +109,109 @@ describe("usePairedPlanCardHeights", () => {
     expect(left.style.height).toBe("140px");
     expect(right.style.height).toBe("140px");
   });
-});
 
+  it("syncs all section pairs on desktop viewport", () => {
+    setMatchMedia(true);
+
+    const { result } = renderHook(() =>
+      usePairedPlanCardHeights({
+        outline: undefined,
+        getSectionByPointId: () => null,
+      })
+    );
+
+    const introLeft = createSizedDiv(100);
+    const introRight = createSizedDiv(130);
+    const mainLeft = createSizedDiv(170);
+    const mainRight = createSizedDiv(90);
+    const conclusionLeft = createSizedDiv(55);
+    const conclusionRight = createSizedDiv(75);
+
+    act(() => {
+      result.current.registerPairRef("introduction", "i1", "left", introLeft);
+      result.current.registerPairRef("introduction", "i1", "right", introRight);
+      result.current.registerPairRef("main", "m1", "left", mainLeft);
+      result.current.registerPairRef("main", "m1", "right", mainRight);
+      result.current.registerPairRef("conclusion", "c1", "left", conclusionLeft);
+      result.current.registerPairRef("conclusion", "c1", "right", conclusionRight);
+      result.current.syncAllHeights();
+    });
+
+    expect(introLeft.style.height).toBe("130px");
+    expect(introRight.style.height).toBe("130px");
+    expect(mainLeft.style.height).toBe("170px");
+    expect(mainRight.style.height).toBe("170px");
+    expect(conclusionLeft.style.height).toBe("75px");
+    expect(conclusionRight.style.height).toBe("75px");
+  });
+
+  it("syncs by point id and resets pair heights before applying max height", () => {
+    setMatchMedia(true);
+
+    const { result } = renderHook(() =>
+      usePairedPlanCardHeights({
+        outline: undefined,
+        getSectionByPointId: (pointId) => (pointId === "p-reset" ? "main" : null),
+      })
+    );
+
+    const left = createSizedDiv(200);
+    const right = createSizedDiv(120);
+    left.style.height = "1px";
+    right.style.height = "2px";
+
+    act(() => {
+      result.current.registerPairRef("main", "p-reset", "left", left);
+      result.current.registerPairRef("main", "p-reset", "right", right);
+      result.current.syncPairHeightsByPointId("p-reset");
+    });
+
+    expect(left.style.height).toBe("200px");
+    expect(right.style.height).toBe("200px");
+  });
+
+  it("debounces resize events and clears pending timer on unmount", () => {
+    jest.useFakeTimers();
+    setMatchMedia(true);
+
+    const clearTimeoutSpy = jest.spyOn(global, "clearTimeout");
+    const { result, unmount } = renderHook(() =>
+      usePairedPlanCardHeights({
+        outline: undefined,
+        getSectionByPointId: () => null,
+      })
+    );
+
+    const left = createSizedDiv(90);
+    const right = createSizedDiv(140);
+    act(() => {
+      result.current.registerPairRef("introduction", "resize", "left", left);
+      result.current.registerPairRef("introduction", "resize", "right", right);
+      jest.advanceTimersByTime(150); // let initial sync settle
+      left.style.height = "";
+      right.style.height = "";
+    });
+
+    expect(left.style.height).toBe("");
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+      window.dispatchEvent(new Event("resize"));
+      jest.advanceTimersByTime(199);
+    });
+    expect(left.style.height).toBe("");
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(left.style.height).toBe("140px");
+    expect(right.style.height).toBe("140px");
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    clearTimeoutSpy.mockRestore();
+  });
+});

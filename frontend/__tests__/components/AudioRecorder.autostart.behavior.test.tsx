@@ -411,4 +411,21 @@ describe('AudioRecorder splitLeft prop', () => {
     const splitWrapper = container.querySelector('div.flex.rounded-xl.overflow-hidden.shadow-lg');
     expect(splitWrapper).not.toBeInTheDocument();
   });
+
+  it('disables split record button when recorder is disabled', () => {
+    const { container } = render(
+      <AudioRecorder
+        onRecordingComplete={jest.fn()}
+        disabled
+        splitLeft={<button data-testid="split-left-btn">Write</button>}
+      />
+    );
+
+    const splitWrapper = container.querySelector('div.flex.rounded-xl.overflow-hidden.shadow-lg');
+    expect(splitWrapper).toBeInTheDocument();
+
+    const buttons = splitWrapper?.querySelectorAll('button') || [];
+    expect(buttons.length).toBe(2);
+    expect(buttons[1]).toBeDisabled();
+  });
 });

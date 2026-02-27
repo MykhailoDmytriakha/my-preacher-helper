@@ -200,11 +200,7 @@ interface PlanMainLayoutContextValue {
 const PlanMainLayoutContext = createContext<PlanMainLayoutContextValue | null>(null);
 
 function usePlanMainLayoutContext() {
-  const context = useContext(PlanMainLayoutContext);
-  if (!context) {
-    throw new Error("PlanMainLayout context is missing");
-  }
-  return context;
+  return useContext(PlanMainLayoutContext) as PlanMainLayoutContextValue;
 }
 
 interface SermonPointCardProps {

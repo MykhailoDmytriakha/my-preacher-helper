@@ -81,4 +81,50 @@ describe("useCopyFormattedContent", () => {
 
     clearTimeoutSpy.mockRestore();
   });
+
+  it("ignores a second copy request while copying is already in progress", async () => {
+    let resolveCopy: ((value: boolean) => void) | null = null;
+    const deferredPromise = new Promise<boolean>((resolve) => {
+      resolveCopy = resolve;
+    });
+    const copyOperation = jest.fn(() => deferredPromise);
+    const { result } = renderHook(() => useCopyFormattedContent({ t: translate }));
+
+    let firstRunPromise: Promise<void> | undefined;
+    act(() => {
+      firstRunPromise = result.current.runCopy(copyOperation);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.status).toBe(COPY_STATUS.COPYING);
+
+    act(() => {
+      void result.current.runCopy(copyOperation);
+    });
+
+    expect(copyOperation).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveCopy?.(true);
+      await firstRunPromise!;
+    });
+
+    expect(result.current.status).toBe(COPY_STATUS.SUCCESS);
+  });
+
+  it("handles copy operation exceptions as an error result", async () => {
+    const { result } = renderHook(() => useCopyFormattedContent({ t: translate }));
+
+    await act(async () => {
+      await result.current.runCopy(async () => {
+        throw new Error("clipboard failed");
+      });
+    });
+
+    expect(result.current.status).toBe(COPY_STATUS.ERROR);
+    expect(toast.error).toHaveBeenCalledWith("plan.copyError");
+  });
 });
