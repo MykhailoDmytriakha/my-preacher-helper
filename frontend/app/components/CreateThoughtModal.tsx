@@ -142,164 +142,178 @@ export default function CreateThoughtModal({
   if (!isOpen) return null;
 
   const modalContent = (
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4"
-      onClick={handleClose}
-    >
+    <div className="fixed inset-0 z-50">
+      {/* Backdrop — only on desktop */}
+      <div className="hidden sm:block absolute inset-0 bg-black bg-opacity-50" onClick={handleClose} />
+
+      {/* Mobile: full-screen scroll sheet / Desktop: centered card */}
       <div
-        role="dialog"
-        aria-modal="true"
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[600px] max-h-[85vh] my-4 sm:my-8 flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className={
+          "absolute inset-0 overflow-y-auto bg-white dark:bg-gray-800 " +
+          "sm:inset-auto sm:relative sm:top-0 sm:left-0 sm:overflow-visible " +
+          "sm:flex sm:items-center sm:justify-center sm:min-h-screen sm:p-4"
+        }
+        onClick={handleClose}
       >
-        {/* Header */}
-        <div className="space-y-3 mb-3">
-          <h2 className="text-xl sm:text-2xl font-bold">{t('createThought.title')}</h2>
-          <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {t('editThought.textLabel')}
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                {t('editThought.appendDictation')}
-              </span>
-              <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
-                <FocusRecorderButton
-                  size="small"
-                  onRecordingComplete={handleDictationComplete}
-                  isProcessing={isDictating}
-                  disabled={isSubmitting || !isOnline}
-                  onError={(msg) => {
-                    toast.error(msg);
-                    setIsDictating(false);
-                  }}
-                />
+        <div
+          role="dialog"
+          aria-modal="true"
+          className={
+            "p-4 sm:p-8 w-full sm:max-w-[600px] sm:max-h-[85vh] sm:rounded-lg sm:shadow-lg " +
+            "sm:flex sm:flex-col sm:overflow-hidden sm:my-8 sm:bg-white sm:dark:bg-gray-800"
+          }
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="space-y-3 mb-3">
+            <h2 className="text-xl sm:text-2xl font-bold">{t('createThought.title')}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t('editThought.textLabel')}
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {t('editThought.appendDictation')}
+                </span>
+                <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
+                  <FocusRecorderButton
+                    size="small"
+                    onRecordingComplete={handleDictationComplete}
+                    isProcessing={isDictating}
+                    disabled={isSubmitting || !isOnline}
+                    onError={(msg) => {
+                      toast.error(msg);
+                      setIsDictating(false);
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
-          <div className="flex-grow overflow-auto space-y-4">
-            {!isOnline && (
-              <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 rounded-md">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  {t('manualThought.offlineWarning')}
-                </p>
-              </div>
-            )}
+          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-grow sm:overflow-hidden">
+            {/* Body: mobile scrolls via outer container; desktop scroll here */}
+            <div className="sm:flex-grow sm:overflow-auto space-y-4">
+              {!isOnline && (
+                <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 rounded-md">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    {t('manualThought.offlineWarning')}
+                  </p>
+                </div>
+              )}
 
-            <RichMarkdownEditor
-              value={text}
-              onChange={setText}
-              placeholder={t('manualThought.placeholder')}
-            />
+              <RichMarkdownEditor
+                value={text}
+                onChange={setText}
+                placeholder={t('manualThought.placeholder')}
+              />
 
-            {sermonOutline && (
+              {sermonOutline && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {t('editThought.outlinePointLabel')}
+                  </label>
+                  <select
+                    value={selectedSermonPointId || ''}
+                    onChange={(e) => setSelectedSermonPointId(e.target.value || undefined)}
+                    className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+                    disabled={isSubmitting}
+                  >
+                    <option value="">{t('editThought.noSermonPoint')}</option>
+                    {(['introduction', 'main', 'conclusion'] as const).map((section) => {
+                      const points = sermonOutline[section];
+                      if (!Array.isArray(points) || points.length === 0) return null;
+                      const label = t(section === 'main' ? 'outline.mainPoints' : `outline.${section}`);
+                      return (
+                        <optgroup key={section} label={label}>
+                          {points.map((p) => (
+                            <option key={p.id} value={p.id}>{p.text}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                  {selectedPointInfo && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section })}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  {t('editThought.outlinePointLabel')}
-                </label>
-                <select
-                  value={selectedSermonPointId || ''}
-                  onChange={(e) => setSelectedSermonPointId(e.target.value || undefined)}
-                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
-                  disabled={isSubmitting}
-                >
-                  <option value="">{t('editThought.noSermonPoint')}</option>
-                  {(['introduction', 'main', 'conclusion'] as const).map((section) => {
-                    const points = sermonOutline[section];
-                    if (!Array.isArray(points) || points.length === 0) return null;
-                    const label = t(section === 'main' ? 'outline.mainPoints' : `outline.${section}`);
+                <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  {t('thought.tagsLabel')}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((tag, idx) => {
+                    const tagInfo = allowedTags.find((t) => t.name === tag);
+                    const displayName = getTagDisplayName(tag, tagInfo?.translationKey);
+                    const { className: base, style } = getTagStyle(tag, tagInfo?.color);
+                    const iconInfo = isStructureTag(tag) ? getStructureIcon(tag) : null;
                     return (
-                      <optgroup key={section} label={label}>
-                        {points.map((p) => (
-                          <option key={p.id} value={p.id}>{p.text}</option>
-                        ))}
-                      </optgroup>
+                      <div
+                        key={tag + idx}
+                        onClick={() => handleRemoveTag(idx)}
+                        className={`cursor-pointer ${base}`}
+                        style={style}
+                        role="button"
+                        aria-label={`Remove tag ${displayName}`}
+                      >
+                        {iconInfo && (
+                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                        )}
+                        <span>{displayName}</span>
+                        <span className="ml-1">×</span>
+                      </div>
                     );
                   })}
-                </select>
-                {selectedPointInfo && (
-                  <p className="mt-1 text-sm text-gray-500">
-                    {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section })}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div>
-              <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
-                {t('thought.tagsLabel')}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((tag, idx) => {
-                  const tagInfo = allowedTags.find((t) => t.name === tag);
-                  const displayName = getTagDisplayName(tag, tagInfo?.translationKey);
-                  const { className: base, style } = getTagStyle(tag, tagInfo?.color);
-                  const iconInfo = isStructureTag(tag) ? getStructureIcon(tag) : null;
-                  return (
-                    <div
-                      key={tag + idx}
-                      onClick={() => handleRemoveTag(idx)}
-                      className={`cursor-pointer ${base}`}
-                      style={style}
-                      role="button"
-                      aria-label={`Remove tag ${displayName}`}
-                    >
-                      {iconInfo && (
-                        <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                      )}
-                      <span>{displayName}</span>
-                      <span className="ml-1">×</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {availableTags.map((tag) => {
-                  const displayName = getTagDisplayName(tag.name, tag.translationKey);
-                  const { className: base, style } = getTagStyle(tag.name, tag.color);
-                  const iconInfo = isStructureTag(tag.name) ? getStructureIcon(tag.name) : null;
-                  return (
-                    <div
-                      key={tag.name}
-                      onClick={() => handleAddTag(tag.name)}
-                      className={`cursor-pointer ${base}`}
-                      style={style}
-                      role="button"
-                      aria-label={`Add tag ${displayName}`}
-                    >
-                      {iconInfo && (
-                        <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                      )}
-                      <span>{displayName}</span>
-                    </div>
-                  );
-                })}
+                </div>
+                <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {availableTags.map((tag) => {
+                    const displayName = getTagDisplayName(tag.name, tag.translationKey);
+                    const { className: base, style } = getTagStyle(tag.name, tag.color);
+                    const iconInfo = isStructureTag(tag.name) ? getStructureIcon(tag.name) : null;
+                    return (
+                      <div
+                        key={tag.name}
+                        onClick={() => handleAddTag(tag.name)}
+                        className={`cursor-pointer ${base}`}
+                        style={style}
+                        role="button"
+                        aria-label={`Add tag ${displayName}`}
+                      >
+                        {iconInfo && (
+                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                        )}
+                        <span>{displayName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex justify-end gap-3 mt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 transition-colors"
-              disabled={isSubmitting}
-            >
-              {t('buttons.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-              disabled={isSubmitting || !text.trim() || !isOnline}
-            >
-              {isSubmitting ? t('buttons.saving') : t('buttons.save')}
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-3 mt-4 pb-4 sm:pb-0">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 transition-colors"
+                disabled={isSubmitting}
+              >
+                {t('buttons.cancel')}
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+                disabled={isSubmitting || !text.trim() || !isOnline}
+              >
+                {isSubmitting ? t('buttons.saving') : t('buttons.save')}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

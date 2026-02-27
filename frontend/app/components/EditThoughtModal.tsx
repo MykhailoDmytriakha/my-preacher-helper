@@ -364,86 +364,110 @@ export default function EditThoughtModal({
   );
 
   const modalContent = (
-    <div onClick={(e) => e.stopPropagation()} className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
-      <div ref={modalRef} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-[760px] max-h-[90vh] my-4 sm:my-6 flex flex-col overflow-hidden">
-        <div ref={headerRef} className="space-y-3 mb-3">
-          <h2 className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
-          <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                {t('editThought.appendDictation')}
-              </span>
-              <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
-                <FocusRecorderButton
-                  size="small"
-                  onRecordingComplete={handleDictationComplete}
-                  isProcessing={isDictating}
-                  disabled={isSubmitting || isDictationDisabled}
-                  onError={(errorMessage) => {
-                    toast.error(errorMessage);
-                    setIsDictating(false);
-                  }}
-                />
+    <div className="fixed inset-0 z-50">
+      {/* Backdrop — only visible on desktop */}
+      <div className="hidden sm:block absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+
+      {/* Mobile: full-screen scroll sheet */}
+      <div
+        ref={modalRef}
+        onClick={(e) => e.stopPropagation()}
+        className={
+          // Mobile: fixed full-screen, scrollable
+          // Desktop (sm+): centered modal card
+          "absolute inset-0 overflow-y-auto bg-white dark:bg-gray-800 " +
+          "sm:inset-auto sm:relative sm:top-0 sm:left-0 sm:overflow-visible " +
+          "sm:flex sm:items-center sm:justify-center sm:min-h-screen sm:p-4"
+        }
+      >
+        <div
+          className={
+            "p-4 sm:p-8 w-full sm:max-w-[760px] sm:max-h-[90vh] sm:rounded-lg sm:shadow-lg " +
+            "sm:flex sm:flex-col sm:overflow-hidden sm:my-6 sm:bg-white sm:dark:bg-gray-800"
+          }
+        >
+          {/* Header */}
+          <div ref={headerRef} className="space-y-3 mb-3">
+            <h2 className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {t('editThought.appendDictation')}
+                </span>
+                <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
+                  <FocusRecorderButton
+                    size="small"
+                    onRecordingComplete={handleDictationComplete}
+                    isProcessing={isDictating}
+                    disabled={isSubmitting || isDictationDisabled}
+                    onError={(errorMessage) => {
+                      toast.error(errorMessage);
+                      setIsDictating(false);
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex-1 min-h-[250px] max-h-[500px] overflow-y-auto w-full flex flex-col">
-          {isReadOnly ? (
-            <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
-              <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
+          {/* Body: on desktop scroll inside; on mobile the outer div scrolls */}
+          <div className="sm:flex-1 sm:overflow-y-auto sm:min-h-0 w-full flex flex-col gap-4">
+            {isReadOnly ? (
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
+                <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
+              </div>
+            ) : (
+              <RichMarkdownEditor
+                value={text}
+                onChange={setText}
+                placeholder={t('manualThought.placeholder')}
+              />
+            )}
+
+            <div ref={metaRef} className="space-y-4">
+              {sermonOutline && (
+                <OutlinePointSelect
+                  selectedSermonPointId={selectedSermonPointId}
+                  onChange={handleSermonPointChange}
+                  filteredSermonPoints={filteredSermonPoints}
+                  selectedPointInfo={selectedPointInfo}
+                  t={t}
+                  disabled={isReadOnly}
+                />
+              )}
+
+              <TagsSection
+                tags={tags}
+                allowedTags={allowedTags}
+                availableTags={availableTags}
+                onRemoveTag={handleRemoveTag}
+                onAddTag={handleAddTag}
+                t={t}
+                disabled={isReadOnly}
+              />
             </div>
-          ) : (
-            <RichMarkdownEditor
-              value={text}
-              onChange={setText}
-              placeholder={t('manualThought.placeholder')}
-            />
-          )}
-        </div>
+          </div>
 
-        <div ref={metaRef} className="mt-4 space-y-4">
-          {sermonOutline && (
-            <OutlinePointSelect
-              selectedSermonPointId={selectedSermonPointId}
-              onChange={handleSermonPointChange}
-              filteredSermonPoints={filteredSermonPoints}
-              selectedPointInfo={selectedPointInfo}
-              t={t}
-              disabled={isReadOnly}
-            />
-          )}
-
-          <TagsSection
-            tags={tags}
-            allowedTags={allowedTags}
-            availableTags={availableTags}
-            onRemoveTag={handleRemoveTag}
-            onAddTag={handleAddTag}
-            t={t}
-            disabled={isReadOnly}
-          />
-        </div>
-
-        <div ref={footerRef} className="flex justify-end gap-3 mt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
-            disabled={isSubmitting}
-          >
-            {t('buttons.cancel')}
-          </button>
-          <button
-            type="button"
-            disabled={!isChanged || isSubmitting || isReadOnly}
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-          >
-            {isSubmitting ? t('buttons.saving') : t('buttons.save')}
-          </button>
+          {/* Footer */}
+          <div ref={footerRef} className="flex justify-end gap-3 mt-4 pb-4 sm:pb-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
+              disabled={isSubmitting}
+            >
+              {t('buttons.cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={!isChanged || isSubmitting || isReadOnly}
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
+            >
+              {isSubmitting ? t('buttons.saving') : t('buttons.save')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -127,8 +127,8 @@ export default function DashboardNav() {
   };
 
   // Handle submitting feedback with user info
-  const submitFeedbackWithUser = async (text: string, type: string) => {
-    return handleSubmitFeedback(text, type, user?.uid || 'anonymous');
+  const submitFeedbackWithUser = async (text: string, type: string, images: string[]) => {
+    return handleSubmitFeedback(text, type, images, user?.uid || 'anonymous');
   };
 
   // Handle clicks outside of nav dropdown

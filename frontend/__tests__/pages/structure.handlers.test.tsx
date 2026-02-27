@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
@@ -42,6 +43,10 @@ jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), loading: jest.fn() },
 }));
 
+const focusModeState: { focusedColumn: string | null } = { focusedColumn: 'introduction' };
+const debouncedSaveThoughtSpy = jest.fn();
+const debouncedSaveStructureSpy = jest.fn();
+
 jest.mock('@dnd-kit/core', () => {
   const MockDndContext = ({ children, onDragEnd }: any) => {
     React.useEffect(() => {
@@ -82,7 +87,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useAiSortingDiff', (
 
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useFocusMode', () => ({
   useFocusMode: () => ({
-    focusedColumn: 'introduction',
+    focusedColumn: focusModeState.focusedColumn,
     handleToggleFocusMode: jest.fn(),
     navigateToSection: jest.fn(),
   }),
@@ -94,8 +99,8 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useOutlineStats', ()
 
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/usePersistence', () => ({
   usePersistence: () => ({
-    debouncedSaveThought: jest.fn(),
-    debouncedSaveStructure: jest.fn(),
+    debouncedSaveThought: debouncedSaveThoughtSpy,
+    debouncedSaveStructure: debouncedSaveStructureSpy,
   }),
 }));
 
@@ -137,6 +142,8 @@ jest.mock('@/components/Column', () => {
         main: [],
         conclusion: [],
       });
+      props.onOutlinePointDeleted?.('op-1', props.id);
+      void props.onAddOutlinePoint?.(props.id, 0, 'Inserted point');
       props.onToggleReviewed?.('op-1', true);
       void props.getExportContent?.('plain', { includeTags: true });
     }, [props]);
@@ -162,13 +169,15 @@ describe('StructurePage handlers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.confirm = jest.fn(() => true);
+    focusModeState.focusedColumn = 'introduction';
+    localStorage.clear();
   });
 
   it('executes key handlers for navigation, audio, outline, delete, and drag-end flows', async () => {
     let sermonState = createMockSermon({
       id: 'sermon-1',
       thoughts: [
-        createMockThought({ id: 't1', text: 'Intro', tags: ['Introduction'] }),
+        createMockThought({ id: 't1', text: 'Intro', tags: ['Introduction'], outlinePointId: 'op-1' }),
         createMockThought({ id: 'amb-1', text: 'Ambiguous', tags: [] }),
       ],
       structure: {
@@ -185,7 +194,7 @@ describe('StructurePage handlers', () => {
     });
 
     let containersState: Record<string, any[]> = {
-      introduction: [createMockItem({ id: 't1', content: 'Intro' })],
+      introduction: [createMockItem({ id: 't1', content: 'Intro', outlinePointId: 'op-1' })],
       main: [],
       conclusion: [],
       ambiguous: [createMockItem({ id: 'amb-1', content: 'Ambiguous' })],
@@ -220,6 +229,42 @@ describe('StructurePage handlers', () => {
       expect(updateSermonOutline).toHaveBeenCalled();
       expect(updateStructure).toHaveBeenCalled();
       expect(getExportContent).toHaveBeenCalled();
+      expect(debouncedSaveThoughtSpy).toHaveBeenCalled();
     });
+  });
+
+  it('toggles vertical layout and persists preference when not in focus mode', async () => {
+    focusModeState.focusedColumn = null;
+    localStorage.setItem('structureLayoutVertical', 'false');
+    const localStorageSetItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+    const sermon = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [],
+      structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+      outline: { introduction: [], main: [], conclusion: [] },
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon,
+      setSermon: jest.fn(),
+      containers: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+      setContainers: jest.fn(),
+      outlinePoints: sermon.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    const layoutButton = await screen.findByTestId('layout-toggle-button');
+    fireEvent.click(layoutButton);
+
+    expect(localStorageSetItemSpy).toHaveBeenCalledWith('structureLayoutVertical', 'true');
+    expect(layoutButton).toHaveTextContent('Horizontal');
   });
 });

@@ -71,6 +71,20 @@ function StructurePageContent() {
   const sermonId = sermonIdFromPath ?? sermonIdFromQuery ?? null;
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
+  const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('structureLayoutVertical') === 'true';
+    }
+    return false;
+  });
+
+  const handleToggleLayout = useCallback(() => {
+    setIsVerticalLayout(prev => {
+      const next = !prev;
+      localStorage.setItem('structureLayoutVertical', String(next));
+      return next;
+    });
+  }, []);
 
   // Handle switching to plan view
   const handleSwitchToPlan = useCallback((sectionId?: string) => {
@@ -463,6 +477,91 @@ function StructurePageContent() {
     }
   };
 
+  const handleOutlinePointDeleted = (pointId: string, sectionId: string) => {
+    if (!sermon) return;
+
+    const thoughtsToUpdate = sermon.thoughts.filter(t => t.outlinePointId === pointId);
+    if (thoughtsToUpdate.length === 0) return;
+
+    try {
+      // 1. Update local sermon state
+      setSermon(prevSermon => {
+        if (!prevSermon) return null;
+        return {
+          ...prevSermon,
+          thoughts: prevSermon.thoughts.map(thought =>
+            thought.outlinePointId === pointId
+              ? { ...thought, outlinePointId: undefined }
+              : thought
+          )
+        };
+      });
+
+      // 2. Update local containers state so UI updates
+      setContainers(prevContainers => {
+        const nextContainers = { ...prevContainers };
+        if (nextContainers[sectionId]) {
+          nextContainers[sectionId] = nextContainers[sectionId].map(item =>
+            item.outlinePointId === pointId
+              ? { ...item, outlinePointId: undefined, outlinePoint: undefined }
+              : item
+          );
+        }
+        return nextContainers;
+      });
+
+      // 3. Update backend for each thought
+      thoughtsToUpdate.forEach(thought => {
+        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null });
+      });
+
+    } catch (error) {
+      console.error('Error updating thoughts after outline point deletion:', error);
+      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating thoughts' }));
+    }
+  };
+
+  const handleAddOutlinePoint = async (sectionId: string, index: number, text: string) => {
+    if (!sermon || !text.trim()) return;
+
+    try {
+      // 1. Generate a temporary ID for the new point
+      const newPointId = `temp-${Date.now()}`;
+      const newPoint: SermonPoint = {
+        id: newPointId,
+        text: text.trim(),
+        isReviewed: false
+      };
+
+      // 2. clone existing outline
+      const updatedOutline: SermonOutline = {
+        introduction: [...(sermon.outline?.introduction || [])],
+        main: [...(sermon.outline?.main || [])],
+        conclusion: [...(sermon.outline?.conclusion || [])]
+      };
+
+      // 3. insert new point at specified index
+      const sectionPoints = updatedOutline[sectionId as keyof SermonOutline] || [];
+      if (index >= sectionPoints.length) {
+        sectionPoints.push(newPoint);
+      } else {
+        sectionPoints.splice(index, 0, newPoint);
+      }
+      updatedOutline[sectionId as keyof SermonOutline] = sectionPoints;
+
+      // 4. Update local sermon state
+      setSermon(prev => prev ? { ...prev, outline: updatedOutline } : null);
+
+      // 5. Save to backend
+      const { updateSermonOutline } = await import('@/services/outline.service');
+      await updateSermonOutline(sermon.id, updatedOutline);
+
+    } catch (error) {
+      console.error('Error adding outline point:', error);
+      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating outline' }));
+    }
+  };
+
   const onDragEndWrapper = (event: DragEndEvent) => {
     const { active } = event;
     const activeKey = String(active?.id ?? "");
@@ -508,6 +607,34 @@ function StructurePageContent() {
             onToggleFocusMode={handleToggleFocusMode}
             onNavigateToSection={navigateToSection}
           />
+          {/* Layout toggle button — only shown when not in focus mode */}
+          {!focusedColumn && (
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={handleToggleLayout}
+                title={isVerticalLayout ? t('structure.switchToHorizontalLayout', { defaultValue: 'Switch to horizontal layout' }) : t('structure.switchToVerticalLayout', { defaultValue: 'Switch to vertical layout' })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600"
+                data-testid="layout-toggle-button"
+              >
+                {isVerticalLayout ? (
+                  // Horizontal layout icon (3 columns)
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="5" height="18" rx="1" />
+                    <rect x="10" y="3" width="5" height="18" rx="1" />
+                    <rect x="17" y="3" width="5" height="18" rx="1" />
+                  </svg>
+                ) : (
+                  // Vertical layout icon (stacked rows)
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="5" rx="1" />
+                    <rect x="3" y="10" width="18" height="5" rx="1" />
+                    <rect x="3" y="17" width="18" height="5" rx="1" />
+                  </svg>
+                )}
+                <span>{isVerticalLayout ? t('structure.horizontalLayout', { defaultValue: 'Horizontal' }) : t('structure.verticalLayout', { defaultValue: 'Vertical' })}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <DndContext
@@ -530,7 +657,7 @@ function StructurePageContent() {
             columnTitle={columnTitles["ambiguous"]}
           />
 
-          <div className={`${!focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'flex flex-col'} w-full mt-8`}>
+          <div className={`${!focusedColumn ? (isVerticalLayout ? 'flex flex-col gap-6' : 'grid grid-cols-1 md:grid-cols-3 gap-6') : 'flex flex-col'} w-full mt-8`}>
             {/* Introduction column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "introduction") && (
               <Column
@@ -565,6 +692,8 @@ function StructurePageContent() {
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
+                onOutlinePointDeleted={handleOutlinePointDeleted}
+                onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
 
@@ -602,10 +731,10 @@ function StructurePageContent() {
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
+                onOutlinePointDeleted={handleOutlinePointDeleted}
+                onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
-
-            {/* Conclusion column - only show if not in focus mode or if it's the focused column */}
             {(!focusedColumn || focusedColumn === "conclusion") && (
               <Column
                 key="conclusion"
@@ -639,6 +768,8 @@ function StructurePageContent() {
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
+                onOutlinePointDeleted={handleOutlinePointDeleted}
+                onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
           </div>

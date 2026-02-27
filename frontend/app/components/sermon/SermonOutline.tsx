@@ -33,20 +33,23 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 }) => {
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
-  
+
   // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
-    const [saving, setSaving] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [sectionPoints, setSectionPoints] = useState<Record<SectionType, SermonPoint[]>>({
     introduction: [],
     mainPart: [],
     conclusion: [],
   });
-  const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>({
-    introduction: false,
-    mainPart: false,
-    conclusion: false,
+  const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>(() => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    return {
+      introduction: !isMobile,
+      mainPart: !isMobile,
+      conclusion: !isMobile,
+    };
   });
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>("");
@@ -61,7 +64,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-  
+
   // --- All useEffect hooks after useState and useRef ---
   // Focus input when starting to add/edit
   useEffect(() => {
@@ -75,19 +78,20 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       editInputRef.current.focus();
     }
   }, [editingPointId]);
-  
+
   // Fetch outline data when the component mounts or sermon ID changes
   useEffect(() => {
     const fetchOutline = async () => {
       if (!sermon || !sermon.id) return;
-      
+
       setLoading(true);
       setError(null);
-      
+
       try {
         if (!isOnline) {
           const outline = sermon.outline;
           if (outline) {
+            const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
             const mappedOutline = {
               introduction: outline.introduction || [],
               mainPart: outline.main || [],
@@ -95,15 +99,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
             };
             setSectionPoints(mappedOutline);
             setExpandedSections({
-              introduction: mappedOutline.introduction.length > 0,
-              mainPart: mappedOutline.mainPart.length > 0,
-              conclusion: mappedOutline.conclusion.length > 0,
+              introduction: !isMobile && mappedOutline.introduction.length > 0,
+              mainPart: !isMobile && mappedOutline.mainPart.length > 0,
+              conclusion: !isMobile && mappedOutline.conclusion.length > 0,
             });
           }
           return;
         }
         const outlineData = await getSermonOutline(sermon.id);
-        
+
         if (outlineData) {
           // Map the API response to our component state structure
           const mappedOutline = {
@@ -111,14 +115,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
             mainPart: outlineData.main || [], // Note the field name difference
             conclusion: outlineData.conclusion || [],
           };
-          
+
           setSectionPoints(mappedOutline);
-          
-          // Auto-expand sections that have content
+
+          const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+          // Auto-expand sections that have content (desktop only)
           setExpandedSections({
-            introduction: mappedOutline.introduction.length > 0,
-            mainPart: mappedOutline.mainPart.length > 0,
-            conclusion: mappedOutline.conclusion.length > 0,
+            introduction: !isMobile && mappedOutline.introduction.length > 0,
+            mainPart: !isMobile && mappedOutline.mainPart.length > 0,
+            conclusion: !isMobile && mappedOutline.conclusion.length > 0,
           });
         } else {
           // Initialize with empty arrays if no data is returned
@@ -127,7 +132,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
             mainPart: [],
             conclusion: [],
           });
-          
+
           // Keep all sections collapsed if empty
           setExpandedSections({
             introduction: false,
@@ -142,11 +147,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         setLoading(false);
       }
     };
-    
+
     fetchOutline();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sermon?.id, isOnline]);
-  
+
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
     if (isReadOnly) return;
@@ -154,28 +159,28 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       setAddingNewToSection(null); // Close if empty
       return;
     }
-    
+
     const newPoint = {
       id: Date.now().toString(),
       text: newPointTexts[section].trim(),
     };
-    
+
     // Create new points array for this section
     const updatedSectionArray = [...sectionPoints[section], newPoint];
-    
+
     // Create a new object instead of modifying the existing one
     const updatedSectionPoints = {
       ...sectionPoints,
       [section]: updatedSectionArray,
     };
-    
+
     // Clear input and reset adding state before state update
     setNewPointTexts({
       ...newPointTexts,
       [section]: '',
     });
     setAddingNewToSection(null);
-    
+
     // Make sure section is expanded when adding a new point
     if (!expandedSections[section]) {
       setExpandedSections({
@@ -183,14 +188,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         [section]: true,
       });
     }
-    
+
     // Update state
     setSectionPoints(updatedSectionPoints);
-    
+
     // Directly pass the updated data to saveOutlineChanges
     directlySaveOutlineChanges(updatedSectionPoints);
   };
-  
+
   // Direct save function that takes the updated points to save
   const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
     if (isReadOnly) return;
@@ -199,23 +204,23 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
-    
+
     // Ensure we have the latest state by delaying the save
     saveTimeoutRef.current = setTimeout(async () => {
       if (!sermon || !sermon.id) {
         console.error('Cannot save outline: sermon or sermon.id is undefined');
         return;
       }
-      
+
       if (saving) {
         // Retry after the current save is done
         saveTimeoutRef.current = setTimeout(() => directlySaveOutlineChanges(pointsToSave), 500);
         return;
       }
-      
+
       setSaving(true);
       setError(null);
-      
+
       try {
         // Convert our component state structure to the API expected format
         // Important: Using the explicitly passed data, not relying on state
@@ -224,7 +229,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
           main: pointsToSave.mainPart, // Map mainPart to main for API
           conclusion: pointsToSave.conclusion,
         };
-        
+
         await updateSermonOutline(sermon.id, outlineToSave);
         onOutlineUpdate?.(outlineToSave);
       } catch (err) {
@@ -235,16 +240,16 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       }
     }, 100); // Shorter timeout since we're using direct data
   };
-  
 
-  
+
+
   const toggleSection = (section: SectionType) => {
     setExpandedSections({
       ...expandedSections,
       [section]: !expandedSections[section],
     });
   };
-  
+
   // Handle outside clicks to close the add point form
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -252,7 +257,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         setAddingNewToSection(null);
       }
     }
-    
+
     // Only add the event listener if we're adding a new point
     if (addingNewToSection) {
       document.addEventListener('mousedown', handleClickOutside);
@@ -261,7 +266,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       };
     }
   }, [addingNewToSection]);
-  
+
   const handleStartEdit = (point: SermonPoint) => {
     if (isReadOnly) return;
     setEditingPointId(point.id);
@@ -282,7 +287,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     }
 
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
-      acc[section as SectionType] = points.map(p => 
+      acc[section as SectionType] = points.map(p =>
         p.id === editingPointId ? { ...p, text: editingText.trim() } : p
       );
       return acc;
@@ -300,7 +305,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         acc[section as SectionType] = points.filter(p => p.id !== pointToDelete.id);
         return acc;
       }, {} as Record<SectionType, SermonPoint[]>);
-      
+
       setSectionPoints(updatedPoints);
       directlySaveOutlineChanges(updatedPoints);
     }
@@ -347,7 +352,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     setSectionPoints(updatedPoints);
     directlySaveOutlineChanges(updatedPoints);
   };
-  
+
   // Main component return
   if (loading) {
     return <div className="text-center p-4">{t('common.loading')}</div>;
@@ -394,7 +399,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     return (
       <div key={sectionType} data-testid={`outline-section-${sectionType}`} className={`mb-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border ${colors.border}`}>
         {/* Section Header */}
-        <div 
+        <div
           className={`flex justify-between items-center w-full p-3 text-left font-semibold text-gray-700 dark:text-gray-200 ${colors.headerBg} rounded-t-lg ${!isExpanded ? 'rounded-b-lg' : ''} ${colors.headerHover}`}
         >
           {/* Toggle (title + counters) */}
@@ -439,8 +444,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         {/* Section Content (Collapsible) */}
         {isExpanded && (
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <Droppable 
-              droppableId={sectionType} 
+            <Droppable
+              droppableId={sectionType}
               key={sectionType}
               renderClone={(providedDraggable, _snapshot, rubric) => {
                 const point = points[rubric.source.index];
@@ -479,18 +484,17 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                         >
                           {/* Drag Handle */}
                           <div
-                            className={`mr-2 text-gray-400 dark:text-gray-500 ${
-                              isReadOnly
-                                ? 'cursor-not-allowed opacity-50'
-                                : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'
-                            }`}
+                            className={`mr-2 text-gray-400 dark:text-gray-500 ${isReadOnly
+                              ? 'cursor-not-allowed opacity-50'
+                              : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'
+                              }`}
                           >
                             <Bars3Icon className="h-5 w-5" />
                           </div>
                           {/* Point Text or Edit Input */}
                           {editingPointId === point.id ? (
                             <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
-                              <input 
+                              <input
                                 type="text"
                                 value={editingText}
                                 onChange={(e) => setEditingText(e.target.value)}
@@ -558,12 +562,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
             {/* Add New Point Section */}
             <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
-               {addingNewToSection === sectionType ? (
-                 <div ref={addInputRef} className="flex items-center space-x-1">
+              {addingNewToSection === sectionType ? (
+                <div ref={addInputRef} className="flex items-center space-x-1">
                   <input
                     type="text"
                     value={newPointTexts[sectionType]}
-                    onChange={(e) => setNewPointTexts({...newPointTexts, [sectionType]: e.target.value})}
+                    onChange={(e) => setNewPointTexts({ ...newPointTexts, [sectionType]: e.target.value })}
                     onKeyDown={(e) => { if (e.key === 'Enter') addPoint(sectionType); if (e.key === 'Escape') handleCancelAdd(sectionType); }}
                     placeholder={t('structure.addPointPlaceholder')}
                     className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500 dark:placeholder-gray-400"
@@ -588,19 +592,18 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                   </button>
                 </div>
               ) : (
-                  <button 
-                    onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
-                    aria-label={t('structure.addPointButton')}
-                    className={`flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 rounded border border-dashed border-gray-300 dark:border-gray-600 transition-colors ${
-                      isReadOnly
-                        ? DISABLED_ACTION_CLASSES
-                        : 'hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:border-indigo-400 dark:hover:border-indigo-500'
+                <button
+                  onClick={() => { setAddingNewToSection(sectionType); setEditingPointId(null); /* Close edit mode */ }}
+                  aria-label={t('structure.addPointButton')}
+                  className={`flex items-center justify-center w-full p-2 text-sm text-gray-500 dark:text-gray-400 rounded border border-dashed border-gray-300 dark:border-gray-600 transition-colors ${isReadOnly
+                    ? DISABLED_ACTION_CLASSES
+                    : 'hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:border-indigo-400 dark:hover:border-indigo-500'
                     }`}
-                    disabled={isReadOnly}
-                  >
-                    <PlusIcon className="h-4 w-4 mr-1" />
-                    {t('structure.addPointButton')}
-                  </button>
+                  disabled={isReadOnly}
+                >
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  {t('structure.addPointButton')}
+                </button>
               )}
             </div>
           </div>

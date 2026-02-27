@@ -48,6 +48,11 @@ jest.mock('@/utils/themeColors', () => ({
   }
 }));
 
+const mockUseOnlineStatus = jest.fn(() => true);
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => mockUseOnlineStatus(),
+}));
+
 describe('SermonOutline Component', () => {
   // Define mock functions first
   const mockGetSermonOutline = jest.fn();
@@ -95,6 +100,7 @@ describe('SermonOutline Component', () => {
     mockOnOutlineUpdate.mockClear();
     // Clear all mocks might still be useful here to catch unexpected calls
     jest.clearAllMocks();
+    mockUseOnlineStatus.mockReturnValue(true);
   });
 
   test('renders with initial data fetched from service', async () => {
@@ -448,5 +454,71 @@ describe('SermonOutline Component', () => {
     // mainPart maps to section=main in URL
     expectFocusLink(mainSection, `/sermons/${mockSermon.id}/structure?mode=focus&section=main`);
     expectFocusLink(conclSection, `/sermons/${mockSermon.id}/structure?mode=focus&section=conclusion`);
+  });
+
+  test('uses local sermon outline in offline mode and keeps sections collapsed on mobile', async () => {
+    mockUseOnlineStatus.mockReturnValue(false);
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+
+    const offlineSermon: Sermon = {
+      ...mockSermon,
+      outline: {
+        introduction: [{ id: 'offline-intro', text: 'Offline intro point' }],
+        main: [{ id: 'offline-main', text: 'Offline main point' }],
+        conclusion: [{ id: 'offline-conclusion', text: 'Offline conclusion point' }],
+      },
+    };
+
+    try {
+      render(<SermonOutline sermon={offlineSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('outline-section-introduction')).toBeInTheDocument();
+      });
+
+      expect(mockGetSermonOutline).not.toHaveBeenCalled();
+      expect(screen.queryByText('Offline intro point')).not.toBeInTheDocument();
+      expect(screen.queryByText('Offline main point')).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    }
+  });
+
+  test('renders empty sections when backend returns no outline data', async () => {
+    mockGetSermonOutline.mockResolvedValueOnce(null);
+
+    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('outline-section-introduction')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Introduction point 1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('outline-section-introduction')).toHaveTextContent('0');
+    expect(screen.getByTestId('outline-section-mainPart')).toHaveTextContent('0');
+    expect(screen.getByTestId('outline-section-conclusion')).toHaveTextContent('0');
+  });
+
+  test('applies disabled classes to drag handle and add button in read-only mode', async () => {
+    render(
+      <SermonOutline
+        sermon={mockSermon}
+        onOutlineUpdate={mockOnOutlineUpdate}
+        isReadOnly={true}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+    });
+
+    const introSection = screen.getByTestId('outline-section-introduction');
+    const disabledHandle = introSection.querySelector('.cursor-not-allowed.opacity-50');
+    expect(disabledHandle).toBeInTheDocument();
+
+    const addButton = within(introSection).getByLabelText('structure.addPointButton');
+    expect(addButton).toBeDisabled();
+    expect(addButton).toHaveClass('opacity-50');
   });
 });

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonOutline, SermonPoint, Thought } from "@/models/models";
@@ -34,6 +35,9 @@ const TRANSLATION_STRUCTURE_ADD_THOUGHT = 'structure.addThoughtToSection';
 const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = 'structure.unassignedThoughts';
 const TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED = 'structure.allPointsBlocked';
 const TRANSLATION_STRUCTURE_RECORD_AUDIO = 'structure.recordAudio';
+const TRANSLATION_COMMON_DELETE = 'common.delete';
+const TRANSLATION_COMMON_SAVE = 'common.save';
+const TRANSLATION_COMMON_CANCEL = 'common.cancel';
 const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = 'Unassigned Thoughts';
 const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All outline points are reviewed';
 const DEFAULT_RECORD_AUDIO_TEXT = 'Record voice note';
@@ -41,6 +45,136 @@ const DEFAULT_RECORD_AUDIO_TEXT = 'Record voice note';
 // CSS class constants to avoid duplicate strings
 const BG_GRAY_LIGHT_DARK = 'bg-gray-50 dark:bg-gray-800';
 const BG_GRAY_LIGHTER_DARK = 'bg-gray-100 dark:bg-gray-700';
+const INLINE_EDIT_ACTION_BUTTON_BASE_CLASS = 'p-1 flex-shrink-0 bg-white/50 dark:bg-black/20 rounded transition-colors';
+
+type PlaceholderColors = {
+  border: string;
+  bg: string;
+  header: string;
+  headerText: string;
+};
+
+const getPlaceholderColors = (containerId: string, headerColor?: string): PlaceholderColors => {
+  if (headerColor) {
+    return {
+      border: 'border-2 border-opacity-30',
+      bg: BG_GRAY_LIGHT_DARK,
+      header: BG_GRAY_LIGHTER_DARK,
+      headerText: 'text-gray-700 dark:text-gray-200',
+    };
+  }
+
+  const sectionColorsById: Record<string, typeof SERMON_SECTION_COLORS.introduction> = {
+    introduction: SERMON_SECTION_COLORS.introduction,
+    main: SERMON_SECTION_COLORS.mainPart,
+    conclusion: SERMON_SECTION_COLORS.conclusion,
+  };
+  const palette = sectionColorsById[containerId];
+
+  if (!palette) {
+    return {
+      border: 'border-2 border-gray-200 dark:border-gray-700',
+      bg: BG_GRAY_LIGHT_DARK,
+      header: BG_GRAY_LIGHTER_DARK,
+      headerText: 'text-gray-700 dark:text-gray-200',
+    };
+  }
+
+  return {
+    border: `border-2 ${palette.border.split(' ')[0]} dark:${palette.darkBorder}`,
+    bg: `${palette.bg} dark:${palette.darkBg}`,
+    header: `${palette.bg} dark:${palette.darkBg}`,
+    headerText: `${palette.text} dark:${palette.darkText}`,
+  };
+};
+
+const getForceTagForContainer = (containerId: string) => {
+  if (containerId === 'introduction') return getCanonicalTagForSection('introduction');
+  if (containerId === 'main') return getCanonicalTagForSection('main');
+  if (containerId === 'conclusion') return getCanonicalTagForSection('conclusion');
+  return undefined;
+};
+
+const POINT_AUDIO_SECTION_IDS = ['introduction', 'main', 'conclusion'] as const;
+const isPointAudioSection = (containerId: string): containerId is typeof POINT_AUDIO_SECTION_IDS[number] =>
+  POINT_AUDIO_SECTION_IDS.includes(containerId as typeof POINT_AUDIO_SECTION_IDS[number]);
+
+const getReviewToggleLabel = (
+  isReviewed: boolean,
+  t: (key: string, options?: Record<string, unknown>) => string
+) => {
+  if (isReviewed) {
+    return t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' });
+  }
+  return t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' });
+};
+
+const openPointEditor = ({
+  point,
+  isFocusMode,
+  setLocalEditText,
+  setIsEditingLocally,
+  onEditPoint,
+}: {
+  point: SermonPoint;
+  isFocusMode?: boolean;
+  setLocalEditText: React.Dispatch<React.SetStateAction<string>>;
+  setIsEditingLocally: React.Dispatch<React.SetStateAction<boolean>>;
+  onEditPoint?: (point: SermonPoint) => void;
+}) => {
+  if (point.isReviewed) return;
+  if (isFocusMode) {
+    onEditPoint?.(point);
+    return;
+  }
+  setLocalEditText(point.text);
+  setIsEditingLocally(true);
+};
+
+const handleOutlinePointRecordingComplete = async ({
+  audioBlob,
+  containerId,
+  sermonId,
+  pointId,
+  setIsRecordingAudio,
+  setAudioError,
+  onAudioThoughtCreated,
+  t,
+}: {
+  audioBlob: Blob;
+  containerId: string;
+  sermonId: string;
+  pointId: string;
+  setIsRecordingAudio: React.Dispatch<React.SetStateAction<boolean>>;
+  setAudioError: (error: string | null) => void;
+  onAudioThoughtCreated?: (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => void;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) => {
+  try {
+    setIsRecordingAudio(true);
+    setAudioError(null);
+    const forceTag = getForceTagForContainer(containerId);
+    const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
+    const newThought = await createAudioThoughtWithForceTag(
+      audioBlob,
+      sermonId,
+      forceTag || null,
+      0,
+      3,
+      pointId
+    );
+
+    onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
+    toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
+  } catch (err) {
+    console.error('Error recording audio for outline point:', err);
+    const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
+    setAudioError(String(msg));
+    toast.error(String(msg));
+  } finally {
+    setIsRecordingAudio(false);
+  }
+};
 
 interface ColumnProps {
   id: string;
@@ -59,6 +193,8 @@ interface ColumnProps {
   sermonId?: string; // Add sermonId prop for export functionality
   onAddThought?: (sectionId: string, outlinePointId?: string) => void; // New callback for adding a thought to this section
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void; // Add callback for outline updates propagating back to parent
+  onOutlinePointDeleted?: (pointId: string, columnId: string) => void; // Callback when an outline point is deleted
+  onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>; // Callback to add new outline point
   thoughtsPerSermonPoint?: Record<string, number>; // Add this prop for non-focus mode display
   // New props for AI sort with interactive confirmation
   isDiffModeActive?: boolean;
@@ -92,6 +228,54 @@ const mapColumnIdToSectionType = (columnId: string): SectionType | null => {
 
 const isPendingItem = (item: Item) => item.id.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
 
+// Custom Modal for Deleting with Name Confirmation
+interface DeletePointConfirmModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  pointName: string;
+}
+
+function DeletePointConfirmModal({ isOpen, onClose, onConfirm, pointName }: DeletePointConfirmModalProps) {
+  const [inputValue, setInputValue] = useState('');
+  const { t } = useTranslation();
+
+  // Reset input when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setInputValue('');
+    }
+  }, [isOpen]);
+
+  const isMatch = inputValue.trim() === pointName.trim();
+
+  return (
+    <ConfirmModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      title={t('structure.deletePointConfirmTitle', { defaultValue: 'Delete Outline Point' })}
+      description={t('structure.deletePointConfirmDesc', {
+        defaultValue: 'Are you sure you want to delete this point? This action cannot be undone. To confirm, type the name of the point:'
+      })}
+      confirmText={t(TRANSLATION_COMMON_DELETE, { defaultValue: 'Delete' })}
+      isDestructive={true}
+      confirmDisabled={!isMatch}
+    >
+      <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-4 font-medium text-gray-800 dark:text-gray-200 text-center select-all">
+        {pointName}
+      </div>
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        placeholder={pointName}
+        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 shadow-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-red-500"
+      />
+    </ConfirmModal>
+  );
+}
+
 // Component for rendering outline point placeholder with thoughts
 const SermonPointPlaceholder: React.FC<{
   point: SermonPoint;
@@ -114,6 +298,12 @@ const SermonPointPlaceholder: React.FC<{
   sectionTitle?: string;
   setAudioError: (error: string | null) => void;
   onRetryPendingThought?: (itemId: string) => void;
+  // Drag handle props for normal mode reordering
+  dragHandleProps?: React.HTMLAttributes<HTMLElement> | null;
+  onEditPoint?: (point: SermonPoint) => void;
+  onDeletePoint?: (pointId: string) => void;
+  // For inline edit in normal mode
+  onSaveEdit?: (pointId: string, newText: string) => void;
 }> = ({
   point,
   items,
@@ -135,6 +325,11 @@ const SermonPointPlaceholder: React.FC<{
   sectionTitle,
   setAudioError,
   onRetryPendingThought,
+  dragHandleProps,
+  onEditPoint,
+  onDeletePoint,
+  onSaveEdit,
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- dense UI component with multiple conditional controls
 }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: `outline-point-${point.id}`,
@@ -144,224 +339,232 @@ const SermonPointPlaceholder: React.FC<{
     const pointItems = items.filter(item => item.outlinePointId === point.id);
     const hasItems = pointItems.length > 0;
 
-    // Local info popover state
-    const [showHint, setShowHint] = React.useState(false);
-    const hintRef = React.useRef<HTMLDivElement | null>(null);
-    React.useEffect(() => {
-      function onDocClick(e: MouseEvent | TouchEvent) {
-        if (!hintRef.current) return;
-        const target = e.target as Node;
-        if (!hintRef.current.contains(target)) {
-          setShowHint(false);
-        }
-      }
-      if (showHint) {
-        document.addEventListener('mousedown', onDocClick, true);
-        document.addEventListener('touchstart', onDocClick, true);
-      }
-      return () => {
-        document.removeEventListener('mousedown', onDocClick, true);
-        document.removeEventListener('touchstart', onDocClick, true);
-      };
-    }, [showHint]);
-
-    // Color scheme based on section
-    const getPlaceholderColors = () => {
-      if (headerColor) {
-        return {
-          border: `border-2 border-opacity-30`,
-          bg: BG_GRAY_LIGHT_DARK,
-          header: BG_GRAY_LIGHTER_DARK,
-          headerText: 'text-gray-700 dark:text-gray-200'
-        };
-      }
-
-      switch (containerId) {
-        case 'introduction':
-          return {
-            border: `border-2 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`,
-            bg: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
-            header: `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg}`,
-            headerText: `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`
-          };
-        case 'main':
-          return {
-            border: `border-2 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`,
-            bg: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
-            header: `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg}`,
-            headerText: `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`
-          };
-        case 'conclusion':
-          return {
-            border: `border-2 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`,
-            bg: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
-            header: `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg}`,
-            headerText: `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`
-          };
-        default:
-          return {
-            border: 'border-2 border-gray-200 dark:border-gray-700',
-            bg: BG_GRAY_LIGHT_DARK,
-            header: BG_GRAY_LIGHTER_DARK,
-            headerText: 'text-gray-700 dark:text-gray-200'
-          };
-      }
-    };
-
-    const colors = getPlaceholderColors();
+    const colors = getPlaceholderColors(containerId, headerColor);
 
     // Local state for audio recording (per outline point)
     const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
 
-    return (
-      <div
-        className={`${colors.border} ${colors.bg} rounded-lg mb-4 transition-all duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
-          }`}
-        style={headerColor ? { borderColor: headerColor } : {}}
-      >
-        {/* SermonOutline point header */}
-        <div
-          className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
-          style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
-        >
-          <div className="flex items-center justify-between">
-            <h4 className={`font-medium text-sm ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}>
-              {point.text}
-            </h4>
-            <div className="flex items-center gap-2">
-              {/* Toggle reviewed status button */}
-              {onToggleReviewed && (
-                <button
-                  onClick={() => onToggleReviewed(point.id, !point.isReviewed)}
-                  className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 ${point.isReviewed
-                    ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
-                    : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                    }`}
-                  title={point.isReviewed
-                    ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
-                    : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
-                  }
-                  aria-label={point.isReviewed
-                    ? t('structure.markAsUnreviewed', { defaultValue: 'Mark as unreviewed' })
-                    : t('structure.markAsReviewed', { defaultValue: 'Mark as reviewed' })
-                  }
-                >
-                  <CheckIcon className={`h-4 w-4 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
-                </button>
-              )}
-              {/* Quick help for outline point */}
-              {containerId === 'main' && <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />}
-              <span className={`text-xs ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
-                {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
-              </span>
-              {/* Focus Recorder Button (per outline point) */}
-              {isFocusMode && onAddThought && (
-                <button
-                  onClick={() => {
-                    debugLog('Structure: focus outline add clicked', {
-                      sectionId: containerId,
-                      outlinePointId: point.id,
-                      isFocusMode,
-                      sermonId,
-                    });
-                    onAddThought(containerId, point.id);
-                  }}
-                  disabled={point.isReviewed}
-                  className={`w-[39px] h-[39px] rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${point.isReviewed ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                  title={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                  aria-label={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                >
-                  <PlusIcon className="h-[30px] w-[30px] text-white" />
-                </button>
-              )}
-              {sermonId && (containerId === 'introduction' || containerId === 'main' || containerId === 'conclusion') && (
-                <>
-                  <FocusRecorderButton
-                    size="small"
-                    disabled={point.isReviewed}
-                    onRecordingComplete={async (audioBlob) => {
-                      try {
-                        setIsRecordingAudio(true);
-                        setAudioError(null);
-                        const forceTag =
-                          containerId === 'introduction' ? getCanonicalTagForSection('introduction') :
-                            containerId === 'main' ? getCanonicalTagForSection('main') :
-                              containerId === 'conclusion' ? getCanonicalTagForSection('conclusion') :
-                                undefined;
-                        const { createAudioThoughtWithForceTag } = await import('@/services/thought.service');
-                        const newThought = await createAudioThoughtWithForceTag(
-                          audioBlob,
-                          sermonId!,
-                          forceTag || null,
-                          0,
-                          3,
-                          point.id
-                        );
+    // Local inline edit state (normal mode)
+    const [isEditingLocally, setIsEditingLocally] = React.useState(false);
+    const [localEditText, setLocalEditText] = React.useState(point.text);
+    const localEditRef = React.useRef<HTMLInputElement>(null);
+    React.useEffect(() => {
+      if (isEditingLocally && localEditRef.current) {
+        localEditRef.current.focus();
+        localEditRef.current.select();
+      }
+    }, [isEditingLocally]);
 
-                        // Inform parent to append to UI under current section
-                        onAudioThoughtCreated?.(newThought, containerId as 'introduction' | 'main' | 'conclusion');
-                        toast.success(t('manualThought.addedSuccess', { defaultValue: 'Thought added successfully' }));
-                      } catch (err) {
-                        console.error('Error recording audio for outline point:', err);
-                        const msg = err instanceof Error ? err.message : t('errors.audioProcessing');
-                        setAudioError(String(msg));
-                        toast.error(String(msg));
-                      } finally {
-                        setIsRecordingAudio(false);
-                      }
-                    }}
-                    isProcessing={isRecordingAudio}
-                    onError={(err) => {
-                      setAudioError(err);
-                      setIsRecordingAudio(false);
-                    }}
-                  />
-                </>
+    const handleLocalSave = () => {
+      if (!localEditText.trim()) {
+        setIsEditingLocally(false);
+        setLocalEditText(point.text);
+        return;
+      }
+      onSaveEdit?.(point.id, localEditText.trim());
+      setIsEditingLocally(false);
+    };
+
+    const handleLocalCancel = () => {
+      setIsEditingLocally(false);
+      setLocalEditText(point.text);
+    };
+
+    const reviewToggleLabel = getReviewToggleLabel(point.isReviewed ?? false, t);
+    const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
+
+    return (
+      <>
+        <div
+          className={`${colors.border} ${colors.bg} rounded-lg transition duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
+            }`}
+          style={headerColor ? { borderColor: headerColor } : {}}
+        >
+          {/* SermonOutline point header */}
+          <div
+            className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
+            style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
+          >
+            <div className="flex items-center justify-between gap-1.5 overflow-hidden w-full">
+              {/* Drag handle for normal mode reordering */}
+              {dragHandleProps && (
+                <div
+                  {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)}
+                  className={point.isReviewed ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
+                  title={!point.isReviewed ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
+                >
+                  {!point.isReviewed && <Bars3Icon className="h-4 w-4" />}
+                </div>
               )}
+
+              {/* Inline edit form or click-to-edit title */}
+              {isEditingLocally ? (
+                <div className="flex-1 flex items-center gap-1 min-w-0">
+                  <input
+                    ref={localEditRef}
+                    type="text"
+                    value={localEditText}
+                    onChange={(e) => setLocalEditText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
+                    className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+                  />
+                  <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleLocalSave} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-green-600 hover:text-green-700 dark:text-green-400`}>
+                    <CheckIcon className="h-4 w-4" />
+                  </button>
+                  <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleLocalCancel} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200`}>
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <h4
+                    onClick={() => openPointEditor({
+                      point,
+                      isFocusMode,
+                      setLocalEditText,
+                      setIsEditingLocally,
+                      onEditPoint,
+                    })}
+                    className={`font-medium text-sm min-w-0 truncate select-none ${point.isReviewed ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
+                    title={!point.isReviewed ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
+                  >
+                    {point.text}
+                  </h4>
+                  {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
+                  {!isFocusMode && onDeletePoint && !point.isReviewed && (
+                    <button
+                      aria-label={t(TRANSLATION_COMMON_DELETE)}
+                      onClick={() => onDeletePoint(point.id)}
+                      className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0"
+                      title={t(TRANSLATION_COMMON_DELETE)}
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Right-side actions and info */}
+              <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
+
+                {/* Toggle reviewed status button */}
+                {onToggleReviewed && (
+                  <button
+                    onClick={() => onToggleReviewed?.(point.id, !point.isReviewed)}
+                    className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${point.isReviewed
+                      ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
+                      : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    title={reviewToggleLabel}
+                    aria-label={reviewToggleLabel}
+                  >
+                    <CheckIcon className={`h-3.5 w-3.5 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
+                  </button>
+                )}
+
+                {/* Quick help for outline point */}
+                {containerId === 'main' && (
+                  <div className="flex-shrink-0">
+                    <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />
+                  </div>
+                )}
+
+                <span className={`text-xs whitespace-nowrap flex-shrink-0 ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
+                  {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
+                </span>
+
+                {/* Focus Recorder Button (per outline point) */}
+                {isFocusMode && onAddThought && (
+                  <button
+                    onClick={() => {
+                      debugLog('Structure: focus outline add clicked', {
+                        sectionId: containerId,
+                        outlinePointId: point.id,
+                        isFocusMode,
+                        sermonId,
+                      });
+                      onAddThought?.(containerId, point.id);
+                    }}
+                    disabled={point.isReviewed}
+                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${point.isReviewed ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
+                    title={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                    aria-label={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                  >
+                    <PlusIcon className="h-4 w-4 text-white" />
+                  </button>
+                )}
+
+                {canUseInlineRecorder && (
+                  <>
+                    <FocusRecorderButton
+                      size="small"
+                      disabled={point.isReviewed}
+                      onRecordingComplete={(audioBlob) => {
+                        if (!sermonId) return;
+                        void handleOutlinePointRecordingComplete({
+                          audioBlob,
+                          containerId,
+                          sermonId,
+                          pointId: point.id,
+                          setIsRecordingAudio,
+                          setAudioError,
+                          onAudioThoughtCreated,
+                          t,
+                        });
+                      }}
+                      isProcessing={isRecordingAudio}
+                      onError={(err) => {
+                        setAudioError(err);
+                        setIsRecordingAudio(false);
+                      }}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Drop zone for thoughts */}
-        <div
-          ref={setNodeRef}
-          className={`min-h-[80px] p-4 transition-all ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
-            }`}
-        >
-          {!hasItems ? (
-            <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-              {t('structure.dropThoughtsHere')}
-            </div>
-          ) : (
-            <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
-              <div className="space-y-4">
-                {pointItems.map((item) => (
-                  <SortableItem
-                    key={item.id}
-                    item={item}
-                    containerId={containerId}
-                    onEdit={onEdit}
-                    isHighlighted={isHighlighted(item.id)}
-                    highlightType={getHighlightType(item.id)}
-                    onKeep={onKeepItem}
-                    onRevert={onRevertItem}
-                    activeId={activeId}
-                    onMoveToAmbiguous={onMoveToAmbiguous}
-                    onRetrySync={onRetryPendingThought}
-                    disabled={point.isReviewed || isPendingItem(item)}
-                  />
-                ))}
-
-                {/* Additional drop area at the end */}
-                <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
-                  }`}>
-                  {t('structure.dropThoughtsToAdd')}
-                </div>
+          {/* Drop zone for thoughts */}
+          <div
+            ref={setNodeRef}
+            className={`min-h-[80px] p-4 transition-all ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
+              }`}
+          >
+            {!hasItems ? (
+              <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+                {t('structure.dropThoughtsHere')}
               </div>
-            </SortableContext>
-          )}
+            ) : (
+              <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
+                <div className="space-y-4">
+                  {pointItems.map((item) => (
+                    <SortableItem
+                      key={item.id}
+                      item={item}
+                      containerId={containerId}
+                      onEdit={onEdit}
+                      isHighlighted={isHighlighted(item.id)}
+                      highlightType={getHighlightType(item.id)}
+                      onKeep={onKeepItem}
+                      onRevert={onRevertItem}
+                      activeId={activeId}
+                      onMoveToAmbiguous={onMoveToAmbiguous}
+                      onRetrySync={onRetryPendingThought}
+                      disabled={point.isReviewed || isPendingItem(item)}
+                    />
+                  ))}
+
+                  {/* Additional drop area at the end */}
+                  <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+                    }`}>
+                    {t('structure.dropThoughtsToAdd')}
+                  </div>
+                </div>
+              </SortableContext>
+            )}
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -470,7 +673,9 @@ export default function Column({
   onSwitchPage,
   onNavigateToSection,
   onRetryPendingThought,
-  planData
+  planData,
+  onOutlinePointDeleted,
+  onAddOutlinePoint
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
@@ -481,6 +686,11 @@ export default function Column({
   const [editingText, setEditingText] = useState<string>('');
   const [addingNewPoint, setAddingNewPoint] = useState<boolean>(false);
   const [newPointText, setNewPointText] = useState<string>('');
+
+  // New state to track *where* the user is adding a point
+  const [insertPointIndex, setInsertPointIndex] = useState<number | null>(null);
+  const [insertPointText, setInsertPointText] = useState<string>('');
+  const insertInputRef = useRef<HTMLInputElement>(null);
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
   const [isGeneratingSermonPoints, setIsGeneratingSermonPoints] = useState<boolean>(false);
 
@@ -500,6 +710,10 @@ export default function Column({
 
   // --- State for SermonOutline Point Editing (only relevant in focus mode) ---
   const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
+
+  // Global state for delete confirmation
+  const [deletePointId, setDeletePointId] = useState<string | null>(null);
+  const pointToDeleteDetail = localSermonPoints.find(p => p.id === deletePointId);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Calculate if all outline points are blocked (reviewed) - only block if there are points AND all are reviewed
@@ -549,7 +763,7 @@ export default function Column({
 
   // Debounced save function - упрощенная версия по аналогии с SermonOutline.tsx
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
-    if (!sermonId || !isFocusMode) return; // Only save in focus mode with sermonId
+    if (!sermonId) return; // sermonId is required for saving
     if (!isOnline) {
       toast.error(t('errors.saveOutlineError', { defaultValue: 'Failed to save outline' }));
       return;
@@ -649,22 +863,51 @@ export default function Column({
     triggerSaveOutline(updatedPoints);
   };
 
+  // Direct save for inline edit in normal mode (used by SermonPointPlaceholder)
+  const handleSaveEditDirect = (pointId: string, newText: string) => {
+    if (!newText.trim()) return;
+    const updatedPoints = localSermonPoints.map(p =>
+      p.id === pointId ? { ...p, text: newText.trim() } : p
+    );
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
   const handleDeletePoint = (pointId: string) => {
-    // Find the point to get its text for the confirmation message
-    const pointToDelete = localSermonPoints.find(p => p.id === pointId);
-    const pointText = pointToDelete ? pointToDelete.text : ''; // Get text or empty string
+    const updatedPoints = localSermonPoints.filter(p => p.id !== pointId);
+    setLocalSermonPoints(updatedPoints);
+    if (editingPointId === pointId) handleCancelEdit(); // Cancel edit if deleting the item being edited
+    triggerSaveOutline(updatedPoints);
+    if (onOutlinePointDeleted) {
+      onOutlinePointDeleted(pointId, id);
+    }
+  };
 
-    // Construct the confirmation message using translation and interpolation
-    const confirmMessage = t('structure.deletePointConfirm', {
-      defaultValue: `Are you sure you want to delete this outline point: "${pointText}"?`,
-      text: pointText // Pass text for interpolation if the key supports it
-    });
+  const handleInsertSave = async (index: number, specificText?: string) => {
+    const textToSave = specificText !== undefined ? specificText : insertPointText;
 
-    if (window.confirm(confirmMessage)) {
-      const updatedPoints = localSermonPoints.filter(p => p.id !== pointId);
-      setLocalSermonPoints(updatedPoints);
-      if (editingPointId === pointId) handleCancelEdit(); // Cancel edit if deleting the item being edited
-      triggerSaveOutline(updatedPoints);
+    if (!textToSave.trim() || !onAddOutlinePoint) {
+      if (specificText === undefined) {
+        setInsertPointIndex(null);
+        setInsertPointText('');
+      } else {
+        setAddingNewPoint(false);
+        setNewPointText('');
+      }
+      return;
+    }
+
+    try {
+      await onAddOutlinePoint(id, index, textToSave);
+      if (specificText === undefined) {
+        setInsertPointIndex(null);
+        setInsertPointText('');
+      } else {
+        setAddingNewPoint(false);
+        setNewPointText('');
+      }
+    } catch {
+      toast.error(t('structure.saveError', { defaultValue: 'Failed to save outline point' }));
     }
   };
 
@@ -712,9 +955,34 @@ export default function Column({
     )
     : "";
 
+  // Accent colors for inline divider + add button between outline points
+  const outlineInsertAccent = (() => {
+    const sectionColors = id === 'introduction'
+      ? SERMON_SECTION_COLORS.introduction
+      : id === 'main'
+        ? SERMON_SECTION_COLORS.mainPart
+        : id === 'conclusion'
+          ? SERMON_SECTION_COLORS.conclusion
+          : null;
+
+    if (!sectionColors) {
+      return {
+        badgeClassName: 'border border-blue-200 dark:border-blue-500/70 bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-300',
+        badgeShadowStyle: { boxShadow: '0 2px 8px rgba(59,130,246,0.28)' },
+        lineStyle: { background: 'linear-gradient(90deg, #93c5fd, #3b82f6, #93c5fd)' },
+      };
+    }
+
+    return {
+      badgeClassName: `border ${sectionColors.border} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg} ${sectionColors.text} dark:${sectionColors.darkText}`,
+      badgeShadowStyle: { boxShadow: `0 2px 8px ${sectionColors.base}55` },
+      lineStyle: { background: `linear-gradient(90deg, ${sectionColors.light}, ${sectionColors.base}, ${sectionColors.light})` },
+    };
+  })();
+
   // Add a new function to handle generating outline points
   const handleGenerateSermonPoints = async () => {
-    if (!sermonId || !isFocusMode) return;
+    if (!sermonId) return;
 
     // Map id to the section name expected by API
     const sectionName = id === 'main' ? 'main' : id;
@@ -1033,10 +1301,10 @@ export default function Column({
                             placeholder={t('structure.editPointPlaceholder')}
                             autoFocus
                           />
-                          <button aria-label={t('common.save')} onClick={handleSaveEdit} className="p-1 text-green-400 hover:text-green-300">
+                          <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleSaveEdit} className="p-1 text-green-400 hover:text-green-300">
                             <CheckIcon className="h-5 w-5" />
                           </button>
-                          <button aria-label={t('common.cancel')} onClick={handleCancelEdit} className="p-1 text-red-400 hover:text-red-300">
+                          <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleCancelEdit} className="p-1 text-red-400 hover:text-red-300">
                             <XMarkIcon className="h-5 w-5" />
                           </button>
                         </div>
@@ -1052,12 +1320,16 @@ export default function Column({
                           </div>
                           <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
                             {/* Quick help for outline point */}
-                            <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
-                            <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
+                            {!point.isReviewed && (
+                              <>
+                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                  <PencilIcon className="h-4 w-4" />
+                                </button>
+                                <button aria-label={t('common.delete')} onClick={() => setDeletePointId(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                  <TrashIcon className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                           {thoughtsPerSermonPoint[point.id] > 0 && (
                             <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700 flex-shrink-0">
@@ -1083,10 +1355,10 @@ export default function Column({
                     className="flex-grow p-2 text-sm bg-white/90 dark:bg-gray-100/90 text-gray-800 dark:text-gray-800 rounded border border-white/30 dark:border-gray-300 focus:outline-none focus:border-white dark:focus:border-gray-400"
                     autoFocus
                   />
-                  <button aria-label={t('common.save')} onClick={handleAddPoint} className="p-1 text-green-400 hover:text-green-300">
+                  <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleAddPoint} className="p-1 text-green-400 hover:text-green-300">
                     <CheckIcon className="h-5 w-5" />
                   </button>
-                  <button aria-label={t('common.cancel')} onClick={() => setAddingNewPoint(false)} className="p-1 text-red-400 hover:text-red-300">
+                  <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={() => setAddingNewPoint(false)} className="p-1 text-red-400 hover:text-red-300">
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -1133,33 +1405,84 @@ export default function Column({
           {/* In focus mode, show outline points and unassigned thoughts */}
           {localSermonPoints && localSermonPoints.length > 0 ? (
             <>
-              {/* Render placeholders for each outline point with their thoughts */}
-              {localSermonPoints.map((point) => (
-                <SermonPointPlaceholder
-                  key={point.id}
-                  point={point}
-                  items={items}
-                  containerId={id}
-                  onEdit={onEdit}
-                  isHighlighted={isItemHighlighted}
-                  getHighlightType={getItemHighlightType}
-                  onKeepItem={onKeepItem}
-                  onRevertItem={onRevertItem}
-                  onToggleReviewed={onToggleReviewed}
-                  headerColor={headerColor}
-                  t={t}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  sermonId={sermonId}
-                  onAudioThoughtCreated={onAudioThoughtCreated}
-                  isFocusMode={isFocusMode}
-                  onAddThought={onAddThought}
-                  sectionTitle={title}
-                  setAudioError={setAudioError}
-                  onRetryPendingThought={onRetryPendingThought}
-                />
-              ))}
-              {/* Always show unassigned thoughts section in focus mode */}
+              {/* Render placeholders for each outline point — wrapped in DragDropContext for reordering */}
+              {!isFocusMode ? (
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <Droppable droppableId={`normal-outline-${id}`}>
+                    {(provided) => (
+                      <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-0">
+                        {localSermonPoints.map((point, index) => (
+                          <Draggable key={point.id} draggableId={`normal-${point.id}`} index={index}>
+                            {(providedDraggable, snapshot) => (
+                              <div
+                                ref={providedDraggable.innerRef}
+                                {...providedDraggable.draggableProps}
+                                className={`group transition-shadow pb-4 ${snapshot.isDragging ? 'shadow-lg opacity-90' : ''}`}
+                                style={providedDraggable.draggableProps.style}
+                              >
+                                <SermonPointPlaceholder
+                                  point={point}
+                                  items={items}
+                                  containerId={id}
+                                  onEdit={onEdit}
+                                  isHighlighted={isItemHighlighted}
+                                  getHighlightType={getItemHighlightType}
+                                  onKeepItem={onKeepItem}
+                                  onRevertItem={onRevertItem}
+                                  onToggleReviewed={onToggleReviewed}
+                                  headerColor={headerColor}
+                                  t={t}
+                                  activeId={activeId}
+                                  onMoveToAmbiguous={onMoveToAmbiguous}
+                                  sermonId={sermonId}
+                                  onAudioThoughtCreated={onAudioThoughtCreated}
+                                  isFocusMode={isFocusMode}
+                                  onAddThought={onAddThought}
+                                  sectionTitle={title}
+                                  setAudioError={setAudioError}
+                                  onRetryPendingThought={onRetryPendingThought}
+                                  dragHandleProps={providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>}
+                                  onEditPoint={handleStartEdit}
+                                  onDeletePoint={(pointId) => setDeletePointId(pointId)}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
+              ) : (
+                localSermonPoints.map((point) => (
+                  <div key={point.id} className="pb-4">
+                    <SermonPointPlaceholder
+                      point={point}
+                      items={items}
+                      containerId={id}
+                      onEdit={onEdit}
+                      isHighlighted={isItemHighlighted}
+                      getHighlightType={getItemHighlightType}
+                      onKeepItem={onKeepItem}
+                      onRevertItem={onRevertItem}
+                      onToggleReviewed={onToggleReviewed}
+                      headerColor={headerColor}
+                      t={t}
+                      activeId={activeId}
+                      onMoveToAmbiguous={onMoveToAmbiguous}
+                      sermonId={sermonId}
+                      onAudioThoughtCreated={onAudioThoughtCreated}
+                      isFocusMode={isFocusMode}
+                      onAddThought={onAddThought}
+                      sectionTitle={title}
+                      setAudioError={setAudioError}
+                      onRetryPendingThought={onRetryPendingThought}
+                    />
+                  </div>
+                ))
+              )}
+              {/* Unassigned thoughts section */}
               {renderUnassignedThoughtsSection(unassignedItemsForDisplay)}
             </>
           ) : (
@@ -1379,6 +1702,62 @@ export default function Column({
       )}
     </div>
   );
+  const renderAddPointButton = () => {
+    if (isFocusMode || !onAddOutlinePoint) return null;
+    return (
+      <div className="flex justify-center mt-2 mb-6">
+        {!addingNewPoint ? (
+          <button
+            onClick={() => {
+              setAddingNewPoint(true);
+              setNewPointText('');
+              setTimeout(() => document.getElementById(`add-point-input-${id}`)?.focus(), 10);
+            }}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800/50 dark:hover:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700/50 hover:border-gray-400 dark:hover:border-gray-600 rounded-lg transition-colors min-w-[160px]"
+          >
+            <PlusIcon className="h-4 w-4" />
+            <span>{t('structure.addOutlinePoint', { defaultValue: 'Add outline point' })}</span>
+          </button>
+        ) : (
+          <div className={`w-full max-w-md p-4 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-sm animate-in fade-in zoom-in duration-200`}>
+            <div className="flex items-center gap-2">
+              <input
+                id={`add-point-input-${id}`}
+                type="text"
+                value={newPointText}
+                onChange={(e) => setNewPointText(e.target.value)}
+                placeholder={t('structure.newOutlinePointName', { defaultValue: 'New point name...' })}
+                className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleInsertSave(localSermonPoints.length, newPointText);
+                  if (e.key === 'Escape') {
+                    setAddingNewPoint(false);
+                    setNewPointText('');
+                  }
+                }}
+              />
+              <button
+                onClick={() => handleInsertSave(localSermonPoints.length, newPointText)}
+                disabled={!newPointText.trim()}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                {t(TRANSLATION_COMMON_SAVE, { defaultValue: 'Save' })}
+              </button>
+              <button
+                onClick={() => {
+                  setAddingNewPoint(false);
+                  setNewPointText('');
+                }}
+                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm font-medium transition-colors"
+              >
+                {t(TRANSLATION_COMMON_CANCEL, { defaultValue: 'Cancel' })}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderNormalBody = () => (
     <SortableContext items={items} strategy={sortingStrategy}>
@@ -1390,43 +1769,142 @@ export default function Column({
         {/* Show outline points with grouped thoughts */}
         {localSermonPoints && localSermonPoints.length > 0 ? (
           <div className="space-y-6">
-            {/* Render placeholders for each outline point with their thoughts */}
-            {localSermonPoints.map((point) => (
-              <SermonPointPlaceholder
-                key={point.id}
-                point={point}
-                items={items}
-                containerId={id}
-                onEdit={onEdit}
-                isHighlighted={isItemHighlighted}
-                getHighlightType={getItemHighlightType}
-                onKeepItem={onKeepItem}
-                onRevertItem={onRevertItem}
-                onToggleReviewed={onToggleReviewed}
-                headerColor={headerColor}
-                t={t}
-                activeId={activeId}
-                onMoveToAmbiguous={onMoveToAmbiguous}
-                sermonId={sermonId}
-                onAudioThoughtCreated={onAudioThoughtCreated}
-                isFocusMode={false}
-                onAddThought={onAddThought}
-                sectionTitle={title}
-                setAudioError={setAudioError}
-                onRetryPendingThought={onRetryPendingThought}
-              />
-            ))}
+            {/* Render placeholders wrapped in DragDropContext for reordering */}
+            <DragDropContext onDragEnd={handleDragEnd}>
+              <Droppable droppableId={`normal-outline-${id}`}>
+                {(provided) => (
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
+                    {localSermonPoints.map((point, index) => (
+                      <React.Fragment key={`frag-${point.id}`}>
+                        {/* Divider moved inside Draggable to prevent DnD layout jumping */}
+
+                        {/* Inline input for inserting a new point */}
+                        {insertPointIndex === index && (
+                          <div className={`min-h-[84px] rounded-lg border-2 border-dashed border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 flex items-center`}>
+                            <div className="flex w-full items-center gap-2 px-4">
+                              <input
+                                ref={insertInputRef}
+                                type="text"
+                                value={insertPointText}
+                                onChange={(e) => setInsertPointText(e.target.value)}
+                                placeholder={t('structure.newOutlinePointName', { defaultValue: 'New point name...' })}
+                                className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleInsertSave(index);
+                                  if (e.key === 'Escape') {
+                                    setInsertPointIndex(null);
+                                    setInsertPointText('');
+                                  }
+                                }}
+                              />
+                              <button
+                                onClick={() => handleInsertSave(index)}
+                                disabled={!insertPointText.trim()}
+                                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+                              >
+                                {t(TRANSLATION_COMMON_SAVE, { defaultValue: 'Save' })}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setInsertPointIndex(null);
+                                  setInsertPointText('');
+                                }}
+                                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-sm font-medium transition-colors"
+                              >
+                                {t(TRANSLATION_COMMON_CANCEL, { defaultValue: 'Cancel' })}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <Draggable key={point.id} draggableId={`normal-${point.id}`} index={index}>
+                          {(providedDraggable, snapshot) => (
+                            <div
+                              ref={providedDraggable.innerRef}
+                              {...providedDraggable.draggableProps}
+                              className={`relative group/container ${snapshot.isDragging ? 'shadow-lg opacity-90 z-50' : ''}`}
+                              style={providedDraggable.draggableProps.style}
+                            >
+                              {/* Hover Divider inside Draggable for perfect centering and no DnD jumping */}
+                              {!isFocusMode && onAddOutlinePoint && index > 0 && insertPointIndex !== index && (
+                                <div
+                                  className={`absolute left-0 right-0 h-4 -top-4 flex items-center justify-center cursor-pointer group/divider transition-opacity z-10 ${snapshot.isDragging ? 'opacity-0 pointer-events-none' : 'opacity-0 hover:opacity-100'}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setInsertPointIndex(index);
+                                    setInsertPointText('');
+                                    setTimeout(() => insertInputRef.current?.focus(), 10);
+                                  }}
+                                >
+                                  <div
+                                    className="h-0.5 w-full rounded flex items-center justify-center relative"
+                                    style={outlineInsertAccent.lineStyle}
+                                  >
+                                    <span
+                                      className={`absolute inline-flex items-center justify-center rounded-full p-1 ring-1 ring-white/70 dark:ring-slate-800/80 transition-transform duration-150 group-hover/divider:scale-105 ${outlineInsertAccent.badgeClassName}`}
+                                      style={outlineInsertAccent.badgeShadowStyle}
+                                    >
+                                      <PlusIcon className="h-4 w-4" />
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              <SermonPointPlaceholder
+                                point={point}
+                                items={items}
+                                containerId={id}
+                                onEdit={onEdit}
+                                isHighlighted={isItemHighlighted}
+                                getHighlightType={getItemHighlightType}
+                                onKeepItem={onKeepItem}
+                                onRevertItem={onRevertItem}
+                                onToggleReviewed={onToggleReviewed}
+                                headerColor={headerColor}
+                                t={t}
+                                activeId={activeId}
+                                onMoveToAmbiguous={onMoveToAmbiguous}
+                                sermonId={sermonId}
+                                onAudioThoughtCreated={onAudioThoughtCreated}
+                                isFocusMode={false}
+                                onAddThought={onAddThought}
+                                sectionTitle={title}
+                                setAudioError={setAudioError}
+                                onRetryPendingThought={onRetryPendingThought}
+                                dragHandleProps={providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>}
+                                onEditPoint={handleStartEdit}
+                                onDeletePoint={(pointId) => setDeletePointId(pointId)}
+                                onSaveEdit={handleSaveEditDirect}
+                              />
+                            </div>
+                          )}
+                        </Draggable>
+                      </React.Fragment>
+                    ))}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </DragDropContext>
+
+            {/* Bottom Add Point Button for normal mode */}
+            {/* Bottom Add Point Button for normal mode */}
+            {localSermonPoints.length > 0 && renderAddPointButton()}
 
             {renderUnassignedThoughtsSection(unassignedItemsForDisplay)}
           </div>
         ) : (
           /* Fallback: show all items in simple list if no outline points exist */
           items.length === 0 ? (
-            <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
-              {t('structure.noEntries')}
+            <div className="space-y-6">
+              {renderAddPointButton()}
+              <div className={`p-4 text-center ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} border-dashed border-2 border-blue-300 dark:border-blue-600`}>
+                {t('structure.noEntries')}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
+              {renderAddPointButton()}
               {items.map((item) => (
                 <SortableItem
                   key={item.id}
@@ -1455,19 +1933,32 @@ export default function Column({
   // Render in focus mode (vertical layout with sidebar)
   if (isFocusMode) {
     return (
-      <FocusModeLayout
-        className={className}
-        sidebar={(
-          <FocusSidebar
-            visible={isSidebarVisible}
-            style={headerBgStyle}
-            header={renderFocusSidebarHeader()}
-            actions={renderFocusSidebarActions()}
-            points={renderFocusSidebarPoints()}
-          />
-        )}
-        content={renderFocusContent()}
-      />
+      <>
+        <FocusModeLayout
+          className={className}
+          sidebar={(
+            <FocusSidebar
+              visible={isSidebarVisible}
+              style={headerBgStyle}
+              header={renderFocusSidebarHeader()}
+              actions={renderFocusSidebarActions()}
+              points={renderFocusSidebarPoints()}
+            />
+          )}
+          content={renderFocusContent()}
+        />
+        <DeletePointConfirmModal
+          isOpen={!!deletePointId}
+          onClose={() => setDeletePointId(null)}
+          onConfirm={() => {
+            if (deletePointId) {
+              handleDeletePoint(deletePointId);
+              setDeletePointId(null);
+            }
+          }}
+          pointName={pointToDeleteDetail?.text || ''}
+        />
+      </>
     );
   }
 
@@ -1476,6 +1967,17 @@ export default function Column({
     <div className={`flex flex-col ${className}`}>
       {renderNormalHeader()}
       {renderNormalBody()}
+      <DeletePointConfirmModal
+        isOpen={!!deletePointId}
+        onClose={() => setDeletePointId(null)}
+        onConfirm={() => {
+          if (deletePointId) {
+            handleDeletePoint(deletePointId);
+            setDeletePointId(null);
+          }
+        }}
+        pointName={pointToDeleteDetail?.text || ''}
+      />
     </div>
   );
 }

@@ -619,7 +619,16 @@
     "allPointsBlocked": "All outline points are reviewed",
     "pointBlocked": "Outline point is reviewed and blocked",
     "showSidebar": "Show sidebar",
-    "hideSidebar": "Hide sidebar"
+    "hideSidebar": "Hide sidebar",
+    "verticalLayout": "Vertical",
+    "horizontalLayout": "Horizontal",
+    "switchToVerticalLayout": "Switch to vertical layout",
+    "switchToHorizontalLayout": "Switch to horizontal layout",
+    "addOutlinePoint": "Add outline point",
+    "deletePointConfirmDesc": "Are you sure you want to delete this point? This action cannot be undone. To confirm, type the name of the point:",
+    "deletePointConfirmTitle": "Delete Outline Point",
+    "newOutlinePointName": "New point name...",
+    "saveError": "Failed to save outline point"
   },
   "knowledge": {
     "title": "Sermon Insights",
@@ -700,7 +709,8 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "unknown": "Unknown",
-    "saveError": "Failed to save. Please try again."
+    "saveError": "Failed to save. Please try again.",
+    "clickToEdit": "Click to edit"
   },
   "shareNotes": {
     "title": "Shared note",
@@ -727,7 +737,12 @@
     "sendingButton": "Sending...",
     "cancelButton": "Cancel",
     "successMessage": "Thank you for your feedback!",
-    "errorMessage": "Sorry, there was a problem sending your feedback. Please try again."
+    "errorMessage": "Sorry, there was a problem sending your feedback. Please try again.",
+    "attachImages": "Attach images (optional)",
+    "imagesLabel": "Attachments",
+    "imageLimitReached": "Maximum 3 images allowed",
+    "removeImage": "Remove image",
+    "imagesNote": "Up to 3 images, max 4 MB each"
   },
   "plan": {
     "pageTitle": "Sermon Plan",

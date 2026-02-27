@@ -14,7 +14,7 @@
 
 ### 📐 Coding Conventions
 *   **Zod Boundaries:** Use `zod` for ALL external data (API, AI, Forms). Types must match Zod schemas.
-*   **i18n:** `i18next` + `useTranslation`. Transactional updates (EN+RU+UK). Use `_one`/`_other` keys, NOT ICU plural syntax.
+*   **i18n:** `i18next` + `useTranslation`. Every new `t('key')` call **must** be added to all three locale files (`en/ru/uk`) in the same change — no exceptions. `defaultValue` is only an emergency fallback, never a substitute for a proper translation. Use `_one`/`_other` keys, NOT ICU plural syntax.
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. `data-testid` for anchors. **Sequence-Aware Mocking** for AI chains.
 *   **Coverage:** **100% test coverage** on new/modified lines (diff). Overall ≥80%. Run `npm run test:coverage && npm run lint:full`.
 *   **Optimistic Sync:** Apply local state immediately, keep transient sync metadata (`pending`/`error`) separate from domain entities, always provide rollback + retry.
@@ -29,6 +29,9 @@
 *   **Entity-Series Sync:** `entity.seriesId` and `series.items[]` are separate stores. Any write to `seriesId` must pair with `seriesRepository.addXxxToSeries()`.
 *   **API Verification:** Always verify exact shape of API responses in frontend handlers.
 *   **Tabular Alignment:** Use `tabular-nums` + `font-mono` for numeric counters to prevent layout shifts.
+*   **Ideal Storage (TRIZ+IFR):** If a resource (images) is only needed for transient context (email), avoid duplicating it in persistent storage (Firestore). Leverage existing systems (inbox) to solve storage needs without bloating the core database.
+*   **Mobile Modal Scrollability:** Long modals on mobile must be full-screen (`absolute inset-0`) with a single `overflow-y-auto` container to prevent "trapped scrolling" and ensure all content is accessible. Avoid `max-h-X` with internal scroll for mobile.
+*   **SSR-Safe Viewport Detection:** Use `typeof window !== 'undefined'` check when initializing state from `window.innerWidth` to prevent hydration mismatches and SSR crashes.
 
 ### ⚖️ Domain Axioms
 *   **Offline-First:** UX never blocks on network. Read from Cache immediately. `networkMode: 'offlineFirst'`.
@@ -43,6 +46,7 @@
 *   **Console Log:** Never `console.log` in prod; use `debugLog()`.
 *   **Interactive Nesting:** Never nest buttons/links inside labels or other interactive containers.
 *   **CSS-Unity Hack:** Never use `overflow-hidden` + shared `border-radius` to fake unity. Use slot props (`splitLeft`, `renderHeader`).
+*   **Mobile Nested Scroll:** Avoid `overflow-y-auto` on small sub-containers inside mobile modals; let the main modal container scroll the whole page to prevent "touch-trapping."
 *   **useState Prop Snapshot:** Never rely solely on `useState(prop)` for data that arrives after mount. Pair with `useEffect` + dirty-ref guard.
 
 ---
@@ -51,6 +55,11 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-26 Device-Specific Default State:** Initialize collapsible states based on `window.innerWidth < 640` (SSR-safe) to optimize initial vertical space for sermon outlines on mobile.
+- **2026-02-26 Mobile Modal Full-Screen:** UI modals with internal scrolling behave poorly on mobile browser viewports. Solution: Use `absolute inset-0` + `overflow-y-auto` on the main container for full-screen scrolling.
+- **2026-02-26 Outline Point Deletion Logic:** When a parent structural element (outline point) is deleted, do not cascade delete its children (thoughts). Unassign them (`outlinePointId: undefined`) to preserve user data.
+- **2026-02-26 JSX Modal Rooting:** Modals should be hoisted to the container boundary (like `Column.tsx`) instead of being duplicated in mapped items (`SermonPointPlaceholder`). Use ID callbacks (`onDeletePoint(id)`) to trigger them.
+- **2026-02-26 Feedback Image Strategy (TRIZ+IFR):** To avoid Firestore bloat with Base64 images, send them via email only and store only `imageCount` in DB. Inbox acts as the Ideal Final Result for persistent visual context.
 - **2026-02-26 URL Migration (/dashboard→/sermons):** Grep all hardcoded refs first → move content to new URL → redirect old URL → update tests last. Always preserve old URL as redirect.
 - **2026-02-25 TipTap Headless:** For WYSIWYG with raw Markdown storage, TipTap headless + `tiptap-markdown` gives 100% symmetric MD serialization. Avoid "Notion clone" wrappers (Novel).
 - **2026-02-25 TipTap Jest Mock:** Always mock WYSIWYG editors (`RichMarkdownEditor`) with `<textarea>` in Jest — JSDOM can't handle `contenteditable`.
@@ -244,6 +253,7 @@
 **Sermon Structure:**
 - `sermons/[id]/structure/hooks/` — `useSermonActions`, `usePersistence`
 - `sermons/[id]/structure/utils/` — `findOutlinePoint`, `buildItemForUI`
+- `app/components/sermon/SermonOutline.tsx` — Collapsible outline with `isMobile` default state.
 - `sermons/[id]/structure/page.tsx` — Main orchestrator
 
 **Studies:** `studies/constants.ts` (widths) | `studies/[id]/page.tsx` (editor) | `hooks/useFilteredNotes.ts`
@@ -262,6 +272,7 @@
 - Dashboard Optimistic: `useDashboardOptimisticSermons` + `SermonCard.tsx` retry/dismiss
 - Comments: English only in code
 - Beta Toggles: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`
+- Mobile Detection: `typeof window !== 'undefined' && window.innerWidth < 640` (Tailwind `sm` boundary).
 - Dynamic Color Tinting: Light = inline `rgba()`, Dark = overlay div with `opacity-0 dark:opacity-100`
 - Back Nav: `BackLink.tsx` with `router.back()` + fallback
 - Toggle Switch: `w-11` rail, `h-5 w-5` thumb, `translate-x-5/translate-x-0`, Headless UI spec

@@ -103,8 +103,8 @@ const getCardClassName = ({
 }) => {
   const highlightClass = isHighlighted
     ? `border-2 shadow-lg ${highlightType === 'assigned'
-        ? 'border-yellow-400 shadow-yellow-200'
-        : 'border-blue-400 shadow-blue-200'}`
+      ? 'border-yellow-400 shadow-yellow-200'
+      : 'border-blue-400 shadow-blue-200'}`
     : `border border-gray-200 dark:border-gray-700 shadow-md ${syncBorderClass}`;
 
   const dragStateClass = isDeleting ? 'pointer-events-none' : '';
@@ -129,8 +129,8 @@ const HighlightBadge = ({
 
   return (
     <div className={`mt-2 py-1 px-2 text-sm font-medium rounded-md inline-flex items-center bg-white ${highlightType === 'assigned'
-        ? 'text-yellow-800 border border-red-300'
-        : 'text-blue-800 border border-red-300'
+      ? 'text-yellow-800 border border-red-300'
+      : 'text-blue-800 border border-red-300'
       }`}>
       {highlightType === 'assigned'
         ? t('structure.aiAssigned', { defaultValue: 'AI assigned to outline point' })
@@ -183,6 +183,7 @@ const SortableItemActions = ({
   isSuccess,
   isLocal,
   canEdit,
+  disabled,
   showDeleteIcon,
   onDelete,
   onEdit,
@@ -204,6 +205,7 @@ const SortableItemActions = ({
   isSuccess: boolean;
   isLocal: boolean;
   canEdit: boolean;
+  disabled: boolean;
   showDeleteIcon: boolean;
   onDelete?: (itemId: string, containerId: string) => void;
   onEdit?: (item: Item) => void;
@@ -255,7 +257,7 @@ const SortableItemActions = ({
         <EditIcon className={`h-5 w-5 ${sectionIconColorClasses} hover:opacity-90`} />
       </button>
     )}
-    {onMoveToAmbiguous && containerId !== 'ambiguous' && !isLocal && !isPending && !isError && !isSuccess && (
+    {onMoveToAmbiguous && containerId !== 'ambiguous' && !isLocal && !isPending && !isError && !isSuccess && !disabled && (
       <button
         onPointerDown={stopEvent}
         onMouseDown={stopEvent}
@@ -270,7 +272,7 @@ const SortableItemActions = ({
         <ArrowTopRightOnSquareIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
       </button>
     )}
-    {showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && (
+    {showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !disabled && (
       <button
         onPointerDown={stopEvent}
         onMouseDown={stopEvent}
@@ -382,7 +384,7 @@ export default function SortableItem({
   const successOpacityClass = successFaded ? 'opacity-50' : 'opacity-100';
 
   const showSyncMeta = Boolean(remainingTime && (isPending || isError));
-  const canEdit = Boolean(onEdit) && !isPending && !isSuccess;
+  const canEdit = Boolean(onEdit) && !isPending && !isSuccess && !disabled;
   const cardClassName = getCardClassName({
     isHighlighted,
     highlightType,
@@ -426,6 +428,7 @@ export default function SortableItem({
         isSuccess={isSuccess}
         isLocal={isLocal}
         canEdit={canEdit}
+        disabled={disabled}
         showDeleteIcon={showDeleteIcon}
         onDelete={onDelete}
         onEdit={onEdit}

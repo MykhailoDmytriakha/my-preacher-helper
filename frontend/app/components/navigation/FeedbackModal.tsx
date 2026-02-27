@@ -8,7 +8,7 @@ import "@locales/i18n";
 interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (text: string, type: string) => Promise<boolean | void>;
+  onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
 }
 
 export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackModalProps) {
@@ -21,16 +21,16 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
       <div className="flex items-center justify-center min-h-screen p-4">
         {/* Modal backdrop */}
         <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" aria-hidden="true" onClick={onClose}></div>
-        
+
         {/* Modal content */}
         <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white" suppressHydrationWarning={true}>
               {t('feedback.title') || 'Send Feedback'}
             </h3>
-            <button 
-              type="button" 
-              className="text-gray-400 hover:text-gray-500 focus:outline-none" 
+            <button
+              type="button"
+              className="text-gray-400 hover:text-gray-500 focus:outline-none"
               onClick={onClose}
             >
               <span className="sr-only">Close</span>
@@ -39,7 +39,7 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
               </svg>
             </button>
           </div>
-          
+
           <FeedbackForm onSubmit={onSubmit} onCancel={onClose} />
         </div>
       </div>

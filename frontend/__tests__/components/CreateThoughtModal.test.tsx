@@ -39,8 +39,17 @@ jest.mock('@services/thought.service', () => ({
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
-    FocusRecorderButton: ({ disabled }: any) => (
-        <button data-testid="focus-recorder" disabled={disabled}>Record</button>
+    FocusRecorderButton: ({ disabled, onError }: any) => (
+        <div>
+            <button data-testid="focus-recorder" disabled={disabled}>Record</button>
+            <button
+                data-testid="focus-recorder-error"
+                disabled={disabled}
+                onClick={() => onError?.('Recorder failed')}
+            >
+                Recorder Error
+            </button>
+        </div>
     ),
 }));
 
@@ -142,5 +151,60 @@ describe('CreateThoughtModal', () => {
     it('renders RichMarkdownEditor for text input', () => {
         render(<CreateThoughtModal {...defaultProps} />);
         expect(screen.getByTestId('mock-rich-editor')).toBeInTheDocument();
+    });
+
+    it('closes when desktop backdrop is clicked', () => {
+        const onClose = jest.fn();
+        render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
+
+        const backdrop = document.querySelector('div.bg-black.bg-opacity-50');
+        expect(backdrop).toBeInTheDocument();
+        fireEvent.click(backdrop!);
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not close dirty modal when confirm is rejected', () => {
+        const originalConfirm = window.confirm;
+        window.confirm = jest.fn(() => false);
+        const onClose = jest.fn();
+
+        try {
+            render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
+            fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Dirty text' } });
+
+            const dialog = screen.getByRole('dialog');
+            const overlaySheet = dialog.parentElement as HTMLElement | null;
+            expect(overlaySheet).toBeInTheDocument();
+            fireEvent.click(overlaySheet!);
+
+            expect(window.confirm).toHaveBeenCalled();
+            expect(onClose).not.toHaveBeenCalled();
+        } finally {
+            window.confirm = originalConfirm;
+        }
+    });
+
+    it('shows toast when recorder reports an error', () => {
+        render(<CreateThoughtModal {...defaultProps} />);
+        fireEvent.click(screen.getByTestId('focus-recorder-error'));
+        expect(toast.error).toHaveBeenCalledWith('Recorder failed');
+    });
+
+    it('renders grouped outline point options for non-empty sections', () => {
+        render(
+            <CreateThoughtModal
+                {...defaultProps}
+                sermonOutline={{
+                    introduction: [{ id: 'i1', text: 'Intro point' }],
+                    main: [{ id: 'm1', text: 'Main point' }],
+                    conclusion: [],
+                }}
+            />
+        );
+
+        expect(screen.getByRole('option', { name: 'Intro point' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Main point' })).toBeInTheDocument();
+        expect(screen.queryByRole('group', { name: 'outline.conclusion' })).not.toBeInTheDocument();
     });
 });

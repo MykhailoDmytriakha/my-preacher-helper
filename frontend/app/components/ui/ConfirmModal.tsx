@@ -15,6 +15,8 @@ interface ConfirmModalProps {
     cancelText?: string;
     isDestructive?: boolean;
     isDeleting?: boolean;
+    children?: React.ReactNode;
+    confirmDisabled?: boolean;
 }
 
 export default function ConfirmModal({
@@ -27,6 +29,8 @@ export default function ConfirmModal({
     cancelText,
     isDestructive = true,
     isDeleting = false,
+    children,
+    confirmDisabled = false,
 }: ConfirmModalProps) {
     const { t } = useTranslation();
 
@@ -77,15 +81,20 @@ export default function ConfirmModal({
                                                 </p>
                                             </div>
                                         )}
+                                        {children && (
+                                            <div className="mt-4">
+                                                {children}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
                                     <button
                                         type="button"
-                                        disabled={isDeleting}
-                                        className={`inline-flex w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm sm:ml-3 sm:w-auto transition disabled:opacity-60 ${isDestructive
-                                                ? 'bg-red-600 hover:bg-red-500'
-                                                : 'bg-emerald-600 hover:bg-emerald-500'
+                                        disabled={isDeleting || confirmDisabled}
+                                        className={`inline-flex w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm sm:ml-3 sm:w-auto transition disabled:opacity-60 disabled:cursor-not-allowed ${isDestructive
+                                            ? 'bg-red-600 hover:bg-red-500'
+                                            : 'bg-emerald-600 hover:bg-emerald-500'
                                             }`}
                                         onClick={onConfirm}
                                     >

@@ -34,12 +34,12 @@ jest.mock('@components/navigation/FeedbackModal', () => {
   return function MockFeedbackModal({ isOpen, onClose, onSubmit }: {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (text: string, type: string) => Promise<boolean | void>;
+    onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
   }) {
     return isOpen ? (
       <div data-testid="feedback-modal">
         <button onClick={onClose} data-testid="close-modal">Close Modal</button>
-        <button onClick={() => onSubmit('Feedback text', 'suggestion')} data-testid="submit-feedback">Submit Feedback</button>
+        <button onClick={() => onSubmit('Feedback text', 'suggestion', [])} data-testid="submit-feedback">Submit Feedback</button>
       </div>
     ) : null;
   };
@@ -415,7 +415,7 @@ describe('DashboardNav Component', () => {
     });
 
     // Verify handleSubmitFeedback was called with user ID
-    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', 'user123');
+    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'user123');
   });
 
   test('handles feedback submission with anonymous user', async () => {
@@ -434,7 +434,7 @@ describe('DashboardNav Component', () => {
     });
 
     // Verify handleSubmitFeedback was called with 'anonymous'
-    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', 'anonymous');
+    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'anonymous');
   });
 
   test('mobile feedback button is displayed on small screens', async () => {

@@ -354,4 +354,41 @@ Second paragraph with indentation.
     const editIcon = screen.getByTestId('edit-icon');
     expect(editIcon).toHaveClass('text-blue-800');
   });
-}); 
+
+  test('applies assigned highlight classes on card and badge', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        isHighlighted={true}
+        highlightType="assigned"
+      />
+    );
+
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
+    expect(container).toBeInTheDocument();
+    expect(container?.className).toContain('border-yellow-400');
+    expect(container?.className).toContain('shadow-yellow-200');
+
+    const badge = screen.getByText('structure.aiAssigned');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveClass('text-yellow-800');
+  });
+
+  test('applies moved highlight badge class variant', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        isHighlighted={true}
+        highlightType="moved"
+      />
+    );
+
+    const badge = screen.getByText('structure.aiMoved');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveClass('text-blue-800');
+  });
+});

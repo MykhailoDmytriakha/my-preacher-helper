@@ -4,6 +4,7 @@ import React from 'react';
 import EditThoughtModal from '@/components/EditThoughtModal';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonOutline } from '@/models/models';
+import { toast } from 'sonner';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -19,6 +20,11 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
+const mockUseOnlineStatus = jest.fn(() => true);
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => mockUseOnlineStatus(),
+}));
+
 // Mock the new RichMarkdownEditor which uses TipTap
 jest.mock('@components/ui/RichMarkdownEditor', () => ({
   RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
@@ -29,6 +35,29 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
       placeholder={placeholder}
     />
   ),
+}));
+
+jest.mock('@components/FocusRecorderButton', () => ({
+  FocusRecorderButton: ({ onError, disabled, isProcessing }: any) => (
+    <div>
+      <button
+        data-testid="focus-recorder-error"
+        disabled={disabled}
+        onClick={() => onError?.('Recorder error')}
+      >
+        Recorder Error
+      </button>
+      <span data-testid="focus-recorder-processing">{String(isProcessing)}</span>
+    </div>
+  ),
+}));
+
+jest.mock('@services/thought.service', () => ({
+  transcribeThoughtAudio: jest.fn(),
+}));
+
+jest.mock('sonner', () => ({
+  toast: { success: jest.fn(), error: jest.fn() },
 }));
 
 // Mock translations
@@ -108,6 +137,7 @@ describe('EditThoughtModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseOnlineStatus.mockReturnValue(true);
   });
 
   test('renders modal with correct initial values', () => {
@@ -308,5 +338,30 @@ describe('EditThoughtModal Component', () => {
     // We expect only 'Main Part' to be available for adding
     expect(screen.queryByLabelText('Add tag Introduction')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Add tag Main Part')).toBeInTheDocument();
+  });
+
+  test('shows read-only text block when offline and offline editing is not allowed', () => {
+    mockUseOnlineStatus.mockReturnValue(false);
+    render(
+      <EditThoughtModal
+        {...mockProps}
+        initialText={'Offline text\nSecond line'}
+      />
+    );
+
+    expect(screen.queryByTestId('mock-rich-editor')).not.toBeInTheDocument();
+    const pre = document.querySelector('pre');
+    expect(pre).toBeInTheDocument();
+    expect(pre).toHaveTextContent('Offline text');
+    expect(pre).toHaveTextContent('Second line');
+  });
+
+  test('shows recorder error toast from FocusRecorderButton callback', () => {
+    render(<EditThoughtModal {...mockProps} />);
+
+    fireEvent.click(screen.getByTestId('focus-recorder-error'));
+
+    expect(toast.error).toHaveBeenCalledWith('Recorder error');
+    expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false');
   });
 });
