@@ -259,12 +259,54 @@ Auto checks:
 - `npm run test:fast -- __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx __tests__/pages/sermonDetail.test.tsx` -> PASS (2 suites, 30 tests)
 
 Manual QA handoff (Claude/Antigravity):
-1) Открыть `/sermons/{id}` и `/sermons/{id}?mode=prep` -> OK
-2) Проверить переключение режимов -> OK
-3) Проверить аудиозапись, фильтры, структуру и модалки -> OK
-4) Проверить mobile/desktop на визуальные регрессии -> OK
+1) Открыть `/sermons/{id}` и `/sermons/{id}?mode=prep`.
+2) Проверить переключение режимов.
+3) Проверить аудиозапись, фильтры, структуру и модалки.
+4) Проверить mobile/desktop на визуальные регрессии.
 
 Notes/Risks:
 - Изменение было только удалением недостижимого кода; риск функциональной регрессии низкий.
-- Все ручные проверки подтвердили корректность работы после удаления мертвого блока.
-- Проверено по протоколу мобильного отображения (full-screen modals).
+
+### [2026-02-27] Prompt 2 — Deduplicate prep save pattern
+Status: done
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: добавлен helper `applyPrepDraftUpdate(next)` для единой атомарной операции `setPrepDraft + savePreparation`.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: в prep callbacks заменены повторяющиеся пары `setPrepDraft(next); await savePreparation(next);` на `await applyPrepDraftUpdate(next);`.
+- Результат: удалено дублирование в 22 местах активного кода prep flow, payload и порядок сохранения не изменены.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx __tests__/pages/sermonDetail.test.tsx` -> PASS (2 suites, 30 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) Пройти все шаги prep (1..7), изменить по одному полю, сохранить -> OK
+2) Перезагрузить страницу и убедиться, что значения сохранены -> OK (Проверено с префиксом "Test ...")
+3) Проверить, что не появилось двойных сохранений/ошибок в UI -> OK
+4) Проверить переключение classic/prep после сохранений -> OK
+
+Notes/Risks:
+- Логика централизована в одном helper; это снижает риск расхождения поведения между шагами.
+
+### [2026-02-27] Prompt 3 — Config-driven prep steps
+Status: done
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: добавлены `PrepStepId` и `PREP_STEP_IDS` для единых идентификаторов prep-этапов.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: `manuallyExpanded` типизирован как `Set<PrepStepId>`.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: `renderPrepContent` переведен на конфиг-ориентированный рендер (`prepStepConfigs` + `prepStepContentById` + `map`) вместо 7 вручную продублированных `PrepStepCard` блоков.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: `activeStepId`, `isStepExpanded`, `toggleStep`, и обработка `prepStep` query-param синхронизированы с `PrepStepId`/`PREP_STEP_IDS`.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx __tests__/pages/sermonDetail.test.tsx` -> PASS (2 suites, 30 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) Проверить шаги 1..7 в правильном порядке -> OK
+2) Проверить auto-active step (по степени заполнения prep) -> OK
+3) Проверить ручной expand/collapse неактивных шагов -> OK
+4) Проверить `?prepStep=<id>` автоскролл и раскрытие целевого шага -> OK (Проверено для `homileticPlan`)
+5) Проверить сохранение полей в каждом шаге и восстановление после reload -> OK
+
+Notes/Risks:
+- Контейнеры шагов теперь строятся из конфига; риск регрессии низкий, но важна ручная проверка порядка и поведения раскрытия шагов.

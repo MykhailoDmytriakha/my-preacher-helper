@@ -185,6 +185,25 @@ const getInitialUiMode = (modeParam: string | null, id: string): 'classic' | 'pr
   return 'classic';
 };
 
+type PrepStepId =
+  | 'spiritual'
+  | 'textContext'
+  | 'exegeticalPlan'
+  | 'mainIdea'
+  | 'goals'
+  | 'thesis'
+  | 'homileticPlan';
+
+const PREP_STEP_IDS: PrepStepId[] = [
+  'spiritual',
+  'textContext',
+  'exegeticalPlan',
+  'mainIdea',
+  'goals',
+  'thesis',
+  'homileticPlan',
+];
+
 // Calculate the number of thoughts for each outline point
 const calculateThoughtsPerSermonPoint = (sermon: Sermon | null) => {
   if (!sermon || !sermon.thoughts || !sermon.outline) return {};
@@ -337,6 +356,12 @@ export default function SermonPage() {
     if (updated) setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
     setSavingPrep(false);
   }, [sermon, setSermon]);
+
+  const applyPrepDraftUpdate = useCallback(async (next: Preparation) => {
+    setPrepDraft(next);
+    await savePreparation(next);
+  }, [savePreparation]);
+
   const { allTags } = useTags(sermon?.userId);
   const allowedTags = useMemo(
     () => allTags.map((tag) => ({ name: tag.name, color: tag.color })),
@@ -350,7 +375,7 @@ export default function SermonPage() {
   const { t } = useTranslation();
   const [isFilterOpen, setIsFilterOpen] = useState(false); // Keep this state for dropdown visibility
   // Prep steps expand/collapse management
-  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<PrepStepId>>(new Set());
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Close filter dropdown when switching to prep mode to avoid floating UI
@@ -496,19 +521,67 @@ export default function SermonPage() {
   );
 
   // Reusable renderer for preparation flow (all prep step cards)
-  const renderPrepContent = () => (
-    <div className="space-y-4 sm:space-y-6">
-      <PrepStepCard
-        stepId="spiritual"
-        stepNumber={1}
-        title={t('wizard.steps.spiritual.title') as string}
-        icon={<Sparkles className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'spiritual'}
-        isExpanded={isStepExpanded('spiritual')}
-        onToggle={() => toggleStep('spiritual')}
-        stepRef={(el) => { stepRefs.current['spiritual'] = el; }}
-        done={isSpiritualDone}
-      >
+  const renderPrepContent = () => {
+    const prepStepConfigs: Array<{
+      id: PrepStepId;
+      stepNumber: number;
+      title: string;
+      icon: ReactNode;
+      done: boolean;
+    }> = [
+      {
+        id: 'spiritual',
+        stepNumber: 1,
+        title: t('wizard.steps.spiritual.title') as string,
+        icon: <Sparkles className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isSpiritualDone,
+      },
+      {
+        id: 'textContext',
+        stepNumber: 2,
+        title: t('wizard.steps.textContext.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isTextContextDone,
+      },
+      {
+        id: 'exegeticalPlan',
+        stepNumber: 3,
+        title: t('wizard.steps.exegeticalPlan.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isExegeticalPlanDone,
+      },
+      {
+        id: 'mainIdea',
+        stepNumber: 4,
+        title: t('wizard.steps.mainIdea.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isMainIdeaDone,
+      },
+      {
+        id: 'goals',
+        stepNumber: 5,
+        title: t('wizard.steps.goals.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isGoalsDone,
+      },
+      {
+        id: 'thesis',
+        stepNumber: 6,
+        title: t('wizard.steps.thesis.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isThesisDone,
+      },
+      {
+        id: 'homileticPlan',
+        stepNumber: 7,
+        title: t('wizard.steps.homileticPlan.title') as string,
+        icon: <BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />,
+        done: isHomileticPlanDone,
+      },
+    ];
+
+    const prepStepContentById: Record<PrepStepId, ReactNode> = {
+      spiritual: (
         <SpiritualStepContent
           prepDraft={prepDraft}
           setPrepDraft={setPrepDraft}
@@ -516,19 +589,8 @@ export default function SermonPage() {
           savingPrep={savingPrep}
           formatSuperscriptVerses={formatSuperscriptVerses}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="textContext"
-        stepNumber={2}
-        title={t('wizard.steps.textContext.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'textContext'}
-        isExpanded={isStepExpanded('textContext')}
-        onToggle={() => toggleStep('textContext')}
-        stepRef={(el) => { stepRefs.current['textContext'] = el; }}
-        done={isTextContextDone}
-      >
+      ),
+      textContext: (
         <TextContextStepContent
           initialVerse={sermon!.verse}
           onSaveVerse={async (nextVerse: string) => {
@@ -542,8 +604,7 @@ export default function SermonPage() {
               ...prepDraft,
               textContext: { ...(prepDraft.textContext ?? {}), readWholeBookOnceConfirmed: checked },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
           onSavePassageSummary={async (summary: string) => {
@@ -551,8 +612,7 @@ export default function SermonPage() {
               ...prepDraft,
               textContext: { ...(prepDraft.textContext ?? {}), passageSummary: summary },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialContextNotes={prepDraft?.textContext?.contextNotes || ''}
           onSaveContextNotes={async (notes: string) => {
@@ -560,8 +620,7 @@ export default function SermonPage() {
               ...prepDraft,
               textContext: { ...(prepDraft.textContext ?? {}), contextNotes: notes },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialRepeatedWords={prepDraft?.textContext?.repeatedWords || []}
           onSaveRepeatedWords={async (words: string[]) => {
@@ -569,23 +628,11 @@ export default function SermonPage() {
               ...prepDraft,
               textContext: { ...(prepDraft.textContext ?? {}), repeatedWords: words },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="exegeticalPlan"
-        stepNumber={3}
-        title={t('wizard.steps.exegeticalPlan.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'exegeticalPlan'}
-        isExpanded={isStepExpanded('exegeticalPlan')}
-        onToggle={() => toggleStep('exegeticalPlan')}
-        stepRef={(el) => { stepRefs.current['exegeticalPlan'] = el; }}
-        done={isExegeticalPlanDone}
-      >
+      ),
+      exegeticalPlan: (
         <ExegeticalPlanStepContent
           value={prepDraft?.exegeticalPlan || []}
           onChange={(nodes) => {
@@ -593,75 +640,46 @@ export default function SermonPage() {
           }}
           onSave={async (nodes) => {
             const next = { ...(prepDraft || {}), exegeticalPlan: nodes } as Preparation;
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           saving={savingPrep}
           authorIntent={prepDraft?.authorIntent || ''}
           onSaveAuthorIntent={async (text: string) => {
             const next: Preparation = { ...(prepDraft || {}), authorIntent: text };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="mainIdea"
-        stepNumber={4}
-        title={t('wizard.steps.mainIdea.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'mainIdea'}
-        isExpanded={isStepExpanded('mainIdea')}
-        onToggle={() => toggleStep('mainIdea')}
-        stepRef={(el) => { stepRefs.current['mainIdea'] = el; }}
-        done={isMainIdeaDone}
-      >
+      ),
+      mainIdea: (
         <MainIdeaStepContent
           initialContextIdea={prepDraft?.mainIdea?.contextIdea || ''}
           onSaveContextIdea={async (text: string) => {
             const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), contextIdea: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialTextIdea={prepDraft?.mainIdea?.textIdea || ''}
           onSaveTextIdea={async (text: string) => {
             const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), textIdea: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialArgumentation={prepDraft?.mainIdea?.argumentation || ''}
           onSaveArgumentation={async (text: string) => {
             const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), argumentation: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="goals"
-        stepNumber={5}
-        title={t('wizard.steps.goals.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'goals'}
-        isExpanded={isStepExpanded('goals')}
-        onToggle={() => toggleStep('goals')}
-        stepRef={(el) => { stepRefs.current['goals'] = el; }}
-        done={isGoalsDone}
-      >
+      ),
+      goals: (
         <GoalsStepContent
           initialTimelessTruth={prepDraft?.timelessTruth || ''}
           onSaveTimelessTruth={async (text: string) => {
             const next: Preparation = { ...prepDraft, timelessTruth: text };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialChristConnection={prepDraft?.christConnection || ''}
           onSaveChristConnection={async (text: string) => {
             const next: Preparation = { ...prepDraft, christConnection: text };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialGoalStatement={prepDraft?.preachingGoal?.statement || ''}
           onSaveGoalStatement={async (text: string) => {
@@ -669,8 +687,7 @@ export default function SermonPage() {
               ...prepDraft,
               preachingGoal: { ...(prepDraft?.preachingGoal || {}), statement: text },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialGoalType={(prepDraft?.preachingGoal?.type as GoalType) || ''}
           onSaveGoalType={async (type) => {
@@ -678,106 +695,95 @@ export default function SermonPage() {
               ...prepDraft,
               preachingGoal: { ...(prepDraft?.preachingGoal || {}), type },
             };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="thesis"
-        stepNumber={6}
-        title={t('wizard.steps.thesis.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'thesis'}
-        isExpanded={isStepExpanded('thesis')}
-        onToggle={() => toggleStep('thesis')}
-        stepRef={(el) => { stepRefs.current['thesis'] = el; }}
-        done={isThesisDone}
-      >
+      ),
+      thesis: (
         <ThesisStepContent
           exegetical={prepDraft?.thesis?.exegetical || ''}
           onSaveExegetical={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), exegetical: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           homiletical={prepDraft?.thesis?.homiletical || ''}
           onSaveHomiletical={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homiletical: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           pluralKey={prepDraft?.thesis?.pluralKey || ''}
           onSavePluralKey={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), pluralKey: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           transitionSentence={prepDraft?.thesis?.transitionSentence || ''}
           onSaveTransitionSentence={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), transitionSentence: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           oneSentence={prepDraft?.thesis?.oneSentence || ''}
           onSaveOneSentence={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), oneSentence: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
           onSaveSermonInOneSentence={async (text: string) => {
             const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), sermonInOneSentence: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-
-      <PrepStepCard
-        stepId="homileticPlan"
-        stepNumber={7}
-        title={t('wizard.steps.homileticPlan.title') as string}
-        icon={<BookOpen className={`${UI_COLORS.accent.text} dark:${UI_COLORS.accent.darkText} w-4 h-4`} />}
-        isActive={activeStepId === 'homileticPlan'}
-        isExpanded={isStepExpanded('homileticPlan')}
-        onToggle={() => toggleStep('homileticPlan')}
-        stepRef={(el) => { stepRefs.current['homileticPlan'] = el; }}
-        done={isHomileticPlanDone}
-      >
+      ),
+      homileticPlan: (
         <HomileticPlanStepContent
           initialModernTranslation={prepDraft?.homileticPlan?.modernTranslation || ''}
           onSaveModernTranslation={async (text: string) => {
             const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), modernTranslation: text } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialUpdatedPlan={prepDraft?.homileticPlan?.updatedPlan || []}
           onSaveUpdatedPlan={async (items) => {
             const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), updatedPlan: items } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
           initialSermonPlan={prepDraft?.homileticPlan?.sermonPlan || []}
           onSaveSermonPlan={async (items) => {
             const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), sermonPlan: items } };
-            setPrepDraft(next);
-            await savePreparation(next);
+            await applyPrepDraftUpdate(next);
           }}
         />
-      </PrepStepCard>
-    </div>
-  );
+      ),
+    };
+
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        {prepStepConfigs.map((step) => (
+          <PrepStepCard
+            key={step.id}
+            stepId={step.id}
+            stepNumber={step.stepNumber}
+            title={step.title}
+            icon={step.icon}
+            isActive={activeStepId === step.id}
+            isExpanded={isStepExpanded(step.id)}
+            onToggle={() => toggleStep(step.id)}
+            stepRef={(el) => { stepRefs.current[step.id] = el; }}
+            done={step.done}
+          >
+            {prepStepContentById[step.id]}
+          </PrepStepCard>
+        ))}
+      </div>
+    );
+  };
 
   // Determine active step based on data completeness
-  const activeStepId: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan' = getActiveStepId(prepDraft);
+  const activeStepId = getActiveStepId(prepDraft) as PrepStepId;
 
-  const isStepExpanded = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan') => {
+  const isStepExpanded = useCallback((id: PrepStepId) => {
     return id === activeStepId || manuallyExpanded.has(id);
   }, [activeStepId, manuallyExpanded]);
 
-  const toggleStep = useCallback((id: 'spiritual' | 'textContext' | 'exegeticalPlan' | 'mainIdea' | 'goals' | 'thesis' | 'homileticPlan') => {
+  const toggleStep = useCallback((id: PrepStepId) => {
     if (id === activeStepId) return; // active step stays open
     setManuallyExpanded(prev => {
       const next = new Set(prev);
@@ -788,9 +794,8 @@ export default function SermonPage() {
 
   const prepStepParam = searchParams?.get('prepStep');
   useEffect(() => {
-    const target = prepStepParam;
-    const validSteps = ['spiritual', 'textContext', 'exegeticalPlan', 'mainIdea', 'goals', 'thesis', 'homileticPlan'];
-    if (target && validSteps.includes(target as string)) {
+    const target = prepStepParam as PrepStepId | null;
+    if (target && PREP_STEP_IDS.includes(target)) {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
