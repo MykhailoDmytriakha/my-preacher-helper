@@ -58,6 +58,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-27 Tailwind Dynamic-Class Hardening:** If section styles are composed with runtime fragments like `dark:${token}` / `text-${token}` / `border-${token}`, replace with explicit static class maps per section (intro/main/conclusion) and assert those exact classes in integration tests; this prevents Tailwind purge misses and dark-mode regressions.
 - **2026-02-27 Absolute-Offset Clip:** When a component renders control buttons with `absolute -top-1 -left/right-1` (e.g. FocusRecorderButton Pause/Cancel), any ancestor `overflow-hidden` clips those -4px overflows. Fix: remove `overflow-hidden` from the flex header container; text truncation is already covered by `truncate` + `min-w-0` on the inner text element.
 - **2026-02-27 Plan View Decomposition:** For large page-level UI files, extract mode-specific views (`main/overlay/immersive/preaching`) into separate files and keep page file as orchestration; use feature-local context inside the largest view to remove deep prop chains while preserving external behavior/testids.
 - **2026-02-27 Paired-Card Height Hook:** When equal-height behavior is needed for paired columns, move ref registration + resize debounce + pair/all sync into one hook and apply viewport guards in both `syncAll` and `syncPair` so mobile always stays `height:auto`.

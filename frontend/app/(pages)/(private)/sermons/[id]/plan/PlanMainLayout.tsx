@@ -19,7 +19,12 @@ import { hasPlan } from "@/utils/sermonPlanAccess";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
-import { SECTION_NAMES, TRANSLATION_KEYS } from "./constants";
+import {
+  MARKDOWN_SECTION_VARIANT_CLASSES,
+  SECTION_NAMES,
+  SECTION_TONE_CLASSES,
+  TRANSLATION_KEYS,
+} from "./constants";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 
 import type {
@@ -111,15 +116,16 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
   const { t } = useTranslation();
   const themeSection = section === "main" ? "mainPart" : section;
   const colors = SERMON_SECTION_COLORS[themeSection as "introduction" | "mainPart" | "conclusion"];
+  const sectionToneClasses = SECTION_TONE_CLASSES[section];
 
   return (
-    <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${colors.border} dark:${colors.darkBorder} ${colors.bg} dark:${colors.darkBg}`}>
+    <div className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}>
       <div
-        className={`p-3 border-b border-l-4 ${colors.border} dark:${colors.darkBorder} flex justify-between items-start`}
+        className={`p-3 border-b border-l-4 ${sectionToneClasses.border} flex justify-between items-start`}
         style={{ borderLeftColor: colors.light }}
       >
         <div>
-          <h2 className={`text-xl font-semibold ${colors.text} dark:${colors.darkText}`}>
+          <h2 className={`text-xl font-semibold ${sectionToneClasses.text}`}>
             {t(`sections.${section}`)}
           </h2>
         </div>
@@ -130,7 +136,7 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
             title={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
             aria-label={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
           >
-            <SwitchViewIcon className={`h-4 w-4 ${colors.text} dark:${colors.darkText} group-hover:text-gray-900 dark:group-hover:text-gray-100`} />
+            <SwitchViewIcon className={`h-4 w-4 ${sectionToneClasses.text} group-hover:text-gray-900 dark:group-hover:text-gray-100`} />
           </button>
         )}
       </div>
@@ -153,12 +159,11 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
 };
 
 const MarkdownRenderer = ({ markdown, section }: { markdown: string; section?: SermonSectionKey }) => {
-  const sectionClass = section ? `prose-${section}` : "";
-  const sectionDivClass = section ? `${section}-section` : "";
+  const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
   const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionClass} ${sectionDivClass}`}>
+    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {sanitizedMarkdown}
       </ReactMarkdown>
@@ -223,6 +228,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
 
   const themeSectionName = sectionName === "main" ? "mainPart" : sectionName;
   const sectionColors = SERMON_SECTION_COLORS[themeSectionName as "introduction" | "mainPart" | "conclusion"];
+  const sectionToneClasses = SECTION_TONE_CLASSES[sectionName];
   const keyFragmentsCount = thoughts.reduce((count, thought) => count + (thought.keyFragments?.length || 0), 0);
   const currentGeneratedContent = generatedContent[outlinePoint.id] || null;
   const isGenerating = generatingId === outlinePoint.id;
@@ -230,9 +236,9 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   return (
     <Card
       ref={ref}
-      className={`mb-4 p-4 border-${sectionColors.base.replace("#", "").substring(0, 3)} bg-white dark:bg-gray-800`}
+      className={`mb-4 p-4 border bg-white dark:bg-gray-800 ${sectionToneClasses.border}`}
     >
-      <h3 className={`font-semibold text-lg mb-2 text-${sectionColors.text.split("-")[1]} flex justify-between items-center`}>
+      <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
         {outlinePoint.text}
         <div className="flex gap-2">
           <Button
@@ -327,6 +333,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
   } = usePlanMainLayoutContext();
 
   const currentSavedContent = sermonPlanSection?.outlinePoints?.[outlinePoint.id] || "";
+  const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
 
   return (
     <div
@@ -334,7 +341,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
       key={outlinePoint.id}
       className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
     >
-      <h3 className={`font-semibold text-lg mb-2 ${sectionColors.text} dark:${sectionColors.darkText} flex justify-between items-center`}>
+      <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
         {outlinePoint.text}
         <div className="flex space-x-2">
           <Button
@@ -444,12 +451,13 @@ const PlanSectionColumns = ({
 
   const points = outlinePoints ?? [];
   const sermonPlanSection = sermon.plan?.[sectionKey];
+  const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
 
   return (
     <>
       <div
         data-testid={leftTestId}
-        className={`rounded-lg overflow-hidden border ${sectionColors.border.split(" ")[0]} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg}`}
+        className={`rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}
       >
         <div className="p-3">
           {points.map((outlinePoint) => (
@@ -469,7 +477,7 @@ const PlanSectionColumns = ({
 
       <div
         data-testid={rightTestId}
-        className={`rounded-lg overflow-hidden border ${sectionColors.border.split(" ")[0]} dark:${sectionColors.darkBorder} ${sectionColors.bg} dark:${sectionColors.darkBg}`}
+        className={`rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}
       >
         <div className="p-3">
           {points.map((outlinePoint) => (

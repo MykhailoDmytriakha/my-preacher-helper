@@ -336,6 +336,22 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.getByTestId('plan-conclusion-right-section')).toBeInTheDocument();
   });
 
+  it('applies static section tone classes to plan columns and headers', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+
+    const introductionLeftSection = await screen.findByTestId('plan-introduction-left-section');
+    const mainLeftSection = screen.getByTestId('plan-main-left-section');
+    const conclusionLeftSection = screen.getByTestId('plan-conclusion-left-section');
+
+    expect(introductionLeftSection).toHaveClass('border-amber-200', 'dark:border-amber-800', 'bg-amber-50', 'dark:bg-amber-900/40');
+    expect(mainLeftSection).toHaveClass('border-blue-200', 'dark:border-blue-800', 'bg-blue-50', 'dark:bg-blue-900/20');
+    expect(conclusionLeftSection).toHaveClass('border-green-200', 'dark:border-green-800', 'bg-green-50', 'dark:bg-green-900/20');
+
+    expect(screen.getByRole('heading', { name: /^Introduction$/ })).toHaveClass('text-amber-800', 'dark:text-amber-200');
+    expect(screen.getByRole('heading', { name: /^Main$/ })).toHaveClass('text-blue-800', 'dark:text-blue-200');
+    expect(screen.getByRole('heading', { name: /^Conclusion$/ })).toHaveClass('text-green-800', 'dark:text-green-200');
+  });
+
   it('wires section header action through layout context (switch to structure)', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 

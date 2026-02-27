@@ -1,4 +1,4 @@
-import type { CopyStatus } from "./types";
+import type { CopyStatus, SermonSectionKey } from "./types";
 
 export const TRANSLATION_SECTIONS_MAIN = "sections.main";
 export const TRANSLATION_SECTIONS_CONCLUSION = "sections.conclusion";
@@ -41,6 +41,37 @@ export const SECTION_NAMES = {
   MAIN: "main",
   CONCLUSION: "conclusion",
 } as const;
+
+export const SECTION_TONE_CLASSES: Record<
+  SermonSectionKey,
+  {
+    border: string;
+    surface: string;
+    text: string;
+  }
+> = {
+  introduction: {
+    border: "border-amber-200 dark:border-amber-800",
+    surface: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/40",
+    text: "text-amber-800 dark:text-amber-200",
+  },
+  main: {
+    border: "border-blue-200 dark:border-blue-800",
+    surface: "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20",
+    text: "text-blue-800 dark:text-blue-200",
+  },
+  conclusion: {
+    border: "border-green-200 dark:border-green-800",
+    surface: "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20",
+    text: "text-green-800 dark:text-green-200",
+  },
+};
+
+export const MARKDOWN_SECTION_VARIANT_CLASSES: Record<SermonSectionKey, string> = {
+  introduction: "prose-introduction introduction-section",
+  main: "prose-main main-section",
+  conclusion: "prose-conclusion conclusion-section",
+};
 
 export const copyButtonClasses =
   "flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700";

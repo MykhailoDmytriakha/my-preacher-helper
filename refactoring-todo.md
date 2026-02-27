@@ -550,6 +550,29 @@ Coverage/tests + green check:
 - Acceptance: all green; changed/new logic has strong coverage.
 
 ### What was done 10.1:
+- Status: `DONE` (2026-02-27)
+- Replaced unsafe runtime Tailwind class construction with static class maps:
+  - Added shared maps in `frontend/app/(pages)/(private)/sermons/[id]/plan/constants.ts`:
+    - `SECTION_TONE_CLASSES`
+    - `MARKDOWN_SECTION_VARIANT_CLASSES`
+  - Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanMainLayout.tsx`:
+    - removed `dark:${...}`, `border-${...}`, `text-${...}` patterns
+    - switched section header/columns/card/title markdown classes to explicit map-based classes
+  - Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/FullPlanContent.tsx`:
+    - removed dynamic `dark:${...}` composition for section borders/text
+    - switched markdown section class composition to explicit map-based classes
+- Objective cleanup completed:
+  - removed dead commented blocks from `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx`
+    - removed old `syncInProgressRef` commented line
+    - removed unused commented `findThoughtsForSermonPoint` block
+- Added focused regression test for style hardening:
+  - Updated `frontend/__tests__/pages/sermonPlan.test.tsx`
+  - New test: `applies static section tone classes to plan columns and headers`
+  - Verifies intro/main/conclusion containers and headers render expected static light/dark class tokens.
+- Final quality gate passed:
+  - `npx tsc --noEmit` ✅
+  - `npm run lint:full` ✅
+  - `npm run test:coverage` ✅ (`324/324` suites, `2741/2741` tests, all green)
 
 ### Part 2 — Manual QA
 - Validate section colors/styles in light/dark themes.

@@ -4,10 +4,11 @@ import remarkGfm from "remark-gfm";
 
 import { TimerPhase } from "@/types/TimerState";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 import {
+  MARKDOWN_SECTION_VARIANT_CLASSES,
   SECTION_NAMES,
+  SECTION_TONE_CLASSES,
   TRANSLATION_KEYS,
   TRANSLATION_SECTIONS_CONCLUSION,
   TRANSLATION_SECTIONS_MAIN,
@@ -22,12 +23,11 @@ const MarkdownRenderer = ({
   markdown: string;
   section?: SermonSectionKey;
 }) => {
-  const sectionClass = section ? `prose-${section}` : "";
-  const sectionDivClass = section ? `${section}-section` : "";
+  const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
   const sanitizedMarkdown = sanitizeMarkdown(markdown);
 
   return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionClass} ${sectionDivClass}`}>
+    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {sanitizedMarkdown}
       </ReactMarkdown>
@@ -167,6 +167,10 @@ export default function FullPlanContent({
     };
   }, [timerState, t]);
 
+  const introductionToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.INTRODUCTION];
+  const mainToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.MAIN];
+  const conclusionToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.CONCLUSION];
+
   return (
     <>
       {sermonTitle && isPreachingMode && (
@@ -177,7 +181,7 @@ export default function FullPlanContent({
         </div>
       )}
       {sermonVerse && (
-        <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+        <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${introductionToneClasses.border}`}>
           <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
             {sermonVerse}
           </p>
@@ -187,7 +191,7 @@ export default function FullPlanContent({
         </div>
       )}
 
-      <div data-section={SECTION_NAMES.INTRODUCTION} className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.introduction.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} relative overflow-hidden rounded-lg`}>
+      <div data-section={SECTION_NAMES.INTRODUCTION} className={`mb-8 pb-6 border-b-2 ${introductionToneClasses.border} relative overflow-hidden rounded-lg`}>
         {timerState && (
           <div
             className={getProgressOverlayClasses("introduction")}
@@ -198,10 +202,10 @@ export default function FullPlanContent({
             {...getProgressAriaAttributes("introduction")}
           />
         )}
-        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.introduction.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder}`}>
+        <h2 className={`relative z-10 text-2xl font-bold ${introductionToneClasses.text} mb-4 pb-2 border-b ${introductionToneClasses.border}`}>
           {t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}
         </h2>
-        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} prose-introduction`}>
+        <div className={`relative z-10 pl-2 border-l-4 ${introductionToneClasses.border} prose-introduction`}>
           <MarkdownRenderer
             markdown={combinedPlan.introduction || t(TRANSLATION_KEYS.NO_CONTENT)}
             section={SECTION_NAMES.INTRODUCTION}
@@ -209,7 +213,7 @@ export default function FullPlanContent({
         </div>
       </div>
 
-      <div data-section={SECTION_NAMES.MAIN} className={`mb-8 pb-6 border-b-2 ${SERMON_SECTION_COLORS.mainPart.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} relative overflow-hidden rounded-lg`}>
+      <div data-section={SECTION_NAMES.MAIN} className={`mb-8 pb-6 border-b-2 ${mainToneClasses.border} relative overflow-hidden rounded-lg`}>
         {timerState && (
           <div
             className={getProgressOverlayClasses("main")}
@@ -220,10 +224,10 @@ export default function FullPlanContent({
             {...getProgressAriaAttributes("main")}
           />
         )}
-        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.mainPart.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder}`}>
+        <h2 className={`relative z-10 text-2xl font-bold ${mainToneClasses.text} mb-4 pb-2 border-b ${mainToneClasses.border}`}>
           {t(TRANSLATION_SECTIONS_MAIN)}
         </h2>
-        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} prose-main`}>
+        <div className={`relative z-10 pl-2 border-l-4 ${mainToneClasses.border} prose-main`}>
           <MarkdownRenderer
             markdown={combinedPlan.main || noContentText}
             section={SECTION_NAMES.MAIN}
@@ -239,10 +243,10 @@ export default function FullPlanContent({
             {...getProgressAriaAttributes("conclusion")}
           />
         )}
-        <h2 className={`relative z-10 text-2xl font-bold ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} mb-4 pb-2 border-b ${SERMON_SECTION_COLORS.conclusion.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder}`}>
+        <h2 className={`relative z-10 text-2xl font-bold ${conclusionToneClasses.text} mb-4 pb-2 border-b ${conclusionToneClasses.border}`}>
           {t(TRANSLATION_SECTIONS_CONCLUSION)}
         </h2>
-        <div className={`relative z-10 pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(" ")[0]} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} prose-conclusion`}>
+        <div className={`relative z-10 pl-2 border-l-4 ${conclusionToneClasses.border} prose-conclusion`}>
           <MarkdownRenderer
             markdown={combinedPlan.conclusion || noContentText}
             section={SECTION_NAMES.CONCLUSION}
@@ -252,4 +256,3 @@ export default function FullPlanContent({
     </>
   );
 }
-

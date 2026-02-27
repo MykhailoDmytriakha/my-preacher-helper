@@ -165,9 +165,6 @@ export default function PlanPage() {
   // Track which content has been modified since last save
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
 
-  // Add syncInProgress flag to prevent recursive sync calls
-  // const syncInProgressRef = useRef(false);
-
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
 
@@ -405,12 +402,6 @@ export default function PlanPage() {
     if (!sermon) return [];
     return getThoughtsForOutlinePoint(sermon, outlinePointId);
   };
-
-  // Find thoughts for an outline point
-  // const findThoughtsForSermonPoint = (outlinePointId: string): Thought[] => {
-  //   // Используем существующую функцию с учетом порядка из структуры
-  //   return getThoughtsForSermonPoint(outlinePointId);
-  // };
 
   // Update section outline deterministically from ordered points + point-content map.
   const updateCombinedPlan = useCallback((
