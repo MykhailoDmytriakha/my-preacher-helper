@@ -1,10 +1,10 @@
 "use client";
 
 import { useIsRestoring } from "@tanstack/react-query";
-import { Check, Copy, FileText, Key, Lightbulb, List, Maximize2, Minimize2, Pencil, Save, Sparkles, X } from "lucide-react";
+import { FileText, Key, Lightbulb, List, Maximize2, Minimize2, Pencil, Save, Sparkles, X } from "lucide-react";
 import Link from "next/link";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
@@ -34,15 +34,15 @@ import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
 import {
-  COPY_STATUS,
   SECTION_NAMES,
   TRANSLATION_KEYS,
   TRANSLATION_SECTIONS_CONCLUSION,
   TRANSLATION_SECTIONS_MAIN,
-  copyButtonClasses,
-  copyButtonStatusClasses,
 } from "./constants";
+import PlanCopyButton from "./PlanCopyButton";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
+import useCopyFormattedContent from "./useCopyFormattedContent";
+import usePlanViewMode from "./usePlanViewMode";
 
 import type {
   CombinedPlan,
@@ -1183,13 +1183,9 @@ interface PlanImmersiveViewProps {
   timerState: FullPlanContentProps['timerState'];
   isPreachingMode: boolean;
   noContentText: string;
-  immersiveCopyStatus: CopyStatus;
-  setImmersiveCopyStatus: React.Dispatch<React.SetStateAction<CopyStatus>>;
-  copyButtonClasses: string;
-  copyButtonStatusClasses: Record<CopyStatus, string>;
+  copyStatus: CopyStatus;
   immersiveContentRef: React.RefObject<HTMLDivElement | null>;
-  immersiveCopyTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
-  copyFormattedFromElement: (element: HTMLDivElement | null) => Promise<boolean>;
+  onCopy: () => Promise<void>;
   onOpenPlanOverlay: () => void;
   onClosePlanView: () => void;
 }
@@ -1201,13 +1197,9 @@ const PlanImmersiveView = ({
   timerState,
   isPreachingMode,
   noContentText,
-  immersiveCopyStatus,
-  setImmersiveCopyStatus,
-  copyButtonClasses,
-  copyButtonStatusClasses,
+  copyStatus,
   immersiveContentRef,
-  immersiveCopyTimeoutRef,
-  copyFormattedFromElement,
+  onCopy,
   onOpenPlanOverlay,
   onClosePlanView,
 }: PlanImmersiveViewProps) => {
@@ -1221,67 +1213,7 @@ const PlanImmersiveView = ({
             <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
           </div>
           <div className="flex items-center gap-2 h-10">
-            <Button
-              onClick={async () => {
-                if (immersiveCopyStatus === 'copying') {
-                  return;
-                }
-                setImmersiveCopyStatus(COPY_STATUS.COPYING);
-                const copied = await copyFormattedFromElement(immersiveContentRef.current);
-                if (copied) {
-                  toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
-                  setImmersiveCopyStatus(COPY_STATUS.SUCCESS);
-                  if (immersiveCopyTimeoutRef.current) {
-                    clearTimeout(immersiveCopyTimeoutRef.current);
-                  }
-                  immersiveCopyTimeoutRef.current = setTimeout(() => {
-                    setImmersiveCopyStatus(COPY_STATUS.IDLE);
-                    immersiveCopyTimeoutRef.current = null;
-                  }, 2000);
-                } else {
-                  toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
-                  setImmersiveCopyStatus(COPY_STATUS.ERROR);
-                  if (immersiveCopyTimeoutRef.current) {
-                    clearTimeout(immersiveCopyTimeoutRef.current);
-                  }
-                  immersiveCopyTimeoutRef.current = setTimeout(() => {
-                    setImmersiveCopyStatus(COPY_STATUS.IDLE);
-                    immersiveCopyTimeoutRef.current = null;
-                  }, 2500);
-                }
-              }}
-              variant="secondary"
-              className={`${copyButtonClasses} ${copyButtonStatusClasses[immersiveCopyStatus]}`}
-              title={
-                immersiveCopyStatus === 'success'
-                  ? t("common.copied")
-                  : immersiveCopyStatus === 'error'
-                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                    : immersiveCopyStatus === 'copying'
-                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                      : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
-              }
-              disabled={immersiveCopyStatus === 'copying'}
-            >
-              {immersiveCopyStatus === 'copying' ? (
-                <LoadingSpinner size="small" />
-              ) : immersiveCopyStatus === 'success' ? (
-                <Check className="h-6 w-6 text-green-200" />
-              ) : immersiveCopyStatus === 'error' ? (
-                <X className="h-6 w-6 text-rose-200" />
-              ) : (
-                <Copy className="h-6 w-6" />
-              )}
-            </Button>
-            <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-              {immersiveCopyStatus === 'success'
-                ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
-                : immersiveCopyStatus === 'error'
-                  ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                  : immersiveCopyStatus === 'copying'
-                    ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                    : ''}
-            </span>
+            <PlanCopyButton status={copyStatus} onCopy={onCopy} t={t} />
             <button
               onClick={onOpenPlanOverlay}
               className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
@@ -1394,13 +1326,9 @@ interface PlanOverlayPortalProps {
   timerState: FullPlanContentProps['timerState'];
   isPreachingMode: boolean;
   noContentText: string;
-  overlayCopyStatus: CopyStatus;
-  setOverlayCopyStatus: React.Dispatch<React.SetStateAction<CopyStatus>>;
-  copyButtonClasses: string;
-  copyButtonStatusClasses: Record<CopyStatus, string>;
+  copyStatus: CopyStatus;
   planOverlayContentRef: React.RefObject<HTMLDivElement | null>;
-  overlayCopyTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
-  copyFormattedFromElement: (element: HTMLDivElement | null) => Promise<boolean>;
+  onCopy: () => Promise<void>;
   onOpenPlanImmersive: () => void;
   onClosePlanView: () => void;
 }
@@ -1413,13 +1341,9 @@ const PlanOverlayPortal = ({
   timerState,
   isPreachingMode,
   noContentText,
-  overlayCopyStatus,
-  setOverlayCopyStatus,
-  copyButtonClasses,
-  copyButtonStatusClasses,
+  copyStatus,
   planOverlayContentRef,
-  overlayCopyTimeoutRef,
-  copyFormattedFromElement,
+  onCopy,
   onOpenPlanImmersive,
   onClosePlanView,
 }: PlanOverlayPortalProps) => {
@@ -1437,67 +1361,7 @@ const PlanOverlayPortal = ({
               <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
             </div>
             <div className="flex items-center gap-2 h-10">
-              <Button
-                onClick={async () => {
-                  if (overlayCopyStatus === 'copying') {
-                    return;
-                  }
-                  setOverlayCopyStatus('copying');
-                  const copied = await copyFormattedFromElement(planOverlayContentRef.current);
-                  if (copied) {
-                    toast.success(t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS));
-                    setOverlayCopyStatus('success');
-                    if (overlayCopyTimeoutRef.current) {
-                      clearTimeout(overlayCopyTimeoutRef.current);
-                    }
-                    overlayCopyTimeoutRef.current = setTimeout(() => {
-                      setOverlayCopyStatus('idle');
-                      overlayCopyTimeoutRef.current = null;
-                    }, 2000);
-                  } else {
-                    toast.error(t(TRANSLATION_KEYS.PLAN.COPY_ERROR));
-                    setOverlayCopyStatus('error');
-                    if (overlayCopyTimeoutRef.current) {
-                      clearTimeout(overlayCopyTimeoutRef.current);
-                    }
-                    overlayCopyTimeoutRef.current = setTimeout(() => {
-                      setOverlayCopyStatus('idle');
-                      overlayCopyTimeoutRef.current = null;
-                    }, 2500);
-                  }
-                }}
-                variant="secondary"
-                className={`${copyButtonClasses} ${copyButtonStatusClasses[overlayCopyStatus]}`}
-                title={
-                  overlayCopyStatus === 'success'
-                    ? t("common.copied")
-                    : overlayCopyStatus === 'error'
-                      ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                      : overlayCopyStatus === 'copying'
-                        ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                        : t(TRANSLATION_KEYS.COPY.COPY_FORMATTED)
-                }
-                disabled={overlayCopyStatus === 'copying'}
-              >
-                {overlayCopyStatus === 'copying' ? (
-                  <LoadingSpinner size="small" />
-                ) : overlayCopyStatus === 'success' ? (
-                  <Check className="h-6 w-6 text-green-200" />
-                ) : overlayCopyStatus === 'error' ? (
-                  <X className="h-6 w-6 text-rose-200" />
-                ) : (
-                  <Copy className="h-6 w-6" />
-                )}
-              </Button>
-              <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-                {overlayCopyStatus === 'success'
-                  ? t(TRANSLATION_KEYS.PLAN.COPY_SUCCESS)
-                  : overlayCopyStatus === 'error'
-                    ? t(TRANSLATION_KEYS.PLAN.COPY_ERROR)
-                    : overlayCopyStatus === 'copying'
-                      ? t(TRANSLATION_KEYS.COPY.COPYING, { defaultValue: 'Copying…' })
-                      : ''}
-              </span>
+              <PlanCopyButton status={copyStatus} onCopy={onCopy} t={t} />
               <button
                 onClick={onOpenPlanImmersive}
                 className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
@@ -1549,41 +1413,22 @@ export default function PlanPage() {
   const sermonId = params?.id as string;
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname();
 
-  const planViewParam = searchParams.get("planView");
-  const planViewMode: PlanViewMode | null = useMemo(() => {
-    if (planViewParam === "overlay" || planViewParam === "immersive" || planViewParam === "preaching") {
-      return planViewParam;
-    }
-    return null;
-  }, [planViewParam]);
-
-  const updatePlanViewMode = useCallback((mode: PlanViewMode | null, { replace = true }: { replace?: boolean } = {}) => {
-    if (!pathname) return;
-    const paramsCopy = new URLSearchParams(searchParams.toString());
-    if (mode) {
-      paramsCopy.set("planView", mode);
-    } else {
-      paramsCopy.delete("planView");
-    }
-    const query = paramsCopy.toString();
-    const targetUrl = query ? `${pathname}?${query}` : pathname;
-    if (replace) {
-      router.replace(targetUrl, { scroll: false });
-    } else {
-      router.push(targetUrl, { scroll: false });
-    }
-  }, [pathname, router, searchParams]);
+  const {
+    mode: planViewMode,
+    openOverlay: handleOpenPlanOverlay,
+    openImmersive: handleOpenPlanImmersive,
+    openPreaching: handleOpenPlanPreaching,
+    close: handleClosePlanView,
+    isOverlay: isPlanOverlay,
+    isImmersive: isPlanImmersive,
+    isPreaching: isPlanPreaching,
+  } = usePlanViewMode();
 
   // Handle switching to structure view
   const handleSwitchToStructure = useCallback(() => {
     router.push(`/sermons/${encodeURIComponent(sermonId)}/structure`);
   }, [sermonId, router]);
-
-  const isPlanOverlay = planViewMode === "overlay";
-  const isPlanImmersive = planViewMode === "immersive";
-  const isPlanPreaching = planViewMode === "preaching";
 
   const isOnline = useOnlineStatus();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
@@ -1608,10 +1453,16 @@ export default function PlanPage() {
   const conclusionPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   const planOverlayContentRef = useRef<HTMLDivElement | null>(null);
   const immersiveContentRef = useRef<HTMLDivElement | null>(null);
-  const overlayCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const immersiveCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [overlayCopyStatus, setOverlayCopyStatus] = useState<CopyStatus>('idle');
-  const [immersiveCopyStatus, setImmersiveCopyStatus] = useState<CopyStatus>('idle');
+  const {
+    status: overlayCopyStatus,
+    runCopy: runOverlayCopy,
+    resetToIdle: resetOverlayCopyStatus,
+  } = useCopyFormattedContent({ t });
+  const {
+    status: immersiveCopyStatus,
+    runCopy: runImmersiveCopy,
+    resetToIdle: resetImmersiveCopyStatus,
+  } = useCopyFormattedContent({ t });
 
   // Track saved outline points
   const [savedSermonPoints, setSavedSermonPoints] = useState<Record<string, boolean>>({});
@@ -1725,35 +1576,16 @@ export default function PlanPage() {
   }, [isPlanOverlay]);
 
   useEffect(() => {
-    return () => {
-      if (overlayCopyTimeoutRef.current) {
-        clearTimeout(overlayCopyTimeoutRef.current);
-      }
-      if (immersiveCopyTimeoutRef.current) {
-        clearTimeout(immersiveCopyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isPlanOverlay) {
-      if (overlayCopyTimeoutRef.current) {
-        clearTimeout(overlayCopyTimeoutRef.current);
-        overlayCopyTimeoutRef.current = null;
-      }
-      setOverlayCopyStatus('idle');
+      resetOverlayCopyStatus();
     }
-  }, [isPlanOverlay]);
+  }, [isPlanOverlay, resetOverlayCopyStatus]);
 
   useEffect(() => {
     if (!isPlanImmersive) {
-      if (immersiveCopyTimeoutRef.current) {
-        clearTimeout(immersiveCopyTimeoutRef.current);
-        immersiveCopyTimeoutRef.current = null;
-      }
-      setImmersiveCopyStatus('idle');
+      resetImmersiveCopyStatus();
     }
-  }, [isPlanImmersive]);
+  }, [isPlanImmersive, resetImmersiveCopyStatus]);
 
   // Function to synchronize heights
   const syncHeights = () => {
@@ -2349,19 +2181,6 @@ export default function PlanPage() {
     return false;
   }, []);
 
-  const handleClosePlanView = useCallback(() => {
-    updatePlanViewMode(null);
-  }, [updatePlanViewMode]);
-
-  const handleOpenPlanOverlay = useCallback(() => {
-    updatePlanViewMode("overlay");
-  }, [updatePlanViewMode]);
-
-  const handleOpenPlanImmersive = useCallback(() => {
-    updatePlanViewMode("immersive");
-  }, [updatePlanViewMode]);
-
-
   const handleSetTimerDuration = useCallback((durationSeconds: number) => {
     setPreachingDuration(durationSeconds);
   }, []);
@@ -2371,8 +2190,8 @@ export default function PlanPage() {
     // Start preaching mode - timer starts at 0:00 (idle state)
     setPreachingDuration(null); // Start with no duration (timer will be idle)
     // Use push so that router.back() from preaching returns to this plan page, not to sermon/dashboard
-    updatePlanViewMode("preaching", { replace: false });
-  }, [updatePlanViewMode]);
+    handleOpenPlanPreaching();
+  }, [handleOpenPlanPreaching]);
 
   // Alias for compatibility with ViewPlanMenu component
   const handleOpenTimePicker = handleStartPreachingMode;
@@ -2535,13 +2354,9 @@ export default function PlanPage() {
         timerState={preachingTimerState}
         isPreachingMode={isPlanPreaching}
         noContentText={noContentText}
-        immersiveCopyStatus={immersiveCopyStatus}
-        setImmersiveCopyStatus={setImmersiveCopyStatus}
-        copyButtonClasses={copyButtonClasses}
-        copyButtonStatusClasses={copyButtonStatusClasses}
+        copyStatus={immersiveCopyStatus}
         immersiveContentRef={immersiveContentRef}
-        immersiveCopyTimeoutRef={immersiveCopyTimeoutRef}
-        copyFormattedFromElement={copyFormattedFromElement}
+        onCopy={() => runImmersiveCopy(() => copyFormattedFromElement(immersiveContentRef.current))}
         onOpenPlanOverlay={handleOpenPlanOverlay}
         onClosePlanView={handleClosePlanView}
       />
@@ -2578,13 +2393,9 @@ export default function PlanPage() {
         timerState={preachingTimerState}
         isPreachingMode={isPlanPreaching}
         noContentText={noContentText}
-        overlayCopyStatus={overlayCopyStatus}
-        setOverlayCopyStatus={setOverlayCopyStatus}
-        copyButtonClasses={copyButtonClasses}
-        copyButtonStatusClasses={copyButtonStatusClasses}
+        copyStatus={overlayCopyStatus}
         planOverlayContentRef={planOverlayContentRef}
-        overlayCopyTimeoutRef={overlayCopyTimeoutRef}
-        copyFormattedFromElement={copyFormattedFromElement}
+        onCopy={() => runOverlayCopy(() => copyFormattedFromElement(planOverlayContentRef.current))}
         onOpenPlanImmersive={handleOpenPlanImmersive}
         onClosePlanView={handleClosePlanView}
       />

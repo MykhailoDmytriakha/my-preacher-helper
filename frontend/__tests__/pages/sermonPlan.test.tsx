@@ -379,6 +379,58 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
   });
 
+  it('copies immersive content using the clipboard', async () => {
+    mockSearchParams = new URLSearchParams('planView=immersive');
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('sermon-plan-immersive-view');
+    const copyButtons = screen.getAllByTitle('copy.copyFormatted');
+
+    await act(async () => {
+      fireEvent.click(copyButtons[0]);
+    });
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+    });
+  });
+
+  it('uses fallback copy when clipboard write fails', async () => {
+    mockSearchParams = new URLSearchParams('planView=overlay');
+
+    // Simulate clipboard denial/failure
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: jest.fn().mockRejectedValue(new Error('Denied')) },
+      configurable: true,
+    });
+
+    const mockExecCommand = jest.fn().mockReturnValue(true);
+    Object.defineProperty(document, 'execCommand', {
+      value: mockExecCommand,
+      writable: true,
+      configurable: true,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('sermon-plan-overlay');
+    const copyButtons = screen.getAllByTitle('copy.copyFormatted');
+
+    await act(async () => {
+      fireEvent.click(copyButtons[0]);
+    });
+
+    await waitFor(() => {
+      expect(mockExecCommand).toHaveBeenCalledWith('copy');
+    });
+  });
+
   it('toggles edit mode and saves outline point content', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 

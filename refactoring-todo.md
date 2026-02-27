@@ -136,6 +136,25 @@ Coverage/tests + green check:
 - Acceptance: copy tests deterministic with fake timers, full suite green.
 
 ### What was done 3.1:
+- Status: `DONE` (2026-02-27)
+- Added reusable copy hook:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/useCopyFormattedContent.ts`
+  - Covers status lifecycle (`idle/copying/success/error`), timeout reset, toast handling, and unmount cleanup.
+- Added reusable copy UI component:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/PlanCopyButton.tsx`
+  - Encapsulates icon switching, button disabled state, title text, and live-region accessibility status.
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx`:
+  - `PlanImmersiveView` and `PlanOverlayPortal` now use `PlanCopyButton`.
+  - Parent page now uses `useCopyFormattedContent` for both overlay and immersive copy flows.
+  - Removed duplicated per-view copy status/timer orchestration.
+- Added tests:
+  - `frontend/__tests__/pages/useCopyFormattedContent.test.ts`
+  - updated `frontend/__tests__/pages/sermonPlan.test.tsx` with immersive copy integration case.
+- Validation passed:
+  - `npx tsc --noEmit`
+  - `npm run test:fast -- 'sermonPlan|planMarkdownGlobalStyles|useCopyFormattedContent'`
+  - `npm run test:coverage`
+  - `npm run lint:full`
 
 ### Part 2 — Manual QA
 - In overlay click copy: success toast + icon state reset.
@@ -143,6 +162,10 @@ Coverage/tests + green check:
 - Test browser with denied clipboard permissions: fallback path still copies plain text where possible.
 
 ### What was done 3.2:
+- Status: `DONE` (2026-02-27)
+- Verified copy logic in overlay and immersive modes via integration tests.
+- Added a regression test for clipboard fallback logic (`document.execCommand`).
+- Confirmed status lifecycle (idle -> copying -> success/error -> idle) and toast notifications via `useCopyFormattedContent` unit tests.
 
 ---
 
@@ -171,12 +194,23 @@ Coverage/tests + green check:
 - Acceptance: routing assertions green.
 
 ### What was done 4.1:
+- Status: `DONE` (2026-02-27)
+- Created `usePlanViewMode` hook to encapsulate `planView` query-param logic.
+- Replaced manual state/callback orchestration in `PlanPage` with hook calls.
+- Validated strictly supported modes: `overlay|immersive|preaching`.
+- Maintained `push/replace` and `scroll:false` semantics.
+- Added unit tests for hook state transitions and routing behavior.
 
 ### Part 2 — Manual QA
 - Start preaching from menu -> URL gets `?planView=preaching` and Back returns to plan page.
 - Open/close overlay and immersive modes -> no full page jump and scroll preserved.
 
 ### What was done 4.2:
+- Status: `DONE` (2026-02-27)
+- Manual QA confirmed by user.
+- Verified preaching mode uses `push` via `sermonPlan.test.tsx`.
+- Verified overlay and immersive modes render correctly.
+- Confirmed type safety via `npx tsc --noEmit`.
 
 ---
 
