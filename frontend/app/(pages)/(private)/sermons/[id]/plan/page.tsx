@@ -33,30 +33,26 @@ import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
+import {
+  COPY_STATUS,
+  SECTION_NAMES,
+  TRANSLATION_KEYS,
+  TRANSLATION_SECTIONS_CONCLUSION,
+  TRANSLATION_SECTIONS_MAIN,
+  copyButtonClasses,
+  copyButtonStatusClasses,
+  sectionButtonStyles,
+} from "./constants";
 
-// Translation keys constants to avoid duplicate strings
-const TRANSLATION_SECTIONS_MAIN = "sections.main";
-const TRANSLATION_SECTIONS_CONCLUSION = "sections.conclusion";
-
-type PlanViewMode = "overlay" | "immersive" | "preaching";
-
-// Стиль для hover-эффекта кнопок с секционными цветами
-const sectionButtonStyles = `
-  .section-button {
-    border: 1px solid transparent;
-    transition: all 0.2s ease;
-  }
-  .section-button:hover {
-    background-color: var(--hover-bg) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-  .section-button:active {
-    transform: translateY(0);
-    background-color: var(--active-bg) !important;
-    box-shadow: none;
-  }
-`;
+import type {
+  CombinedPlan,
+  CopyStatus,
+  PlanSectionContent,
+  PlanTimerState,
+  PlanViewMode,
+  SectionColors,
+  SermonSectionKey,
+} from "./types";
 
 // Custom UI components
 const Card = React.forwardRef<HTMLDivElement, { className?: string, children: React.ReactNode }>(
@@ -202,22 +198,9 @@ const MarkdownRenderer = ({ markdown, section }: { markdown: string, section?: '
 interface FullPlanContentProps {
   sermonTitle?: string;
   sermonVerse?: string;
-  combinedPlan: {
-    introduction: string;
-    main: string;
-    conclusion: string;
-  };
+  combinedPlan: CombinedPlan;
   t: (key: string, options?: Record<string, unknown>) => string;
-  timerState?: {
-    currentPhase: TimerPhase;
-    phaseProgress: number;
-    totalProgress: number;
-    phaseProgressByPhase: {
-      introduction: number;
-      main: number;
-      conclusion: number;
-    };
-  } | null;
+  timerState?: PlanTimerState | null;
   isPreachingMode?: boolean;
   noContentText: string;
 }
@@ -536,11 +519,6 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   );
 });
 SermonPointCard.displayName = 'SermonPointCard';
-
-type SermonSectionKey = 'introduction' | 'main' | 'conclusion';
-type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
-type SectionColors = (typeof SERMON_SECTION_COLORS)[keyof typeof SERMON_SECTION_COLORS];
-type PlanSectionContent = Plan['introduction'];
 
 interface PlanOutlinePointEditorProps {
   outlinePoint: SermonPoint;
@@ -919,11 +897,7 @@ interface PlanMainLayoutProps {
   params: { id: string };
   sermonId: string;
   t: (key: string, options?: Record<string, unknown>) => string;
-  combinedPlan: {
-    introduction: string;
-    main: string;
-    conclusion: string;
-  };
+  combinedPlan: CombinedPlan;
   noContentText: string;
   planStyle: PlanStyle;
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
@@ -1384,11 +1358,7 @@ const PlanMainLayout = ({
 
 interface PlanImmersiveViewProps {
   sermon: Sermon;
-  combinedPlan: {
-    introduction: string;
-    main: string;
-    conclusion: string;
-  };
+  combinedPlan: CombinedPlan;
   t: (key: string, options?: Record<string, unknown>) => string;
   timerState: FullPlanContentProps['timerState'];
   isPreachingMode: boolean;
@@ -1650,29 +1620,14 @@ const PlanImmersiveView = ({
 
 interface PlanPreachingViewProps {
   sermon: Sermon;
-  combinedPlan: {
-    introduction: string;
-    main: string;
-    conclusion: string;
-  };
+  combinedPlan: CombinedPlan;
   t: (key: string, options?: Record<string, unknown>) => string;
   timerState: FullPlanContentProps['timerState'];
   isPlanPreaching: boolean;
   planViewMode: PlanViewMode | null;
   noContentText: string;
   preachingDuration: number | null;
-  onTimerStateChange: (timerState: {
-    currentPhase: TimerPhase;
-    phaseProgress: number;
-    totalProgress: number;
-    phaseProgressByPhase: {
-      introduction: number;
-      main: number;
-      conclusion: number;
-    };
-    timeRemaining: number;
-    isFinished: boolean;
-  }) => void;
+  onTimerStateChange: (timerState: PlanTimerState) => void;
   onTimerFinished: () => void;
   onSetDuration: (durationSeconds: number) => void;
 }
@@ -1858,11 +1813,7 @@ const PlanPreachingView = ({
 interface PlanOverlayPortalProps {
   isPlanOverlay: boolean;
   sermon: Sermon;
-  combinedPlan: {
-    introduction: string;
-    main: string;
-    conclusion: string;
-  };
+  combinedPlan: CombinedPlan;
   t: (key: string, options?: Record<string, unknown>) => string;
   timerState: FullPlanContentProps['timerState'];
   isPreachingMode: boolean;
@@ -2015,45 +1966,6 @@ function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: numb
   };
 }
 
-// Translation key constants for frequently used strings
-const TRANSLATION_KEYS = {
-  NO_CONTENT: "plan.noContent",
-  SECTIONS: {
-    INTRODUCTION: "sections.introduction",
-    MAIN: "sections.main",
-    CONCLUSION: "sections.conclusion",
-  },
-  COMMON: {
-    SCRIPTURE: "common.scripture",
-  },
-  PLAN: {
-    COPY_SUCCESS: "plan.copySuccess",
-    COPY_ERROR: "plan.copyError",
-    NO_SERMON_POINTS: "plan.noSermonPoints",
-    VIEW_MODE: "plan.viewMode",
-    EDIT_MODE: "plan.editMode",
-  },
-  COPY: {
-    COPYING: "copy.copying",
-    COPY_FORMATTED: "copy.copyFormatted",
-  },
-} as const;
-
-// Status constants for immersive copy
-const COPY_STATUS = {
-  IDLE: 'idle',
-  COPYING: 'copying',
-  SUCCESS: 'success',
-  ERROR: 'error',
-} as const;
-
-// Section names constants
-const SECTION_NAMES = {
-  INTRODUCTION: 'introduction',
-  MAIN: 'main',
-  CONCLUSION: 'conclusion',
-} as const;
-
 export default function PlanPage() {
   const { t } = useTranslation();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -2096,13 +2008,6 @@ export default function PlanPage() {
   const isPlanOverlay = planViewMode === "overlay";
   const isPlanImmersive = planViewMode === "immersive";
   const isPlanPreaching = planViewMode === "preaching";
-  const copyButtonClasses = "flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700";
-  const copyButtonStatusClasses: Record<CopyStatus, string> = {
-    idle: '',
-    copying: 'opacity-80 cursor-wait',
-    success: 'border-2 border-green-500 bg-green-600 hover:bg-green-700',
-    error: 'border-2 border-red-500 bg-red-600 hover:bg-red-700'
-  };
 
   const isOnline = useOnlineStatus();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
@@ -2119,11 +2024,7 @@ export default function PlanPage() {
   const [planStyle, setPlanStyle] = useState<PlanStyle>('memory');
 
   // State to hold the combined generated content for each section
-  const [combinedPlan, setCombinedPlan] = useState<{
-    introduction: string;
-    main: string;
-    conclusion: string;
-  }>({ introduction: '', main: '', conclusion: '' });
+  const [combinedPlan, setCombinedPlan] = useState<CombinedPlan>({ introduction: '', main: '', conclusion: '' });
 
   // Refs for the outline point cards in each column
   const introPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
@@ -2161,31 +2062,9 @@ export default function PlanPage() {
   // Preaching timer state
   const [preachingDuration, setPreachingDuration] = useState<number | null>(null);
 
-  const [preachingTimerState, setPreachingTimerState] = useState<{
-    currentPhase: TimerPhase;
-    phaseProgress: number;
-    totalProgress: number;
-    phaseProgressByPhase: {
-      introduction: number;
-      main: number;
-      conclusion: number;
-    };
-    timeRemaining: number;
-    isFinished: boolean;
-  } | null>(null);
+  const [preachingTimerState, setPreachingTimerState] = useState<PlanTimerState | null>(null);
 
-  const handleTimerStateChange = useCallback((timerState: {
-    currentPhase: TimerPhase;
-    phaseProgress: number;
-    totalProgress: number;
-    phaseProgressByPhase: {
-      introduction: number;
-      main: number;
-      conclusion: number;
-    };
-    timeRemaining: number;
-    isFinished: boolean;
-  }) => {
+  const handleTimerStateChange = useCallback((timerState: PlanTimerState) => {
     // Helper function to format time
     const formatTime = (seconds: number): string => {
       const mins = Math.floor(Math.abs(seconds) / 60);
