@@ -25,6 +25,7 @@ jest.mock('@components/Icons', () => ({
 // Mock EllipsisVerticalIcon from heroicons
 jest.mock('@heroicons/react/24/outline', () => ({
   EllipsisVerticalIcon: () => <div data-testid="ellipsis-icon" />,
+  ExclamationTriangleIcon: () => <div data-testid="exclamation-icon" />,
 }));
 
 // Mock the tagUtils module
@@ -47,6 +48,39 @@ jest.mock('@utils/tagUtils', () => ({
     conclusion: 'conclusion'
   }
 }));
+
+// Mock headlessui
+jest.mock('@headlessui/react', () => {
+  const React = require('react');
+  const Fragment = React.Fragment;
+
+  const Transition: any = ({ show, children, as: As = Fragment }: any) =>
+    show ? React.createElement(As, null, children) : null;
+  
+  const TransitionChild = ({ children, as: As = Fragment }: any) => React.createElement(As, null, children);
+  Transition.Child = TransitionChild;
+
+  const Dialog: any = ({ children, as: As = 'div', open, onClose, ...rest }: any) =>
+    React.createElement(As, { role: 'dialog', ...rest }, children);
+  
+  const DialogPanel = ({ children, as: As = 'div', ...rest }: any) => React.createElement(As, rest, children);
+  Dialog.Panel = DialogPanel;
+  
+  const DialogTitle = ({ as: As = 'h3', children, ...rest }: any) => React.createElement(As, rest, children);
+  Dialog.Title = DialogTitle;
+  
+  const DialogBackdrop = ({ as: As = 'div', ...rest }: any) => React.createElement(As, rest, null);
+
+  return { 
+    Transition, 
+    TransitionChild, 
+    Dialog, 
+    DialogPanel, 
+    DialogTitle, 
+    DialogBackdrop,
+    Description: ({ children }: any) => React.createElement('div', null, children)
+  };
+});
 
 // Mock the entire i18n module
 jest.mock('@locales/i18n', () => { }, { virtual: true });
@@ -193,6 +227,10 @@ describe('ThoughtCard Component', () => {
 
     const deleteOption = screen.getByText('Delete');
     fireEvent.click(deleteOption);
+
+    // Modal should be open, click Confirm
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    fireEvent.click(confirmButton);
 
     expect(defaultProps.onDelete).toHaveBeenCalledTimes(1);
     expect(defaultProps.onDelete).toHaveBeenCalledWith(0, 'thought-1');

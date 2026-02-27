@@ -10,14 +10,29 @@ jest.mock('@headlessui/react', () => {
 
   const Transition: any = ({ show, children }: any) =>
     show ? React.createElement(Fragment, null, children) : null;
-  Transition.Child = ({ children }: any) => React.createElement(Fragment, null, children);
+  
+  const TransitionChild = ({ children }: any) => React.createElement(Fragment, null, children);
+  Transition.Child = TransitionChild;
 
   const Dialog: any = ({ children, as: As = 'div', ...rest }: any) =>
     React.createElement(As, { role: 'dialog', ...rest }, children);
-  Dialog.Panel = ({ children, ...rest }: any) => React.createElement('div', rest, children);
-  Dialog.Title = ({ as: As = 'h3', children, ...rest }: any) => React.createElement(As, rest, children);
+  
+  const DialogPanel = ({ children, ...rest }: any) => React.createElement('div', rest, children);
+  Dialog.Panel = DialogPanel;
+  
+  const DialogTitle = ({ as: As = 'h3', children, ...rest }: any) => React.createElement(As, rest, children);
+  Dialog.Title = DialogTitle;
+  
+  const DialogBackdrop = ({ as: As = 'div', ...rest }: any) => React.createElement(As, rest, null);
 
-  return { Transition, Dialog };
+  return { 
+    Transition, 
+    TransitionChild, 
+    Dialog, 
+    DialogPanel, 
+    DialogTitle, 
+    DialogBackdrop 
+  };
 });
 
 jest.mock('react-i18next', () => ({

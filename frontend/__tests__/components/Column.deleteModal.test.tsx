@@ -12,21 +12,31 @@ jest.mock('@headlessui/react', () => {
   const React = require('react');
   const Fragment = React.Fragment;
 
-  const TransitionChild = ({ children }: any) => React.createElement(Fragment, null, children);
-
-  const Transition: any = ({ children }: any) => React.createElement(Fragment, null, children);
+  const Transition: any = ({ show, children, as: As = Fragment }: any) =>
+    show ? React.createElement(As, null, children) : null;
+  
+  const TransitionChild = ({ children, as: As = Fragment }: any) => React.createElement(As, null, children);
   Transition.Child = TransitionChild;
 
-  const DialogPanel = ({ children, ...rest }: any) => React.createElement('div', rest, children);
-  const DialogTitle = ({ as: As = 'h3', children, ...rest }: any) =>
-    React.createElement(As, rest, children);
-
-  const Dialog: any = ({ children, as: As = 'div', onClose: _onClose, ...rest }: any) =>
+  const Dialog: any = ({ children, as: As = 'div', ...rest }: any) =>
     React.createElement(As, { role: 'dialog', ...rest }, children);
+  
+  const DialogPanel = ({ children, as: As = 'div', ...rest }: any) => React.createElement(As, rest, children);
   Dialog.Panel = DialogPanel;
+  
+  const DialogTitle = ({ as: As = 'h3', children, ...rest }: any) => React.createElement(As, rest, children);
   Dialog.Title = DialogTitle;
+  
+  const DialogBackdrop = ({ as: As = 'div', ...rest }: any) => React.createElement(As, rest, null);
 
-  return { Transition, Dialog };
+  return { 
+    Transition, 
+    TransitionChild, 
+    Dialog, 
+    DialogPanel, 
+    DialogTitle, 
+    DialogBackdrop 
+  };
 });
 
 // --- Shared component mocks ---

@@ -13,6 +13,8 @@
 *   **AI Stack:** OpenAI (`gpt-4o`, `gpt-4o-mini`, `tts-1`) | Zod Schema Validation (Strict) | Client-side Streaming.
 
 ### 📐 Coding Conventions
+*   **Headless UI Mocking:** Always mock `@headlessui/react` in JSDOM unit tests to prevent focus-management and ref errors. Ensure mocks match the exact import style (named vs default) of the version being used.
+*   **Destructive Action Flow:** When replacing immediate actions with confirmation modals, update all related unit tests to simulate the full modal lifecycle: click trigger → verify modal open → click confirm → verify callback.
 *   **Zod Boundaries:** Use `zod` for ALL external data (API, AI, Forms). Types must match Zod schemas.
 *   **i18n:** `i18next` + `useTranslation`. Every new `t('key')` call **must** be added to all three locale files (`en/ru/uk`) in the same change — no exceptions. `defaultValue` is only an emergency fallback, never a substitute for a proper translation. Use `_one`/`_other` keys, NOT ICU plural syntax.
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. `data-testid` for anchors. **Sequence-Aware Mocking** for AI chains.
@@ -55,6 +57,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-27 Headless UI v2 Mocking:** Always mock `@headlessui/react` in JSDOM tests to avoid ref-forwarding and focus-trap errors; ensure mocks include `DialogPanel`, `DialogBackdrop`, and use named exports where appropriate.
 - **2026-02-27 ConfirmModal vs window.confirm:** When replacing `window.confirm()` with a custom `ConfirmModal`, always remove the `window.confirm()` from the parent handler too — otherwise both fire sequentially: custom modal confirms, then system dialog appears.
 - **2026-02-26 Device-Specific Default State:** Initialize collapsible states based on `window.innerWidth < 640` (SSR-safe) to optimize initial vertical space for sermon outlines on mobile.
 - **2026-02-26 Mobile Modal Full-Screen:** UI modals with internal scrolling behave poorly on mobile browser viewports. Solution: Use `absolute inset-0` + `overflow-y-auto` on the main container for full-screen scrolling.
