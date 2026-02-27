@@ -1,13 +1,21 @@
 import {
+  getCookieLanguage,
+  getUserLanguage,
   getUserSettings,
-  updatePrepModeAccess,
-  hasPrepModeAccess,
-  updateGroupsAccess,
   hasGroupsAccess,
-  updateStructurePreviewAccess,
-  hasStructurePreviewAccess
+  hasPrepModeAccess,
+  hasStructurePreviewAccess,
+  initializeUserSettings,
+  setLanguageCookie,
+  updateAudioGenerationAccess,
+  updateGroupsAccess,
+  updatePrepModeAccess,
+  updateUserLanguage,
+  updateUserProfile,
+  updateStructurePreviewAccess
 } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@/../../frontend/locales/constants';
 import { setDebugModeEnabled } from '@/utils/debugMode';
 
 // Mock fetch globally
@@ -15,9 +23,19 @@ const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
 describe('User Settings Service - Prep Mode Functions', () => {
+  const clearLanguageCookie = () => {
+    document.cookie = `${COOKIE_LANG_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  };
+
+  const setNavigatorOnline = (value: boolean) => {
+    Object.defineProperty(navigator, 'onLine', { value, configurable: true });
+  };
+
   const resetScenario = () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
+    clearLanguageCookie();
+    setNavigatorOnline(true);
     // Enable debug mode for tests to verify logging
     setDebugModeEnabled(true);
   };
@@ -88,6 +106,19 @@ describe('User Settings Service - Prep Mode Functions', () => {
               );
 
               consoleSpy.mockRestore();
+            }
+          },
+          {
+            name: 'throws when browser is offline',
+            run: async () => {
+              setNavigatorOnline(false);
+              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+              await expect(getUserSettings('user1')).rejects.toThrow('Offline: operation not available.');
+              expect(mockFetch).not.toHaveBeenCalled();
+
+              consoleSpy.mockRestore();
+              setNavigatorOnline(true);
             }
           }
         ],
@@ -182,6 +213,19 @@ describe('User Settings Service - Prep Mode Functions', () => {
               );
 
               consoleSpy.mockRestore();
+            }
+          },
+          {
+            name: 'throws when browser is offline',
+            run: async () => {
+              setNavigatorOnline(false);
+              const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+              await expect(updatePrepModeAccess('user1', true)).rejects.toThrow('Offline: operation not available.');
+              expect(mockFetch).not.toHaveBeenCalled();
+
+              consoleSpy.mockRestore();
+              setNavigatorOnline(true);
             }
           }
         ],
@@ -306,6 +350,19 @@ describe('User Settings Service - Prep Mode Functions', () => {
 
               consoleSpy.mockRestore();
             }
+          },
+          {
+            name: 'returns false when browser is offline',
+            run: async () => {
+              setNavigatorOnline(false);
+
+              const result = await hasPrepModeAccess('user1');
+
+              expect(result).toBe(false);
+              expect(mockFetch).not.toHaveBeenCalled();
+
+              setNavigatorOnline(true);
+            }
           }
         ],
         { beforeEachScenario: resetScenario }
@@ -342,6 +399,17 @@ describe('User Settings Service - Prep Mode Functions', () => {
               });
 
               await expect(updateGroupsAccess('user1', true)).rejects.toThrow();
+            }
+          },
+          {
+            name: 'throws when browser is offline',
+            run: async () => {
+              setNavigatorOnline(false);
+
+              await expect(updateGroupsAccess('user1', true)).rejects.toThrow('Offline: operation not available.');
+              expect(mockFetch).not.toHaveBeenCalled();
+
+              setNavigatorOnline(true);
             }
           }
         ],
@@ -380,6 +448,19 @@ describe('User Settings Service - Prep Mode Functions', () => {
               mockFetch.mockRejectedValueOnce(new Error('Network error'));
               const result = await hasGroupsAccess('user1');
               expect(result).toBe(false);
+            }
+          },
+          {
+            name: 'returns false when browser is offline',
+            run: async () => {
+              setNavigatorOnline(false);
+
+              const result = await hasGroupsAccess('user1');
+
+              expect(result).toBe(false);
+              expect(mockFetch).not.toHaveBeenCalled();
+
+              setNavigatorOnline(true);
             }
           }
         ],
@@ -504,6 +585,247 @@ describe('User Settings Service - Prep Mode Functions', () => {
         ],
         { beforeEachScenario: resetScenario }
       );
+    });
+  });
+
+  describe('language helpers', () => {
+    it('reads language from cookie and falls back to default', () => {
+      expect(getCookieLanguage()).toBe(DEFAULT_LANGUAGE);
+
+      setLanguageCookie('uk');
+
+      expect(document.cookie).toContain(`${COOKIE_LANG_KEY}=uk`);
+      expect(getCookieLanguage()).toBe('uk');
+    });
+  });
+
+  describe('getUserLanguage', () => {
+    it('uses cookie immediately for guest and offline users', async () => {
+      setLanguageCookie('uk');
+
+      await expect(getUserLanguage('')).resolves.toBe('uk');
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      setNavigatorOnline(false);
+      await expect(getUserLanguage('user1')).resolves.toBe('uk');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns database language and syncs the cookie when needed', async () => {
+      setLanguageCookie('ru');
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ settings: { language: 'en' } }),
+      });
+
+      const result = await getUserLanguage('user1');
+
+      expect(result).toBe('en');
+      expect(mockFetch).toHaveBeenCalledWith('/api/user/settings?userId=user1');
+      expect(getCookieLanguage()).toBe('en');
+    });
+
+    it('persists a non-default cookie to settings when the database has no language', async () => {
+      setLanguageCookie('uk');
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ settings: {} }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ success: true }),
+        });
+
+      const result = await getUserLanguage('user1');
+
+      expect(result).toBe('uk');
+      expect(mockFetch).toHaveBeenNthCalledWith(1, '/api/user/settings?userId=user1');
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ userId: 'user1', language: 'uk' }),
+        })
+      );
+    });
+
+    it('falls back to the cookie when the fetch fails', async () => {
+      setLanguageCookie('ru');
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Bad Request',
+        json: jest.fn().mockResolvedValue({}),
+      });
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(getUserLanguage('user1')).resolves.toBe('ru');
+      expect(consoleSpy).toHaveBeenCalledWith('Error getting user language:', expect.any(Error));
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('updateUserLanguage', () => {
+    it('updates cookie only for guests and offline users', async () => {
+      await expect(updateUserLanguage('', 'uk')).resolves.toBeUndefined();
+      expect(getCookieLanguage()).toBe('uk');
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      setNavigatorOnline(false);
+      await expect(updateUserLanguage('user1', 'ru')).resolves.toBeUndefined();
+      expect(getCookieLanguage()).toBe('ru');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('updates the database for authenticated online users', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ success: true }) });
+
+      await expect(updateUserLanguage('user1', 'uk')).resolves.toBeUndefined();
+
+      expect(getCookieLanguage()).toBe('uk');
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ userId: 'user1', language: 'uk' }),
+        })
+      );
+    });
+
+    it('logs update failures but keeps the cookie change', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Server Error' });
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(updateUserLanguage('user1', 'ru')).resolves.toBeUndefined();
+
+      expect(getCookieLanguage()).toBe('ru');
+      expect(consoleSpy).toHaveBeenCalledWith('Error updating user language:', expect.any(Error));
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('updateUserProfile', () => {
+    it('skips empty, offline, and no-op profile updates', async () => {
+      await expect(updateUserProfile('')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      setNavigatorOnline(false);
+      await expect(updateUserProfile('user1', 'user@example.com')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      setNavigatorOnline(true);
+      await expect(updateUserProfile('user1')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('updates only provided profile fields', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ success: true }) });
+
+      await expect(updateUserProfile('user1', 'user@example.com', 'Test User')).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({
+            userId: 'user1',
+            email: 'user@example.com',
+            displayName: 'Test User',
+          }),
+        })
+      );
+    });
+
+    it('logs profile update failures without throwing', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Server Error' });
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(updateUserProfile('user1', undefined, 'Name')).resolves.toBeUndefined();
+      expect(consoleSpy).toHaveBeenCalledWith('Error updating user profile:', expect.any(Error));
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('initializeUserSettings', () => {
+    it('skips initialization without user id and sets cookie when offline', async () => {
+      await expect(initializeUserSettings('', 'uk')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      setNavigatorOnline(false);
+      await expect(initializeUserSettings('user1', 'ru')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(getCookieLanguage()).toBe('ru');
+    });
+
+    it('posts only provided fields and updates the cookie when language exists', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ success: true }) });
+
+      await expect(
+        initializeUserSettings('user1', 'uk', 'user@example.com', 'Test User')
+      ).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            userId: 'user1',
+            language: 'uk',
+            email: 'user@example.com',
+            displayName: 'Test User',
+          }),
+        })
+      );
+      expect(getCookieLanguage()).toBe('uk');
+    });
+
+    it('keeps the cookie update when initialization fails', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Server Error' });
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(initializeUserSettings('user1', 'ru')).resolves.toBeUndefined();
+      expect(getCookieLanguage()).toBe('ru');
+      expect(consoleSpy).toHaveBeenCalledWith('Error initializing user settings:', expect.any(Error));
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('updateAudioGenerationAccess', () => {
+    it('updates audio generation access and handles skip conditions', async () => {
+      await expect(updateAudioGenerationAccess('', true)).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ success: true }) });
+      await expect(updateAudioGenerationAccess('user1', true)).resolves.toBeUndefined();
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ userId: 'user1', enableAudioGeneration: true }),
+        })
+      );
+    });
+
+    it('throws on offline and request failures', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      setNavigatorOnline(false);
+      await expect(updateAudioGenerationAccess('user1', true)).rejects.toThrow();
+
+      setNavigatorOnline(true);
+      mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Bad Request' });
+      await expect(updateAudioGenerationAccess('user1', false)).rejects.toThrow('Failed to update audio generation access: Bad Request');
+
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      await expect(updateAudioGenerationAccess('user1', false)).rejects.toThrow('Network error');
+      expect(consoleSpy).toHaveBeenCalledWith('Error updating audio generation access:', expect.any(Error));
+
+      consoleSpy.mockRestore();
     });
   });
 });

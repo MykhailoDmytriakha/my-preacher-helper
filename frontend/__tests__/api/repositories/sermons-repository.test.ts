@@ -239,6 +239,45 @@ describe('SermonsRepository', () => {
         { beforeEachScenario: seedFetchSuccess }
       );
     });
+
+    it('hydrates legacy structure and plan aliases', async () => {
+      mockDocSnap = {
+        exists: true,
+        id: 'legacy-sermon',
+        data: () => ({
+          title: 'Legacy Sermon',
+          userId: 'user-123',
+          verse: 'Romans 8:28',
+          date: '2023-01-02',
+          structure: {
+            introduction: ['intro-thought'],
+            main: ['main-thought'],
+            conclusion: ['end-thought'],
+          },
+          plan: {
+            introduction: { outline: 'Intro' },
+            main: { outline: 'Main' },
+            conclusion: { outline: 'Conclusion' },
+          },
+        })
+      };
+      mockGet.mockResolvedValue(mockDocSnap);
+
+      const result = await sermonsRepository.fetchSermonById('legacy-sermon');
+
+      expect(result.structure).toEqual({
+        introduction: ['intro-thought'],
+        main: ['main-thought'],
+        conclusion: ['end-thought'],
+      });
+      expect(result.thoughtsBySection).toEqual(result.structure);
+      expect(result.plan).toEqual({
+        introduction: { outline: 'Intro' },
+        main: { outline: 'Main' },
+        conclusion: { outline: 'Conclusion' },
+      });
+      expect(result.draft).toEqual(result.plan);
+    });
   });
 
   describe('deleteSermonById', () => {
@@ -317,6 +356,223 @@ describe('SermonsRepository', () => {
         ],
         { beforeEachScenario: seedOutlineSuccess }
       );
+    });
+  });
+
+  describe('fetchSermonOutlineBySermonId', () => {
+    it('returns outline data or empty object and propagates errors', async () => {
+      await runScenarios(
+        [
+          {
+            name: 'returns the outline when present',
+            run: async () => {
+              mockGet.mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                  outline: {
+                    introduction: [{ id: 'p1', text: 'Intro point' }],
+                    main: [],
+                    conclusion: [],
+                  },
+                }),
+              });
+
+              const result = await sermonsRepository.fetchSermonOutlineBySermonId('sermon-1');
+
+              expect(result).toEqual({
+                introduction: [{ id: 'p1', text: 'Intro point' }],
+                main: [],
+                conclusion: [],
+              });
+            }
+          },
+          {
+            name: 'returns empty object when outline is absent',
+            run: async () => {
+              mockGet.mockResolvedValueOnce({
+                exists: true,
+                data: () => ({}),
+              });
+
+              const result = await sermonsRepository.fetchSermonOutlineBySermonId('sermon-1');
+
+              expect(result).toEqual({});
+            }
+          },
+          {
+            name: 'throws when sermon is missing',
+            run: async () => {
+              mockGet.mockResolvedValueOnce({ exists: false });
+
+              await expect(
+                sermonsRepository.fetchSermonOutlineBySermonId('missing-sermon')
+              ).rejects.toThrow('Sermon not found');
+            }
+          },
+          {
+            name: 'propagates firestore get errors',
+            run: async () => {
+              mockGet.mockRejectedValueOnce(new Error('Firestore get failed'));
+
+              await expect(
+                sermonsRepository.fetchSermonOutlineBySermonId('sermon-1')
+              ).rejects.toThrow('Firestore get failed');
+            }
+          }
+        ],
+        { beforeEachScenario: () => { jest.clearAllMocks(); } }
+      );
+    });
+  });
+
+  describe('fetchAdjacentOutlinePoints', () => {
+    const outline = {
+      introduction: [
+        { id: 'intro-1', text: 'Intro 1' },
+        { id: 'intro-2', text: 'Intro 2' },
+      ],
+      main: [
+        { id: 'main-1', text: 'Main 1' },
+        { id: 'main-2', text: 'Main 2' },
+        { id: 'main-3', text: 'Main 3' },
+      ],
+      conclusion: [
+        { id: 'conclusion-1', text: 'Conclusion 1' },
+      ],
+    };
+
+    it('returns adjacent points for introduction, main, and conclusion sections', async () => {
+      const spy = jest.spyOn(sermonsRepository, 'fetchSermonById').mockResolvedValue({
+        id: 'sermon-1',
+        title: 'Test',
+        verse: 'John 3:16',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
+        outline,
+      } as any);
+
+      try {
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'intro-1')
+        ).resolves.toEqual({
+          previousPoint: null,
+          nextPoint: { text: 'Intro 2' },
+          section: 'introduction',
+        });
+
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'main-2')
+        ).resolves.toEqual({
+          previousPoint: { text: 'Main 1' },
+          nextPoint: { text: 'Main 3' },
+          section: 'main',
+        });
+
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'conclusion-1')
+        ).resolves.toEqual({
+          previousPoint: null,
+          nextPoint: null,
+          section: 'conclusion',
+        });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('returns null for missing points, missing outline, or fetch failures', async () => {
+      const noOutlineSpy = jest.spyOn(sermonsRepository, 'fetchSermonById').mockResolvedValue({
+        id: 'sermon-1',
+        title: 'Test',
+        verse: 'John 3:16',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
+      } as any);
+
+      try {
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'main-1')
+        ).resolves.toBeNull();
+      } finally {
+        noOutlineSpy.mockRestore();
+      }
+
+      const missingPointSpy = jest.spyOn(sermonsRepository, 'fetchSermonById').mockResolvedValue({
+        id: 'sermon-1',
+        title: 'Test',
+        verse: 'John 3:16',
+        date: '2024-01-01',
+        thoughts: [],
+        userId: 'user-1',
+        outline,
+      } as any);
+
+      try {
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'unknown-point')
+        ).resolves.toBeNull();
+      } finally {
+        missingPointSpy.mockRestore();
+      }
+
+      const errorSpy = jest.spyOn(sermonsRepository, 'fetchSermonById').mockRejectedValue(
+        new Error('Firestore error')
+      );
+
+      try {
+        await expect(
+          sermonsRepository.fetchAdjacentOutlinePoints('sermon-1', 'main-1')
+        ).resolves.toBeNull();
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('updateSermonSeriesInfo', () => {
+    const seedExistingDoc = () => {
+      mockDocSnap = {
+        exists: true,
+        data: () => ({ id: 'sermon-1', title: 'Test Sermon' }),
+      };
+      mockGet.mockResolvedValue(mockDocSnap);
+      mockUpdate.mockResolvedValue({});
+    };
+
+    it('updates series linkage, treats null as valid, and no-ops when both fields are undefined', async () => {
+      seedExistingDoc();
+
+      await expect(
+        sermonsRepository.updateSermonSeriesInfo('sermon-1', 'series-1', 2)
+      ).resolves.toBeUndefined();
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 2 });
+
+      mockUpdate.mockClear();
+      await expect(
+        sermonsRepository.updateSermonSeriesInfo('sermon-1', null, null)
+      ).resolves.toBeUndefined();
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: null, seriesPosition: null });
+
+      mockUpdate.mockClear();
+      await expect(
+        sermonsRepository.updateSermonSeriesInfo('sermon-1', undefined as any, undefined as any)
+      ).resolves.toBeUndefined();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('throws when sermon is missing or firestore update fails', async () => {
+      mockGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        sermonsRepository.updateSermonSeriesInfo('missing-sermon', 'series-1', 1)
+      ).rejects.toThrow('Sermon not found');
+
+      seedExistingDoc();
+      mockUpdate.mockRejectedValueOnce(new Error('Firestore update failed'));
+      await expect(
+        sermonsRepository.updateSermonSeriesInfo('sermon-1', 'series-1', 1)
+      ).rejects.toThrow('Firestore update failed');
     });
   });
 
@@ -440,6 +696,54 @@ describe('SermonsRepository', () => {
       ).rejects.toThrow('Preach date not found');
     });
 
+    it('updatePreachDate throws when sermon does not exist', async () => {
+      mockGet.mockResolvedValueOnce({ exists: false });
+
+      await expect(
+        sermonsRepository.updatePreachDate('missing-sermon', 'pd-1', { status: 'planned' })
+      ).rejects.toThrow('Sermon not found');
+    });
+
+    it('deletePreachDate removes only the requested date and handles failures', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          preachDates: [
+            { id: 'pd-1', date: '2026-02-01', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+            { id: 'pd-2', date: '2026-02-02', church: { id: 'c2', name: 'Church 2' }, createdAt: 'y' },
+          ],
+        }),
+      });
+      mockUpdate.mockResolvedValueOnce(undefined);
+
+      await expect(
+        sermonsRepository.deletePreachDate('sermon-1', 'pd-1')
+      ).resolves.toBeUndefined();
+      expect(mockUpdate).toHaveBeenCalledWith({
+        preachDates: [
+          { id: 'pd-2', date: '2026-02-02', church: { id: 'c2', name: 'Church 2' }, createdAt: 'y' },
+        ],
+      });
+
+      mockGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        sermonsRepository.deletePreachDate('missing-sermon', 'pd-1')
+      ).rejects.toThrow('Sermon not found');
+
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          preachDates: [
+            { id: 'pd-1', date: '2026-02-01', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+          ],
+        }),
+      });
+      mockUpdate.mockRejectedValueOnce(new Error('Firestore update failed'));
+      await expect(
+        sermonsRepository.deletePreachDate('sermon-1', 'pd-1')
+      ).rejects.toThrow('Firestore update failed');
+    });
+
     it('fetchSermonsWithPreachDates filters using normalized date-only boundaries', async () => {
       const mockQueryGet = jest.fn().mockResolvedValue({
         docs: [
@@ -486,6 +790,80 @@ describe('SermonsRepository', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('s-in-range');
+    });
+
+    it('fetchSermonsWithPreachDates hydrates aliases without filters and propagates query errors', async () => {
+      const mockQueryGet = jest
+        .fn()
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'legacy-sermon',
+              data: () => ({
+                userId: 'user-1',
+                structure: {
+                  introduction: ['intro'],
+                  main: ['main'],
+                  conclusion: ['conclusion'],
+                },
+                plan: {
+                  introduction: { outline: 'Intro' },
+                  main: { outline: 'Main' },
+                  conclusion: { outline: 'Conclusion' },
+                },
+                preachDates: [
+                  { id: 'pd-1', date: '2026-02-18', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+                ],
+              }),
+            },
+            {
+              id: 'plain-sermon',
+              data: () => ({
+                userId: 'user-1',
+                preachDates: [],
+              }),
+            },
+          ],
+        })
+        .mockRejectedValueOnce(new Error('Firestore query failed'));
+
+      const mockedAdminDb = adminDb as unknown as { collection: jest.Mock };
+      mockedAdminDb.collection.mockReturnValue({
+        where: jest.fn().mockReturnValue({ get: mockQueryGet }),
+      });
+
+      const result = await sermonsRepository.fetchSermonsWithPreachDates('user-1');
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          id: 'legacy-sermon',
+          thoughtsBySection: {
+            introduction: ['intro'],
+            main: ['main'],
+            conclusion: ['conclusion'],
+          },
+          structure: {
+            introduction: ['intro'],
+            main: ['main'],
+            conclusion: ['conclusion'],
+          },
+          draft: {
+            introduction: { outline: 'Intro' },
+            main: { outline: 'Main' },
+            conclusion: { outline: 'Conclusion' },
+          },
+          plan: {
+            introduction: { outline: 'Intro' },
+            main: { outline: 'Main' },
+            conclusion: { outline: 'Conclusion' },
+          },
+        })
+      );
+
+      await expect(
+        sermonsRepository.fetchSermonsWithPreachDates('user-1')
+      ).rejects.toThrow('Firestore query failed');
     });
   });
 });
