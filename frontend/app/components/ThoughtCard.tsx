@@ -13,6 +13,7 @@ import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, C
 // Components
 import SermonPointSelector from './SermonPointSelector';
 import { ThoughtOptionsMenu } from './ThoughtOptionsMenu';
+import ConfirmModal from './ui/ConfirmModal';
 
 // Type imports
 import type { SermonOutline, Thought } from "@/models/models";
@@ -71,6 +72,7 @@ const ThoughtCard = ({
   isReadOnly = false
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
 
   // Shared translation helper
   const getSectionName = useCallback((sectionKey?: string) => {
@@ -222,10 +224,24 @@ const ThoughtCard = ({
         <ThoughtOptionsMenu
           thoughtText={thought.text}
           onEdit={() => onEditStart(thought, index)}
-          onDelete={() => onDelete(index, thought.id)}
+          onDelete={() => setDeleteConfirmOpen(true)}
           isReadOnly={isReadOnly}
         />
       </div>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          onDelete(index, thought.id);
+        }}
+        title={t('common.delete', 'Delete')}
+        description={t('sermon.deleteThoughtConfirm', {
+          text: thought.text.length > 100 ? thought.text.slice(0, 100) + '…' : thought.text,
+        })}
+        confirmText={t('common.delete', 'Delete')}
+      />
 
       <ThoughtHeader
         thought={thought}

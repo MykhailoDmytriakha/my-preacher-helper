@@ -310,3 +310,40 @@ Manual QA handoff (Claude/Antigravity):
 
 Notes/Risks:
 - Контейнеры шагов теперь строятся из конфига; риск регрессии низкий, но важна ручная проверка порядка и поведения раскрытия шагов.
+
+### [2026-02-27] Prompt 4 — Extract classic thoughts UI
+Status: done
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/components/sermon/ClassicThoughtsPanel.tsx`: добавлен новый компонент `ClassicThoughtsPanel` (включая `StructureFilterBadge` и `ActiveFilters`), который инкапсулирует classic thoughts UI: filter dropdown, brainstorm trigger/panel и `ThoughtList`.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: удалены локальные `StructureFilterBadge` и `ActiveFilters`.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: `renderClassicContent` заменен на thin-wrapper над `<ClassicThoughtsPanel ... />` с сохранением существующих state/handlers/props-контрактов.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: очищены импорты, которые стали не нужны после выноса JSX-блока.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx __tests__/pages/sermonDetail.test.tsx` -> PASS (2 suites, 30 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) Открыть/закрыть filter dropdown на `/sermons/{id}` и убедиться в корректной работе outside-click -> OK
+2) Протестировать комбинации фильтров `view/structure/tag/sort`, включая reset -> OK
+3) Проверить brainstorm open/close и сохранение поведения в classic/prep split -> OK
+4) Проверить edit/delete thought из списка и отсутствие UI-регрессий на mobile/desktop -> FIXED (см. hotfix ниже)
+
+Notes/Risks:
+- `ClassicThoughtsPanel` использует `sermonId!` внутри brainstorm panel (как и раньше логика полагается на наличие `sermon` при рендере контента); runtime-риск низкий при текущем guard `if (!sermon) return ...`.
+
+### [2026-02-27] Prompt 4 Hotfix — Double confirmation on thought delete
+Status: done
+
+Bug: После удаления мысли сначала показывался `ConfirmModal` (новый), а после его подтверждения — системный `window.confirm()` (старый, оставшийся в `handleDeleteThought` в `page.tsx`). Диалоги срабатывали последовательно.
+
+Root cause: `handleDeleteThought` в `page.tsx` содержал `window.confirm()` и `alert()` — они не были убраны при добавлении `ConfirmModal` в `ThoughtCard`.
+
+Code changes:
+- `frontend/app/components/ThoughtCard.tsx`: добавлен `ConfirmModal` + state `deleteConfirmOpen`; `onDelete` в `ThoughtOptionsMenu` теперь открывает модал вместо прямого вызова prop.
+- `frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: удалены `window.confirm()` и `alert()` из `handleDeleteThought` — подтверждение полностью перенесено в `ThoughtCard`.
+
+Notes/Risks:
+- `ConfirmModal` переиспользует существующий ключ `sermon.deleteThoughtConfirm` (все 3 локали).
+- Текст мысли в описании обрезается до 100 символов.

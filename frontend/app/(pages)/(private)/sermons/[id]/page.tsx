@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
-import BrainstormModule from '@/components/sermon/BrainstormModule';
+import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
@@ -25,15 +25,12 @@ import SermonHeader from "@/components/sermon/SermonHeader"; // Import the Sermo
 import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
-import ThoughtFilterControls from '@/components/sermon/ThoughtFilterControls';
-import ThoughtList from '@/components/sermon/ThoughtList'; // Import the new list component
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import { getSectionLabel } from '@/lib/sections';
 import { useAuth } from "@/providers/AuthProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
@@ -43,7 +40,6 @@ import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
 import "@locales/i18n";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
-import { getContrastColor } from "@utils/color";
 import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
 import { findThoughtSectionInStructure, insertThoughtIdInStructure, resolveSectionForNewThought, resolveSectionFromOutline } from "@utils/thoughtOrdering";
@@ -97,81 +93,6 @@ const formatSuperscriptVerses = (text: string): string => {
   // Superscript numbers that are surrounded by spaces
   result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
   return result;
-};
-
-const StructureFilterBadge = ({ structureFilter, t }: { structureFilter: string; t: (key: string) => string }) => {
-  if (structureFilter === 'all') return null;
-  const canonical = normalizeStructureTag(structureFilter);
-  const label = canonical === 'intro'
-    ? getSectionLabel(t, 'introduction')
-    : canonical === 'main'
-      ? getSectionLabel(t, 'main')
-      : canonical === 'conclusion'
-        ? getSectionLabel(t, 'conclusion')
-        : structureFilter;
-  return (
-    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-      {label}
-    </span>
-  );
-};
-
-const ActiveFilters = ({ viewFilter, structureFilter, sortOrder, tagFilters, allowedTags, resetFilters, t }: {
-  viewFilter: string;
-  structureFilter: string;
-  sortOrder: string;
-  tagFilters: string[];
-  allowedTags: { name: string; color: string }[];
-  resetFilters: () => void;
-  t: (key: string) => string;
-}) => {
-  return (
-    <motion.div
-      key="active-filters"
-      className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md"
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
-      transition={{ duration: 0.15, ease: 'easeInOut' }}
-      layout={false}
-    >
-      <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-        {t('filters.activeFilters')}:
-      </span>
-      {viewFilter === 'missingTags' && (
-        <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
-          {t('filters.missingTags')}
-        </span>
-      )}
-      <StructureFilterBadge structureFilter={structureFilter} t={t} />
-      {sortOrder === 'structure' && (
-        <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-          {t('filters.sortByStructure') || 'Sorted by ThoughtsBySection'}
-        </span>
-      )}
-      {tagFilters.map((tag: string) => {
-        const tagInfo = allowedTags.find(tInfo => tInfo.name === tag);
-        return (
-          <span
-            key={tag}
-            className="px-2 py-1 text-xs rounded-full"
-            style={{
-              backgroundColor: tagInfo ? tagInfo.color : '#e0e0e0',
-              color: tagInfo ? getContrastColor(tagInfo.color) : '#000000'
-            }}
-          >
-            {tag}
-          </span>
-        );
-      })}
-      <button
-        onClick={resetFilters}
-        className="ml-auto mt-2 sm:mt-0 px-3 py-1 text-xs text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-md transition-colors"
-      >
-        {t('filters.clear')}
-      </button>
-    </motion.div>
-  );
 };
 
 const getInitialUiMode = (modeParam: string | null, id: string): 'classic' | 'prep' => {
@@ -389,135 +310,38 @@ export default function SermonPage() {
 
   // Reusable renderer for classic content (brainstorm, filters, thoughts)
   const renderClassicContent = (options?: { withBrainstorm?: boolean, portalRef?: React.Ref<HTMLDivElement> }) => (
-    // Disable layout animations to avoid vertical stretch on filter changes
-    <motion.div layout={false} className="space-y-4 sm:space-y-6">
-
-      <div ref={options?.portalRef} className="w-full empty:hidden [&>div]:h-full" />
-
-      <section>
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold">{t('sermon.allThoughts')}</h2>
-            <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-              {activeCount} / {totalThoughts}
-            </span>
-            <AnimatePresence initial={false}>
-              {uiMode === 'classic' && (
-                <motion.div
-                  key="filter"
-                  className="relative ml-0 sm:ml-3 z-50"
-                  initial={{ opacity: 0, y: -6, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
-                  exit={{ opacity: 0, y: -6, height: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  style={{ overflow: 'visible' }}
-                >
-                  <button
-                    ref={filterButtonRef}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsFilterOpen(!isFilterOpen);
-                    }}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
-                    data-testid="thought-filter-button"
-                  >
-                    {t('filters.filter')}
-                    {(viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
-                      <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
-                    )}
-                    <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  <ThoughtFilterControls
-                    isOpen={isFilterOpen}
-                    setIsOpen={setIsFilterOpen}
-                    viewFilter={viewFilter}
-                    setViewFilter={setViewFilter}
-                    structureFilter={structureFilter}
-                    setStructureFilter={setStructureFilter}
-                    tagFilters={tagFilters}
-                    toggleTagFilter={toggleTagFilter}
-                    resetFilters={resetFilters}
-                    sortOrder={sortOrder}
-                    setSortOrder={setSortOrder}
-                    allowedTags={allowedTags}
-                    hasStructureTags={hasStructureTags}
-                    buttonRef={filterButtonRef}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <AnimatePresence initial={false}>
-              {uiMode === 'classic' && (options?.withBrainstorm !== false) && (
-                <motion.button
-                  key="brainstorm-trigger"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  onClick={() => setIsBrainstormOpen(!isBrainstormOpen)}
-                  className="inline-flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-md text-sm font-medium bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 text-amber-700 dark:text-amber-300 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/30 dark:hover:to-yellow-900/30 transition-all shadow-sm hover:shadow"
-                  aria-label={t('brainstorm.title')}
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
-                  </svg>
-                  <span className="hidden sm:inline">{t('brainstorm.title')}</span>
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-        <AnimatePresence initial={false}>
-          {uiMode === 'classic' && isBrainstormOpen && (options?.withBrainstorm !== false) && (
-            <motion.div
-              key="brainstorm-panel"
-              initial={{ opacity: 0, y: -10, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -10, height: 0 }}
-              transition={{ duration: 0.25, ease: 'easeInOut' }}
-              style={{ overflow: 'hidden' }}
-              className="mb-4"
-            >
-              <BrainstormModule
-                sermonId={sermon!.id}
-                currentSuggestion={brainstormSuggestion}
-                onSuggestionChange={setBrainstormSuggestion}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence initial={false}>
-          {uiMode === 'classic' && (viewFilter !== 'all' || structureFilter !== 'all' || tagFilters.length > 0 || sortOrder !== 'date') && (
-            <ActiveFilters
-              viewFilter={viewFilter}
-              structureFilter={structureFilter}
-              sortOrder={sortOrder}
-              tagFilters={tagFilters}
-              allowedTags={allowedTags}
-              resetFilters={resetFilters}
-              t={t as (key: string) => string}
-            />
-          )}
-        </AnimatePresence>
-        {/* Do not animate the thoughts column when toggling filter */}
-        <motion.div layout={false}>
-          <ThoughtList
-            filteredThoughts={filteredThoughts}
-            totalThoughtsCount={totalThoughts}
-            allowedTags={allowedTags}
-            sermonOutline={sermon?.outline}
-            sermonId={sermon?.id}
-            onDelete={handleDeleteThought}
-            onEditStart={handleEditThoughtStart}
-            onThoughtUpdate={handleThoughtUpdate}
-            resetFilters={resetFilters}
-            isReadOnly={isReadOnly}
-          />
-        </motion.div>
-      </section>
-    </motion.div>
+    <ClassicThoughtsPanel
+      withBrainstorm={options?.withBrainstorm}
+      portalRef={options?.portalRef}
+      isClassicMode={uiMode === 'classic'}
+      activeCount={activeCount}
+      totalThoughts={totalThoughts}
+      isFilterOpen={isFilterOpen}
+      setIsFilterOpen={setIsFilterOpen}
+      viewFilter={viewFilter}
+      setViewFilter={setViewFilter}
+      structureFilter={structureFilter}
+      setStructureFilter={setStructureFilter}
+      tagFilters={tagFilters}
+      toggleTagFilter={toggleTagFilter}
+      resetFilters={resetFilters}
+      sortOrder={sortOrder}
+      setSortOrder={setSortOrder}
+      allowedTags={allowedTags}
+      hasStructureTags={hasStructureTags}
+      filterButtonRef={filterButtonRef}
+      isBrainstormOpen={isBrainstormOpen}
+      setIsBrainstormOpen={setIsBrainstormOpen}
+      sermonId={sermon?.id}
+      brainstormSuggestion={brainstormSuggestion}
+      setBrainstormSuggestion={setBrainstormSuggestion}
+      filteredThoughts={filteredThoughts}
+      sermonOutline={sermon?.outline}
+      onDelete={handleDeleteThought}
+      onEditStart={handleEditThoughtStart}
+      onThoughtUpdate={handleThoughtUpdate}
+      isReadOnly={isReadOnly}
+    />
   );
 
   // Reusable renderer for preparation flow (all prep step cards)
@@ -1007,12 +831,9 @@ export default function SermonPage() {
     const thoughtToDelete = sermon.thoughts.find(t => t.id === thoughtId);
     if (!thoughtToDelete) {
       console.error("Could not find thought with ID:", thoughtId);
-      alert(t('errors.thoughtDeleteError'));
       return;
     }
 
-    const confirmed = window.confirm(t('sermon.deleteThoughtConfirm', { text: thoughtToDelete.text }));
-    if (!confirmed) return;
     try {
       await deleteThought(sermon.id, thoughtToDelete);
       setSermon((prevSermon) => prevSermon ? {
@@ -1021,7 +842,6 @@ export default function SermonPage() {
       } : null);
     } catch (error) {
       console.error("Failed to delete thought", error);
-      alert(t('errors.thoughtDeleteError'));
     }
   };
 
