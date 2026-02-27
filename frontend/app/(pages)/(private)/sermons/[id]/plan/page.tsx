@@ -10,7 +10,6 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import TextareaAutosize from "react-textarea-autosize";
 import remarkGfm from "remark-gfm";
-import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import ExportButtons from "@/components/ExportButtons";
@@ -44,6 +43,7 @@ import PlanCopyButton from "./PlanCopyButton";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import useCopyFormattedContent from "./useCopyFormattedContent";
+import usePlanActions from "./usePlanActions";
 import usePlanViewMode from "./usePlanViewMode";
 
 import type {
@@ -1837,61 +1837,6 @@ export default function PlanPage() {
   //   return getThoughtsForSermonPoint(outlinePointId);
   // };
 
-  // Generate content for an outline point
-  const generateSermonPointContent = async (outlinePointId: string) => {
-    if (!sermon) return;
-
-    setGeneratingId(outlinePointId);
-
-    try {
-      const outlinePoint = getPointFromLookup(outlineLookup, outlinePointId);
-      const section = getPointSectionFromLookup(outlineLookup, outlinePointId);
-
-      if (!outlinePoint || !section) {
-        toast.error(t("errors.outlinePointNotFound"));
-        return;
-      }
-
-      // Call the API
-      const queryParams = new URLSearchParams({
-        outlinePointId,
-        style: planStyle
-      });
-      const response = await fetch(`/api/sermons/${sermon.id}/plan?${queryParams.toString()}`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate content: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Update the generated content
-      setGeneratedContent((prev) => ({
-        ...prev,
-        [outlinePointId]: data.content,
-      }));
-
-      // Mark content as modified since it was just generated
-      setModifiedContent(prev => ({
-        ...prev,
-        [outlinePointId]: true
-      }));
-
-      // Update the combined plan
-      updateCombinedPlan(outlinePoint.id, data.content, section);
-
-      // Equalize only this pair after content generation
-      syncPairHeights(section, outlinePointId);
-
-      toast.success(t("plan.contentGenerated"));
-    } catch (err) {
-      console.error(err);
-      toast.error(t("errors.failedToGenerateContent"));
-    } finally {
-      setGeneratingId(null);
-    }
-  };
-
   // Update section outline deterministically from ordered points + point-content map.
   const updateCombinedPlan = useCallback((
     outlinePointId: string,
@@ -1915,116 +1860,61 @@ export default function PlanPage() {
     }));
   }, [generatedContent, outlineLookup.pointsBySection]);
 
-  // Save the plan to the server
-  // const savePlan = async () => {
-  //   if (!sermon) return;
-  //
-  //   try {
-  //     const planToSave: Plan = {
-  //       introduction: { outline: combinedPlan.introduction },
-  //       main: { outline: combinedPlan.main },
-  //       conclusion: { outline: combinedPlan.conclusion },
-  //     };
-  //
-  //     const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
-  //       method: "PUT",
-  //       headers: {
-  //       "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(planToSave),
-  //     });
-  //
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to save plan: ${response.status}`);
-  //     }
-  //
-  //       toast.success(t("plan.planSaved"));
-  //   } catch (err) {
-  //     console.error(err);
-  //     toast.error(t("errors.failedToSavePlan"));
-  //   }
-  // };
+  const handlePlanPointGenerated = (params: {
+    outlinePointId: string;
+    content: string;
+    section: SermonSectionKey;
+  }) => {
+    const { outlinePointId, content, section } = params;
 
-  // Save individual outline point
-  const saveSermonPoint = async (outlinePointId: string, content: string, section: keyof Plan) => {
-    if (!sermon) return;
-
-    try {
-      // Use existing sermon plan or create empty structure
-      const currentPlan: Plan = sermon.plan || {
-        introduction: { outline: "" },
-        main: { outline: "" },
-        conclusion: { outline: "" }
-      };
-
-      // 1. Update the specific outline point content
-      const sectionData = currentPlan[section] || { outline: "" };
-      const outlinePoints = sectionData.outlinePoints || {};
-      const updatedOutlinePoints = {
-        ...outlinePoints,
-        [outlinePointId]: content
-      };
-
-      // 2. Recalculate the combined section outline text
-      // We need to maintain the order of points from the sermon structure
-      const allPointsInSection = outlineLookup.pointsBySection[section as SermonSectionKey] || [];
-      const combinedText = buildSectionOutlineMarkdown({
-        orderedOutlinePoints: allPointsInSection,
-        outlinePointsContentById: {
-          ...updatedOutlinePoints,
-          [outlinePointId]: content,
-        },
-      });
-
-      // 3. Construct the updated full plan
-      const updatedPlan: Plan = {
-        ...currentPlan,
-        [section]: {
-          ...sectionData,
-          outline: combinedText,
-          outlinePoints: updatedOutlinePoints
-        }
-      };
-
-      // 4. Send to server
-      const response = await fetch(`/api/sermons/${sermon.id}/plan`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updatedPlan),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to save plan: ${response.status}`);
-      }
-
-      // 5. Update local state and cache immediately
-      // Mark this point as saved (local UI state)
-      setSavedSermonPoints(prev => ({ ...prev, [outlinePointId]: true }));
-      // Mark content as unmodified (local UI state)
-      setModifiedContent(prev => ({ ...prev, [outlinePointId]: false }));
-
-      // Update the local combined plan state for the UI
-      setCombinedPlan(prev => ({
-        ...prev,
-        [section]: combinedText
-      }));
-
-      // Update React Query cache (this triggers persistence to IndexedDB)
-      await setSermon(prevSermon => prevSermon ? { ...prevSermon, plan: updatedPlan } : null);
-
-      toast.success(t("plan.pointSaved"));
-
-      // If we have other points in the section, show a specific success message
-      if (allPointsInSection.length > 1) {
-        toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(t("errors.failedToSavePoint"));
-    }
+    setGeneratedContent((prev) => ({
+      ...prev,
+      [outlinePointId]: content,
+    }));
+    setModifiedContent((prev) => ({
+      ...prev,
+      [outlinePointId]: true,
+    }));
+    updateCombinedPlan(outlinePointId, content, section);
+    syncPairHeights(section, outlinePointId);
   };
+
+  const handlePlanPointSaved = useCallback(async (params: {
+    outlinePointId: string;
+    section: SermonSectionKey;
+    combinedText: string;
+    updatedPlan: Plan;
+  }) => {
+    const {
+      outlinePointId,
+      section,
+      combinedText,
+      updatedPlan,
+    } = params;
+
+    setSavedSermonPoints((prev) => ({ ...prev, [outlinePointId]: true }));
+    setModifiedContent((prev) => ({ ...prev, [outlinePointId]: false }));
+    setCombinedPlan((prev) => ({
+      ...prev,
+      [section]: combinedText,
+    }));
+
+    await setSermon((prevSermon) => (prevSermon ? { ...prevSermon, plan: updatedPlan } : null));
+  }, [setSermon]);
+
+  const {
+    generateSermonPointContent,
+    saveSermonPoint,
+  } = usePlanActions({
+    sermon,
+    planStyle,
+    outlineLookup,
+    generatedContent,
+    t,
+    setGeneratingId,
+    onGenerated: handlePlanPointGenerated,
+    onSaved: handlePlanPointSaved,
+  });
 
   // Toggle edit mode for an outline point
   const toggleEditMode = (outlinePointId: string) => {
@@ -2086,7 +1976,7 @@ export default function PlanPage() {
         return true;
       }
     } catch (error) {
-      console.error(error);
+      debugLog("Plan copy failed: ClipboardItem/write branch", { error });
     }
 
     const selection = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
@@ -2109,7 +1999,7 @@ export default function PlanPage() {
         return true;
       }
     } catch (error) {
-      console.error(error);
+      debugLog("Plan copy failed: execCommand(html) branch", { error });
     } finally {
       selection?.removeAllRanges();
       document.body.removeChild(tempContainer);
@@ -2128,7 +2018,7 @@ export default function PlanPage() {
       document.body.removeChild(textarea);
       return success;
     } catch (error) {
-      console.error(error);
+      debugLog("Plan copy failed: execCommand(text) branch", { error });
     }
 
     return false;

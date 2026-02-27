@@ -360,6 +360,26 @@ Coverage/tests + green check:
 - Acceptance: no `console.error` in file, behavior preserved, green suite.
 
 ### What was done 7.1:
+- Status: `DONE` (2026-02-27)
+- Extracted API layer:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/planApi.ts`
+  - Added `generatePlanPointContent` and `saveSermonPlan` with strict response validation.
+- Extracted async orchestration hook:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/usePlanActions.ts`
+  - Moved `generate`/`save` workflows out of `page.tsx` while keeping UI mutations in page callbacks.
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx`:
+  - Replaced inline network handlers with `usePlanActions`.
+  - Added page-level callbacks for deterministic local state updates after generate/save.
+  - Replaced active `console.error` branches in copy fallback flow with `debugLog`.
+- Added/updated tests:
+  - `frontend/__tests__/pages/planApi.test.ts`
+  - `frontend/__tests__/pages/usePlanActions.test.ts`
+  - `frontend/__tests__/pages/sermonPlan.test.tsx` (failure-toasts integration checks for generate/save).
+- Validation passed:
+  - `npx tsc --noEmit`
+  - `npm run lint:full`
+  - `npm run test:fast -- 'sermonPlan|planApi|usePlanActions'`
+  - `npm run test:coverage` (`323/323` suites, `2736/2736` tests, all green)
 
 ### Part 2 — Manual QA
 - Force API fail for generate/save (mock network error) -> proper error toast appears.

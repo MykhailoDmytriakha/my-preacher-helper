@@ -1,10 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
 import { getSermonById } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
+
+jest.mock('sonner', () => ({
+  toast: {
+    success: jest.fn(),
+    error: jest.fn(),
+  },
+}));
 
 // Mock MutationObserver globally for this test file
 global.MutationObserver = jest.fn(() => ({
@@ -17,6 +25,7 @@ global.MutationObserver = jest.fn(() => ({
 let mockSearchParams = new URLSearchParams();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockToast = toast as jest.Mocked<typeof toast>;
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
@@ -184,6 +193,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockSearchParams = new URLSearchParams();
     mockPush.mockClear();
     mockReplace.mockClear();
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
     
@@ -460,6 +471,68 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
     expect(introOutline).toContain('## Intro Point 1\n\nUpdated Intro Content');
     expect((introOutline.match(/## Intro Point 1/g) || []).length).toBe(1);
+  });
+
+  it('shows error toast when generate request fails', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url, options) => {
+      if (typeof url === 'string' && url.includes('/api/sermons/test-sermon-id/plan?outlinePointId=')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({}),
+        });
+      }
+      if (options?.method === 'PUT') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-left-section');
+
+    const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
+    fireEvent.click(generateButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('Failed to generate content');
+    });
+  });
+
+  it('shows error toast when save request fails', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url, options) => {
+      if (typeof url === 'string' && url.includes('/api/sermons/test-sermon-id/plan?outlinePointId=')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ content: 'Mock Generated Content' }),
+        });
+      }
+      if (options?.method === 'PUT') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({}),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-right-section');
+
+    const editButtons = screen.getAllByTitle('Edit Mode');
+    fireEvent.click(editButtons[0]);
+
+    const textareas = await screen.findAllByPlaceholderText('No content');
+    fireEvent.change(textareas[0], { target: { value: 'Updated Intro Content' } });
+
+    const saveButtons = await screen.findAllByTitle('Save');
+    fireEvent.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith('Failed to save point');
+    });
   });
 
   it('enters preaching mode with push (not replace) so back() returns to plan', async () => {

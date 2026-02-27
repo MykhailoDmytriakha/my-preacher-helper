@@ -59,6 +59,7 @@
 > One-line principles. History in git blame. Newest first.
 
 - **2026-02-27 Absolute-Offset Clip:** When a component renders control buttons with `absolute -top-1 -left/right-1` (e.g. FocusRecorderButton Pause/Cancel), any ancestor `overflow-hidden` clips those -4px overflows. Fix: remove `overflow-hidden` from the flex header container; text truncation is already covered by `truncate` + `min-w-0` on the inner text element.
+- **2026-02-27 Plan Actions Split:** For plan generate/save flows, keep fetch code in `planApi.ts`, orchestration/toasts in `usePlanActions`, and page-local state mutations in callbacks; this preserves behavior while making API and error paths unit-testable.
 - **2026-02-27 Deterministic Section Markdown:** Section outline markdown must be built from ordered outline IDs + content map (ID-based), not heading text splice/replacement; otherwise duplicate titles cause accidental cross-point overwrites.
 - **2026-02-27 Outline Lookup Semantics:** When replacing repeated `some/find` scans with memoized lookup maps, preserve original section precedence (`introduction -> main -> conclusion`) for duplicate IDs and lock this with dedicated util tests.
 - **2026-02-27 Copy UX Unification:** When the same copy-to-clipboard flow exists in multiple views, centralize status/timer/toast behavior in a hook and keep button/icon/ARIA rendering in a dedicated component to eliminate state-drift bugs between modes.
