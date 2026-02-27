@@ -4,15 +4,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import { getSectionLabel } from "@/lib/sections";
 import BrainstormModule from "@/components/sermon/BrainstormModule";
 import ThoughtFilterControls from "@/components/sermon/ThoughtFilterControls";
 import ThoughtList from "@/components/sermon/ThoughtList";
+import { getSectionLabel } from "@/lib/sections";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
 
-import type { SortOrder, StructureFilter, ViewFilter } from "@hooks/useThoughtFiltering";
 import type { BrainstormSuggestion, SermonOutline, Thought } from "@/models/models";
+import type { SortOrder, StructureFilter, ViewFilter } from "@hooks/useThoughtFiltering";
 import type { Dispatch, Ref, RefObject, SetStateAction } from "react";
 
 interface ClassicThoughtsPanelProps {

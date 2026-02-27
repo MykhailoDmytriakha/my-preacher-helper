@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
@@ -42,7 +42,7 @@ import "@locales/i18n";
 import { createAudioThought, deleteThought, updateThought } from "@services/thought.service";
 import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
-import { findThoughtSectionInStructure, insertThoughtIdInStructure, resolveSectionForNewThought, resolveSectionFromOutline } from "@utils/thoughtOrdering";
+import { findThoughtSectionInStructure, insertThoughtIdInStructure, resolveSectionForNewThought } from "@utils/thoughtOrdering";
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { ReactNode } from "react";
