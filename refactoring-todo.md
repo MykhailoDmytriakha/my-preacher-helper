@@ -386,6 +386,11 @@ Coverage/tests + green check:
 - Success path still updates UI state immediately and persists after reload.
 
 ### What was done 7.2:
+- Status: `DONE` (2026-02-27)
+- Success Path (Generate + Save): Triggered 'Regenerate Content', followed by clicking 'Save' (switch to View mode). Verified that AI-generated content persists after page refresh.
+- Success Path (Manual Save): Edited point content manually and saved. Verified persistence after refresh.
+- Error Path (Generate): Intercepted generation request with a forced failure. Verified that the UI does not update the point content and logs the error correctly.
+- Error Path (Save): Intercepted save request with a forced failure. Verified that the 'Save' button remains active and the UI does not transition to a successful view state, confirming no "false success" state is reached.
 
 ---
 
@@ -415,6 +420,33 @@ Coverage/tests + green check:
 - Acceptance: listener tests pass and no memory-leak warnings.
 
 ### What was done 8.1:
+- Status: `DONE` (2026-02-27)
+- Extracted paired-height synchronization into dedicated hook:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/usePairedPlanCardHeights.ts`
+  - Hook API now exposes:
+    - `registerPairRef(section, pointId, side, element)`
+    - `syncPairHeights(section, pointId)`
+    - `syncPairHeightsByPointId(pointId)`
+    - `syncAllHeights()`
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx`:
+  - Removed inline `debounce`, `syncHeights`, `syncPairHeights`, resize listener effects, and per-section pair-ref storage.
+  - Wired `usePairedPlanCardHeights` and replaced direct ref mutation with `registerPairRef` in section columns.
+  - Preserved behavior:
+    - desktop: pair equalization to max height,
+    - mobile/tablet: `auto` height fallback.
+- Added shared ref-registration type in:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/types.ts`
+- Added unit tests for the hook:
+  - `frontend/__tests__/pages/usePairedPlanCardHeights.test.tsx`
+  - Covers:
+    - resize listener add/remove,
+    - no equalization on small viewport,
+    - pair sync to max height on desktop.
+- Validation passed:
+  - `npx tsc --noEmit` (from `frontend`)
+  - `npm run test:fast -- 'usePairedPlanCardHeights|sermonPlan.resizeListener|sermonPlan.containerWidth|sermonPlan'`
+  - `npm run lint:full`
+  - `npm run test:coverage` (`324/324` suites, `2739/2739` tests, all green)
 
 ### Part 2 — Manual QA
 - Desktop: left/right cards stay aligned after editing text area.
@@ -422,6 +454,11 @@ Coverage/tests + green check:
 - Resize desktop <-> mobile repeatedly: no layout drift.
 
 ### What was done 8.2:
+- Status: `DONE` (2026-02-27)
+- Added manual QA verification for the paired-height synchronization:
+  - Verified that on desktop, left and right cards stay aligned after editing text area content.
+  - Verified that on mobile/tablet, cards do not get forced tall equal heights.
+  - Verified that resizing between desktop and mobile repeatedly does not cause layout drift.
 
 ---
 

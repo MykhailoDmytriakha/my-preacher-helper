@@ -5,6 +5,15 @@ export type PlanViewMode = "overlay" | "immersive" | "preaching";
 
 export type SermonSectionKey = "introduction" | "main" | "conclusion";
 
+export type PairedCardSide = "left" | "right";
+
+export type RegisterPairedCardRef = (
+  section: SermonSectionKey,
+  pointId: string,
+  side: PairedCardSide,
+  element: HTMLDivElement | null
+) => void;
+
 export type CopyStatus = "idle" | "copying" | "success" | "error";
 
 export interface PlanPhaseProgressByPhase {

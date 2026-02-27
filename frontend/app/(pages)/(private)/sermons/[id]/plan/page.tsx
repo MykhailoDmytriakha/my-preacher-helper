@@ -43,6 +43,7 @@ import PlanCopyButton from "./PlanCopyButton";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import useCopyFormattedContent from "./useCopyFormattedContent";
+import usePairedPlanCardHeights from "./usePairedPlanCardHeights";
 import usePlanActions from "./usePlanActions";
 import usePlanViewMode from "./usePlanViewMode";
 
@@ -52,6 +53,7 @@ import type {
   PlanSectionContent,
   PlanTimerState,
   PlanViewMode,
+  RegisterPairedCardRef,
   SectionColors,
   SermonSectionKey,
 } from "./types";
@@ -625,6 +627,9 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
               }));
 
               onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
+
+              // Keep pair heights aligned during active typing, not only on textarea auto-resize callbacks.
+              onSyncPairHeights(sectionKey, outlinePoint.id);
             }}
             onHeightChange={() => {
               onSyncPairHeights(sectionKey, outlinePoint.id);
@@ -662,7 +667,7 @@ interface PlanSectionColumnsProps {
   sectionColors: SectionColors;
   leftTestId: string;
   rightTestId: string;
-  pointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  registerPairRef: RegisterPairedCardRef;
   generatedContent: Record<string, string>;
   generatingId: string | null;
   sermonId: string;
@@ -689,7 +694,7 @@ const PlanSectionColumns = ({
   sectionColors,
   leftTestId,
   rightTestId,
-  pointRefs,
+  registerPairRef,
   generatedContent,
   generatingId,
   sermonId,
@@ -720,12 +725,7 @@ const PlanSectionColumns = ({
           {points.map((outlinePoint) => (
             <SermonPointCard
               key={outlinePoint.id}
-              ref={(el) => {
-                if (!pointRefs.current[outlinePoint.id]) {
-                  pointRefs.current[outlinePoint.id] = { left: null, right: null };
-                }
-                pointRefs.current[outlinePoint.id].left = el;
-              }}
+              ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "left", el)}
               outlinePoint={outlinePoint}
               thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
               sectionName={sectionKey}
@@ -750,12 +750,7 @@ const PlanSectionColumns = ({
           {points.map((outlinePoint) => (
             <PlanOutlinePointEditor
               key={outlinePoint.id}
-              ref={(el) => {
-                if (!pointRefs.current[outlinePoint.id]) {
-                  pointRefs.current[outlinePoint.id] = { left: null, right: null };
-                }
-                pointRefs.current[outlinePoint.id].right = el;
-              }}
+              ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "right", el)}
               outlinePoint={outlinePoint}
               sectionKey={sectionKey}
               sectionColors={sectionColors}
@@ -795,7 +790,7 @@ interface PlanSectionBlockProps {
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
   generatingId: string | null;
-  pointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  registerPairRef: RegisterPairedCardRef;
   generatedContent: Record<string, string>;
   sermonId: string;
   noContentText: string;
@@ -828,7 +823,7 @@ const PlanSectionBlock = ({
   setPlanStyle,
   isLoading,
   generatingId,
-  pointRefs,
+  registerPairRef,
   generatedContent,
   sermonId,
   noContentText,
@@ -870,7 +865,7 @@ const PlanSectionBlock = ({
         sectionColors={sectionColors}
         leftTestId={leftTestId}
         rightTestId={rightTestId}
-        pointRefs={pointRefs}
+        registerPairRef={registerPairRef}
         generatedContent={generatedContent}
         generatingId={generatingId}
         sermonId={sermonId}
@@ -908,9 +903,7 @@ interface PlanMainLayoutProps {
   sectionMenuRef: React.RefObject<HTMLDivElement | null>;
   showSectionMenu: boolean;
   setShowSectionMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  introPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
-  mainPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
-  conclusionPointRefs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>;
+  registerPairRef: RegisterPairedCardRef;
   introductionSectionRef: React.RefObject<HTMLDivElement | null>;
   mainSectionRef: React.RefObject<HTMLDivElement | null>;
   conclusionSectionRef: React.RefObject<HTMLDivElement | null>;
@@ -952,9 +945,7 @@ const PlanMainLayout = ({
   sectionMenuRef,
   showSectionMenu,
   setShowSectionMenu,
-  introPointRefs,
-  mainPointRefs,
-  conclusionPointRefs,
+  registerPairRef,
   introductionSectionRef,
   mainSectionRef,
   conclusionSectionRef,
@@ -1071,7 +1062,7 @@ const PlanMainLayout = ({
             setPlanStyle={setPlanStyle}
             isLoading={isLoading}
             generatingId={generatingId}
-            pointRefs={introPointRefs}
+            registerPairRef={registerPairRef}
             generatedContent={generatedContent}
             sermonId={sermonId}
             noContentText={noContentText}
@@ -1103,7 +1094,7 @@ const PlanMainLayout = ({
             setPlanStyle={setPlanStyle}
             isLoading={isLoading}
             generatingId={generatingId}
-            pointRefs={mainPointRefs}
+            registerPairRef={registerPairRef}
             generatedContent={generatedContent}
             sermonId={sermonId}
             noContentText={noContentText}
@@ -1135,7 +1126,7 @@ const PlanMainLayout = ({
             setPlanStyle={setPlanStyle}
             isLoading={isLoading}
             generatingId={generatingId}
-            pointRefs={conclusionPointRefs}
+            registerPairRef={registerPairRef}
             generatedContent={generatedContent}
             sermonId={sermonId}
             noContentText={noContentText}
@@ -1398,16 +1389,6 @@ const PlanOverlayPortal = ({
   );
 };
 
-// Add a debounce utility to prevent too frequent calls
-function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
-
-  return function (...args: Parameters<T>) {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
-
 export default function PlanPage() {
   const { t } = useTranslation();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -1449,10 +1430,6 @@ export default function PlanPage() {
   // State to hold the combined generated content for each section
   const [combinedPlan, setCombinedPlan] = useState<CombinedPlan>({ introduction: '', main: '', conclusion: '' });
 
-  // Refs for the outline point cards in each column
-  const introPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
-  const mainPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
-  const conclusionPointRefs = useRef<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>({});
   const planOverlayContentRef = useRef<HTMLDivElement | null>(null);
   const immersiveContentRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -1496,6 +1473,19 @@ export default function PlanPage() {
     () => buildPlanOutlineLookup(sermon),
     [sermon]
   );
+
+  const getSectionByPointId = useCallback((outlinePointId: string): SermonSectionKey | null => {
+    return getPointSectionFromLookup(outlineLookup, outlinePointId);
+  }, [outlineLookup]);
+
+  const {
+    registerPairRef,
+    syncPairHeights,
+    syncPairHeightsByPointId,
+  } = usePairedPlanCardHeights({
+    outline: sermon?.outline,
+    getSectionByPointId,
+  });
 
   const handleTimerStateChange = useCallback((timerState: PlanTimerState) => {
     // Helper function to format time
@@ -1592,137 +1582,6 @@ export default function PlanPage() {
       resetImmersiveCopyStatus();
     }
   }, [isPlanImmersive, resetImmersiveCopyStatus]);
-
-  // Function to synchronize heights
-  const syncHeights = () => {
-    // Always reset heights first
-    const resetHeights = () => {
-      Object.keys(introPointRefs.current).forEach(pointId => {
-        const { left, right } = introPointRefs.current[pointId];
-        if (left) left.style.height = 'auto';
-        if (right) right.style.height = 'auto';
-      });
-      Object.keys(mainPointRefs.current).forEach(pointId => {
-        const { left, right } = mainPointRefs.current[pointId];
-        if (left) left.style.height = 'auto';
-        if (right) right.style.height = 'auto';
-      });
-      Object.keys(conclusionPointRefs.current).forEach(pointId => {
-        const { left, right } = conclusionPointRefs.current[pointId];
-        if (left) left.style.height = 'auto';
-        if (right) right.style.height = 'auto';
-      });
-    };
-
-    resetHeights();
-
-    // Only equalize heights on large screens (Tailwind lg: 1024px)
-    if (typeof window === 'undefined') return;
-    const isLarge = window.matchMedia('(min-width: 1024px)').matches;
-    if (!isLarge) {
-      // On mobile/tablet we leave heights as auto to avoid tall cards
-      return;
-    }
-
-    // Force reflow to ensure natural heights are calculated
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    document.body.offsetHeight;
-
-    const applyMaxHeights = (refs: React.MutableRefObject<Record<string, { left: HTMLDivElement | null, right: HTMLDivElement | null }>>) => {
-      Object.keys(refs.current).forEach(pointId => {
-        const { left, right } = refs.current[pointId];
-        if (left && right) {
-          const maxHeight = Math.max(left.offsetHeight, right.offsetHeight);
-          left.style.height = `${maxHeight}px`;
-          right.style.height = `${maxHeight}px`;
-        }
-      });
-    };
-
-    applyMaxHeights(introPointRefs);
-    applyMaxHeights(mainPointRefs);
-    applyMaxHeights(conclusionPointRefs);
-  };
-
-  // Create a debounced version of syncHeights with a 200ms delay
-  const debouncedSyncHeights = useRef(debounce(syncHeights, 200)).current;
-
-  // Helper: find section by outline point id
-  const getSectionByPointId = useCallback((outlinePointId: string): SermonSectionKey | null => {
-    return getPointSectionFromLookup(outlineLookup, outlinePointId);
-  }, [outlineLookup]);
-
-  // Helper: choose refs storage for section
-  const getRefsForSection = (
-    section: 'introduction' | 'main' | 'conclusion'
-  ): React.MutableRefObject<Record<string, { left: HTMLDivElement | null; right: HTMLDivElement | null }>> => {
-    switch (section) {
-      case 'introduction':
-        return introPointRefs;
-      case 'main':
-        return mainPointRefs;
-      case 'conclusion':
-      default:
-        return conclusionPointRefs;
-    }
-  };
-
-  // Pair-specific height sync with double rAF to wait layout
-  const syncPairHeights = (section: 'introduction' | 'main' | 'conclusion', pointId: string) => {
-    if (typeof window === 'undefined') return;
-    const refs = getRefsForSection(section);
-    const pair = refs.current[pointId];
-    if (!pair?.left || !pair?.right) return;
-
-    // schedule after layout settles
-    requestAnimationFrame(() => {
-      const latestPair = refs.current[pointId];
-      if (!latestPair?.left || !latestPair?.right) return;
-
-      // Reset to natural height for measurement
-      latestPair.left.style.height = 'auto';
-      latestPair.right.style.height = 'auto';
-
-      requestAnimationFrame(() => {
-        const finalPair = refs.current[pointId];
-        if (!finalPair?.left || !finalPair?.right) return;
-
-        const lh = finalPair.left.offsetHeight;
-        const rh = finalPair.right.offsetHeight;
-        const max = Math.max(lh, rh);
-        finalPair.left.style.height = `${max}px`;
-        finalPair.right.style.height = `${max}px`;
-      });
-    });
-  };
-
-  const syncPairHeightsByPointId = (pointId: string) => {
-    const section = getSectionByPointId(pointId);
-    if (section) {
-      syncPairHeights(section, pointId);
-    }
-  };
-
-  // Initial sync after outline renders (no MutationObserver)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      syncHeights();
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [sermon?.outline]);
-
-  // Keep heights correct when resizing across breakpoints
-  useEffect(() => {
-    const onResize = () => debouncedSyncHeights();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', onResize);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', onResize);
-      }
-    };
-  }, [debouncedSyncHeights]);
 
   // Auto-scroll to section based on URL parameter
   useLayoutEffect(() => {
@@ -2256,9 +2115,7 @@ export default function PlanPage() {
         sectionMenuRef={sectionMenuRef}
         showSectionMenu={showSectionMenu}
         setShowSectionMenu={setShowSectionMenu}
-        introPointRefs={introPointRefs}
-        mainPointRefs={mainPointRefs}
-        conclusionPointRefs={conclusionPointRefs}
+        registerPairRef={registerPairRef}
         introductionSectionRef={introductionSectionRef}
         mainSectionRef={mainSectionRef}
         conclusionSectionRef={conclusionSectionRef}
