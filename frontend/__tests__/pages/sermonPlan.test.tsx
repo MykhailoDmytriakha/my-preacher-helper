@@ -124,7 +124,45 @@ jest.mock('@/components/plan/ViewPlanMenu', () => {
     );
   };
 });
-jest.mock('@/components/ExportButtons', () => () => <div data-testid="export-buttons">Mocked Export Buttons</div>);
+jest.mock('@/components/ExportButtons', () => {
+  const React = require('react');
+  return function MockExportButtons(props: {
+    getExportContent?: (format: 'plain' | 'markdown') => Promise<string>;
+    getPdfContent?: () => Promise<React.ReactNode>;
+  }) {
+    const [result, setResult] = React.useState('');
+
+    return (
+      <div data-testid="export-buttons">
+        <button
+          type="button"
+          data-testid="export-plain"
+          onClick={async () => setResult(await props.getExportContent?.('plain') || '')}
+        >
+          Export plain
+        </button>
+        <button
+          type="button"
+          data-testid="export-markdown"
+          onClick={async () => setResult(await props.getExportContent?.('markdown') || '')}
+        >
+          Export markdown
+        </button>
+        <button
+          type="button"
+          data-testid="export-pdf"
+          onClick={async () => {
+            const node = await props.getPdfContent?.();
+            setResult(React.isValidElement(node) ? 'pdf-ready' : 'pdf-empty');
+          }}
+        >
+          Export pdf
+        </button>
+        {result && <div data-testid="export-result">{result}</div>}
+      </div>
+    );
+  };
+});
 jest.mock('@/components/PreachingTimer', () => {
   const React = require('react');
   return function MockPreachingTimer(props: any) {
@@ -350,13 +388,14 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     // Render with new mock data
     renderWithQueryClient(<SermonPlanPage />);
     
-    // Just check that the component renders without crashing
-    // The component should either show loading, error, or the expected UI
-    await waitFor(() => {
-      // Check if we have any content rendered (loading spinner counts as content)
-      const hasContent = document.body.innerHTML && document.body.innerHTML.length > 0;
-      expect(hasContent).toBe(true);
-    }, { timeout: 10000 });
+    expect(await screen.findByText('Thoughts not assigned')).toBeInTheDocument();
+    expect(screen.getByText('Please assign all thoughts to outline points first')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Work on Sermon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Work on ThoughtsBySection' }));
+
+    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id');
+    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/structure');
   }, 15000);
 
   // Add a simple test that just checks if the component can render at all
@@ -715,6 +754,155 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     jest.useRealTimers();
     window.requestAnimationFrame = originalRaf;
     Element.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
+  it('auto-scrolls to the main section when the main section param is provided', async () => {
+    const originalRaf = window.requestAnimationFrame;
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+
+    jest.useFakeTimers();
+    mockSearchParams = new URLSearchParams('section=main');
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-main-left-section');
+
+    act(() => {
+      jest.runAllTimers();
+    });
+
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    jest.useRealTimers();
+    window.requestAnimationFrame = originalRaf;
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
+  it('falls back to querySelector when section param does not match a ref-backed section', async () => {
+    const originalRaf = window.requestAnimationFrame;
+    const originalQuerySelector = document.querySelector;
+    const fallbackElement = document.createElement('div');
+    const fallbackScroll = jest.fn();
+    fallbackElement.scrollIntoView = fallbackScroll;
+    document.querySelector = jest.fn().mockImplementation((selector: string) => {
+      if (selector === '[data-section="appendix"]') {
+        return fallbackElement;
+      }
+      return originalQuerySelector.call(document, selector);
+    });
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+
+    jest.useFakeTimers();
+    mockSearchParams = new URLSearchParams('section=appendix');
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    act(() => {
+      jest.runAllTimers();
+    });
+
+    expect(document.querySelector).toHaveBeenCalledWith('[data-section="appendix"]');
+    expect(fallbackScroll).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    jest.useRealTimers();
+    window.requestAnimationFrame = originalRaf;
+    document.querySelector = originalQuerySelector;
+  });
+
+  it('exports plain and markdown content through export button callbacks', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    fireEvent.click(screen.getByTestId('export-plain'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('Test Sermon');
+    });
+    expect(screen.getByTestId('export-result')).toHaveTextContent('Test Verse');
+    expect(screen.getByTestId('export-result')).not.toHaveTextContent('# Test Sermon');
+
+    fireEvent.click(screen.getByTestId('export-markdown'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('# Test Sermon');
+    });
+    expect(screen.getByTestId('export-result')).toHaveTextContent('## Introduction');
+  });
+
+  it('builds PDF export content through export button callbacks', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    fireEvent.click(screen.getByTestId('export-pdf'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('pdf-ready');
+    });
+  });
+
+  it('renders not-found state and routes back to the sermon page', async () => {
+    mockGetSermonById.mockResolvedValueOnce(null as any);
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    expect(await screen.findByText('Sermon not found')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Sermon' }));
+
+    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id');
+  });
+
+  it('exports fallback no-content text when verse and plan outlines are missing', async () => {
+    mockGetSermonById.mockResolvedValueOnce({
+      id: 'test-sermon-id',
+      title: 'No Verse Sermon',
+      verse: '',
+      date: new Date().toISOString(),
+      userId: 'user-1',
+      thoughts: [
+        { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], date: '2024-01-01' },
+      ],
+      plan: {
+        introduction: { outline: '', outlinePoints: {} },
+        main: { outline: '', outlinePoints: {} },
+        conclusion: { outline: '', outlinePoints: {} },
+      },
+      outline: {
+        introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
+        main: [],
+        conclusion: [],
+      },
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+      },
+    } as any);
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    fireEvent.click(screen.getByTestId('export-plain'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('No Verse Sermon');
+    });
+    expect(screen.getByTestId('export-result')).toHaveTextContent('No content');
+    expect(screen.getByTestId('export-result')).not.toHaveTextContent('Test Verse');
+
+    fireEvent.click(screen.getByTestId('export-markdown'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('## Introduction');
+    });
+    expect(screen.getByTestId('export-result')).toHaveTextContent('No content');
+    expect(screen.getByTestId('export-result')).not.toHaveTextContent('> Test Verse');
   });
 
 }); 

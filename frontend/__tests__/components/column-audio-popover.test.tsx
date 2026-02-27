@@ -21,12 +21,30 @@ jest.mock('@hello-pangea/dnd', () => ({
 // Mock the AudioRecorder to a lightweight component we can assert on
 jest.mock('@/components/AudioRecorder', () => ({
   AudioRecorder: (props: any) => (
-    <div data-testid="audio-recorder-stub" data-autostart={String(!!props.autoStart)} />
+    <div data-testid="audio-recorder-stub" data-autostart={String(!!props.autoStart)}>
+      <button type="button" onClick={() => props.onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}>
+        Complete audio
+      </button>
+    </div>
   )
+}));
+
+jest.mock('@/services/thought.service', () => ({
+  createAudioThoughtWithForceTag: jest.fn(),
+}));
+
+jest.mock('sonner', () => ({
+  toast: {
+    success: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 // Import after mocks
 import Column from '@/components/Column';
+import { createAudioThoughtWithForceTag } from '@/services/thought.service';
+
+const mockCreateAudioThoughtWithForceTag = createAudioThoughtWithForceTag as jest.MockedFunction<typeof createAudioThoughtWithForceTag>;
 
 describe('Column mic popover and focus button', () => {
   const baseProps = {
@@ -70,5 +88,43 @@ describe('Column mic popover and focus button', () => {
     const recorder = screen.getByTestId('audio-recorder-stub');
     expect(recorder).toBeInTheDocument();
     expect(recorder.getAttribute('data-autostart')).toBe('true');
+  });
+
+  it('closes the popover on outside click and creates a thought from recorder output', async () => {
+    mockCreateAudioThoughtWithForceTag.mockResolvedValueOnce({
+      id: 'thought-1',
+      text: 'Created from audio',
+      tags: ['main'],
+      date: '2026-02-27T00:00:00.000Z',
+    } as any);
+
+    const onAudioThoughtCreated = jest.fn();
+    render(
+      <Column
+        id="main"
+        sermonId="sermon-1"
+        showFocusButton={true}
+        onAudioThoughtCreated={onAudioThoughtCreated}
+        {...baseProps}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('structure.recordAudio'));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('audio-recorder-stub')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('structure.recordAudio'));
+    fireEvent.click(screen.getByRole('button', { name: 'Complete audio' }));
+
+    expect(await screen.findByTitle('structure.recordAudio')).toBeInTheDocument();
+    expect(mockCreateAudioThoughtWithForceTag).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'sermon-1',
+      'main'
+    );
+    expect(onAudioThoughtCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'thought-1' }),
+      'main'
+    );
   });
 });

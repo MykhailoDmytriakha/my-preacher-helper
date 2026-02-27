@@ -1,3 +1,4 @@
+import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
@@ -239,6 +240,96 @@ describe('useAiSortingDiff', () => {
       expect(result.current.isDiffModeActive).toBe(true);
       act(() => result.current.setPreSortState({ introduction: [] }));
       expect(result.current.preSortState).toEqual({ introduction: [] });
+    });
+  });
+
+  describe('persistence edge cases', () => {
+    it('filters local thoughts out of AI sort requests and persists keep/revert outline changes', async () => {
+      const localContainers: Record<string, Item[]> = {
+        ...mockContainers,
+        introduction: [
+          { id: 'local-1', content: 'Pending local thought', requiredTags: ['intro'], customTagNames: [] },
+          { ...mockContainers.introduction[0] },
+        ],
+      };
+      mockSortItemsWithAI.mockResolvedValueOnce([
+        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' },
+      ]);
+      const debouncedSaveThought = jest.fn();
+      const debouncedSaveStructure = jest.fn();
+
+      const keepAllHook = renderHook(() =>
+        {
+          const [containers, setContainers] = React.useState<Record<string, Item[]>>(localContainers);
+          return useAiSortingDiff({
+            ...defaultProps,
+            containers,
+            setContainers,
+            debouncedSaveThought,
+            debouncedSaveStructure,
+          });
+        }
+      );
+
+      await act(async () => {
+        await keepAllHook.result.current.handleAiSort('introduction');
+      });
+
+      expect(mockSortItemsWithAI).toHaveBeenCalledWith(
+        'introduction',
+        [mockContainers.introduction[0]],
+        'sermon-1',
+        mockSermonPoints.introduction
+      );
+
+      act(() => {
+        keepAllHook.result.current.handleKeepAll();
+      });
+
+      expect(debouncedSaveThought).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({
+          id: 'thought-1',
+          outlinePointId: 'intro-1',
+        })
+      );
+      expect(debouncedSaveStructure).toHaveBeenCalled();
+      expect(mockToast.success).toHaveBeenCalled();
+
+      const revertSaveThought = jest.fn();
+      const revertSaveStructure = jest.fn();
+      mockSortItemsWithAI.mockResolvedValueOnce([
+        { ...mockContainers.introduction[0], outlinePointId: 'intro-1' },
+      ]);
+      const revertHook = renderHook(() =>
+        {
+          const [containers, setContainers] = React.useState<Record<string, Item[]>>(localContainers);
+          return useAiSortingDiff({
+            ...defaultProps,
+            containers,
+            setContainers,
+            debouncedSaveThought: revertSaveThought,
+            debouncedSaveStructure: revertSaveStructure,
+          });
+        }
+      );
+
+      await act(async () => {
+        await revertHook.result.current.handleAiSort('introduction');
+      });
+
+      act(() => {
+        revertHook.result.current.handleRevertItem('thought-1', 'introduction');
+      });
+
+      expect(revertSaveThought).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({
+          id: 'thought-1',
+          outlinePointId: undefined,
+        })
+      );
+      expect(revertSaveStructure).toHaveBeenCalledTimes(1);
     });
   });
 

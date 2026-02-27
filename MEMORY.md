@@ -57,6 +57,10 @@
 ## 🆕 Lessons (Inbox) — Extracted Principles
 
 > One-line principles. History in git blame. Newest first.
+
+- **2026-02-27 StepByStepWizard Stream Error Path:** In `StepByStepWizard`, NDJSON stream `error` events thrown through the `onError` callback are swallowed by `processStream`'s parser `catch` and logged via `console.error`; test that path through logging assertions, not by expecting a rendered error banner.
+- **2026-02-27 StepByStepWizard Completion Event:** In `StepByStepWizard` tests, `download_complete` alone is insufficient for success-state coverage; emit at least one prior `audio_chunk` event because the component synthesizes the final downloadable URL from accumulated chunk data.
+- **2026-02-27**: In Jest mock factories, avoid generic type arguments on locally required `React.useState`; the mocked `React` binding is untyped and can fail `tsc --noEmit`. In stateful `renderHook` harnesses, explicitly annotate `React.useState<Record<string, Item[]>>` when the hook expects a broad record shape.
 - **2026-02-27 Streaming Route Test Polyfills:** In this Next/JSDOM stack, route handlers that instantiate `ReadableStream` and use `TextEncoder`/`TextDecoder` should be tested with local polyfills assigned before requiring the route module; otherwise the route can fail before the stream starts and produce misleading 500s.
 - **2026-02-27 JSDOM Document Fallback Branches:** Do not force `typeof document === 'undefined'` branches in normal JSDOM tests by temporarily replacing `global.document`; it can destabilize jsdom's event loop. Prefer covering real browser branches and accept the non-browser fallback unless you have a dedicated non-DOM test environment.
 - **2026-02-27 Dead Schema Layer Proof:** If legacy `config/schemas/*.schema.ts` files have zero inbound references outside their own dead barrel, compile passes after deletion, and fresh coverage shows only `config/schemas/zod/*`, treat the plain schema layer as migrated dead code and delete it instead of excluding it from coverage or writing tests for it.
@@ -298,3 +302,4 @@
 - Dynamic Color Tinting: Light = inline `rgba()`, Dark = overlay div with `opacity-0 dark:opacity-100`
 - Back Nav: `BackLink.tsx` with `router.back()` + fallback
 - Toggle Switch: `w-11` rail, `h-5 w-5` thumb, `translate-x-5/translate-x-0`, Headless UI spec
+

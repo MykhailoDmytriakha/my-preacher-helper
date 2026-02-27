@@ -2,7 +2,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddThoughtManual from '@/components/AddThoughtManual';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
+import useSermon from '@/hooks/useSermon';
+import { useTags } from '@/hooks/useTags';
 import { TestProviders } from '@test-utils/test-providers';
 import { createManualThought } from '@services/thought.service';
 
@@ -11,6 +14,16 @@ jest.mock('@services/thought.service');
 // Mock scroll lock hook
 jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
+}));
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: jest.fn(),
+}));
+jest.mock('@/hooks/useTags', () => ({
+  useTags: jest.fn(),
+}));
+jest.mock('@/hooks/useSermon', () => ({
+  __esModule: true,
+  default: jest.fn(),
 }));
 
 // Mock the new RichMarkdownEditor which uses TipTap
@@ -28,6 +41,14 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 // No longer fetching in the component during open when props are provided
 
 const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
+const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
+const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
+const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
+const mockToast = jest.requireMock('sonner').toast as { success: jest.Mock; error: jest.Mock };
+const tagUtilsMock = jest.requireMock('@utils/tagUtils') as {
+  isStructureTag: jest.Mock;
+  getStructureIcon: jest.Mock;
+};
 // const mockGetSermonById = getSermonById as jest.MockedFunction<typeof getSermonById>;
 // const mockGetTags = getTags as jest.MockedFunction<typeof getTags>;
 
@@ -85,6 +106,11 @@ describe('AddThoughtManual', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseSermon.mockReturnValue({ sermon: { userId: 'user-1' } as any, loading: false } as any);
+    mockUseTags.mockReturnValue({ allTags: [], loading: false } as any);
+    tagUtilsMock.isStructureTag.mockReturnValue(false);
+    tagUtilsMock.getStructureIcon.mockReturnValue(null);
     // Service calls are mocked where used (createManualThought). Tags/outline passed via props
 
     mockCreateManualThought.mockResolvedValue({
@@ -287,5 +313,176 @@ describe('AddThoughtManual', () => {
 
     // Should be unlocked
     expect(useScrollLock).toHaveBeenLastCalledWith(false);
+  });
+
+  it('submits a thought with selected tags and outline point', async () => {
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    await screen.findByRole('dialog');
+
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'A newly added thought' },
+    });
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'intro-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add tag Custom Tag 1' }));
+    fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
+
+    await waitFor(() => {
+      expect(mockCreateManualThought).toHaveBeenCalledWith(
+        sermonId,
+        expect.objectContaining({
+          text: 'A newly added thought',
+          tags: ['Custom Tag 1'],
+          outlinePointId: 'intro-1',
+        })
+      );
+    });
+    expect(mockOnNewThought).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-thought-id' }));
+    expect(mockToast.success).toHaveBeenCalledWith('manualThought.addedSuccess');
+  });
+
+  it('shows an error toast and keeps the dialog open when save fails', async () => {
+    mockCreateManualThought.mockRejectedValueOnce(new Error('save failed'));
+
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    await screen.findByRole('dialog');
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'Still trying' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalled();
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(mockOnNewThought).not.toHaveBeenCalled();
+  });
+
+  it('shows offline warning and disables saving when offline', async () => {
+    mockUseOnlineStatus.mockReturnValue(false);
+
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onNewThought={mockOnNewThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
+
+    const trigger = screen.getByRole('button', { name: /manualThought\.addManual/ });
+    expect(trigger).toHaveAttribute('title', 'manualThought.offlineDisabled');
+
+    fireEvent.click(trigger);
+    await screen.findByRole('dialog');
+
+    expect(screen.getByText('manualThought.offlineWarning')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'Offline thought' },
+    });
+    expect(screen.getByRole('button', { name: /buttons\.save/ })).toBeDisabled();
+    expect(mockCreateManualThought).not.toHaveBeenCalled();
+  });
+
+  it('opens after pending data becomes ready and falls back to default outline when props are absent', async () => {
+    mockUseSermon.mockReturnValue({ sermon: { userId: 'user-1', outline: undefined } as any, loading: false } as any);
+    mockUseTags.mockReturnValueOnce({ allTags: [], loading: false } as any);
+
+    const { rerender } = renderWithProviders(
+      <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    mockUseTags.mockReturnValue({
+      allTags: [{ name: 'Fallback Tag', color: '#123456' }],
+      loading: false,
+    } as any);
+
+    rerender(
+      <TestProviders>
+        <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+      </TestProviders>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('option', { name: 'Introduction' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Main Point 1' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Conclusion' })).toBeInTheDocument();
+  });
+
+  it('renders translated and structure tags and clears outline selection back to undefined', async () => {
+    tagUtilsMock.isStructureTag.mockImplementation((tag: string) => tag === 'Introduction');
+    tagUtilsMock.getStructureIcon.mockReturnValue({ className: 'icon-intro', svg: '<svg />' });
+    mockUseSermon.mockReturnValue({
+      sermon: {
+        userId: 'user-1',
+        outline: {
+          introduction: [{ id: 'intro-1', text: 'Intro Point 1' }],
+          main: [],
+          conclusion: [],
+        },
+      } as any,
+      loading: false,
+    } as any);
+    mockUseTags.mockReturnValue({
+      allTags: [
+        { name: 'Introduction', color: '#ff0000' },
+        { name: 'Special', color: '#00ff00', translationKey: 'tags.special' },
+      ],
+      loading: false,
+    } as any);
+
+    renderWithProviders(
+      <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add tag tags.introduction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add tag tags.special' }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'intro-1' } });
+    expect(screen.getByText('editThought.selectedSermonPoint')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'Translated tag thought' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
+
+    await waitFor(() => {
+      expect(mockCreateManualThought).toHaveBeenCalledWith(
+        sermonId,
+        expect.objectContaining({
+          tags: ['Introduction', 'Special'],
+          outlinePointId: undefined,
+        })
+      );
+    });
+    expect(tagUtilsMock.getStructureIcon).toHaveBeenCalledWith('Introduction');
+    expect(document.querySelector('.icon-intro')).toBeInTheDocument();
   });
 });

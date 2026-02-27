@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
 import StepByStepWizard from '@/components/audio/StepByStepWizard';
+import useSermon from '@/hooks/useSermon';
 
 // Polyfills for JSDOM
 if (typeof TextEncoder === 'undefined') {
@@ -11,16 +12,28 @@ if (typeof TextEncoder === 'undefined') {
 }
 
 // --- Mocks --- //
+let mockLanguage = 'en';
+
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string, options: any) => {
             if (key === 'audioExport.voiceLabel') return 'Voice';
             if (key === 'audioExport.stepOptimize') return 'Next: Review Content';
             if (key === 'audioExport.generateAudioButton') return 'Generate Audio';
+            if (key === 'audioExport.sampleError') return 'Sample not available';
+            if (key === 'audioExport.prepareTextBtn') return 'Prepare Text for Audio';
+            if (key === 'buttons.cancel') return 'Cancel';
+            if (key === 'buttons.save') return 'Save';
             return options?.defaultValue || key;
         },
-        i18n: { language: 'en', changeLanguage: jest.fn() }
+        i18n: { language: mockLanguage, changeLanguage: jest.fn() }
     }),
+}));
+
+jest.mock('sonner', () => ({
+    toast: {
+        error: jest.fn(),
+    },
 }));
 
 jest.mock('@/hooks/useAuth', () => ({
@@ -29,13 +42,7 @@ jest.mock('@/hooks/useAuth', () => ({
 
 jest.mock('@/hooks/useSermon', () => ({
     __esModule: true,
-    default: () => ({
-        sermon: {
-            title: 'Test Sermon',
-            thoughts: []
-        },
-        loading: false
-    }),
+    default: jest.fn(),
 }));
 
 // Mock Framer Motion
@@ -67,10 +74,22 @@ jest.mock('lucide-react', () => ({
 }));
 
 // Mock ChunkEditorModal
-jest.mock('@/components/audio/ChunkEditorModal', () => () => <div data-testid="chunk-editor-modal" />);
+jest.mock('@/components/audio/ChunkEditorModal', () => (props: any) => (
+    <div data-testid="chunk-editor-modal">
+        <div>{props.chunk?.text}</div>
+        <button type="button" onClick={() => props.onSave(props.chunk.index, 'Edited chunk text')}>
+            Save chunk
+        </button>
+        <button type="button" onClick={props.onClose}>
+            Close editor
+        </button>
+    </div>
+));
 
 // Mock window.HTMLAnchorElement.prototype.click
 window.HTMLAnchorElement.prototype.click = jest.fn();
+
+const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
 
 describe('StepByStepWizard', () => {
     const defaultProps = {
@@ -83,6 +102,14 @@ describe('StepByStepWizard', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockLanguage = 'en';
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Test Sermon',
+                thoughts: []
+            },
+            loading: false
+        } as any);
         global.fetch = jest.fn();
         global.URL.createObjectURL = jest.fn().mockReturnValue('blob:url');
         global.URL.revokeObjectURL = jest.fn();
@@ -255,5 +282,375 @@ describe('StepByStepWizard', () => {
         await waitFor(() => {
             expect(screen.getByText('Copied')).toBeInTheDocument();
         });
+    });
+
+    it('plays and stops a voice preview sample', async () => {
+        const pause = jest.fn();
+        const play = jest.fn().mockResolvedValue(undefined);
+        const audioInstances: any[] = [];
+
+        (global as any).Audio = jest.fn().mockImplementation((url: string) => {
+            const audio = {
+                url,
+                volume: 0,
+                play,
+                pause,
+                onended: null,
+                onerror: null,
+            };
+            audioInstances.push(audio);
+            return audio;
+        });
+
+        render(<StepByStepWizard {...defaultProps} />);
+
+        const previewButtons = screen.getAllByTitle('Preview Voice Sample');
+        fireEvent.click(previewButtons[0]);
+
+        expect((global as any).Audio).toHaveBeenCalledWith('/samples/onyx-standard-en.mp3');
+        expect(play).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(previewButtons[0]);
+        expect(pause).toHaveBeenCalledTimes(1);
+
+        const latestAudio = audioInstances[0];
+        latestAudio.onerror?.();
+        expect(jest.requireMock('sonner').toast.error).toHaveBeenCalledWith('Sample not available');
+    });
+
+    it('shows optimization errors and saves edited chunks', async () => {
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    chunks: [
+                        { index: 0, text: 'Editable chunk', preview: 'Editable chunk', sectionId: 'introduction' },
+                    ],
+                    originalLength: 12,
+                    optimizedLength: 12,
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ success: true }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ success: true }),
+            });
+
+        const { rerender } = render(<StepByStepWizard {...defaultProps} step="review" />);
+
+        fireEvent.click(screen.getByText('Prepare Text for Audio'));
+        await waitFor(() => expect(screen.getByText('Editable chunk')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByText('Editable chunk'));
+        expect(screen.getByTestId('chunk-editor-modal')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save chunk' }));
+
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith(
+                '/api/sermons/sermon-123/audio/chunks/0',
+                expect.objectContaining({
+                    method: 'PUT',
+                })
+            );
+        });
+
+        rerender(<StepByStepWizard {...defaultProps} step="review" />);
+        (global.fetch as jest.Mock).mockReset();
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: false,
+            json: async () => ({ error: 'Optimize failed' }),
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Re-optimize' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('Optimize failed')).toBeInTheDocument();
+        });
+    });
+
+    it('calls onGeneratingChange and hydrates saved chunks from the sermon payload', async () => {
+        const onGeneratingChange = jest.fn();
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Hydrated Sermon',
+                thoughts: [],
+                audioChunks: [
+                    { index: 0, text: 'Saved intro', sectionId: 'introduction' },
+                    { index: 1, text: 'Saved conclusion', sectionId: 'conclusion' },
+                ],
+            },
+            loading: false,
+        } as any);
+
+        render(<StepByStepWizard {...defaultProps} step="review" onGeneratingChange={onGeneratingChange} />);
+
+        expect(onGeneratingChange).toHaveBeenCalledWith(false);
+        expect(await screen.findByText('Saved intro')).toBeInTheDocument();
+        expect(screen.getByText('Saved conclusion')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Re-optimize' })).toBeInTheDocument();
+    });
+
+    it('falls back to english preview samples for unsupported locales and pauses on unmount', () => {
+        mockLanguage = 'pl-PL';
+        const pause = jest.fn();
+        const play = jest.fn().mockResolvedValue(undefined);
+        (global as any).Audio = jest.fn().mockImplementation((url: string) => ({
+            url,
+            volume: 0,
+            play,
+            pause,
+            onended: null,
+            onerror: null,
+        }));
+
+        const { unmount } = render(<StepByStepWizard {...defaultProps} />);
+
+        fireEvent.click(screen.getAllByTitle('Preview Voice Sample')[0]);
+
+        expect((global as any).Audio).toHaveBeenCalledWith('/samples/onyx-standard-en.mp3');
+        unmount();
+        expect(pause).toHaveBeenCalled();
+    });
+
+    it('pauses the previous preview when switching to another voice sample', () => {
+        const pauseFirst = jest.fn();
+        const play = jest.fn().mockResolvedValue(undefined);
+        const audioInstances: Array<{ pause: jest.Mock }> = [];
+
+        (global as any).Audio = jest.fn().mockImplementation(() => {
+            const audio = {
+                volume: 0,
+                play,
+                pause: audioInstances.length === 0 ? pauseFirst : jest.fn(),
+                onended: null,
+                onerror: null,
+            };
+            audioInstances.push(audio);
+            return audio;
+        });
+
+        render(<StepByStepWizard {...defaultProps} />);
+
+        const previewButtons = screen.getAllByTitle('Preview Voice Sample');
+        fireEvent.click(previewButtons[0]);
+        fireEvent.click(previewButtons[1]);
+
+        expect(pauseFirst).toHaveBeenCalledTimes(1);
+        expect((global as any).Audio).toHaveBeenCalledTimes(2);
+    });
+
+    it('handles download_complete streams and renders the success state', async () => {
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Test Sermon',
+                thoughts: [],
+                audioChunks: [
+                    { index: 0, text: 'Saved intro', sectionId: 'introduction' },
+                ],
+            },
+            loading: false,
+        } as any);
+
+        const encoder = new TextEncoder();
+        const mockReader = {
+            read: jest.fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: encoder.encode(
+                        JSON.stringify({ type: 'audio_chunk', data: 'AAAA' }) +
+                        '\n' +
+                        JSON.stringify({ type: 'download_complete' }) +
+                        '\n'
+                    ),
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+        };
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
+
+        const onClose = jest.fn();
+        const ControlledWizard = () => {
+            const [step, setStep] = React.useState<'review' | 'generate' | 'success'>('review');
+            return (
+                <StepByStepWizard
+                    {...defaultProps}
+                    onClose={onClose}
+                    step={step}
+                    onStepChange={(next) => setStep(next as 'review' | 'generate' | 'success')}
+                />
+            );
+        };
+
+        render(<ControlledWizard />);
+
+        fireEvent.click(screen.getByText('Generate Audio'));
+
+        expect(await screen.findByText('Audio Ready!', {}, { timeout: 3000 })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Download Again' })).toHaveAttribute('download', 'sermon_audio.wav');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close Window' }));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps pre-encoded data urls unchanged when generation completes', async () => {
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Encoded Sermon',
+                thoughts: [],
+                audioChunks: [
+                    { index: 0, text: 'Encoded chunk', sectionId: 'introduction' },
+                ],
+            },
+            loading: false,
+        } as any);
+
+        const encoder = new TextEncoder();
+        const encodedUrl = 'data:audio/wav;base64,BBBB';
+        const mockReader = {
+            read: jest.fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: encoder.encode(
+                        JSON.stringify({ type: 'audio_chunk', data: encodedUrl }) +
+                        '\n' +
+                        JSON.stringify({ type: 'complete', filename: 'encoded.wav' }) +
+                        '\n'
+                    ),
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+        };
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
+
+        const ControlledWizard = () => {
+            const [step, setStep] = React.useState<'review' | 'generate' | 'success'>('review');
+            return (
+                <StepByStepWizard
+                    {...defaultProps}
+                    step={step}
+                    onStepChange={(next) => setStep(next as 'review' | 'generate' | 'success')}
+                />
+            );
+        };
+
+        render(<ControlledWizard />);
+
+        fireEvent.click(screen.getByText('Generate Audio'));
+
+        const downloadLink = await screen.findByRole('link', { name: 'Download Again' });
+        expect(downloadLink).toHaveAttribute('href', encodedUrl);
+        expect(downloadLink).toHaveAttribute('download', 'encoded.wav');
+    });
+
+    it('ignores blank stream lines and logs malformed chunks plus unknown stream errors', async () => {
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Error Sermon',
+                thoughts: [],
+                audioChunks: [
+                    { index: 0, text: 'Error chunk', sectionId: 'introduction' },
+                ],
+            },
+            loading: false,
+        } as any);
+
+        const encoder = new TextEncoder();
+        const mockReader = {
+            read: jest.fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: encoder.encode('\nnot json\n{"type":"error"}\n'),
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+        };
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
+
+        const ControlledWizard = () => {
+            const [step, setStep] = React.useState<'review' | 'generate'>('review');
+            return (
+                <StepByStepWizard
+                    {...defaultProps}
+                    step={step}
+                    onStepChange={(next) => setStep(next as 'review' | 'generate')}
+                />
+            );
+        };
+
+        render(<ControlledWizard />);
+
+        fireEvent.click(screen.getByText('Generate Audio'));
+
+        await waitFor(() => {
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'Failed to parse stream line:',
+                'not json',
+                expect.any(SyntaxError)
+            );
+        });
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            'Failed to parse stream line:',
+            '{"type":"error"}',
+            expect.objectContaining({ message: 'Unknown error' })
+        );
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('cancels generation and returns to review with an abort error', async () => {
+        mockUseSermon.mockReturnValue({
+            sermon: {
+                title: 'Abort Sermon',
+                thoughts: [],
+                audioChunks: [
+                    { index: 0, text: 'Abort chunk', sectionId: 'introduction' },
+                ],
+            },
+            loading: false,
+        } as any);
+
+        (global.fetch as jest.Mock).mockImplementation((_url, options?: { signal?: AbortSignal }) => {
+            return new Promise((_resolve, reject) => {
+                options?.signal?.addEventListener('abort', () => {
+                    reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+                });
+            });
+        });
+
+        const ControlledWizard = () => {
+            const [step, setStep] = React.useState<'review' | 'generate'>('review');
+            return (
+                <StepByStepWizard
+                    {...defaultProps}
+                    step={step}
+                    onStepChange={(next) => setStep(next as 'review' | 'generate')}
+                />
+            );
+        };
+
+        render(<ControlledWizard />);
+
+        fireEvent.click(screen.getByText('Generate Audio'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('Generation cancelled')).toBeInTheDocument();
+        });
+        expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
     });
 });

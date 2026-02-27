@@ -115,6 +115,7 @@ describe('FocusRecorderButton', () => {
 
     // Mock cancelAnimationFrame
     global.cancelAnimationFrame = jest.fn();
+    delete process.env.NEXT_PUBLIC_AUDIO_GRACE_PERIOD;
   });
 
   afterEach(() => {
@@ -360,6 +361,41 @@ describe('FocusRecorderButton', () => {
           jest.advanceTimersByTime(1000);
         });
       }
+
+      await waitFor(() => {
+        expect(onRecordingComplete).toHaveBeenCalled();
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('shows the grace-period countdown before stopping', async () => {
+      jest.useFakeTimers();
+      process.env.NEXT_PUBLIC_AUDIO_GRACE_PERIOD = '2';
+
+      const onRecordingComplete = jest.fn();
+      render(<FocusRecorderButton onRecordingComplete={onRecordingComplete} maxDuration={2} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('0:02')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      expect(screen.getByText('2')).toBeInTheDocument();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getByText('1')).toBeInTheDocument();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
 
       await waitFor(() => {
         expect(onRecordingComplete).toHaveBeenCalled();
