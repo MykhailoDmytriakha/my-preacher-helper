@@ -347,3 +347,68 @@ Code changes:
 Notes/Risks:
 - `ConfirmModal` переиспользует существующий ключ `sermon.deleteThoughtConfirm` (все 3 локали).
 - Текст мысли в описании обрезается до 100 символов.
+
+### [2026-02-27] Prompt 5 — Extract recorder portal bridge
+Status: done
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/components/sermon/AudioRecorderPortalBridge.tsx`: добавлен bridge-компонент для портала `AudioRecorder`, который инкапсулирует portal/fallback рендеринг и `splitLeft` manual-thought кнопку.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: удален дублированный recorder JSX (ветки `createPortal` и hidden fallback) и заменен на единый `<AudioRecorderPortalBridge ... />`.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/(pages)/(private)/sermons/[id]/page.tsx`: удалена локальная `AutoHeight` (перенесена внутрь bridge) и очищены связанные импорты.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/pages/sermons/SermonPage.mobileStructurePlacement.test.tsx __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx` -> PASS (2 suites, 12 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) Проверить отображение recorder в обоих режимах (`classic` и `prep`) и корректное перемещение в активный portal block. -> OK
+2) Проверить добавление manual thought через split-left кнопку рядом с recorder. -> OK
+3) Проверить retry transcription flow (ошибка -> retry -> clear error). -> not able to reproduce, everything works as expected
+4) Проверить disabled/readOnly поведение recorder и manual-thought кнопки в offline/readOnly состоянии. -> OK
+
+Notes/Risks:
+- Поведение портала и fallback сохранено, но теперь в отдельном bridge-компоненте; важно вручную проверить визуальную стабильность высоты recorder при переключении режимов.
+
+### [2026-02-27] Prompt 5 Hotfix — Offline split-button behavior
+Status: done
+
+Problem:
+- В offline/read-only режиме жёлтая половина split-кнопки скрывалась, а зелёная часть оставалась интерактивной как standalone-кнопка записи. Это делало поведение неочевидным и противоречило read-only режиму.
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/components/sermon/AudioRecorderPortalBridge.tsx`: split-left кнопка теперь рендерится всегда (не скрывается в read-only), но становится `disabled` в offline/read-only.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/components/sermon/AudioRecorderPortalBridge.tsx`: в `RecorderComponent` теперь передается `disabled={isReadOnly}`, чтобы правая зелёная часть (start recording) тоже блокировалась.
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/__tests__/components/sermon/AudioRecorderPortalBridge.test.tsx`: добавлены тесты на оба контракта:
+  - read-only: split видим + disabled, recorder disabled;
+  - writable: split enabled, recorder enabled.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/components/sermon/AudioRecorderPortalBridge.test.tsx __tests__/pages/sermons/SermonPage.mobileStructurePlacement.test.tsx __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx` -> PASS (3 suites, 14 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) Переключить приложение в offline/read-only и открыть `/sermons/{id}`. -> OK
+2) Убедиться, что split-кнопка визуально остаётся целой (жёлтая + зелёная части), но обе части disabled. -> OK
+3) Убедиться, что запуск записи недоступен ни кликом, ни горячей клавишей. -> OK
+4) Вернуться online и убедиться, что обе части снова интерактивны. -> OK
+
+Notes/Risks:
+- Фикс целенаправленно меняет offline UX для recorder: вместо скрытия левой части теперь используется единый disabled-state обеих частей.
+
+### [2026-02-27] Prompt 5 Hotfix 2 — Disabled visual parity for green split-half
+Status: done
+
+Problem:
+- После первого hotfix правая зелёная половина split-кнопки была заблокирована функционально, но визуально выглядела активной.
+
+Code changes:
+- `/Users/mykhailo/MyProjects/my-preacher-helper/frontend/app/components/AudioRecorder.tsx`: для зелёной split-половины добавлены `disabled`-стили (`opacity`, `not-allowed` курсор, suppression hover/active), чтобы визуал соответствовал read-only поведению.
+
+Auto checks:
+- `npx tsc --noEmit` -> PASS
+- `npm run test:fast -- __tests__/components/sermon/AudioRecorderPortalBridge.test.tsx __tests__/pages/sermons/SermonPage.modeTransitions.test.tsx` -> PASS (2 suites, 13 tests)
+
+Manual QA handoff (Claude/Antigravity):
+1) В offline/read-only проверить, что обе половины split-кнопки выглядят disabled. -> OK
+2) Убедиться, что hover-эффект на зелёной части не срабатывает. -> OK
+3) В online проверить возврат штатного активного состояния. -> OK

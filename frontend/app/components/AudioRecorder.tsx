@@ -1183,7 +1183,7 @@ export const AudioRecorder = ({
             type="button"
             onClick={startRecording}
             disabled={isButtonDisabled}
-            className="flex-1 px-6 py-3 font-medium bg-green-600 hover:bg-green-700 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98]"
+            className="flex-1 px-6 py-3 font-medium bg-green-600 hover:bg-green-700 text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-green-600 disabled:active:scale-100"
             aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
             title={`${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
           >

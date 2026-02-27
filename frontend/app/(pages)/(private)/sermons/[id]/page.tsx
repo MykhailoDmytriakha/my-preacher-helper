@@ -6,10 +6,10 @@ import dynamicImport from "next/dynamic";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
+import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
@@ -47,35 +47,6 @@ import { findThoughtSectionInStructure, insertThoughtIdInStructure, resolveSecti
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { ReactNode } from "react";
 export const dynamic = "force-dynamic";
-
-// Smoothly animates its height to match children (prevents jumps when content changes size)
-function AutoHeight({ children, duration = 0.25, delay = 0, className = '' }: { children: ReactNode; duration?: number; delay?: number; className?: string }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [height, setHeight] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!containerRef.current || typeof window === 'undefined') return;
-    const ResizeObserverCtor = window.ResizeObserver;
-    const observer = new ResizeObserverCtor((entries) => {
-      const cr = entries[0]?.contentRect;
-      if (cr && typeof cr.height === 'number') setHeight(cr.height);
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <motion.div
-      className={className}
-      initial={false}
-      animate={height !== undefined ? { height } : undefined}
-      transition={{ duration, ease: 'easeInOut', delay }}
-      style={{ overflow: 'hidden' }}
-    >
-      <div ref={containerRef}>{children}</div>
-    </motion.div>
-  );
-}
 
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
@@ -940,58 +911,21 @@ export default function SermonPage() {
       </div>
 
       {/* Single persistent recorder with smooth height transition teleported via portal to the correct active slide */}
-      {(uiMode === 'prep' ? prepPortal : classicPortal) ? createPortal(
-        <AutoHeight className="w-full">
-          <AudioRecorder
-            onRecordingComplete={handleNewRecording}
-            isProcessing={isProcessing}
-            onRetry={handleRetryTranscription}
-            retryCount={retryCount}
-            maxRetries={3}
-            transcriptionError={transcriptionError}
-            onClearError={handleClearError}
-            hideKeyboardShortcuts={uiMode === 'prep'}
-            splitLeft={!isReadOnly ? (
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="bg-amber-500 hover:bg-amber-600 px-4 self-stretch flex items-center justify-center shrink-0 transition-colors disabled:opacity-70"
-                disabled={isReadOnly}
-                title={t('manualThought.addManual')}
-              >
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            ) : undefined}
-          />
-        </AutoHeight>,
-        (uiMode === 'prep' ? prepPortal : classicPortal)!
-      ) : (
-        <div className="hidden">
-          <AudioRecorder
-            onRecordingComplete={handleNewRecording}
-            isProcessing={isProcessing}
-            onRetry={handleRetryTranscription}
-            retryCount={retryCount}
-            maxRetries={3}
-            transcriptionError={transcriptionError}
-            onClearError={handleClearError}
-            hideKeyboardShortcuts={uiMode === 'prep'}
-            splitLeft={!isReadOnly ? (
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="bg-amber-500 hover:bg-amber-600 px-4 self-stretch flex items-center justify-center shrink-0 transition-colors disabled:opacity-70"
-                disabled={isReadOnly}
-                title={t('manualThought.addManual')}
-              >
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            ) : undefined}
-          />
-        </div>
-      )}
+      <AudioRecorderPortalBridge
+        RecorderComponent={AudioRecorder}
+        portalTarget={uiMode === 'prep' ? prepPortal : classicPortal}
+        onRecordingComplete={handleNewRecording}
+        isProcessing={isProcessing}
+        onRetry={handleRetryTranscription}
+        retryCount={retryCount}
+        maxRetries={3}
+        transcriptionError={transcriptionError}
+        onClearError={handleClearError}
+        hideKeyboardShortcuts={uiMode === 'prep'}
+        isReadOnly={isReadOnly}
+        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        manualThoughtTitle={t('manualThought.addManual')}
+      />
 
       {/* Slider container that moves viewport left/right */}
       <div className="relative overflow-hidden">
