@@ -1047,20 +1047,24 @@ export default function SermonPage() {
 
     try {
       await updateThought(sermon.id, updatedThoughtData);
-      const outlineSection = resolveSectionFromOutline(sermon, outlinePointId ?? null);
       const currentSection = findThoughtSectionInStructure(sermon.structure, thoughtToUpdate.id);
+      const newSection = resolveSectionForNewThought({
+        sermon,
+        outlinePointId,
+        tags: updatedTags,
+      });
       let updatedStructure = sermon.structure;
       let structureChanged = false;
 
-      if (outlinePointId && outlineSection && outlineSection !== currentSection) {
+      if (newSection !== currentSection) {
         const thoughtsById = new Map(
           [...sermon.thoughts.filter((t) => t.id !== thoughtToUpdate.id), updatedThoughtData].map((thought) => [thought.id, thought])
         );
         updatedStructure = insertThoughtIdInStructure({
           structure: sermon.structure,
-          section: outlineSection,
+          section: newSection,
           thoughtId: thoughtToUpdate.id,
-          outlinePointId,
+          outlinePointId: outlinePointId ?? null,
           thoughtsById,
           thoughts: [...sermon.thoughts.filter((t) => t.id !== thoughtToUpdate.id), updatedThoughtData],
           outline: sermon.outline,
