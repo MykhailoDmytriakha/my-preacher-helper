@@ -385,7 +385,7 @@ const SermonPointPlaceholder: React.FC<{
             className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
             style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
           >
-            <div className="flex items-center justify-between gap-1.5 overflow-hidden w-full">
+            <div className="flex items-center justify-between gap-1.5 w-full">
               {/* Drag handle for normal mode reordering */}
               {dragHandleProps && (
                 <div

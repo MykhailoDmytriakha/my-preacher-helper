@@ -33,6 +33,7 @@ import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 
+import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
 import {
   SECTION_NAMES,
   TRANSLATION_KEYS,
@@ -535,7 +536,7 @@ interface PlanOutlinePointEditorProps {
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
-  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }
@@ -623,7 +624,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                 [outlinePoint.id]: isModified
               }));
 
-              onUpdateCombinedPlan(outlinePoint.text, newContent, sectionKey);
+              onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
             }}
             onHeightChange={() => {
               onSyncPairHeights(sectionKey, outlinePoint.id);
@@ -677,7 +678,7 @@ interface PlanSectionColumnsProps {
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
-  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }
@@ -809,7 +810,7 @@ interface PlanSectionBlockProps {
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
-  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -926,7 +927,7 @@ interface PlanMainLayoutProps {
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
-  onUpdateCombinedPlan: (outlinePointText: string, content: string, section: SermonSectionKey) => void;
+  onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -1877,7 +1878,7 @@ export default function PlanPage() {
       }));
 
       // Update the combined plan
-      updateCombinedPlan(outlinePoint.text, data.content, section);
+      updateCombinedPlan(outlinePoint.id, data.content, section);
 
       // Equalize only this pair after content generation
       syncPairHeights(section, outlinePointId);
@@ -1891,53 +1892,28 @@ export default function PlanPage() {
     }
   };
 
-  // Update the combined plan when a new outline point content is generated
-  const updateCombinedPlan = (
-    outlinePointText: string,
+  // Update section outline deterministically from ordered points + point-content map.
+  const updateCombinedPlan = useCallback((
+    outlinePointId: string,
     content: string,
-    section: 'introduction' | 'main' | 'conclusion'
+    section: SermonSectionKey
   ) => {
-    setCombinedPlan((prev) => {
-      // Create a heading with the outline point text
-      const heading = `## ${outlinePointText}`;
+    const orderedOutlinePoints = outlineLookup.pointsBySection[section] || [];
+    const nextOutlinePointsContentById = {
+      ...generatedContent,
+      [outlinePointId]: content,
+    };
 
-      // Current content of the section
-      const currentSectionContent = prev[section];
-
-      // Check if the heading already exists in the content
-      const headingIndex = currentSectionContent.indexOf(heading);
-
-      if (headingIndex !== -1) {
-        // Find the end of the current content for this heading
-        const nextHeadingIndex = currentSectionContent.indexOf("## ", headingIndex + heading.length);
-
-        // If there's a next heading, replace the content between the headings
-        if (nextHeadingIndex !== -1) {
-          const beforeHeading = currentSectionContent.substring(0, headingIndex + heading.length);
-          const afterNextHeading = currentSectionContent.substring(nextHeadingIndex);
-
-          return {
-            ...prev,
-            [section]: `${beforeHeading}\n\n${content}\n\n${afterNextHeading}`,
-          };
-        } else {
-          // If there's no next heading, replace everything after the current heading
-          return {
-            ...prev,
-            [section]: `${currentSectionContent.substring(0, headingIndex + heading.length)}\n\n${content}`,
-          };
-        }
-      } else {
-        // If the heading doesn't exist yet, append it to the section
-        return {
-          ...prev,
-          [section]: currentSectionContent
-            ? `${currentSectionContent}\n\n${heading}\n\n${content}`
-            : `${heading}\n\n${content}`,
-        };
-      }
+    const nextSectionOutline = buildSectionOutlineMarkdown({
+      orderedOutlinePoints,
+      outlinePointsContentById: nextOutlinePointsContentById,
     });
-  };
+
+    setCombinedPlan((prev) => ({
+      ...prev,
+      [section]: nextSectionOutline,
+    }));
+  }, [generatedContent, outlineLookup.pointsBySection]);
 
   // Save the plan to the server
   // const savePlan = async () => {
@@ -1992,11 +1968,13 @@ export default function PlanPage() {
       // 2. Recalculate the combined section outline text
       // We need to maintain the order of points from the sermon structure
       const allPointsInSection = outlineLookup.pointsBySection[section as SermonSectionKey] || [];
-      const sectionTexts = allPointsInSection.map(point => {
-        const pointContent = point.id === outlinePointId ? content : updatedOutlinePoints[point.id] || "";
-        return `## ${point.text}\n\n${pointContent}`;
+      const combinedText = buildSectionOutlineMarkdown({
+        orderedOutlinePoints: allPointsInSection,
+        outlinePointsContentById: {
+          ...updatedOutlinePoints,
+          [outlinePointId]: content,
+        },
       });
-      const combinedText = sectionTexts.join("\n\n");
 
       // 3. Construct the updated full plan
       const updatedPlan: Plan = {

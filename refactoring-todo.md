@@ -300,12 +300,38 @@ Coverage/tests + green check:
 - Acceptance: deterministic output, all tests green.
 
 ### What was done 6.1:
+- Status: `DONE` (2026-02-27)
+- Replaced fragile heading-index splice logic with deterministic formatter:
+  - Added `frontend/app/(pages)/(private)/sermons/[id]/plan/buildSectionOutlineMarkdown.ts`
+  - Builder now derives section markdown strictly from ordered outline points + `outlinePoints` content map.
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx`:
+  - `updateCombinedPlan` now updates by `outlinePointId` and rebuilds section markdown via deterministic util.
+  - Updated `PlanOutlinePointEditor` flow to call `onUpdateCombinedPlan(outlinePoint.id, ...)`.
+  - `saveSermonPoint` now also uses `buildSectionOutlineMarkdown`, so edit/save and persist paths share one formatter.
+- Added unit tests for formatter:
+  - `frontend/__tests__/pages/buildSectionOutlineMarkdown.test.ts`
+  - Covered:
+    - repeated point titles,
+    - empty content behavior,
+    - strict preservation of outline order.
+- Added integration assertion in:
+  - `frontend/__tests__/pages/sermonPlan.test.tsx`
+  - Validates edit + save payload contains updated section markdown with exactly one heading occurrence for the edited point.
+- Validation passed:
+  - `npx tsc --noEmit`
+  - `npm run test:fast -- 'sermonPlan|buildSectionOutlineMarkdown'`
+  - `npm run test:coverage`
+  - `npm run lint:full`
 
 ### Part 2 — Manual QA
 - Two outline points with similar titles -> update one and verify no accidental overwrite of another.
 - Edit content with `##` inside text -> no corruption of section structure.
 
 ### What was done 6.2:
+- Status: `DONE` (2026-02-27)
+- Verified deterministic formatting with identical titles: created two points named "Intro Point", updated content of the first, and confirmed the second remained untouched.
+- Verified markdown integrity: added `## Subheader Test` inside a point's content and confirmed it renders as a sub-heading within the point without corrupting the overall section structure.
+- Confirmed that the "View mode" in the sermon plan correctly reflects the formatted markdown from the deterministic builder.
 
 ---
 

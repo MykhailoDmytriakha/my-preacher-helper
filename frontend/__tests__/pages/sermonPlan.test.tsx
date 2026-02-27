@@ -449,6 +449,17 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalled();
     });
+
+    const putCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) =>
+      options?.method === 'PUT'
+    );
+    expect(putCall).toBeDefined();
+
+    const requestBody = JSON.parse((putCall?.[1]?.body as string) || "{}");
+    const introOutline = requestBody?.introduction?.outline as string;
+
+    expect(introOutline).toContain('## Intro Point 1\n\nUpdated Intro Content');
+    expect((introOutline.match(/## Intro Point 1/g) || []).length).toBe(1);
   });
 
   it('enters preaching mode with push (not replace) so back() returns to plan', async () => {
