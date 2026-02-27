@@ -57,6 +57,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-27 Outline Lookup Semantics:** When replacing repeated `some/find` scans with memoized lookup maps, preserve original section precedence (`introduction -> main -> conclusion`) for duplicate IDs and lock this with dedicated util tests.
 - **2026-02-27 Copy UX Unification:** When the same copy-to-clipboard flow exists in multiple views, centralize status/timer/toast behavior in a hook and keep button/icon/ARIA rendering in a dedicated component to eliminate state-drift bugs between modes.
 - **2026-02-27 Global CSS Dedup by Variant:** When one page has repeated `style jsx global` blocks across view modes, extract a shared style component with explicit `variant` flags for mode-specific extras to prevent style drift while preserving behavior.
 - **2026-02-27 Import Grouping After Extraction:** When moving page-local constants/types to sibling files, keep explicit blank lines between alias imports (`@/...`) and relative imports (`./...`), and between value/type imports, or `import/order` will fail in lint gate.

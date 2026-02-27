@@ -4,7 +4,7 @@ import { useIsRestoring } from "@tanstack/react-query";
 import { FileText, Key, Lightbulb, List, Maximize2, Minimize2, Pencil, Save, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
@@ -41,6 +41,7 @@ import {
 } from "./constants";
 import PlanCopyButton from "./PlanCopyButton";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
+import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import useCopyFormattedContent from "./useCopyFormattedContent";
 import usePlanViewMode from "./usePlanViewMode";
 
@@ -1490,6 +1491,10 @@ export default function PlanPage() {
   const [preachingDuration, setPreachingDuration] = useState<number | null>(null);
 
   const [preachingTimerState, setPreachingTimerState] = useState<PlanTimerState | null>(null);
+  const outlineLookup = useMemo(
+    () => buildPlanOutlineLookup(sermon),
+    [sermon]
+  );
 
   const handleTimerStateChange = useCallback((timerState: PlanTimerState) => {
     // Helper function to format time
@@ -1642,13 +1647,9 @@ export default function PlanPage() {
   const debouncedSyncHeights = useRef(debounce(syncHeights, 200)).current;
 
   // Helper: find section by outline point id
-  const getSectionByPointId = (outlinePointId: string): 'introduction' | 'main' | 'conclusion' | null => {
-    if (!sermon?.outline) return null;
-    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) return 'introduction';
-    if (sermon.outline.main.some(op => op.id === outlinePointId)) return 'main';
-    if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) return 'conclusion';
-    return null;
-  };
+  const getSectionByPointId = useCallback((outlinePointId: string): SermonSectionKey | null => {
+    return getPointSectionFromLookup(outlineLookup, outlinePointId);
+  }, [outlineLookup]);
 
   // Helper: choose refs storage for section
   const getRefsForSection = (
@@ -1842,20 +1843,8 @@ export default function PlanPage() {
     setGeneratingId(outlinePointId);
 
     try {
-      // Find the outline point in the sermon structure
-      let outlinePoint: SermonPoint | undefined;
-      let section: string | undefined;
-
-      if (sermon.outline?.introduction.some((op) => op.id === outlinePointId)) {
-        outlinePoint = sermon.outline.introduction.find((op) => op.id === outlinePointId);
-        section = "introduction";
-      } else if (sermon.outline?.main.some((op) => op.id === outlinePointId)) {
-        outlinePoint = sermon.outline.main.find((op) => op.id === outlinePointId);
-        section = "main";
-      } else if (sermon.outline?.conclusion.some((op) => op.id === outlinePointId)) {
-        outlinePoint = sermon.outline.conclusion.find((op) => op.id === outlinePointId);
-        section = "conclusion";
-      }
+      const outlinePoint = getPointFromLookup(outlineLookup, outlinePointId);
+      const section = getPointSectionFromLookup(outlineLookup, outlinePointId);
 
       if (!outlinePoint || !section) {
         toast.error(t("errors.outlinePointNotFound"));
@@ -1888,12 +1877,10 @@ export default function PlanPage() {
       }));
 
       // Update the combined plan
-      updateCombinedPlan(outlinePoint.text, data.content, section as 'introduction' | 'main' | 'conclusion');
+      updateCombinedPlan(outlinePoint.text, data.content, section);
 
       // Equalize only this pair after content generation
-      if (section) {
-        syncPairHeights(section as 'introduction' | 'main' | 'conclusion', outlinePointId);
-      }
+      syncPairHeights(section, outlinePointId);
 
       toast.success(t("plan.contentGenerated"));
     } catch (err) {
@@ -2004,7 +1991,7 @@ export default function PlanPage() {
 
       // 2. Recalculate the combined section outline text
       // We need to maintain the order of points from the sermon structure
-      const allPointsInSection = sermon.outline?.[section] || [];
+      const allPointsInSection = outlineLookup.pointsBySection[section as SermonSectionKey] || [];
       const sectionTexts = allPointsInSection.map(point => {
         const pointContent = point.id === outlinePointId ? content : updatedOutlinePoints[point.id] || "";
         return `## ${point.text}\n\n${pointContent}`;
@@ -2086,21 +2073,9 @@ export default function PlanPage() {
   };
 
   // Find outline point by id
-  const findSermonPointById = (outlinePointId: string): SermonPoint | undefined => {
-    if (!sermon || !sermon.outline) return undefined;
-
-    let outlinePoint;
-
-    if (sermon.outline.introduction.some(op => op.id === outlinePointId)) {
-      outlinePoint = sermon.outline.introduction.find(op => op.id === outlinePointId);
-    } else if (sermon.outline.main.some(op => op.id === outlinePointId)) {
-      outlinePoint = sermon.outline.main.find(op => op.id === outlinePointId);
-    } else if (sermon.outline.conclusion.some(op => op.id === outlinePointId)) {
-      outlinePoint = sermon.outline.conclusion.find(op => op.id === outlinePointId);
-    }
-
-    return outlinePoint;
-  };
+  const findSermonPointById = useCallback((outlinePointId: string): SermonPoint | undefined => {
+    return getPointFromLookup(outlineLookup, outlinePointId);
+  }, [outlineLookup]);
 
   const copyFormattedFromElement = useCallback(async (element: HTMLDivElement | null) => {
     if (!element) {

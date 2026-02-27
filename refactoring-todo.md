@@ -240,12 +240,36 @@ Coverage/tests + green check:
 - Acceptance: same results, lower complexity, green suite.
 
 ### What was done 5.1:
+- Status: `DONE` (2026-02-27)
+- Added memoized outline lookup utility:
+  - `frontend/app/(pages)/(private)/sermons/[id]/plan/planOutlineLookup.ts`
+  - Builds:
+    - `byPointId` (`pointId -> { section, outlinePoint }`)
+    - `pointIdsBySection` (`section -> ordered point ids`)
+    - `pointsBySection` (`section -> ordered outline points`)
+- Refactored `frontend/app/(pages)/(private)/sermons/[id]/plan/page.tsx` to use lookup maps instead of repeated O(n) scans:
+  - `getSectionByPointId` now uses lookup access.
+  - `findSermonPointById` now uses lookup access.
+  - `generateSermonPointContent` now resolves point/section via lookup (no repeated `some` + `find` chains).
+  - `saveSermonPoint` now rebuilds section text using ordered `pointsBySection` from lookup.
+- Added unit tests for lookup builder and fallback behavior:
+  - `frontend/__tests__/pages/planOutlineLookup.test.ts`
+- Validation passed:
+  - `npx tsc --noEmit`
+  - `npm run test:fast -- 'sermonPlan|planOutlineLookup'`
+  - `npm run test:coverage`
+  - `npm run lint:full`
 
 ### Part 2 — Manual QA
 - Generate for intro/main/conclusion points; verify correct section updates.
 - Open key fragments modal from any point; verify correct point is resolved.
 
 ### What was done 5.2:
+- Status: `DONE` (2026-02-27)
+- Generated sermon content for points in "Introduction", "Main Body" (Main Part), and "Conclusion".
+- Verified that each generation correctly update its respective section in the markdown preview.
+- Opened the "Key Fragments" modal for multiple points and verified that the modal correctly resolves and displays the title of the active point.
+- Confirmed that no console errors or visual regressions occurred during these interactions.
 
 ---
 
