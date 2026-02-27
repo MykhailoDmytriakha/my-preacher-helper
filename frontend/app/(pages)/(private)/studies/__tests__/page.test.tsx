@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
@@ -39,10 +38,6 @@ jest.mock('@/hooks/useStudyNoteShareLinks', () => ({
   useStudyNoteShareLinks: jest.fn(),
 }));
 
-jest.mock('@/hooks/useMediaQuery', () => ({
-  useMediaQuery: jest.fn(),
-}));
-
 jest.mock('@/hooks/useTags', () => ({
   useTags: jest.fn(),
 }));
@@ -54,7 +49,6 @@ jest.mock('../bibleData', () => ({
 
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;
 const mockUseStudyNoteShareLinks = useStudyNoteShareLinks as jest.MockedFunction<typeof useStudyNoteShareLinks>;
-const mockUseMediaQuery = useMediaQuery as jest.MockedFunction<typeof useMediaQuery>;
 const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
 
 const createMockNote = (overrides: Partial<StudyNote> = {}): StudyNote => ({
@@ -97,7 +91,6 @@ describe('StudiesPage', () => {
   beforeEach(() => {
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
-    mockUseMediaQuery.mockReturnValue(false); // Default to desktop view
     mockUseTags.mockReturnValue({
       tags: { requiredTags: [], customTags: [] },
       requiredTags: [],

@@ -104,12 +104,6 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock components
-jest.mock('@/components/series/SermonInSeriesCard', () => {
-  return function MockSermonInSeriesCard() {
-    return <div data-testid="sermon-in-series-card">Sermon Card</div>;
-  };
-});
-
 jest.mock('@/components/series/EditSeriesModal', () => {
   return function MockEditSeriesModal({ showEditModal }: { showEditModal: boolean }) {
     return showEditModal ? <div data-testid="edit-series-modal">Edit Modal</div> : null;

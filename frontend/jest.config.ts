@@ -59,6 +59,22 @@ const config: Config = {
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
   ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    // Types-only contracts: no runtime behavior to validate via coverage.
+    '<rootDir>/app/models/models\\.ts$',
+    '<rootDir>/app/models/dashboardOptimistic\\.ts$',
+    '<rootDir>/app/types/TimerProps\\.ts$',
+    '<rootDir>/app/api/clients/planTypes\\.ts$',
+    '<rootDir>/app/\\(pages\\)/\\(private\\)/sermons/\\[id\\]/plan/types\\.ts$',
+    // Firebase bootstrap modules are env-driven startup glue, not useful line-coverage targets.
+    '<rootDir>/app/config/firebaseConfig\\.ts$',
+    '<rootDir>/app/config/firebaseAdminConfig\\.ts$',
+    // Next.js route scaffolding is framework shell code; direct coverage is low-signal.
+    '<rootDir>/app/layout\\.tsx$',
+    '<rootDir>/app/.+/layout\\.tsx$',
+    '<rootDir>/app/.+/(loading|template|error|not-found)\\.tsx$',
+  ],
   collectCoverageFrom: [
     'app/**/*.{ts,tsx}', // Include all TS/TSX files in the app directory
     'locales/**/*.{ts,tsx}', // Include files in locales
@@ -70,13 +86,20 @@ const config: Config = {
     '!app/models/models.ts', // Types-only file; no runtime coverage
     '!app/models/dashboardOptimistic.ts', // Types-only file; no runtime coverage
     '!app/types/TimerProps.ts', // Types-only file; no runtime coverage
-    '!app/types/TimerState.ts', // Types-only file; no runtime coverage
-    '!<rootDir>/app/layout.tsx', // Often excluded as it's hard to test directly
+    '!app/api/clients/planTypes.ts', // Types-only AI client contracts
+    '!app/(pages)/(private)/sermons/[id]/plan/types.ts', // Types-only plan view contracts
+    '!app/config/firebaseConfig.ts', // Bootstrap config; env/init glue
+    '!app/config/firebaseAdminConfig.ts', // Bootstrap config; env/init glue
+    '!app/layout.tsx', // App shell wrapper; low-signal coverage target
+    '!app/**/layout.tsx', // Route shell wrappers; framework scaffolding
+    '!app/**/loading.tsx', // Framework loading scaffolding
+    '!app/**/template.tsx', // Framework template scaffolding
+    '!app/**/error.tsx', // Framework error scaffolding
+    '!app/**/not-found.tsx', // Framework not-found scaffolding
     '!<rootDir>/app/globals.css', // CSS files don't have coverage
-    // Add any other specific files/directories you want to exclude
   ],
   // Optional: Add more reporters for different output formats
-  coverageReporters: ['text', 'text-summary', 'lcov', 'html'],
+  coverageReporters: ['text', 'text-summary', 'json-summary', 'lcov', 'html'],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
