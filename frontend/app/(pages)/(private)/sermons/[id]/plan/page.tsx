@@ -566,11 +566,11 @@ export default function PlanPage() {
     const record = existingRecord?.operation === "update"
       ? existingRecord
       : thoughtSync.createRecord({
-          entityId: thoughtId,
-          operation: "update",
-          entity: updatedThought,
-          snapshot,
-        });
+        entityId: thoughtId,
+        operation: "update",
+        entity: updatedThought,
+        snapshot,
+      });
 
     if (!record) {
       return updatedThought;
@@ -855,19 +855,119 @@ export default function PlanPage() {
     );
   }
 
-  // Check if all thoughts are assigned to outline points
-  if (!areAllThoughtsAssigned(displaySermon ?? sermon)) {
+  // Guard: no outline points defined at all — user must create structure first
+  const hasOutlinePoints = sermon.outline && (
+    (sermon.outline.introduction?.length ?? 0) > 0 ||
+    (sermon.outline.main?.length ?? 0) > 0 ||
+    (sermon.outline.conclusion?.length ?? 0) > 0
+  );
+
+  if (!hasOutlinePoints) {
     return (
       <div className="p-8 text-center max-w-2xl mx-auto">
         <div className="mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t("plan.noOutlineStructure")}</h1>
+          <p className="text-gray-600 dark:text-gray-300 text-lg">{t("plan.createStructureFirst")}</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Button
+            onClick={() => router.push(`/sermons/${params.id}/structure`)}
+            variant="structure"
+            className="px-6 py-3 text-base"
+          >
+            {t("plan.goToStructure")}
+          </Button>
+          <Button
+            onClick={() => router.push(`/sermons/${params.id}`)}
+            variant="default"
+            className="px-6 py-3 text-base"
+          >
+            {t("actions.backToSermon")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if all thoughts are assigned to outline points
+  if (!areAllThoughtsAssigned(displaySermon ?? sermon)) {
+    const unassignedThoughts = (displaySermon ?? sermon).thoughts.filter(
+      (thought) => !thought.outlinePointId
+    );
+    const VISIBLE_CARD_LIMIT = 6;
+    const visibleThoughts = unassignedThoughts.slice(0, VISIBLE_CARD_LIMIT);
+    const hiddenCount = unassignedThoughts.length - VISIBLE_CARD_LIMIT;
+
+    // Minimal tag badge — mirrors the section colours used across the app
+    const getSectionTagStyle = (tags: string[]): { label: string; className: string } | null => {
+      const clean = tags.map(tg => tg.toLowerCase());
+      if (clean.some(tg => tg.includes('intro')))
+        return { label: 'Introduction', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' };
+      if (clean.some(tg => tg === 'main' || tg.includes('main')))
+        return { label: 'Main', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' };
+      if (clean.some(tg => tg.includes('conclu')))
+        return { label: 'Conclusion', className: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' };
+      return null;
+    };
+
+    return (
+      <div className="p-8 text-center max-w-3xl mx-auto">
+        <div className="mb-6">
           <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t("plan.thoughtsNotAssigned")}</h1>
-          <p className="text-gray-600 dark:text-gray-300 text-lg">{t("plan.assignThoughtsFirst")}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{t("plan.thoughtsNotAssigned")}</h1>
+          <p className="text-gray-500 dark:text-gray-400">{t("plan.assignThoughtsFirst")}</p>
         </div>
+
+        {unassignedThoughts.length > 0 && (
+          <div className="mb-7">
+            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-3">
+              {t("plan.unassignedThoughtsList")}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+              {visibleThoughts.map((thought) => {
+                const tagBadge = getSectionTagStyle(thought.tags ?? []);
+                const dateStr = thought.date
+                  ? new Date(thought.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+                  : null;
+                return (
+                  <div
+                    key={thought.id}
+                    className="relative p-4 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      {dateStr && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">{dateStr}</span>
+                      )}
+                      {tagBadge && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tagBadge.className}`}>
+                          {tagBadge.label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-3">
+                      {thought.text}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            {hiddenCount > 0 && (
+              <p className="mt-3 text-sm text-gray-400 dark:text-gray-500">
+                +{hiddenCount} {t("plan.unassignedThoughtsMore", "more")}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             onClick={() => router.push(`/sermons/${params.id}`)}
@@ -887,6 +987,9 @@ export default function PlanPage() {
       </div>
     );
   }
+
+
+
 
   if (isPlanImmersive) {
     return (

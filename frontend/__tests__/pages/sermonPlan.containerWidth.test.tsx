@@ -40,11 +40,15 @@ jest.mock('@/services/sermon.service', () => ({
     title: 'T',
     verse: 'V',
     thoughts: [],
-    outline: { introduction: [], main: [], conclusion: [] },
+    outline: {
+      introduction: [{ id: 'intro-1', text: 'Intro Point' }],
+      main: [],
+      conclusion: []
+    },
   })),
 }));
-jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div/>);
-jest.mock('@/components/ExportButtons', () => () => <div/>);
+jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div />);
+jest.mock('@/components/ExportButtons', () => () => <div />);
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
