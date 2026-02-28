@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import ThoughtCard from '@components/ThoughtCard';
 
 import type { Thought, SermonOutline } from '@/models/models';
+import type { OptimisticEntitySyncState } from '@/models/optimisticEntities';
 
 interface ThoughtListProps {
   filteredThoughts: Thought[];
@@ -14,6 +15,9 @@ interface ThoughtListProps {
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
+  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string) => Promise<void> | void;
+  syncStatesById?: Record<string, OptimisticEntitySyncState>;
+  onRetrySync?: (thoughtId: string) => void;
   resetFilters: () => void;
   isReadOnly?: boolean;
 }
@@ -27,6 +31,9 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
   onDelete,
   onEditStart,
   onThoughtUpdate,
+  onThoughtOutlinePointChange,
+  syncStatesById = {},
+  onRetrySync,
   resetFilters,
   isReadOnly = false,
 }) => {
@@ -77,6 +84,9 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
           onDelete={() => onDelete(thought.id)} // Pass only thought ID
           onEditStart={() => onEditStart(thought, index)} // Pass thought and index
           onThoughtUpdate={onThoughtUpdate}
+          onThoughtOutlinePointChange={onThoughtOutlinePointChange}
+          syncState={syncStatesById[thought.id]}
+          onRetrySync={onRetrySync}
           isReadOnly={isReadOnly}
         />
       ))}

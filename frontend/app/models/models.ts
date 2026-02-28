@@ -311,6 +311,7 @@ export interface ThoughtInStructure {
   outlinePointId?: string | null;
   position?: number;
   syncStatus?: 'pending' | 'error' | 'success';
+  syncOperation?: 'create' | 'update' | 'delete';
   syncExpiresAt?: string;
   syncLastError?: string;
   syncSuccessAt?: string;

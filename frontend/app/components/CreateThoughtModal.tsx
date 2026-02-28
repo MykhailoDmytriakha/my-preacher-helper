@@ -9,7 +9,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { Thought, SermonOutline } from '@/models/models';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
-import { transcribeThoughtAudio, createManualThought } from '@services/thought.service';
+import { transcribeThoughtAudio } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from '@utils/tagUtils';
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
@@ -19,8 +19,7 @@ import '@locales/i18n';
 interface CreateThoughtModalProps {
   isOpen: boolean;
   onClose: () => void;
-  sermonId: string;
-  onNewThought: (thought: Thought) => void;
+  onCreateThought: (thought: Omit<Thought, 'id'>) => Promise<void> | void;
   allowedTags?: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   disabled?: boolean;
@@ -29,8 +28,7 @@ interface CreateThoughtModalProps {
 export default function CreateThoughtModal({
   isOpen,
   onClose,
-  sermonId,
-  onNewThought,
+  onCreateThought,
   allowedTags = [],
   sermonOutline,
   disabled = false,
@@ -86,8 +84,7 @@ export default function CreateThoughtModal({
     const trimmedText = text.trim();
     if (!trimmedText) return;
 
-    const newThought: Thought = {
-      id: '',
+    const newThought: Omit<Thought, 'id'> = {
       text: trimmedText,
       tags,
       date: new Date().toISOString(),
@@ -96,8 +93,7 @@ export default function CreateThoughtModal({
 
     try {
       setIsSubmitting(true);
-      const saved = await createManualThought(sermonId, newThought);
-      onNewThought(saved);
+      await onCreateThought(newThought);
       toast.success(t('manualThought.addedSuccess'));
       resetAndClose();
     } catch (error) {

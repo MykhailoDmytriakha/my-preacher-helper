@@ -63,6 +63,7 @@ const config: Config = {
     '/node_modules/',
     // Types-only contracts: no runtime behavior to validate via coverage.
     '<rootDir>/app/models/models\\.ts$',
+    '<rootDir>/app/models/optimisticEntities\\.ts$',
     '<rootDir>/app/models/dashboardOptimistic\\.ts$',
     '<rootDir>/app/types/TimerProps\\.ts$',
     '<rootDir>/app/api/clients/planTypes\\.ts$',
@@ -84,6 +85,7 @@ const config: Config = {
     '!app/**/__mocks__/**', // Exclude __mocks__ directories
     '!**/node_modules/**', // Standard exclusion
     '!app/models/models.ts', // Types-only file; no runtime coverage
+    '!app/models/optimisticEntities.ts', // Types-only optimistic entity contracts
     '!app/models/dashboardOptimistic.ts', // Types-only file; no runtime coverage
     '!app/types/TimerProps.ts', // Types-only file; no runtime coverage
     '!app/api/clients/planTypes.ts', // Types-only AI client contracts

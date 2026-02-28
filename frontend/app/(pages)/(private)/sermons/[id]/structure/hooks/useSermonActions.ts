@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -15,6 +15,8 @@ import { buildStructureFromContainers, buildItemForUI, findOutlinePoint, isLocal
 import type { PendingThoughtInput } from "./usePendingThoughts";
 
 const FAILED_TO_ADD_THOUGHT_KEY = 'errors.failedToAddThought';
+const SYNC_TTL_MS = 30 * 60 * 1000;
+const SYNC_SUCCESS_MS = 3500;
 
 interface UseSermonActionsProps {
     sermon: Sermon | null;
@@ -25,13 +27,14 @@ interface UseSermonActionsProps {
     allowedTags: { name: string; color: string }[];
     debouncedSaveThought: (sermonId: string, thought: Thought) => void;
     debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
+    retryThoughtSave?: (thoughtId: string) => Promise<void>;
     pendingActions: {
         createPendingThought: (input: PendingThoughtInput) => { localId: string } | null;
         updatePendingThought: (localId: string, input: Partial<PendingThoughtInput>) => void;
         markPendingStatus: (localId: string, status: 'pending' | 'error' | 'sending', options?: { error?: string; resetExpiry?: boolean }) => void;
         removePendingThought: (localId: string, options?: { removeFromContainers?: boolean }) => void;
         replacePendingThought: (localId: string, newItem: Item) => void;
-        updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string }) => void;
+        updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string; operation?: 'create' | 'update' | 'delete' }) => void;
         getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string } | undefined;
     };
 }
@@ -45,12 +48,61 @@ export function useSermonActions({
     allowedTags,
     debouncedSaveThought,
     debouncedSaveStructure,
+    retryThoughtSave,
     pendingActions,
 }: UseSermonActionsProps) {
     const { t } = useTranslation();
     const isOnline = useOnlineStatus();
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
+    const sermonRef = useRef(sermon);
+    const retryThoughtActionsRef = useRef<Record<string, () => Promise<void>>>({});
+    const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
+    const thoughtUpdateVersionRef = useRef<Record<string, number>>({});
+
+    useEffect(() => {
+        sermonRef.current = sermon;
+    }, [sermon]);
+
+    useEffect(() => {
+        retryThoughtActionsRef.current = {};
+        latestThoughtDraftsRef.current = {};
+        thoughtUpdateVersionRef.current = {};
+    }, [sermon?.id]);
+
+    const buildSyncExpiresAt = useCallback(() => {
+        return new Date(Date.now() + SYNC_TTL_MS).toISOString();
+    }, []);
+
+    const scheduleSyncClear = useCallback((itemId: string) => {
+        window.setTimeout(() => {
+            pendingActions.updateItemSyncStatus(itemId);
+        }, SYNC_SUCCESS_MS);
+    }, [pendingActions]);
+
+    const updateItemInContainers = useCallback((itemId: string, updater: (item: Item) => Item) => {
+        setContainers((prev) => {
+            const next = { ...prev };
+            let updated = false;
+
+            Object.keys(next).forEach((key) => {
+                const items = next[key] || [];
+                const index = items.findIndex((item) => item.id === itemId);
+                if (index === -1) return;
+                const updatedItems = [...items];
+                updatedItems[index] = updater(items[index]);
+                next[key] = updatedItems;
+                updated = true;
+            });
+
+            if (updated) {
+                containersRef.current = next;
+                return next;
+            }
+
+            return prev;
+        });
+    }, [containersRef, setContainers]);
 
     const handleEdit = useCallback((item: Item) => {
         setEditingItem(item);
@@ -236,41 +288,161 @@ export function useSermonActions({
             tags: [...(editingItem.requiredTags || []), ...updatedTags],
             outlinePointId: outlinePointId
         };
+        const syncExpiresAt = buildSyncExpiresAt();
+        const outlinePoint = findOutlinePoint(outlinePointId, sermon);
+        const nextVersion = (thoughtUpdateVersionRef.current[updatedItem.id] ?? 0) + 1;
 
-        try {
-            const updatedThought = await updateThought(sermon.id, updatedItem);
-            const updatedThoughts = sermon.thoughts.map((thought) =>
-                thought.id === updatedItem.id ? updatedThought : thought
-            );
-            setSermon((prev) => prev ? { ...prev, thoughts: updatedThoughts } : null);
+        latestThoughtDraftsRef.current[updatedItem.id] = updatedItem;
+        thoughtUpdateVersionRef.current[updatedItem.id] = nextVersion;
 
-            const outlinePoint = findOutlinePoint(outlinePointId, sermon);
+        setSermon((prev) => prev ? {
+            ...prev,
+            thoughts: prev.thoughts.map((thought) =>
+                thought.id === updatedItem.id ? updatedItem : thought
+            ),
+        } : null);
 
-            const newContainers = Object.keys(containers).reduce((acc, key) => {
-                acc[key] = (containers[key] || []).map((item) =>
-                    item.id === updatedItem.id
-                        ? {
-                            ...item,
-                            content: updatedText,
-                            customTagNames: updatedTags.map((tagName) => ({
-                                name: tagName,
-                                color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
-                            })),
-                            outlinePointId,
-                            outlinePoint
-                        }
-                        : item
+        updateItemInContainers(updatedItem.id, (item) => ({
+            ...item,
+            content: updatedText,
+            customTagNames: updatedTags.map((tagName) => ({
+                name: tagName,
+                color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+            })),
+            outlinePointId,
+            outlinePoint,
+            syncStatus: 'pending',
+            syncOperation: 'update',
+            syncExpiresAt,
+            syncLastError: undefined,
+        }));
+
+        const executeUpdate = async (thoughtId: string, requestVersion: number) => {
+            const currentSermon = sermonRef.current;
+            const latestThought = latestThoughtDraftsRef.current[thoughtId];
+            if (!currentSermon || !latestThought) return;
+
+            pendingActions.updateItemSyncStatus(thoughtId, 'pending', {
+                expiresAt: buildSyncExpiresAt(),
+                operation: 'update',
+            });
+
+            try {
+                const updatedThought = await updateThought(currentSermon.id, latestThought);
+                if (thoughtUpdateVersionRef.current[thoughtId] !== requestVersion) {
+                    return;
+                }
+
+                const successAt = new Date().toISOString();
+                const latestOutlinePoint = findOutlinePoint(
+                    updatedThought.outlinePointId ?? undefined,
+                    sermonRef.current ?? currentSermon
                 );
-                return acc;
-            }, {} as Record<string, Item[]>);
 
-            setContainers(newContainers);
-        } catch (error) {
-            console.error("Error updating thought:", error);
-        } finally {
-            handleCloseEdit();
-        }
+                setSermon((prev) => prev ? {
+                    ...prev,
+                    thoughts: prev.thoughts.map((thought) =>
+                        thought.id === updatedThought.id ? updatedThought : thought
+                    ),
+                } : null);
+
+                updateItemInContainers(updatedThought.id, (item) => ({
+                    ...item,
+                    content: updatedThought.text,
+                    customTagNames: updatedThought.tags
+                        .filter((tagName) => !item.requiredTags?.includes(tagName))
+                        .map((tagName) => ({
+                            name: tagName,
+                            color: allowedTags.find((tag) => tag.name === tagName)?.color || "#4c51bf",
+                        })),
+                    outlinePointId: updatedThought.outlinePointId,
+                    outlinePoint: latestOutlinePoint,
+                }));
+                pendingActions.updateItemSyncStatus(updatedThought.id, 'success', {
+                    successAt,
+                    operation: 'update',
+                });
+
+                delete retryThoughtActionsRef.current[thoughtId];
+                delete latestThoughtDraftsRef.current[thoughtId];
+                delete thoughtUpdateVersionRef.current[thoughtId];
+                scheduleSyncClear(thoughtId);
+            } catch (error) {
+                if (thoughtUpdateVersionRef.current[thoughtId] !== requestVersion) {
+                    return;
+                }
+                console.error("Error updating thought:", error);
+                pendingActions.updateItemSyncStatus(thoughtId, 'error', {
+                    expiresAt: buildSyncExpiresAt(),
+                    lastError: t('errors.failedToSaveThought'),
+                    operation: 'update',
+                });
+            }
+        };
+
+        retryThoughtActionsRef.current[updatedItem.id] = async () => {
+            const latestVersion = thoughtUpdateVersionRef.current[updatedItem.id];
+            if (!latestVersion) return;
+            await executeUpdate(updatedItem.id, latestVersion);
+        };
+        void executeUpdate(updatedItem.id, nextVersion);
     };
+
+    const handleDeleteThought = useCallback(async (thoughtId: string) => {
+        if (!sermonRef.current) return;
+
+        pendingActions.updateItemSyncStatus(thoughtId, 'pending', {
+            expiresAt: buildSyncExpiresAt(),
+            operation: 'delete',
+        });
+
+        const executeDelete = async () => {
+            const currentSermon = sermonRef.current;
+            const thoughtToDelete = currentSermon?.thoughts.find((thought) => thought.id === thoughtId);
+            if (!currentSermon || !thoughtToDelete) return;
+
+            try {
+                await deleteThought(currentSermon.id, thoughtToDelete);
+
+                const newContainers = Object.keys(containersRef.current).reduce((acc, key) => {
+                    acc[key] = (containersRef.current[key] || []).filter((item) => item.id !== thoughtId);
+                    return acc;
+                }, {} as Record<string, Item[]>);
+
+                const newStructure: ThoughtsBySection = {
+                    introduction: (newContainers.introduction || []).map((it) => it.id),
+                    main: (newContainers.main || []).map((it) => it.id),
+                    conclusion: (newContainers.conclusion || []).map((it) => it.id),
+                    ambiguous: (newContainers.ambiguous || []).map((it) => it.id),
+                };
+
+                setContainers(newContainers);
+                containersRef.current = newContainers;
+                setSermon((prev) => prev ? {
+                    ...prev,
+                    thoughts: prev.thoughts.filter((thought) => thought.id !== thoughtId),
+                    structure: newStructure,
+                    thoughtsBySection: newStructure,
+                } : null);
+
+                await updateStructure(currentSermon.id, newStructure);
+
+                delete retryThoughtActionsRef.current[thoughtId];
+                toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
+            } catch (error) {
+                console.error("Error deleting empty thought:", error);
+                pendingActions.updateItemSyncStatus(thoughtId, 'error', {
+                    expiresAt: buildSyncExpiresAt(),
+                    lastError: t('errors.deletingError') || "Failed to delete thought.",
+                    operation: 'delete',
+                });
+                toast.error(t('errors.deletingError') || "Failed to delete thought.");
+            }
+        };
+
+        retryThoughtActionsRef.current[thoughtId] = executeDelete;
+        void executeDelete();
+    }, [buildSyncExpiresAt, containersRef, pendingActions, setContainers, setSermon, t]);
 
     const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
         if (!sermon) return;
@@ -294,41 +466,9 @@ export function useSermonActions({
             }
 
             // Existing thought -> Delete
-            try {
-                const thoughtToDelete = sermon.thoughts.find(t => t.id === editingItem.id);
-                if (!thoughtToDelete) {
-                    handleCloseEdit();
-                    return;
-                }
-
-                await deleteThought(sermon.id, thoughtToDelete);
-
-                // Update local state
-                const updatedThoughts = sermon.thoughts.filter(t => t.id !== editingItem.id);
-                const newContainers = Object.keys(containers).reduce((acc, key) => {
-                    acc[key] = (containers[key] || []).filter(item => item.id !== editingItem.id);
-                    return acc;
-                }, {} as Record<string, Item[]>);
-
-                setContainers(newContainers);
-
-                const newStructure: ThoughtsBySection = {
-                    introduction: (newContainers.introduction || []).map(it => it.id),
-                    main: (newContainers.main || []).map(it => it.id),
-                    conclusion: (newContainers.conclusion || []).map(it => it.id),
-                    ambiguous: (newContainers.ambiguous || []).map(it => it.id),
-                };
-
-                setSermon(prev => prev ? { ...prev, thoughts: updatedThoughts, structure: newStructure, thoughtsBySection: newStructure } : null);
-                await updateStructure(sermon.id, newStructure);
-
-                toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
-            } catch (error) {
-                console.error("Error deleting empty thought:", error);
-                toast.error(t('errors.deletingError') || "Failed to delete thought.");
-            } finally {
-                handleCloseEdit();
-            }
+            const thoughtId = editingItem.id;
+            await handleDeleteThought(thoughtId);
+            handleCloseEdit();
             return;
         }
 
@@ -363,20 +503,33 @@ export function useSermonActions({
             handleCloseEdit();
         } else {
             await handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId);
+            handleCloseEdit();
         }
     };
 
     const handleRetryPendingThought = useCallback(async (localId: string) => {
         const pending = pendingActions.getPendingById(localId);
-        if (!pending) return;
-        await submitPendingThought({
-            localId,
-            sectionId: pending.sectionId,
-            text: pending.text,
-            tags: pending.tags,
-            outlinePointId: pending.outlinePointId,
-        });
-    }, [pendingActions, submitPendingThought]);
+        if (pending) {
+            await submitPendingThought({
+                localId,
+                sectionId: pending.sectionId,
+                text: pending.text,
+                tags: pending.tags,
+                outlinePointId: pending.outlinePointId,
+            });
+            return;
+        }
+
+        const retryAction = retryThoughtActionsRef.current[localId];
+        if (retryAction) {
+            await retryAction();
+            return;
+        }
+
+        if (retryThoughtSave) {
+            await retryThoughtSave(localId);
+        }
+    }, [pendingActions, retryThoughtSave, submitPendingThought]);
 
     const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
         if (!sermon) return;
@@ -430,6 +583,7 @@ export function useSermonActions({
         handleCloseEdit,
         handleAddThoughtToSection,
         handleSaveEdit,
+        handleDeleteThought,
         handleMoveToAmbiguous,
         handleRetryPendingThought,
     };

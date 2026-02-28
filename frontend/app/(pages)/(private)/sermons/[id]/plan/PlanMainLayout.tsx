@@ -574,7 +574,7 @@ export interface PlanMainLayoutProps {
   modalSermonPointId: string | null;
   setModalSermonPointId: React.Dispatch<React.SetStateAction<string | null>>;
   findSermonPointById: (outlinePointId: string) => SermonPoint | undefined;
-  onThoughtUpdate: (updatedThought: Thought) => void;
+  onThoughtSave: (updatedThought: Thought) => Promise<Thought | void>;
   getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
   onGenerate: (outlinePointId: string) => Promise<void>;
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
@@ -616,7 +616,7 @@ export default function PlanMainLayout({
   modalSermonPointId,
   setModalSermonPointId,
   findSermonPointById,
-  onThoughtUpdate,
+  onThoughtSave,
   getThoughtsForSermonPoint,
   onGenerate,
   onSaveSermonPoint,
@@ -772,8 +772,7 @@ export default function PlanMainLayout({
                 onClose={() => setModalSermonPointId(null)}
                 outlinePoint={outlinePoint}
                 thoughts={getThoughtsForSermonPoint(modalSermonPointId)}
-                sermonId={sermonId}
-                onThoughtUpdate={onThoughtUpdate}
+                onThoughtSave={onThoughtSave}
               />
             );
           })()}

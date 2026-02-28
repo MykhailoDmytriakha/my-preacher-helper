@@ -13,6 +13,7 @@ import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
 
 import type { BrainstormSuggestion, SermonOutline, Thought } from "@/models/models";
+import type { OptimisticEntitySyncState } from "@/models/optimisticEntities";
 import type { SortOrder, StructureFilter, ViewFilter } from "@hooks/useThoughtFiltering";
 import type { Dispatch, Ref, RefObject, SetStateAction } from "react";
 
@@ -46,6 +47,9 @@ interface ClassicThoughtsPanelProps {
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate: (updatedThought: Thought) => void;
+  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string) => Promise<void> | void;
+  syncStatesById?: Record<string, OptimisticEntitySyncState>;
+  onRetrySync?: (thoughtId: string) => void;
   isReadOnly: boolean;
 }
 
@@ -170,6 +174,9 @@ export default function ClassicThoughtsPanel({
   onDelete,
   onEditStart,
   onThoughtUpdate,
+  onThoughtOutlinePointChange,
+  syncStatesById,
+  onRetrySync,
   isReadOnly,
 }: ClassicThoughtsPanelProps) {
   const { t } = useTranslation();
@@ -320,6 +327,9 @@ export default function ClassicThoughtsPanel({
             onDelete={onDelete}
             onEditStart={onEditStart}
             onThoughtUpdate={onThoughtUpdate}
+            onThoughtOutlinePointChange={onThoughtOutlinePointChange}
+            syncStatesById={syncStatesById}
+            onRetrySync={onRetrySync}
             resetFilters={resetFilters}
             isReadOnly={isReadOnly}
           />

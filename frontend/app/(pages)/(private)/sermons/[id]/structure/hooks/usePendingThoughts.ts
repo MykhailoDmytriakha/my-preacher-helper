@@ -1,14 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
-import { Item, Sermon } from '@/models/models';
-import { buildLocalThoughtId, loadPendingThoughts, savePendingThoughts } from '@/utils/pendingThoughtsStore';
-import { getCanonicalTagForSection } from '@/utils/tagUtils';
+import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
+import { Item, Sermon } from "@/models/models";
+import {
+  buildLocalThoughtId,
+  LOCAL_THOUGHT_PREFIX,
+  loadPendingThoughts,
+  PendingThoughtEntity,
+  PendingThoughtRecord,
+  PendingThoughtSection,
+  PendingThoughtStatus,
+  PENDING_THOUGHT_ENTITY_TYPE,
+  savePendingThoughts,
+} from "@/utils/pendingThoughtsStore";
+import { getCanonicalTagForSection } from "@/utils/tagUtils";
 
-import { buildItemForUI, findOutlinePoint, isLocalThoughtId } from '../utils/structure';
+import { buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
 
-import type { PendingThoughtRecord, PendingThoughtSection, PendingThoughtStatus } from '@/utils/pendingThoughtsStore';
+import type { OptimisticEntityRecord } from "@/models/optimisticEntities";
 
 const PENDING_TTL_MS = 30 * 60 * 1000;
 
@@ -28,6 +39,44 @@ interface UsePendingThoughtsParams {
   containers: Record<string, Item[]>;
 }
 
+const toOptimisticRecord = (
+  record: PendingThoughtRecord
+): OptimisticEntityRecord<PendingThoughtEntity> => ({
+  localId: record.localId,
+  entityType: PENDING_THOUGHT_ENTITY_TYPE,
+  scopeId: record.sermonId,
+  entityId: record.localId,
+  operation: "create",
+  status: record.status,
+  entity: {
+    id: record.localId,
+    sectionId: record.sectionId,
+    text: record.text,
+    tags: record.tags,
+    outlinePointId: record.outlinePointId,
+  },
+  createdAt: record.createdAt,
+  lastAttemptAt: record.lastAttemptAt,
+  expiresAt: record.expiresAt,
+  lastError: record.lastError,
+});
+
+const toPendingThoughtRecord = (
+  record: OptimisticEntityRecord<PendingThoughtEntity>
+): PendingThoughtRecord => ({
+  localId: record.entityId,
+  sermonId: record.scopeId,
+  sectionId: record.entity.sectionId,
+  text: record.entity.text,
+  tags: record.entity.tags,
+  outlinePointId: record.entity.outlinePointId,
+  createdAt: record.createdAt,
+  lastAttemptAt: record.lastAttemptAt,
+  expiresAt: record.expiresAt,
+  status: record.status,
+  lastError: record.lastError,
+});
+
 export const usePendingThoughts = ({
   sermonId,
   sermon,
@@ -37,25 +86,41 @@ export const usePendingThoughts = ({
   containers,
 }: UsePendingThoughtsParams) => {
   const { t } = useTranslation();
-  const [pendingThoughts, setPendingThoughts] = useState<PendingThoughtRecord[]>([]);
+  const loadRecords = useCallback(async (_entityType: string, scopeId: string) => {
+    const items = await loadPendingThoughts(scopeId);
+    return items.map(toOptimisticRecord);
+  }, []);
+
+  const saveRecords = useCallback(
+    async (
+      _entityType: string,
+      scopeId: string,
+      records: OptimisticEntityRecord<PendingThoughtEntity>[]
+    ) => {
+      await savePendingThoughts(scopeId, records.map(toPendingThoughtRecord));
+    },
+    []
+  );
+
+  const pendingSync = useOptimisticEntitySync<PendingThoughtEntity>({
+    entityType: PENDING_THOUGHT_ENTITY_TYPE,
+    scopeId: sermonId,
+    ttlMs: PENDING_TTL_MS,
+    localIdPrefix: LOCAL_THOUGHT_PREFIX,
+    persistence: {
+      loadRecords,
+      saveRecords,
+    },
+  });
+  const pendingThoughts = useMemo(
+    () => pendingSync.records.map(toPendingThoughtRecord),
+    [pendingSync.records]
+  );
   const pendingRef = useRef<PendingThoughtRecord[]>(pendingThoughts);
 
   useEffect(() => {
     pendingRef.current = pendingThoughts;
   }, [pendingThoughts]);
-
-  const persistPending = useCallback((items: PendingThoughtRecord[]) => {
-    if (!sermonId) return;
-    void savePendingThoughts(sermonId, items);
-  }, [sermonId]);
-
-  const updatePending = useCallback((updater: (prev: PendingThoughtRecord[]) => PendingThoughtRecord[]) => {
-    setPendingThoughts((prev) => {
-      const next = updater(prev);
-      persistPending(next);
-      return next;
-    });
-  }, [persistPending]);
 
   const buildPendingItem = useCallback((pending: PendingThoughtRecord): Item => {
     const outlinePoint = findOutlinePoint(pending.outlinePointId, sermon);
@@ -72,7 +137,7 @@ export const usePendingThoughts = ({
 
     return {
       ...item,
-      syncStatus: pending.status === 'sending' ? 'pending' : pending.status,
+      syncStatus: pending.status === "sending" ? "pending" : pending.status,
       syncExpiresAt: pending.expiresAt,
       syncLastError: pending.lastError,
     };
@@ -100,7 +165,7 @@ export const usePendingThoughts = ({
       };
 
       const removeFromOtherSections = (current: Record<string, Item[]>) => {
-        const sections = ['introduction', 'main', 'conclusion', 'ambiguous'];
+        const sections = ["introduction", "main", "conclusion", "ambiguous"];
         sections.forEach((sec) => {
           if (sec === section) return;
           if (!current[sec]) return;
@@ -174,7 +239,7 @@ export const usePendingThoughts = ({
     });
   }, [containersRef, setContainers]);
 
-  const updateItemSyncStatus = useCallback((itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string }) => {
+  const updateItemSyncStatus = useCallback((itemId: string, status?: "pending" | "error" | "success", meta?: { expiresAt?: string; lastError?: string; successAt?: string; operation?: "create" | "update" | "delete" }) => {
     setContainers((prev) => {
       const next = { ...prev };
       let updated = false;
@@ -185,11 +250,13 @@ export const usePendingThoughts = ({
         const updatedItem: Item = { ...items[index] };
         if (status) {
           updatedItem.syncStatus = status;
+          updatedItem.syncOperation = meta?.operation ?? updatedItem.syncOperation;
           updatedItem.syncExpiresAt = meta?.expiresAt ?? updatedItem.syncExpiresAt;
           updatedItem.syncLastError = meta?.lastError;
           updatedItem.syncSuccessAt = meta?.successAt ?? updatedItem.syncSuccessAt;
         } else {
           delete updatedItem.syncStatus;
+          delete updatedItem.syncOperation;
           delete updatedItem.syncExpiresAt;
           delete updatedItem.syncLastError;
           delete updatedItem.syncSuccessAt;
@@ -214,89 +281,74 @@ export const usePendingThoughts = ({
 
   const createPendingThought = useCallback((input: PendingThoughtInput): PendingThoughtRecord | null => {
     if (!sermonId) return null;
-    const now = new Date();
-    const record: PendingThoughtRecord = {
-      localId: buildLocalThoughtId(),
-      sermonId,
-      sectionId: input.sectionId,
-      text: input.text,
-      tags: input.tags,
-      outlinePointId: input.outlinePointId,
-      createdAt: now.toISOString(),
-      lastAttemptAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + PENDING_TTL_MS).toISOString(),
-      status: 'pending',
-    };
 
-    updatePending((prev) => [...prev, record]);
-    upsertPendingInContainers(record);
-    return record;
-  }, [sermonId, updatePending, upsertPendingInContainers]);
+    const localId = buildLocalThoughtId();
+    const record = pendingSync.createRecord({
+      entityId: localId,
+      operation: "create",
+      entity: {
+        id: localId,
+        sectionId: input.sectionId,
+        text: input.text,
+        tags: input.tags,
+        outlinePointId: input.outlinePointId,
+      },
+      status: "pending",
+    });
+
+    if (!record) return null;
+
+    const pendingRecord = toPendingThoughtRecord(record);
+    upsertPendingInContainers(pendingRecord);
+    return pendingRecord;
+  }, [pendingSync, sermonId, upsertPendingInContainers]);
 
   const updatePendingThought = useCallback((localId: string, input: Partial<PendingThoughtInput>) => {
-    updatePending((prev) => prev.map((item) => {
-      if (item.localId !== localId) return item;
-      const updated: PendingThoughtRecord = {
-        ...item,
-        text: input.text ?? item.text,
-        tags: input.tags ?? item.tags,
-        outlinePointId: input.outlinePointId ?? item.outlinePointId,
-      };
-      upsertPendingInContainers(updated);
-      return updated;
-    }));
-  }, [updatePending, upsertPendingInContainers]);
+    const record = pendingSync.getLatestRecordByEntityId(localId);
+    if (!record) return;
+
+    const updatedEntity: PendingThoughtEntity = {
+      ...record.entity,
+      sectionId: input.sectionId ?? record.entity.sectionId,
+      text: input.text ?? record.entity.text,
+      tags: input.tags ?? record.entity.tags,
+      outlinePointId: input.outlinePointId ?? record.entity.outlinePointId,
+    };
+
+    pendingSync.replaceRecordEntity(record.localId, updatedEntity, {
+      entityId: localId,
+    });
+    upsertPendingInContainers(
+      toPendingThoughtRecord({
+        ...record,
+        entity: updatedEntity,
+      })
+    );
+  }, [pendingSync, upsertPendingInContainers]);
 
   const markPendingStatus = useCallback((localId: string, status: PendingThoughtStatus, options?: { error?: string; resetExpiry?: boolean }) => {
-    const now = new Date();
-    updatePending((prev) => prev.map((item) => {
-      if (item.localId !== localId) return item;
-      const shouldReset = options?.resetExpiry ?? (status === 'pending' || status === 'sending');
-      const updated: PendingThoughtRecord = {
-        ...item,
-        status,
-        lastError: options?.error,
-        lastAttemptAt: shouldReset ? now.toISOString() : item.lastAttemptAt,
-        expiresAt: shouldReset ? new Date(now.getTime() + PENDING_TTL_MS).toISOString() : item.expiresAt,
-      };
-      upsertPendingInContainers(updated);
-      return updated;
-    }));
-  }, [updatePending, upsertPendingInContainers]);
+    const record = pendingSync.getLatestRecordByEntityId(localId);
+    if (!record) return;
+
+    pendingSync.markRecordStatus(record.localId, status, {
+      error: options?.error,
+      resetExpiry: options?.resetExpiry,
+    });
+  }, [pendingSync]);
 
   const removePendingThought = useCallback((localId: string, options?: { removeFromContainers?: boolean }) => {
-    updatePending((prev) => prev.filter((item) => item.localId !== localId));
+    const record = pendingSync.getLatestRecordByEntityId(localId);
+    if (record) {
+      pendingSync.removeRecord(record.localId);
+    }
     if (options?.removeFromContainers !== false) {
       removePendingFromContainers(localId);
     }
-  }, [removePendingFromContainers, updatePending]);
+  }, [pendingSync, removePendingFromContainers]);
 
   const replacePendingThought = useCallback((localId: string, newItem: Item) => {
     replacePendingInContainers(localId, newItem);
   }, [replacePendingInContainers]);
-
-  useEffect(() => {
-    let active = true;
-    if (!sermonId) {
-      setPendingThoughts([]);
-      return;
-    }
-
-    loadPendingThoughts(sermonId).then((items) => {
-      if (!active) return;
-      const normalized = items.map((item) => (
-        item.status === 'sending'
-          ? { ...item, status: 'error' as PendingThoughtStatus }
-          : item
-      ));
-      setPendingThoughts(normalized);
-      persistPending(normalized);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [persistPending, sermonId]);
 
   useEffect(() => {
     if (!pendingThoughts.length) return;
@@ -326,8 +378,8 @@ export const usePendingThoughts = ({
       if (expired.length === 0) return;
       expired.forEach((item) => {
         removePendingThought(item.localId);
-        toast.error(t('structure.localThoughtExpired', {
-          defaultValue: 'Local thought expired and was removed.'
+        toast.error(t("structure.localThoughtExpired", {
+          defaultValue: "Local thought expired and was removed.",
         }));
       });
     }, 1000);

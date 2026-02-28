@@ -13,14 +13,13 @@ import { useTags } from '@/hooks/useTags';
 import { Thought, SermonOutline } from '@/models/models';
 import { debugLog } from '@/utils/debugMode';
 import { PlusIcon } from '@components/Icons';
-import { createManualThought } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
 
 interface AddThoughtManualProps {
   sermonId: string;
-  onNewThought: (thought: Thought) => void;
+  onCreateThought: (thought: Omit<Thought, 'id'>) => Promise<Thought | void> | void;
   // Optional preloaded data to avoid fetching on open
   allowedTags?: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
@@ -29,7 +28,7 @@ interface AddThoughtManualProps {
 
 export default function AddThoughtManual({
   sermonId,
-  onNewThought,
+  onCreateThought,
   allowedTags: allowedTagsProp,
   sermonOutline: sermonOutlineProp,
   disabled = false,
@@ -128,9 +127,13 @@ export default function AddThoughtManual({
     try {
       debugLog('AddThoughtManual: creating thought', { sermonId, thought: newThought });
       setIsSubmitting(true);
-      const savedThought = await createManualThought(sermonId, newThought);
-      debugLog('AddThoughtManual: thought created successfully', { thoughtId: savedThought.id });
-      onNewThought(savedThought);
+      const savedThought = await onCreateThought(newThought);
+
+      if (savedThought) {
+        debugLog('AddThoughtManual: thought created successfully', { thoughtId: savedThought.id });
+      } else {
+        debugLog('AddThoughtManual: optimistic create delegated without immediate saved thought');
+      }
       toast.success(t('manualThought.addedSuccess'));
       setText("");
       setTags([]);

@@ -28,23 +28,23 @@ export const FocusNav: React.FC<FocusNavProps> = ({
         <Link href={`/sermons/${sermon.id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
           {t('structure.backToSermon')}
         </Link>
-        <div className="mt-2 flex justify-center space-x-4">
-          <span className="text-gray-600 dark:text-gray-400">{t('structure.focusMode')}:</span>
-          <Link 
+        <div className="mt-2 flex flex-wrap justify-center items-center gap-x-3 gap-y-1">
+          <span className="text-gray-600 dark:text-gray-400 text-sm">{t('structure.focusMode')}:</span>
+          <Link
             href={sermonId ? getFocusModeUrl('introduction', sermonId) : '#'}
-            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline text-sm"
           >
             {t('structure.introduction')}
           </Link>
-          <Link 
+          <Link
             href={sermonId ? getFocusModeUrl('main', sermonId) : '#'}
-            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline text-sm"
           >
             {t('structure.mainPart')}
           </Link>
-          <Link 
+          <Link
             href={sermonId ? getFocusModeUrl('conclusion', sermonId) : '#'}
-            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline text-sm"
           >
             {t('structure.conclusion')}
           </Link>

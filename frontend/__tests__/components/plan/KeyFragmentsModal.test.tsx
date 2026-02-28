@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 
 import { SermonPoint, Thought } from '@/models/models';
 import KeyFragmentsModal from '@components/plan/KeyFragmentsModal';
-import { updateThought } from '@services/thought.service';
 
 // --- Mocks --- //
 
@@ -32,11 +31,6 @@ jest.mock('lucide-react', () => ({
   Plus: () => <span>+</span>,
   Trash2: () => <span>Trash</span>,
   Lightbulb: () => <span>Lightbulb</span>,
-}));
-
-// Mock the thought service
-jest.mock('@services/thought.service', () => ({
-  updateThought: jest.fn(),
 }));
 
 // Mock window.getSelection (basic mock)
@@ -73,13 +67,11 @@ const initialMockThoughts: Readonly<Thought[]> = [
 // Declare a mutable version for tests
 let mockThoughts: Thought[];
 
-const sermonId = 'sermon-123';
-
 // --- Test Suite --- //
 
 describe('KeyFragmentsModal', () => {
   const mockOnClose = jest.fn();
-  const mockOnThoughtUpdate = jest.fn();
+  const mockOnThoughtSave = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -93,14 +85,11 @@ describe('KeyFragmentsModal', () => {
       getRangeAt: jest.fn(),
       toString: jest.fn().mockReturnValue(''),
     } as unknown as Selection);
-    // Mock updateThought to return a new object mimicking the update
-    (updateThought as jest.Mock).mockImplementation(async (_sId, thought) => {
-      // Return a new object to prevent mutation issues and mimic backend response
+    mockOnThoughtSave.mockImplementation(async (thought: Thought) => {
       return {
-        ...thought, // Spread original properties
-        id: thought.id, // Ensure id is present
-        // Return a *new* array instance based on the input keyFragments
-        keyFragments: Array.isArray(thought.keyFragments) ? [...thought.keyFragments] : [], 
+        ...thought,
+        id: thought.id,
+        keyFragments: Array.isArray(thought.keyFragments) ? [...thought.keyFragments] : [],
       };
     });
   });
@@ -112,8 +101,7 @@ describe('KeyFragmentsModal', () => {
         onClose={mockOnClose}
         outlinePoint={mockSermonPoint}
         thoughts={thoughts}
-        sermonId={sermonId}
-        onThoughtUpdate={mockOnThoughtUpdate}
+        onThoughtSave={mockOnThoughtSave}
       />
     );
   };
@@ -162,21 +150,14 @@ describe('KeyFragmentsModal', () => {
 
      await userEvent.click(removeButton);
 
-     // Verify updateThought call
      await waitFor(() => {
-       expect(updateThought).toHaveBeenCalledTimes(1);
-       expect(updateThought).toHaveBeenCalledWith(sermonId, expect.objectContaining({
+       expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
+       expect(mockOnThoughtSave).toHaveBeenCalledWith(expect.objectContaining({
          id: mockThoughts[0].id,
          keyFragments: [], // Should be empty after removal
        }));
      });
 
-     // Verify UI update and callback
-     expect(mockOnThoughtUpdate).toHaveBeenCalledTimes(1);
-     expect(mockOnThoughtUpdate).toHaveBeenCalledWith(expect.objectContaining({
-       id: mockThoughts[0].id,
-       keyFragments: [],
-     }));
      expect(toast.success).toHaveBeenCalledWith('plan.fragmentRemoved');
 
      // Re-render or check state update (element should be gone)
@@ -223,18 +204,34 @@ describe('KeyFragmentsModal', () => {
 
    it('handles error when removing a fragment fails', async () => {
      const error = new Error('Update failed');
-     (updateThought as jest.Mock).mockRejectedValue(error);
+     mockOnThoughtSave.mockRejectedValue(error);
 
      renderModal();
      const removeButton = screen.getByRole('button', { name: /Trash/i });
      await userEvent.click(removeButton);
 
      await waitFor(() => {
-       expect(updateThought).toHaveBeenCalledTimes(1);
+       expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
        expect(toast.error).toHaveBeenCalledWith('errors.failedToRemoveFragment');
      });
-     expect(mockOnThoughtUpdate).not.toHaveBeenCalled();
-     expect(screen.getByText('first fragment')).toBeInTheDocument(); // Fragment still there
+     expect(screen.getByText('first fragment')).toBeInTheDocument(); // Fragment restored by rollback
+   });
+
+   it('keeps the optimistic local update when save returns no server payload', async () => {
+     mockOnThoughtSave.mockResolvedValueOnce(undefined);
+
+     renderModal();
+     const removeButton = screen.getByRole('button', { name: /Trash/i });
+     await userEvent.click(removeButton);
+
+     await waitFor(() => {
+       expect(mockOnThoughtSave).toHaveBeenCalledWith(expect.objectContaining({
+         id: 't-1',
+         keyFragments: [],
+       }));
+     });
+
+     expect(screen.queryByText('first fragment')).not.toBeInTheDocument();
    });
 
     // --- Tests for Adding Fragments (Simulating Selection) --- //
@@ -316,30 +313,14 @@ describe('KeyFragmentsModal', () => {
      const addButton = await screen.findByRole('button', { name: /plan.addAsKeyFragment/i });
      await userEvent.click(addButton);
 
-     // Wait for the service call
      await waitFor(async () => {
-       expect(updateThought).toHaveBeenCalledTimes(1);
-       // Get the result returned by the mock implementation
-       const updatedThoughtResult = (updateThought as jest.Mock).mock.results[0].value;
-       // The updatedThoughtResult is a promise, so await it
+       expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
+       const updatedThoughtResult = mockOnThoughtSave.mock.results[0].value;
        const resolvedThought = await updatedThoughtResult;
        expect(resolvedThought).toEqual(expect.objectContaining({
          id: thoughtId,
          keyFragments: [mockThoughts[1].text],
        }));
-     });
-
-     // Verify UI update and callback
-     await waitFor(async () => {
-        expect(mockOnThoughtUpdate).toHaveBeenCalledTimes(1);
-        // Get the result returned by the mock implementation
-        const updatedThoughtResult = (updateThought as jest.Mock).mock.results[0].value;
-        // The updatedThoughtResult is a promise, so await it
-        const resolvedThought = await updatedThoughtResult;
-        expect(resolvedThought).toEqual(expect.objectContaining({
-          id: thoughtId,
-          keyFragments: [mockThoughts[1].text],
-        }));
      });
 
      expect(toast.success).toHaveBeenCalledWith('plan.fragmentAdded');
@@ -349,7 +330,7 @@ describe('KeyFragmentsModal', () => {
 
    it('handles error when adding a fragment fails', async () => {
      const error = new Error('Update failed');
-     (updateThought as jest.Mock).mockRejectedValue(error);
+     mockOnThoughtSave.mockRejectedValue(error);
 
      renderModal(true, [mockThoughts[1]]);
      const thoughtId = mockThoughts[1].id;
@@ -363,12 +344,12 @@ describe('KeyFragmentsModal', () => {
      await userEvent.click(addButton);
 
      await waitFor(() => {
-       expect(updateThought).toHaveBeenCalledTimes(1);
+       expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
        expect(toast.error).toHaveBeenCalledWith('errors.failedToAddFragment');
      });
 
-     expect(mockOnThoughtUpdate).not.toHaveBeenCalled();
-      // Use queryByTestId to check for absence
+     expect(screen.getByText(mockThoughts[1].text)).toBeInTheDocument();
      expect(screen.queryByTestId('selection-popup')).toBeInTheDocument();
    });
-}); 
+});
+ 

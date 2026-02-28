@@ -361,3 +361,33 @@ export function insertThoughtIdInStructure(params: {
 
   return normalized;
 }
+
+export function replaceThoughtIdInStructure(params: {
+  structure: ThoughtsBySection | string | null | undefined;
+  fromThoughtId: string;
+  toThoughtId: string;
+}): ThoughtsBySection {
+  const { structure, fromThoughtId, toThoughtId } = params;
+  const normalized = normalizeStructure(structure);
+
+  SECTION_ORDER.forEach((section) => {
+    normalized[section] = (normalized[section] ?? []).map((id) =>
+      id === fromThoughtId ? toThoughtId : id
+    );
+  });
+
+  return normalizeStructure(normalized);
+}
+
+export function removeThoughtIdFromStructure(
+  structure: ThoughtsBySection | string | null | undefined,
+  thoughtId: string
+): ThoughtsBySection {
+  const normalized = normalizeStructure(structure);
+
+  SECTION_ORDER.forEach((section) => {
+    normalized[section] = (normalized[section] ?? []).filter((id) => id !== thoughtId);
+  });
+
+  return normalized;
+}

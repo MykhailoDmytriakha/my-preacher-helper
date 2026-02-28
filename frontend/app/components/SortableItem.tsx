@@ -338,8 +338,10 @@ export default function SortableItem({
   const isPending = syncStatus === 'pending';
   const isError = syncStatus === 'error';
   const isSuccess = syncStatus === 'success';
+  const isSyncDeleting = item.syncOperation === 'delete' && isPending;
   const isLocal = item.id.startsWith(LOCAL_THOUGHT_PREFIX);
-  const isDragDisabled = isDeleting || disabled;
+  const effectiveDeleting = isDeleting || isSyncDeleting;
+  const isDragDisabled = effectiveDeleting || disabled;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: item.id,
@@ -366,7 +368,7 @@ export default function SortableItem({
   const style = {
     transform: isActiveItem ? "none" : CSS.Transform.toString(transform),
     transition: isActiveItem ? "none" : (transition || "transform 250ms ease-in-out"),
-    opacity: isActiveItem ? 0.3 : (isDragging || isDeleting ? 0.5 : 1),  // Changed from 0 to 0.3 for touch feedback
+    opacity: isActiveItem ? 0.3 : (isDragging || effectiveDeleting ? 0.5 : 1),  // Changed from 0 to 0.3 for touch feedback
     pointerEvents: (isActiveItem ? "none" : "auto") as React.CSSProperties['pointerEvents'],
     ...highlightStyles
   };
@@ -391,7 +393,7 @@ export default function SortableItem({
     syncBorderClass,
     syncRingClass,
     hoverShadowClass,
-    isDeleting,
+    isDeleting: effectiveDeleting,
     isDragDisabled,
     cursorClass,
   });
@@ -422,7 +424,7 @@ export default function SortableItem({
         containerId={containerId}
         isHighlighted={isHighlighted}
         isDragging={isDragging}
-        isDeleting={isDeleting}
+        isDeleting={effectiveDeleting}
         isPending={isPending}
         isError={isError}
         isSuccess={isSuccess}

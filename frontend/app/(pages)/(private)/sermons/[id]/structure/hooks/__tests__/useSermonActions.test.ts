@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { toast } from 'sonner';
 import { useSermonActions } from '../useSermonActions';
 import { updateStructure } from '@/services/structure.service';
-import { updateThought, createManualThought } from '@/services/thought.service';
+import { updateThought, createManualThought, deleteThought } from '@/services/thought.service';
 import { Sermon, Item } from '@/models/models';
 
 // Mock dependencies
@@ -18,6 +18,7 @@ jest.mock('@/services/thought.service');
 const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
 const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
 const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
+const mockDeleteThought = deleteThought as jest.MockedFunction<typeof deleteThought>;
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 describe('useSermonActions', () => {
@@ -164,7 +165,15 @@ describe('useSermonActions', () => {
                 await result.current.handleSaveEdit('Updated Text', ['Tag A'], 'point-1');
             });
 
-            expect(mockUpdateThought).toHaveBeenCalled();
+            expect(mockUpdateThought).toHaveBeenCalledWith(
+                'sermon-1',
+                expect.objectContaining({
+                    id: 'thought-1',
+                    text: 'Updated Text',
+                    tags: ['intro', 'Tag A'],
+                    outlinePointId: 'point-1',
+                })
+            );
             expect(defaultProps.setSermon).toHaveBeenCalled();
             expect(defaultProps.setContainers).toHaveBeenCalled();
         });
@@ -212,6 +221,28 @@ describe('useSermonActions', () => {
             });
 
             expect(defaultProps.setContainers).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleDeleteThought', () => {
+        it('deletes an existing thought with sync state', async () => {
+            mockDeleteThought.mockResolvedValue(undefined as never);
+            mockUpdateStructure.mockResolvedValue({});
+
+            const { result } = renderHook(() => useSermonActions(defaultProps));
+
+            await act(async () => {
+                await result.current.handleDeleteThought('thought-1');
+            });
+
+            expect(pendingActions.updateItemSyncStatus).toHaveBeenCalledWith(
+                'thought-1',
+                'pending',
+                expect.objectContaining({ operation: 'delete' })
+            );
+            expect(mockDeleteThought).toHaveBeenCalled();
+            expect(defaultProps.setContainers).toHaveBeenCalled();
+            expect(defaultProps.setSermon).toHaveBeenCalled();
         });
     });
 });

@@ -6,15 +6,13 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { SermonPoint, Thought } from "@/models/models";
-import { updateThought } from "@/services/thought.service";
 
 interface KeyFragmentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   outlinePoint: SermonPoint;
   thoughts: Thought[];
-  sermonId: string;
-  onThoughtUpdate: (updatedThought: Thought) => void;
+  onThoughtSave: (updatedThought: Thought) => Promise<Thought | void>;
 }
 
 interface ActiveSelection {
@@ -28,8 +26,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   onClose,
   outlinePoint,
   thoughts,
-  sermonId,
-  onThoughtUpdate,
+  onThoughtSave,
 }) => {
   const { t } = useTranslation();
   const [localThoughts, setLocalThoughts] = useState<Thought[]>(thoughts);
@@ -73,6 +70,12 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
       window.removeEventListener("keydown", handleEscape);
     };
   }, [onClose]);
+
+  const applyLocalThought = React.useCallback((updatedThought: Thought) => {
+    setLocalThoughts((prev) =>
+      prev.map((thought) => (thought.id === updatedThought.id ? updatedThought : thought))
+    );
+  }, []);
 
   // Handle text selection
   const handleMouseUp = () => {
@@ -190,17 +193,22 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
       keyFragments: newKeyFragments,
     };
 
-    const result = await updateThought(sermonId, updatedThought);
-    
-    // Update local state
-    setLocalThoughts((prev) =>
-      prev.map((t) => (t.id === thoughtId ? result : t))
-    );
+    const previousThought = { ...thought };
+    applyLocalThought(updatedThought);
 
-    // Notify parent component
-    onThoughtUpdate(result);
+    try {
+      const result = await onThoughtSave(updatedThought);
 
-    return result;
+      if (result) {
+        applyLocalThought(result);
+        return result;
+      }
+
+      return updatedThought;
+    } catch (error) {
+      applyLocalThought(previousThought);
+      throw error;
+    }
   };
 
   if (!isOpen) return null;

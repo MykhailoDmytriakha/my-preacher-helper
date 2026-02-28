@@ -112,6 +112,12 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions', (
     handleCloseEdit: jest.fn(),
     handleAddThoughtToSection: jest.fn(),
     handleSaveEdit: jest.fn(),
+    handleDeleteThought: jest.fn(async (id) => {
+      const { deleteThought } = require('@/services/thought.service');
+      const { updateStructure } = require('@/services/structure.service');
+      await deleteThought('sermon-1', { id });
+      await updateStructure('sermon-1', {});
+    }),
     handleMoveToAmbiguous: jest.fn(),
     handleRetryPendingThought: jest.fn(),
   }),

@@ -7,10 +7,6 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from '@/hooks/useSermon';
 import { useTags } from '@/hooks/useTags';
 import { TestProviders } from '@test-utils/test-providers';
-import { createManualThought } from '@services/thought.service';
-
-// Mock the services
-jest.mock('@services/thought.service');
 // Mock scroll lock hook
 jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
@@ -40,7 +36,6 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 
 // No longer fetching in the component during open when props are provided
 
-const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
 const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
 const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
@@ -81,7 +76,7 @@ jest.mock('@utils/tagUtils', () => ({
 }));
 
 describe('AddThoughtManual', () => {
-  const mockOnNewThought = jest.fn();
+  const mockOnCreateThought = jest.fn();
   const sermonId = 'test-sermon-id';
   const preloadedOutline = {
     introduction: [
@@ -111,9 +106,7 @@ describe('AddThoughtManual', () => {
     mockUseTags.mockReturnValue({ allTags: [], loading: false } as any);
     tagUtilsMock.isStructureTag.mockReturnValue(false);
     tagUtilsMock.getStructureIcon.mockReturnValue(null);
-    // Service calls are mocked where used (createManualThought). Tags/outline passed via props
-
-    mockCreateManualThought.mockResolvedValue({
+    mockOnCreateThought.mockResolvedValue({
       id: 'new-thought-id',
       text: 'Test thought',
       tags: ['Introduction'],
@@ -129,7 +122,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -141,7 +134,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -164,7 +157,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />,
@@ -193,7 +186,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -212,7 +205,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -231,7 +224,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -245,7 +238,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -260,7 +253,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -291,7 +284,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -319,7 +312,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -338,8 +331,7 @@ describe('AddThoughtManual', () => {
     fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
 
     await waitFor(() => {
-      expect(mockCreateManualThought).toHaveBeenCalledWith(
-        sermonId,
+      expect(mockOnCreateThought).toHaveBeenCalledWith(
         expect.objectContaining({
           text: 'A newly added thought',
           tags: ['Custom Tag 1'],
@@ -347,17 +339,46 @@ describe('AddThoughtManual', () => {
         })
       );
     });
-    expect(mockOnNewThought).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-thought-id' }));
     expect(mockToast.success).toHaveBeenCalledWith('manualThought.addedSuccess');
   });
 
-  it('shows an error toast and keeps the dialog open when save fails', async () => {
-    mockCreateManualThought.mockRejectedValueOnce(new Error('save failed'));
+  it('treats optimistic creates without an immediate saved thought as success', async () => {
+    mockOnCreateThought.mockResolvedValueOnce(undefined);
 
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
+        allowedTags={preloadedTags}
+        sermonOutline={preloadedOutline as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
+    await screen.findByRole('dialog');
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'Optimistic thought' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
+
+    await waitFor(() => {
+      expect(mockOnCreateThought).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Optimistic thought' })
+      );
+    });
+    expect(mockToast.success).toHaveBeenCalledWith('manualThought.addedSuccess');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows an error toast and keeps the dialog open when save fails', async () => {
+    mockOnCreateThought.mockRejectedValueOnce(new Error('save failed'));
+
+    renderWithProviders(
+      <AddThoughtManual
+        sermonId={sermonId}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -374,7 +395,7 @@ describe('AddThoughtManual', () => {
       expect(mockToast.error).toHaveBeenCalled();
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(mockOnNewThought).not.toHaveBeenCalled();
+    expect(mockOnCreateThought).toHaveBeenCalledTimes(1);
   });
 
   it('shows offline warning and disables saving when offline', async () => {
@@ -383,7 +404,7 @@ describe('AddThoughtManual', () => {
     renderWithProviders(
       <AddThoughtManual
         sermonId={sermonId}
-        onNewThought={mockOnNewThought}
+        onCreateThought={mockOnCreateThought}
         allowedTags={preloadedTags}
         sermonOutline={preloadedOutline as any}
       />
@@ -400,7 +421,7 @@ describe('AddThoughtManual', () => {
       target: { value: 'Offline thought' },
     });
     expect(screen.getByRole('button', { name: /buttons\.save/ })).toBeDisabled();
-    expect(mockCreateManualThought).not.toHaveBeenCalled();
+    expect(mockOnCreateThought).not.toHaveBeenCalled();
   });
 
   it('opens after pending data becomes ready and falls back to default outline when props are absent', async () => {
@@ -408,7 +429,7 @@ describe('AddThoughtManual', () => {
     mockUseTags.mockReturnValueOnce({ allTags: [], loading: false } as any);
 
     const { rerender } = renderWithProviders(
-      <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+      <AddThoughtManual sermonId={sermonId} onCreateThought={mockOnCreateThought} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
@@ -421,7 +442,7 @@ describe('AddThoughtManual', () => {
 
     rerender(
       <TestProviders>
-        <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+        <AddThoughtManual sermonId={sermonId} onCreateThought={mockOnCreateThought} />
       </TestProviders>
     );
 
@@ -457,7 +478,7 @@ describe('AddThoughtManual', () => {
     } as any);
 
     renderWithProviders(
-      <AddThoughtManual sermonId={sermonId} onNewThought={mockOnNewThought} />
+      <AddThoughtManual sermonId={sermonId} onCreateThought={mockOnCreateThought} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /manualThought\.addManual/ }));
@@ -474,8 +495,7 @@ describe('AddThoughtManual', () => {
     fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
 
     await waitFor(() => {
-      expect(mockCreateManualThought).toHaveBeenCalledWith(
-        sermonId,
+      expect(mockOnCreateThought).toHaveBeenCalledWith(
         expect.objectContaining({
           tags: ['Introduction', 'Special'],
           outlinePointId: undefined,

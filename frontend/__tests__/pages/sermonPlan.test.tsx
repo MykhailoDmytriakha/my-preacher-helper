@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
 import { getSermonById } from '@/services/sermon.service';
+import { updateThought } from '@/services/thought.service';
 import '@testing-library/jest-dom';
 
 jest.mock('sonner', () => ({
@@ -26,6 +27,7 @@ let mockSearchParams = new URLSearchParams();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockToast = toast as jest.Mocked<typeof toast>;
+const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
@@ -87,6 +89,10 @@ jest.mock('@/services/sermon.service', () => ({
   }),
 }));
 
+jest.mock('@/services/thought.service', () => ({
+  updateThought: jest.fn(),
+}));
+
 // Mock child components (if any are direct children of the page)
 jest.mock('@/components/plan/KeyFragmentsModal', () => {
   const React = require('react');
@@ -97,15 +103,50 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => {
         <button
           type="button"
           data-testid="key-fragments-update-thought"
-          onClick={() => props.onThoughtUpdate?.({
-            id: 't1',
-            text: 'Updated Thought',
-            outlinePointId: 'intro-p1',
-            tags: ['introduction'],
-            keyFragments: ['frag1'],
-          })}
+          onClick={() => {
+            void props.onThoughtSave?.({
+              id: 't1',
+              text: 'Updated Thought',
+              outlinePointId: 'intro-p1',
+              tags: ['introduction'],
+              keyFragments: ['frag1'],
+              date: '2024-01-01',
+            }).catch(() => undefined);
+          }}
         >
           Update thought
+        </button>
+        <button
+          type="button"
+          data-testid="key-fragments-save-thought"
+          onClick={() => {
+            void props.onThoughtSave?.({
+              id: 't1',
+              text: 'Saved Thought',
+              outlinePointId: 'intro-p1',
+              tags: ['introduction'],
+              keyFragments: ['frag1', 'saved-frag'],
+              date: '2024-01-01',
+            }).catch(() => undefined);
+          }}
+        >
+          Save thought
+        </button>
+        <button
+          type="button"
+          data-testid="key-fragments-save-thought-next"
+          onClick={() => {
+            void props.onThoughtSave?.({
+              id: 't1',
+              text: 'Saved Thought 2',
+              outlinePointId: 'intro-p1',
+              tags: ['introduction'],
+              keyFragments: ['frag1', 'saved-frag', 'saved-frag-2'],
+              date: '2024-01-01',
+            }).catch(() => undefined);
+          }}
+        >
+          Save thought next
         </button>
       </div>
     );
@@ -270,6 +311,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockReplace.mockClear();
     mockToast.success.mockClear();
     mockToast.error.mockClear();
+    mockUpdateThought.mockReset();
+    mockUpdateThought.mockImplementation(async (_sermonId, thought) => thought);
     // Ensure we're using real timers for this test
     jest.useRealTimers();
     
@@ -665,6 +708,65 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     fireEvent.click(screen.getByTestId('key-fragments-update-thought'));
     await waitFor(() => {
       expect(screen.getByText('Updated Thought')).toBeInTheDocument();
+    });
+  });
+
+  it('does not roll back a newer key fragment save when an older request fails later', async () => {
+    let rejectFirstSave: ((reason?: unknown) => void) | null = null;
+    let resolveSecondSave: ((value: import('@/models/models').Thought | PromiseLike<import('@/models/models').Thought>) => void) | null = null;
+
+    mockUpdateThought
+      .mockImplementationOnce(
+        () =>
+          new Promise<import('@/models/models').Thought>((_resolve, reject) => {
+            rejectFirstSave = reject;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<import('@/models/models').Thought>((resolve) => {
+            resolveSecondSave = resolve;
+          })
+      );
+
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-left-section');
+
+    const keyFragmentButtons = screen.getAllByTitle('Mark Key Fragments');
+    fireEvent.click(keyFragmentButtons[0]);
+
+    expect(await screen.findByTestId('key-fragments-modal')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('key-fragments-save-thought'));
+    await waitFor(() => {
+      expect(screen.getByText('Saved Thought')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('key-fragments-save-thought-next'));
+    await waitFor(() => {
+      expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      rejectFirstSave?.(new Error('first save failed'));
+    });
+
+    expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
+    expect(screen.queryByText('Thought 1')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSecondSave?.({
+        id: 't1',
+        text: 'Saved Thought 2',
+        date: new Date().toISOString(),
+        outlinePointId: 'intro-p1',
+        tags: ['introduction'],
+        keyFragments: ['frag1', 'saved-frag', 'saved-frag-2'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
     });
   });
 

@@ -58,6 +58,10 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-28 Parent Projection Owns Optimistic Truth:** When migrating a page from bespoke optimistic helpers to a shared persisted journal, route child save intents through one parent callback, project the optimistic entities back into every consumer view, and remove duplicate child-to-parent local update contracts; otherwise reconciliation splits and the page keeps two conflicting truths.
+- **2026-02-28 i18n Status Labels:** For shared status badges like "Saved", prefer long-lived common translation keys (`common.saved`) over narrower feature-scoped keys when either text is equivalent; this reduces raw-key leakage for clients with stale locale caches and keeps fallback behavior consistent across surfaces.
+- **2026-02-28 Optimistic Mutation Ordering:** In local-first flows, every in-flight update needs a per-entity version guard, and same-tick lookup helpers backed by refs must update those refs synchronously inside the state transition; otherwise older acks/errors or immediate follow-up actions silently overwrite newer user intent.
+- **2026-02-27 Shared Optimistic Contract Enforcement:** Once a UI flow has a reusable optimistic orchestrator, remove component-level direct service fallbacks and make the shared callback required; optional fallbacks preserve server-first islands and double the test matrix.
 - **2026-02-27 Empty-Input TRIZ+IFR Solution:** Map empty saves to "Cancel" for new items and "Delete" for existing ones in the frontend; this prevents invalid state persistence and avoids server-side validation 500s while fulfilling user intent.
 - **2026-02-27 StepByStepWizard Stream Error Path:** In `StepByStepWizard`, NDJSON stream `error` events thrown through the `onError` callback are swallowed by `processStream`'s parser `catch` and logged via `console.error`; test that path through logging assertions, not by expecting a rendered error banner.
 - **2026-02-27 StepByStepWizard Completion Event:** In `StepByStepWizard` tests, `download_complete` alone is insufficient for success-state coverage; emit at least one prior `audio_chunk` event because the component synthesizes the final downloadable URL from accumulated chunk data.
@@ -234,6 +238,9 @@
 
 ### 🧭 Architecture
 - **Next.js 15 Params:** Always `await params` before use. Type: `Promise<{ id: string }>`.
+- **Optimistic Thought Sync:** Project optimistic thought entities over server thoughts, but sanitize local `local-thought-*` ids out of structure payloads before persisting. Server ack must reconcile against the latest local structure, not the stale mutation-start snapshot.
+- **Debounced Thought Saves:** If a thought save is delayed/debounced (drag/drop, AI-sort, outline reassignment), emit `pending/error/success` sync state when scheduling the save and keep a retryable latest payload. Otherwise those flows silently bypass the optimistic mutation model.
+- **Legacy Offline Migration:** When unifying old local-persistence flows into a generic optimistic store, preserve a migration read path for legacy persisted records. Dropping old unsynced data during a refactor breaks the offline contract.
 
 ### 🤖 AI Integration
 - **Structured Output:** Only `zodResponseFormat` + `beta.chat.completions.parse()`. No regex/JSON parsing from text.
@@ -247,6 +254,7 @@
 - **Type-Safe Fixtures:** Treat test fixtures as first-class types — update mocks with model changes.
 - **Export Order:** Use same ordering source (`ThoughtsBySection`) for export as for UI.
 - **Helper Extraction Audit:** After extraction, audit downstream usage + add targeted tests for new paths.
+- **Coverage Honesty:** For strict coverage workflows, exclude types-only contracts from `collectCoverageFrom` and cover IndexedDB branches with isolated module imports plus `idb-keyval` mocks instead of warping runtime code to satisfy the metric.
 
 ---
 
@@ -303,4 +311,3 @@
 - Dynamic Color Tinting: Light = inline `rgba()`, Dark = overlay div with `opacity-0 dark:opacity-100`
 - Back Nav: `BackLink.tsx` with `router.back()` + fallback
 - Toggle Switch: `w-11` rail, `h-5 w-5` thumb, `translate-x-5/translate-x-0`, Headless UI spec
-

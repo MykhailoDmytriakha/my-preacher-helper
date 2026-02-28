@@ -11,9 +11,7 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
-import { Item, Sermon, SermonPoint, Thought, SermonOutline, ThoughtsBySection } from "@/models/models";
-import { updateStructure } from "@/services/structure.service";
-import { deleteThought } from "@/services/thought.service";
+import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
 import { getExportContent } from "@/utils/exportContent";
 import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
@@ -30,7 +28,7 @@ import { usePendingThoughts } from "./hooks/usePendingThoughts";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
-import { isLocalThoughtId, isStructureChanged, findOutlinePoint } from "./utils/structure";
+import { isLocalThoughtId, findOutlinePoint } from "./utils/structure";
 
 // Translation key constants
 const TRANSLATION_KEYS = {
@@ -129,9 +127,6 @@ function StructurePageContent() {
     ambiguous: getSectionLabel(t, 'ambiguous'),
   }), [t]);
 
-  // Persistence hook
-  const { debouncedSaveThought, debouncedSaveStructure } = usePersistence({ setSermon });
-
   const pendingActions = usePendingThoughts({
     sermonId,
     sermon,
@@ -139,6 +134,12 @@ function StructurePageContent() {
     setContainers,
     containersRef,
     containers,
+  });
+
+  // Persistence hook
+  const { debouncedSaveThought, debouncedSaveStructure, retryThoughtSave } = usePersistence({
+    setSermon,
+    onThoughtSyncStateChange: pendingActions.updateItemSyncStatus,
   });
 
   // Sermon actions hook
@@ -149,6 +150,7 @@ function StructurePageContent() {
     handleCloseEdit,
     handleAddThoughtToSection,
     handleSaveEdit,
+    handleDeleteThought,
     handleMoveToAmbiguous,
     handleRetryPendingThought,
   } = useSermonActions({
@@ -160,10 +162,12 @@ function StructurePageContent() {
     allowedTags,
     debouncedSaveThought,
     debouncedSaveStructure,
+    retryThoughtSave: async (thoughtId: string) => {
+      if (!sermonId) return;
+      await retryThoughtSave(sermonId, thoughtId);
+    },
     pendingActions,
   });
-
-  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   // Focus mode hook
   const {
@@ -345,7 +349,7 @@ function StructurePageContent() {
 
   // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
   const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
-    if (!sermonId || !sermon || containerId !== 'ambiguous') {
+    if (!sermon || containerId !== 'ambiguous') {
       toast.error(t('errors.removingError') || "Error removing item.");
       return;
     }
@@ -364,65 +368,7 @@ function StructurePageContent() {
     if (!window.confirm(confirmMessage)) {
       return;
     }
-
-    // Set deleting state BEFORE async call
-    setDeletingItemId(itemId);
-
-    try {
-      await deleteThought(sermonId, thoughtToDelete);
-
-      // --- Update State on Successful Deletion ---
-      // Capture previous state for potential rollback (though less critical here)
-      const previousSermon = sermon;
-      const previousContainers = { ...containersRef.current };
-
-      // 1. Update main sermon state (using a loop instead of filter)
-      const updatedThoughts: Thought[] = [];
-      for (const thought of previousSermon.thoughts) {
-        if (thought.id !== itemId) {
-          updatedThoughts.push(thought);
-        }
-      }
-      const sermonWithDeletedThought = { ...previousSermon, thoughts: updatedThoughts };
-
-      // 2. Update local containers state
-      const updatedAmbiguous = previousContainers.ambiguous.filter((item: Item) => item.id !== itemId);
-      const newContainers: Record<string, Item[]> = {
-        ...previousContainers,
-        ambiguous: updatedAmbiguous
-      };
-
-      // 3. Recalculate structure for DB update (based on updated containers)
-      const newStructure: ThoughtsBySection = {
-        introduction: (newContainers.introduction || []).map((item: Item) => item.id),
-        main: (newContainers.main || []).map((item: Item) => item.id),
-        conclusion: (newContainers.conclusion || []).map((item: Item) => item.id),
-        ambiguous: (newContainers.ambiguous || []).map((item: Item) => item.id),
-      };
-
-      // 4. Update UI *after* successful deletion confirmation
-      setSermon(sermonWithDeletedThought); // Update sermon state 
-      setContainers(newContainers); // Update containers state
-      containersRef.current = newContainers; // Keep ref in sync
-
-      // 5. Update structure in DB (if changed)
-      const structureDidChange = isStructureChanged(previousSermon.structure || {}, newStructure);
-      if (structureDidChange) {
-        try {
-          await updateStructure(sermonId, newStructure);
-        } catch {
-          toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR) || "Error saving structure changes after deleting item.");
-        }
-      }
-
-      toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
-
-    } catch {
-      toast.error(t('errors.deletingError') || "Failed to delete thought.");
-    } finally {
-      // Clear deleting state AFTER operation (success or error)
-      setDeletingItemId(null);
-    }
+    await handleDeleteThought(itemId);
   };
 
   // Function to handle outline updates from Column components
@@ -597,7 +543,7 @@ function StructurePageContent() {
     <div className="p-4">
       <div className={`w-full`}>
         <div className="mb-4">
-          <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
             {t('structure.title')} {sermon.title}
           </h1>
           <FocusNav
@@ -607,9 +553,9 @@ function StructurePageContent() {
             onToggleFocusMode={handleToggleFocusMode}
             onNavigateToSection={navigateToSection}
           />
-          {/* Layout toggle button — only shown when not in focus mode */}
+          {/* Layout toggle button — only shown when not in focus mode, hidden on mobile */}
           {!focusedColumn && (
-            <div className="flex justify-end mt-2">
+            <div className="hidden md:flex justify-end mt-2">
               <button
                 onClick={handleToggleLayout}
                 title={isVerticalLayout ? t('structure.switchToHorizontalLayout', { defaultValue: 'Switch to horizontal layout' }) : t('structure.switchToVerticalLayout', { defaultValue: 'Switch to vertical layout' })}
@@ -651,7 +597,7 @@ function StructurePageContent() {
             onToggleVisibility={() => setIsAmbiguousVisible(!isAmbiguousVisible)}
             onEdit={handleEdit}
             onDelete={handleRemoveFromStructure}
-            deletingItemId={deletingItemId}
+            deletingItemId={null}
             activeId={dndActiveId}
             focusedColumn={focusedColumn}
             columnTitle={columnTitles["ambiguous"]}

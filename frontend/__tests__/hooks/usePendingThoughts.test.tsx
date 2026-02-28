@@ -194,6 +194,31 @@ describe('usePendingThoughts', () => {
     expect(clearedItem?.syncSuccessAt).toBeUndefined();
   });
 
+  it('updates pending thought section and moves the item between containers', () => {
+    const { result } = setupHook();
+
+    act(() => {
+      result.current.createPendingThought({
+        sectionId: 'introduction',
+        text: 'Movable thought',
+        tags: [],
+        outlinePointId: 'p1',
+      });
+    });
+
+    act(() => {
+      result.current.updatePendingThought('local-1', {
+        sectionId: 'main',
+        outlinePointId: 'p2',
+      });
+    });
+
+    expect(result.current.pendingThoughts[0].sectionId).toBe('main');
+    expect(result.current.pendingThoughts[0].outlinePointId).toBe('p2');
+    expect(result.current.containers.introduction.find((item) => item.id === 'local-1')).toBeUndefined();
+    expect(result.current.containers.main.find((item) => item.id === 'local-1')).toBeDefined();
+  });
+
   it('removes pending thoughts from state and containers', () => {
     const { result } = setupHook();
 

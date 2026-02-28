@@ -26,6 +26,8 @@ jest.mock('@components/Icons', () => ({
 jest.mock('@heroicons/react/24/outline', () => ({
   EllipsisVerticalIcon: () => <div data-testid="ellipsis-icon" />,
   ExclamationTriangleIcon: () => <div data-testid="exclamation-icon" />,
+  ArrowPathIcon: () => <div data-testid="arrow-path-icon" />,
+  CheckCircleIcon: () => <div data-testid="check-circle-icon" />,
 }));
 
 // Mock the tagUtils module
@@ -109,6 +111,10 @@ jest.mock('react-i18next', () => ({
         'common.copy': 'Copy',
         'common.copied': 'Copied!',
         'common.delete': 'Delete',
+        'common.saved': 'Saved',
+        'buttons.saved': 'Saved',
+        'buttons.saving': 'Saving...',
+        'buttons.deleting': 'Deleting...',
         'thought.tagsLabel': 'Tags',
         'thought.availableTags': 'Available tags',
         'thought.missingTags': 'Missing tags',
@@ -384,6 +390,89 @@ describe('ThoughtCard Component', () => {
     const anyTag = screen.getByText('Tag1') || screen.getByText('Tag2');
     expect(anyTag.tagName.toLowerCase()).toBe('span');
     expect((anyTag as HTMLElement).className).not.toMatch(/active:scale|hover:scale/);
+  });
+
+  it('renders translated saved sync badge for success state', () => {
+    render(
+      <ThoughtCard
+        {...defaultProps}
+        syncState={{ status: 'success', operation: 'update' }}
+      />
+    );
+
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(screen.queryByText('buttons.saved')).not.toBeInTheDocument();
+  });
+
+  it('renders pending and deleting sync banners with matching card styles', () => {
+    const { rerender } = render(
+      <ThoughtCard
+        {...defaultProps}
+        syncState={{ status: 'pending', operation: 'update' }}
+      />
+    );
+
+    expect(screen.getByText('Saving...')).toBeInTheDocument();
+    expect(screen.getByRole('article')).toHaveClass('border-amber-300');
+
+    rerender(
+      <ThoughtCard
+        {...defaultProps}
+        syncState={{ status: 'pending', operation: 'delete' }}
+      />
+    );
+
+    expect(screen.getByText('Deleting...')).toBeInTheDocument();
+    expect(screen.getByRole('article')).toHaveClass('opacity-70');
+  });
+
+  it('renders sync errors and retries through the thought id callback', () => {
+    const onRetrySync = jest.fn();
+
+    render(
+      <ThoughtCard
+        {...defaultProps}
+        syncState={{ status: 'error', operation: 'update', lastError: 'Save failed' }}
+        onRetrySync={onRetrySync}
+      />
+    );
+
+    expect(screen.getByText('Save failed')).toBeInTheDocument();
+    expect(screen.getByRole('article')).toHaveClass('border-red-300');
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.retry' }));
+    expect(onRetrySync).toHaveBeenCalledWith('thought-1');
+  });
+
+  it('propagates outline point changes when editing is enabled', async () => {
+    const sermonOutline = {
+      id: 'outline-1',
+      title: 'Test SermonOutline',
+      introduction: [{ id: 'point-1', text: 'Intro Point 1', order: 1 }],
+      main: [],
+      conclusion: [],
+    };
+    const onThoughtOutlinePointChange = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <ThoughtCard
+        {...defaultProps}
+        thought={{ ...mockThought, tags: ['Вступление'] }}
+        sermonOutline={sermonOutline}
+        sermonId="sermon-1"
+        onThoughtUpdate={jest.fn()}
+        onThoughtOutlinePointChange={onThoughtOutlinePointChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'editThought.noSermonPointAssigned' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Intro Point 1' }));
+
+    await waitFor(() => {
+      expect(onThoughtOutlinePointChange).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'thought-1' }),
+        'point-1'
+      );
+    });
   });
 
   it('keeps structure tag classes stable between first render and after allowedTags load', () => {

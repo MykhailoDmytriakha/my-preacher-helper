@@ -48,7 +48,8 @@ describe('usePersistence', () => {
   };
 
   const defaultProps = {
-    setSermon: jest.fn()
+    setSermon: jest.fn(),
+    onThoughtSyncStateChange: jest.fn(),
   };
 
   beforeEach(() => {
@@ -117,6 +118,62 @@ describe('usePersistence', () => {
           },
         },
       ]);
+    });
+  });
+
+  describe('sync state integration', () => {
+    it('emits pending/success transitions and can retry latest thought payload', async () => {
+      mockUpdateThought
+        .mockRejectedValueOnce(new Error('Save failed'))
+        .mockResolvedValueOnce(mockThought);
+
+      const { result } = renderHook(() => usePersistence(defaultProps));
+
+      await act(async () => {
+        await result.current.saveThought('sermon-1', mockThought);
+      });
+
+      expect(defaultProps.onThoughtSyncStateChange).toHaveBeenCalledWith(
+        'thought-1',
+        'pending',
+        expect.objectContaining({ operation: 'update' })
+      );
+      expect(defaultProps.onThoughtSyncStateChange).toHaveBeenCalledWith(
+        'thought-1',
+        'error',
+        expect.objectContaining({ operation: 'update' })
+      );
+
+      await act(async () => {
+        await result.current.retryThoughtSave('sermon-1', 'thought-1');
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalledTimes(2);
+      expect(defaultProps.onThoughtSyncStateChange).toHaveBeenCalledWith(
+        'thought-1',
+        'success',
+        expect.objectContaining({ operation: 'update' })
+      );
+    });
+
+    it('clears success state after the success window and cancels debounced retries before retrying', async () => {
+      const { result } = renderHook(() => usePersistence(defaultProps));
+
+      act(() => {
+        result.current.debouncedSaveThought('sermon-1', mockThought);
+      });
+
+      await act(async () => {
+        await result.current.retryThoughtSave('sermon-1', 'thought-1');
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        jest.advanceTimersByTime(3500);
+      });
+
+      expect(defaultProps.onThoughtSyncStateChange).toHaveBeenCalledWith('thought-1');
     });
   });
 

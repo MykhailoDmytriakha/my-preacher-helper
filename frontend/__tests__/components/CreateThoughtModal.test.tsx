@@ -35,7 +35,6 @@ jest.mock('@/hooks/useOnlineStatus', () => ({
 
 jest.mock('@services/thought.service', () => ({
     transcribeThoughtAudio: jest.fn(),
-    createManualThought: jest.fn(),
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
@@ -60,16 +59,13 @@ jest.mock('@utils/tagUtils', () => ({
     normalizeStructureTag: jest.fn(() => null),
 }));
 
-import { createManualThought } from '@services/thought.service';
 import { toast } from 'sonner';
-
-const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
 
 const defaultProps = {
     isOpen: true,
     onClose: jest.fn(),
     sermonId: 'sermon-1',
-    onNewThought: jest.fn(),
+    onCreateThought: jest.fn(),
     allowedTags: [],
 };
 
@@ -97,19 +93,20 @@ describe('CreateThoughtModal', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
-    it('submits thought and calls onNewThought on success', async () => {
-        const savedThought = { id: 'thought-1', text: 'Hello world', tags: [], date: '' };
-        mockCreateManualThought.mockResolvedValueOnce(savedThought as any);
-
-        const onNewThought = jest.fn();
-        render(<CreateThoughtModal {...defaultProps} onNewThought={onNewThought} />);
+    it('submits thought and calls onCreateThought on success', async () => {
+        const onCreateThought = jest.fn().mockResolvedValue(undefined);
+        render(<CreateThoughtModal {...defaultProps} onCreateThought={onCreateThought} />);
 
         fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Hello world' } });
 
         // Click the Save button (type=submit) to trigger form submission
         fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
 
-        await waitFor(() => expect(onNewThought).toHaveBeenCalledWith(savedThought));
+        await waitFor(() => expect(onCreateThought).toHaveBeenCalledWith(expect.objectContaining({
+            text: 'Hello world',
+            tags: [],
+            outlinePointId: undefined,
+        })));
         expect(toast.success).toHaveBeenCalled();
     });
 
@@ -121,14 +118,14 @@ describe('CreateThoughtModal', () => {
         fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
 
         await waitFor(() => {
-            expect(mockCreateManualThought).not.toHaveBeenCalled();
+            expect(defaultProps.onCreateThought).not.toHaveBeenCalled();
         });
     });
 
-    it('shows error toast when createManualThought fails', async () => {
-        mockCreateManualThought.mockRejectedValueOnce(new Error('Server error'));
+    it('shows error toast when onCreateThought fails', async () => {
+        const onCreateThought = jest.fn().mockRejectedValueOnce(new Error('Server error'));
 
-        render(<CreateThoughtModal {...defaultProps} />);
+        render(<CreateThoughtModal {...defaultProps} onCreateThought={onCreateThought} />);
         fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Some text' } });
 
         fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));

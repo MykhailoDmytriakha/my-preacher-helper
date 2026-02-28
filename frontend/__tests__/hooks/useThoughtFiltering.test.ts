@@ -1,7 +1,13 @@
 import { renderHook, act } from '@testing-library/react';
 
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
-import { getPreachOrderedThoughtsBySection, insertThoughtIdInStructure, resolveSectionForNewThought } from '@utils/thoughtOrdering';
+import {
+  getPreachOrderedThoughtsBySection,
+  insertThoughtIdInStructure,
+  resolveSectionForNewThought,
+  replaceThoughtIdInStructure,
+  removeThoughtIdFromStructure,
+} from '@utils/thoughtOrdering';
 import { STRUCTURE_TAGS } from '@lib/constants';
 
 import type { Thought, Sermon } from '@/models/models';
@@ -287,5 +293,32 @@ describe('thoughtOrdering utilities', () => {
       tags: [STRUCTURE_TAGS.INTRODUCTION],
     });
     expect(resolved).toBe('main');
+  });
+
+  it('replaces a thought id in all sections of the structure', () => {
+    const structure = {
+      introduction: ['t1', 't2'],
+      main: ['t3', 't4'],
+      conclusion: ['t5'],
+    };
+    const updated = replaceThoughtIdInStructure({
+      structure,
+      fromThoughtId: 't2',
+      toThoughtId: 't-new',
+    });
+    expect(updated.introduction).toEqual(['t1', 't-new']);
+    expect(updated.main).toEqual(['t3', 't4']);
+  });
+
+  it('removes a thought id from all sections of the structure', () => {
+    const structure = {
+      introduction: ['t1', 't2'],
+      main: ['t3', 't4'],
+      conclusion: ['t2'],
+    };
+    const updated = removeThoughtIdFromStructure(structure, 't2');
+    expect(updated.introduction).toEqual(['t1']);
+    expect(updated.main).toEqual(['t3', 't4']);
+    expect(updated.conclusion).toEqual([]);
   });
 });
