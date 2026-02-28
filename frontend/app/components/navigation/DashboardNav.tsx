@@ -307,7 +307,7 @@ export default function DashboardNav() {
             {/* Center: Title */}
             <div className="absolute left-0 right-0 flex justify-center pointer-events-none">
               <Link
-                href="/dashboard"
+                href={navItems.find(item => isNavItemActive(pathname, item.matchers))?.href || "/dashboard"}
                 prefetch={isOnline}
                 className="flex items-center text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent pointer-events-auto"
               >
