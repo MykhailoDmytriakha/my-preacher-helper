@@ -351,8 +351,8 @@ const EmptyStateGenerateContainer = ({
   onGenerate: () => void;
 }) => (
   <div className="mt-3 sm:mt-4">
-    <div className="flex flex-col items-center sm:items-start gap-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
-      <div className="w-full text-center sm:text-left">
+    <div className="flex flex-col items-center gap-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
+      <div className="w-full text-center">
         {hasEnoughThoughts ? (
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {noInsightsMessage}
@@ -365,7 +365,7 @@ const EmptyStateGenerateContainer = ({
       </div>
 
       <button
-        className={`w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
+        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
           ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
           : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
           }`}
