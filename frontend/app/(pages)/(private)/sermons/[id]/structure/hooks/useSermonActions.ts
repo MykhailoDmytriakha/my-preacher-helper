@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
-import { updateThought } from "@/services/thought.service";
+import { updateThought, deleteThought } from "@/services/thought.service";
 import { debugLog } from "@/utils/debugMode";
 import { getCanonicalTagForSection } from "@/utils/tagUtils";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
@@ -274,20 +274,79 @@ export function useSermonActions({
 
     const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
         if (!sermon) return;
+
+        const trimmedText = updatedText.trim();
+
+        // TRIZ+IFR: Empty text means "Cancel" for new thoughts and "Delete" for existing ones
+        if (!trimmedText) {
+            debugLog('Structure: empty text in handleSaveEdit - interpreting as cancel/delete', {
+                editingId: editingItem?.id,
+                isTemp: Boolean(editingItem?.id?.startsWith('temp-')),
+            });
+
+            if (!editingItem || editingItem.id.startsWith('temp-') || isLocalThoughtId(editingItem.id)) {
+                // New thought or unsynced pending thought -> Just cancel
+                if (editingItem && isLocalThoughtId(editingItem.id)) {
+                    pendingActions.removePendingThought(editingItem.id, { removeFromContainers: true });
+                }
+                handleCloseEdit();
+                return;
+            }
+
+            // Existing thought -> Delete
+            try {
+                const thoughtToDelete = sermon.thoughts.find(t => t.id === editingItem.id);
+                if (!thoughtToDelete) {
+                    handleCloseEdit();
+                    return;
+                }
+
+                await deleteThought(sermon.id, thoughtToDelete);
+
+                // Update local state
+                const updatedThoughts = sermon.thoughts.filter(t => t.id !== editingItem.id);
+                const newContainers = Object.keys(containers).reduce((acc, key) => {
+                    acc[key] = (containers[key] || []).filter(item => item.id !== editingItem.id);
+                    return acc;
+                }, {} as Record<string, Item[]>);
+
+                setContainers(newContainers);
+
+                const newStructure: ThoughtsBySection = {
+                    introduction: (newContainers.introduction || []).map(it => it.id),
+                    main: (newContainers.main || []).map(it => it.id),
+                    conclusion: (newContainers.conclusion || []).map(it => it.id),
+                    ambiguous: (newContainers.ambiguous || []).map(it => it.id),
+                };
+
+                setSermon(prev => prev ? { ...prev, thoughts: updatedThoughts, structure: newStructure, thoughtsBySection: newStructure } : null);
+                await updateStructure(sermon.id, newStructure);
+
+                toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
+            } catch (error) {
+                console.error("Error deleting empty thought:", error);
+                toast.error(t('errors.deletingError') || "Failed to delete thought.");
+            } finally {
+                handleCloseEdit();
+            }
+            return;
+        }
+
         debugLog('Structure: handleSaveEdit', {
             editingId: editingItem?.id,
             isTemp: Boolean(editingItem?.id?.startsWith('temp-')),
             isLocal: Boolean(editingItem && isLocalThoughtId(editingItem.id)),
             section: addingThoughtToSection,
-            textLength: updatedText.length,
+            textLength: trimmedText.length,
             tags: updatedTags,
             outlinePointId,
         });
+
         if (editingItem?.id.startsWith('temp-')) {
-            await handleCreateNewThought(updatedText, updatedTags, outlinePointId);
+            await handleCreateNewThought(trimmedText, updatedTags, outlinePointId);
         } else if (editingItem && isLocalThoughtId(editingItem.id)) {
             pendingActions.updatePendingThought(editingItem.id, {
-                text: updatedText,
+                text: trimmedText,
                 tags: updatedTags,
                 outlinePointId,
             });
@@ -296,14 +355,14 @@ export function useSermonActions({
                 await submitPendingThought({
                     localId: editingItem.id,
                     sectionId: pending.sectionId,
-                    text: updatedText,
+                    text: trimmedText,
                     tags: updatedTags,
                     outlinePointId,
                 });
             }
             handleCloseEdit();
         } else {
-            await handleUpdateExistingThought(updatedText, updatedTags, outlinePointId);
+            await handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId);
         }
     };
 

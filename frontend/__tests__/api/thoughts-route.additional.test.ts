@@ -166,7 +166,9 @@ describe('Thoughts API route additional coverage', () => {
       expect(data).toEqual({ error: 'sermonId and thought are required' });
     });
 
-    it('returns 500 when thought is missing required fields', async () => {
+    it('returns 400 when thought is missing required fields', async () => {
+      fetchSermonByIdMock.mockResolvedValueOnce({ userId: 'user-1' });
+
       const request = createJsonRequest(
         {
           sermonId: 'sermon-1',
@@ -180,7 +182,7 @@ describe('Thoughts API route additional coverage', () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(400);
       expect(data).toEqual({ error: 'Thought is missing required fields' });
     });
   });
@@ -296,6 +298,25 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(400);
       expect(data).toEqual({ error: 'sermonId and thought are required' });
+    });
+
+    it('returns 400 when thought is missing required fields', async () => {
+      fetchSermonByIdMock.mockResolvedValueOnce({
+        id: 'sermon-1',
+        thoughts: [{ id: 'thought-1', text: 'original' }],
+        userId: 'user-1',
+      });
+
+      const request = createJsonRequest({
+        sermonId: 'sermon-1',
+        thought: { id: 'thought-1' }, // missing text
+      });
+
+      const response = await PUT(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data).toEqual({ error: 'Thought is missing required fields' });
     });
 
     it('returns 400 when thought.id is missing', async () => {

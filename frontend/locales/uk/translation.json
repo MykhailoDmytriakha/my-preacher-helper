@@ -401,6 +401,7 @@
     "sortOrder": "Порядок сортування",
     "sortByDate": "За датою (спочатку нові)",
     "sortByStructure": "За структурою (вступ → основна частина → висновок)",
+    "sortByStructureShort": "За структурою",
     "noStructureTagsPresent": "Немає тегів структури",
     "requiresStructureTags": "Потрібні теги структури"
   },

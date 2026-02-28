@@ -401,6 +401,7 @@
     "sortOrder": "Порядок сортировки",
     "sortByDate": "По дате (сначала новые)",
     "sortByStructure": "По структуре (вступление → основная часть → заключение)",
+    "sortByStructureShort": "По структуре",
     "noStructureTagsPresent": "Нет тегов структуры",
     "requiresStructureTags": "Требуются теги структуры"
   },

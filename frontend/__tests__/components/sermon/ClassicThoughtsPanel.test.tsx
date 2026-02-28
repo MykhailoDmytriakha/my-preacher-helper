@@ -153,13 +153,13 @@ describe("ClassicThoughtsPanel", () => {
       />
     );
 
-    expect(screen.getByText("Active Filters:")).toBeInTheDocument();
-    expect(screen.getByText("Missing Tags")).toBeInTheDocument();
-    expect(screen.getByText("Sorted by ThoughtsBySection")).toBeInTheDocument();
-    expect(screen.getByText("grace")).toBeInTheDocument();
-    expect(screen.getByText("unknown-tag")).toBeInTheDocument();
+    expect(screen.getAllByText("Active Filters:").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Missing Tags").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Sorted by ThoughtsBySection").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("grace").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("unknown-tag").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText("Clear"));
+    fireEvent.click(screen.getAllByText("Clear")[0]);
     expect(resetFilters).toHaveBeenCalled();
   });
 });

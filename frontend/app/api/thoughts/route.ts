@@ -93,7 +93,7 @@ async function handleManualPost(request: Request) {
 
     const thoughtWithId = buildManualThought(thought);
     if (!isCompleteThought(thoughtWithId)) {
-      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 400 });
     }
 
     console.log("Manual thought with tags:", thoughtWithId);
@@ -174,7 +174,7 @@ async function handleAutoPost(request: Request) {
 
     if (!isCompleteThought(thought)) {
       console.error("Thoughts route: Generated thought is missing required fields after processing", thought);
-      return NextResponse.json({ error: "Generated thought is missing required fields after processing" }, { status: 500 });
+      return NextResponse.json({ error: "Generated thought is missing required fields after processing" }, { status: 400 });
     }
     console.log("Generated thought:", thought);
 
@@ -289,7 +289,7 @@ export async function PUT(request: Request) {
 
     if (!sanitizedMergedThought.id || !sanitizedMergedThought.text || !sanitizedMergedThought.date || !sanitizedMergedThought.tags) {
       console.error("Thoughts route: Thought is missing required fields after merge");
-      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 500 });
+      return NextResponse.json({ error: "Thought is missing required fields" }, { status: 400 });
     }
 
     console.log("Thoughts route: Thought to update:", JSON.stringify(oldThought));

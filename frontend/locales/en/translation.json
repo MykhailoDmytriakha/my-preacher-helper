@@ -401,6 +401,7 @@
     "sortOrder": "Sort Order",
     "sortByDate": "By Date (Newest First)",
     "sortByStructure": "By Structure (Intro → Main → Conclusion)",
+    "sortByStructureShort": "By structure",
     "noStructureTagsPresent": "No structure tags present",
     "requiresStructureTags": "Requires structure tags"
   },

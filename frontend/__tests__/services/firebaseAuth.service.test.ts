@@ -173,7 +173,7 @@ describe('firebaseAuth.service', () => {
 
     expect(mockSignInAnonymously).toHaveBeenCalled();
     expect(storedGuest.uid).toBe('guest123456');
-    expect(storedGuest.creationTime).toMatch(/^2026-02-27T/);
+    expect(storedGuest.creationTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(mockUpdateUserProfile).toHaveBeenCalledWith(
       'guest123456',
       'guest-guest1@guest.local',

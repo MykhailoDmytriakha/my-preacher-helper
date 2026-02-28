@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { Rows3 } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
@@ -197,23 +198,42 @@ export default function ClassicThoughtsPanel({
                   transition={{ duration: 0.2, ease: "easeInOut" }}
                   style={{ overflow: "visible" }}
                 >
-                  <button
-                    ref={filterButtonRef}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsFilterOpen(!isFilterOpen);
-                    }}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
-                    data-testid="thought-filter-button"
-                  >
-                    {t("filters.filter")}
-                    {hasAnyActiveFilter && (
-                      <span className="ml-1 w-2 h-2 bg-blue-600 rounded-full"></span>
-                    )}
-                    <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                  <div className="inline-flex items-stretch">
+                    <div className="relative group flex items-stretch">
+                      <button
+                        onClick={() => setSortOrder(sortOrder === "structure" ? "date" : "structure")}
+                        disabled={!hasStructureTags}
+                        className={[
+                          "flex items-center justify-center w-9 border border-r-0 rounded-l-md transition-colors",
+                          hasStructureTags
+                            ? sortOrder === "structure"
+                              ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500 dark:border-blue-500"
+                              : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            : "bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-600 cursor-not-allowed opacity-50",
+                        ].join(" ")}
+                      >
+                        <Rows3 className="w-4 h-4" />
+                      </button>
+                      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded px-2 py-1 text-xs text-white bg-gray-800 dark:bg-gray-700 opacity-0 transition-opacity duration-150 delay-0 group-hover:opacity-100 group-hover:delay-1000 z-50">
+                        {t("filters.sortByStructureShort")}
+                      </span>
+                    </div>
+                    <button
+                      ref={filterButtonRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsFilterOpen(!isFilterOpen);
+                      }}
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      data-testid="thought-filter-button"
+                    >
+                      {t("filters.filter")}
+                      <span className={`ml-1 w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 ${hasAnyActiveFilter ? "visible" : "invisible"}`}></span>
+                      <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
 
                   <ThoughtFilterControls
                     isOpen={isFilterOpen}

@@ -58,6 +58,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-02-27 Empty-Input TRIZ+IFR Solution:** Map empty saves to "Cancel" for new items and "Delete" for existing ones in the frontend; this prevents invalid state persistence and avoids server-side validation 500s while fulfilling user intent.
 - **2026-02-27 StepByStepWizard Stream Error Path:** In `StepByStepWizard`, NDJSON stream `error` events thrown through the `onError` callback are swallowed by `processStream`'s parser `catch` and logged via `console.error`; test that path through logging assertions, not by expecting a rendered error banner.
 - **2026-02-27 StepByStepWizard Completion Event:** In `StepByStepWizard` tests, `download_complete` alone is insufficient for success-state coverage; emit at least one prior `audio_chunk` event because the component synthesizes the final downloadable URL from accumulated chunk data.
 - **2026-02-27**: In Jest mock factories, avoid generic type arguments on locally required `React.useState`; the mocked `React` binding is untyped and can fail `tsc --noEmit`. In stateful `renderHook` harnesses, explicitly annotate `React.useState<Record<string, Item[]>>` when the hook expects a broad record shape.
