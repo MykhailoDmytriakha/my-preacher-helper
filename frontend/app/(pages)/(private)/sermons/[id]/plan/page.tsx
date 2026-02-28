@@ -18,6 +18,7 @@ import { debugLog } from "@/utils/debugMode";
 import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
+import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
 
 import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
 import {
@@ -903,18 +904,6 @@ export default function PlanPage() {
     const visibleThoughts = unassignedThoughts.slice(0, VISIBLE_CARD_LIMIT);
     const hiddenCount = unassignedThoughts.length - VISIBLE_CARD_LIMIT;
 
-    // Minimal tag badge — mirrors the section colours used across the app
-    const getSectionTagStyle = (tags: string[]): { label: string; className: string } | null => {
-      const clean = tags.map(tg => tg.toLowerCase());
-      if (clean.some(tg => tg.includes('intro')))
-        return { label: 'Introduction', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' };
-      if (clean.some(tg => tg === 'main' || tg.includes('main')))
-        return { label: 'Main', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' };
-      if (clean.some(tg => tg.includes('conclu')))
-        return { label: 'Conclusion', className: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' };
-      return null;
-    };
-
     return (
       <div className="p-8 text-center max-w-3xl mx-auto">
         <div className="mb-6">
@@ -934,7 +923,6 @@ export default function PlanPage() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
               {visibleThoughts.map((thought) => {
-                const tagBadge = getSectionTagStyle(thought.tags ?? []);
                 const dateStr = thought.date
                   ? new Date(thought.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
                   : null;
@@ -943,15 +931,31 @@ export default function PlanPage() {
                     key={thought.id}
                     className="relative p-4 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
                       {dateStr && (
                         <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">{dateStr}</span>
                       )}
-                      {tagBadge && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tagBadge.className}`}>
-                          {tagBadge.label}
-                        </span>
-                      )}
+                      {(thought.tags ?? []).map((tag) => {
+                        const canonical = normalizeStructureTag(tag);
+                        const translationKey = getTranslationKeyForTag(tag);
+                        const label = translationKey ? t(translationKey) : tag;
+
+                        // Use section-specific colors for structural tags, default gray for others
+                        const colorClass =
+                          canonical === 'intro' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' :
+                            canonical === 'main' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' :
+                              canonical === 'conclusion' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' :
+                                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+
+                        return (
+                          <span
+                            key={tag}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorClass}`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })}
                     </div>
                     <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-3">
                       {thought.text}

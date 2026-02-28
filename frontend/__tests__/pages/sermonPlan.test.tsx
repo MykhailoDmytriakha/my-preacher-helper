@@ -277,6 +277,9 @@ const translate = (key: string, options?: { defaultValue?: string }) => {
     'errors.outlinePointNotFound': 'SermonOutline point not found',
     'errors.failedToGenerateContent': 'Failed to generate content',
     'errors.failedToSavePoint': 'Failed to save point',
+    'tags.introduction': 'Introduction',
+    'tags.mainPart': 'Main',
+    'tags.conclusion': 'Conclusion',
   };
   return translations[key] || options?.defaultValue || key;
 };
