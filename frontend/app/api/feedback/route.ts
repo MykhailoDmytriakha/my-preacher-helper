@@ -48,17 +48,36 @@ function createTransporter() {
 }
 
 /**
- * Builds inline image HTML for the email body
+ * Builds inline image HTML for the email body using CID references.
+ * CIDs must match the `cid` field in the nodemailer `attachments` array.
  */
 function buildImageHtml(images: string[]): string {
   if (!images.length) return '';
   const imgTags = images
     .map(
-      (src, i) =>
-        `<img src="${src}" alt="Attachment ${i + 1}" style="max-width:480px;max-height:320px;border-radius:4px;margin:4px 0;display:block;" />`
+      (_, i) =>
+        `<img src="cid:attachment${i + 1}@preacher" alt="Attachment ${i + 1}" style="max-width:480px;max-height:320px;border-radius:4px;margin:4px 0;display:block;" />`
     )
     .join('\n');
   return `<p><strong>Attachments:</strong></p>\n${imgTags}`;
+}
+
+/**
+ * Converts Base64 data URLs to nodemailer inline attachments with CID references.
+ */
+function buildAttachments(images: string[]) {
+  return images.map((dataUrl, i) => {
+    // dataUrl format: "data:<mime>;base64,<data>"
+    const [header, base64Data] = dataUrl.split(',');
+    const mimeType = header.replace('data:', '').replace(';base64', '') || 'image/png';
+    const ext = mimeType.split('/')[1] || 'png';
+    return {
+      filename: `attachment${i + 1}.${ext}`,
+      content: Buffer.from(base64Data, 'base64'),
+      contentType: mimeType,
+      cid: `attachment${i + 1}@preacher`,
+    };
+  });
 }
 
 /**
@@ -85,6 +104,7 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
       from: `"Preacher Helper" <${EMAIL_CONFIG.auth.user}>`,
       to: OWNER_EMAIL,
       subject: `New Feedback (${type}) from Preacher Helper`,
+      attachments: buildAttachments(images),
       html: `
         <h2>New Feedback Submitted</h2>
         <p><strong>Type:</strong> ${type}</p>

@@ -91,8 +91,13 @@ describe('api/feedback/route', () => {
 
         expect(emailContent.to).toBe('owner@example.com');
         expect(emailContent.html).toContain('Test feedback message');
-        expect(emailContent.html).toContain('data:image/png;base64,img1');
-        expect(emailContent.html).toContain('data:image/png;base64,img2');
+        // Images should be sent as CID attachments, NOT inline data: URIs (Gmail blocks data: URIs)
+        expect(emailContent.html).toContain('cid:attachment1@preacher');
+        expect(emailContent.html).toContain('cid:attachment2@preacher');
+        expect(emailContent.html).not.toContain('data:image/png;base64,img1');
+        expect(emailContent.attachments).toHaveLength(2);
+        expect(emailContent.attachments[0]).toMatchObject({ cid: 'attachment1@preacher', contentType: 'image/png' });
+        expect(emailContent.attachments[1]).toMatchObject({ cid: 'attachment2@preacher', contentType: 'image/png' });
         expect(emailContent.text).toContain('Attachments: 2 image(s)');
     });
 
