@@ -4,6 +4,7 @@ import { act } from 'react-dom/test-utils';
 
 import '@testing-library/jest-dom';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { getAudioGracePeriod } from '@/utils/audioRecorderConfig';
 
 // Mock the translation hook
 jest.mock('react-i18next', () => ({
@@ -355,10 +356,12 @@ describe('FocusRecorderButton', () => {
         expect(button).toHaveClass('bg-red-500');
       });
 
-      // Fast-forward time in 1-second steps to allow state updates and effects to run
-      for (let i = 0; i < 9; i++) {
+      // Fast-forward time through maxDuration (5s) + grace period + buffer
+      const totalWaitTime = 5 + getAudioGracePeriod() + 2;
+      for (let i = 0; i < totalWaitTime; i++) {
         await act(async () => {
           jest.advanceTimersByTime(1000);
+          await Promise.resolve();
         });
       }
 

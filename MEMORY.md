@@ -58,6 +58,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-01 Audio Recorder Timer Source of Truth:** Post-recording 5-second dictation countdown is centralized in `frontend/app/utils/audioRecorderConfig.ts` as `GRACE_PERIOD_SECONDS` with env override `NEXT_PUBLIC_AUDIO_GRACE_PERIOD`; UI recorders and server duration validation all depend on that shared config.
 - **2026-02-28 Telemetry-First AI Cost Optimization:** For AI-heavy flows, verify real prompt/completion usage before swapping providers; in this project `thought@v3` already cut total tokens by 38.9% vs `thought@v1`, and once rewrite rides a budget model, transcription becomes the dominant cost driver, so biggest savings come from routing, prompt shrinkage, and fallback escalation instead of a one-model-for-all swap.
 - **2026-02-28 Parent Projection Owns Optimistic Truth:** When migrating a page from bespoke optimistic helpers to a shared persisted journal, route child save intents through one parent callback, project the optimistic entities back into every consumer view, and remove duplicate child-to-parent local update contracts; otherwise reconciliation splits and the page keeps two conflicting truths.
 - **2026-02-28 i18n Status Labels:** For shared status badges like "Saved", prefer long-lived common translation keys (`common.saved`) over narrower feature-scoped keys when either text is equivalent; this reduces raw-key leakage for clients with stale locale caches and keeps fallback behavior consistent across surfaces.

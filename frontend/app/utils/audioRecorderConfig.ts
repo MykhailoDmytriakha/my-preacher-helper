@@ -5,7 +5,7 @@ export const AUDIO_RECORDING_DEFAULTS = {
     /** Base recording duration in seconds */
     DURATION_SECONDS: 90,
     /** Grace period at end of recording (countdown 3-2-1) */
-    GRACE_PERIOD_SECONDS: 3,
+    GRACE_PERIOD_SECONDS: 5,
 } as const;
 
 /**

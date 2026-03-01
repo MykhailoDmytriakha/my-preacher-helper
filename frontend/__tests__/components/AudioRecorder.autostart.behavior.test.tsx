@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 
 // Import the REAL component (do NOT mock here)
 import { AudioRecorder } from '@/components/AudioRecorder';
+import { getAudioGracePeriod } from '@/utils/audioRecorderConfig';
 
 // Minimal mocks for Web Audio / Media APIs
 class MockMediaStreamTrack {
@@ -120,9 +121,10 @@ describe('AudioRecorder autoStart behavior', () => {
     // getUserMedia called once on autoStart
     await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
 
-    // Advance through maxDuration (2s) + grace period (3s) = 5s total
-    // Advance time in 1-second steps to allow state updates between interval ticks
-    for (let i = 0; i < 6; i++) {
+    // Advance through maxDuration (2s) + grace period + buffer
+    const gracePeriod = getAudioGracePeriod();
+    const totalWaitTime = 2 + gracePeriod + 2; // maxDuration + gracePeriod + 2s buffer
+    for (let i = 0; i < totalWaitTime; i++) {
       await act(async () => {
         jest.advanceTimersByTime(1000);
         await Promise.resolve();
