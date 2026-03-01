@@ -160,6 +160,14 @@ export default function ScriptureRefPicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onCancel]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   // Handle Escape key
   useEffect(() => {
     function handleKeyDown(event: globalThis.KeyboardEvent) {
@@ -234,177 +242,183 @@ export default function ScriptureRefPicker({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="mt-2 z-50 w-full max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-      role="dialog"
-      aria-modal="true"
-      aria-label={mode === 'edit' ? t('studiesWorkspace.editReference') : t('studiesWorkspace.addReference')}
-    >
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          {mode === 'edit' ? t('studiesWorkspace.editReference') : t('studiesWorkspace.addReference')}
-        </h3>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700"
-          aria-label={t('common.cancel')}
-        >
-          <XMarkIcon className="h-5 w-5" />
-        </button>
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
 
-      {/* Form */}
-      <div className="space-y-3">
-        {/* Scope selector */}
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            {t('studiesWorkspace.referenceScope') || 'Reference Type'}
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {([REFERENCE_SCOPE_BOOK, REFERENCE_SCOPE_CHAPTER, REFERENCE_SCOPE_CHAPTER_RANGE, REFERENCE_SCOPE_VERSES] as ReferenceScope[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setScope(s)}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${scope === s
+      {/* Modal */}
+      <div
+        ref={containerRef}
+        className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'edit' ? t('studiesWorkspace.editReference') : t('studiesWorkspace.addReference')}
+      >
+        {/* Header */}
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            {mode === 'edit' ? t('studiesWorkspace.editReference') : t('studiesWorkspace.addReference')}
+          </h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700"
+            aria-label={t('common.cancel')}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-3">
+          {/* Scope selector */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {t('studiesWorkspace.referenceScope') || 'Reference Type'}
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {([REFERENCE_SCOPE_BOOK, REFERENCE_SCOPE_CHAPTER, REFERENCE_SCOPE_CHAPTER_RANGE, REFERENCE_SCOPE_VERSES] as ReferenceScope[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setScope(s)}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${scope === s
                     ? 'bg-emerald-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                  }`}
-              >
-                {scopeLabels[s]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Book selector */}
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            {t('studiesWorkspace.book')}
-          </label>
-          <select
-            value={book}
-            onChange={(e) => setBook(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-          >
-            {bookList.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Chapter selector - shown for chapter, chapter-range, and verses scopes */}
-        {scope !== REFERENCE_SCOPE_BOOK && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                {scope === REFERENCE_SCOPE_CHAPTER_RANGE
-                  ? (t('studiesWorkspace.fromChapter') || 'From Chapter')
-                  : t('studiesWorkspace.chapter')
-                }
-              </label>
-              <select
-                value={chapter}
-                onChange={(e) => setChapter(Number(e.target.value))}
-                onKeyDown={handleKeyDown}
-                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-              >
-                {chapterOptions.map((ch) => (
-                  <option key={ch} value={ch}>
-                    {ch}
-                  </option>
-                ))}
-              </select>
+                    }`}
+                >
+                  {scopeLabels[s]}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* To chapter - only for chapter-range scope */}
-            {scope === REFERENCE_SCOPE_CHAPTER_RANGE && (
+          {/* Book selector */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {t('studiesWorkspace.book')}
+            </label>
+            <select
+              value={book}
+              onChange={(e) => setBook(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+            >
+              {bookList.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Chapter selector - shown for chapter, chapter-range, and verses scopes */}
+          {scope !== REFERENCE_SCOPE_BOOK && (
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                  {t('studiesWorkspace.toChapter') || 'To Chapter'}
+                  {scope === REFERENCE_SCOPE_CHAPTER_RANGE
+                    ? (t('studiesWorkspace.fromChapter') || 'From Chapter')
+                    : t('studiesWorkspace.chapter')
+                  }
                 </label>
                 <select
-                  value={toChapter}
-                  onChange={(e) => setToChapter(Number(e.target.value))}
+                  value={chapter}
+                  onChange={(e) => setChapter(Number(e.target.value))}
                   onKeyDown={handleKeyDown}
                   className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                 >
-                  {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
+                  {chapterOptions.map((ch) => (
                     <option key={ch} value={ch}>
                       {ch}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Verse selectors - only for verses scope */}
-        {scope === REFERENCE_SCOPE_VERSES && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                {t('studiesWorkspace.from')}
-              </label>
-              <select
-                value={fromVerse}
-                onChange={(e) => setFromVerse(Number(e.target.value))}
-                onKeyDown={handleKeyDown}
-                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-              >
-                {verseOptions.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              {/* To chapter - only for chapter-range scope */}
+              {scope === REFERENCE_SCOPE_CHAPTER_RANGE && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {t('studiesWorkspace.toChapter') || 'To Chapter'}
+                  </label>
+                  <select
+                    value={toChapter}
+                    onChange={(e) => setToChapter(Number(e.target.value))}
+                    onKeyDown={handleKeyDown}
+                    className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+                  >
+                    {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
+                      <option key={ch} value={ch}>
+                        {ch}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                {t('studiesWorkspace.to')}
-              </label>
-              <select
-                value={toVerse === '' ? '' : toVerse}
-                onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
-                onKeyDown={handleKeyDown}
-                className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
-              >
-                <option value="">—</option>
-                {verseOptions.filter((v) => v >= fromVerse).map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
 
-      {/* Actions */}
-      <div className="mt-4 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-        >
-          {t('common.cancel')}
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={!isValid}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {mode === 'edit' ? t('common.save') : t('studiesWorkspace.addReferenceShort')}
-        </button>
+          {/* Verse selectors - only for verses scope */}
+          {scope === REFERENCE_SCOPE_VERSES && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {t('studiesWorkspace.from')}
+                </label>
+                <select
+                  value={fromVerse}
+                  onChange={(e) => setFromVerse(Number(e.target.value))}
+                  onKeyDown={handleKeyDown}
+                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+                >
+                  {verseOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {t('studiesWorkspace.to')}
+                </label>
+                <select
+                  value={toVerse === '' ? '' : toVerse}
+                  onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
+                  onKeyDown={handleKeyDown}
+                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
+                >
+                  <option value="">—</option>
+                  {verseOptions.filter((v) => v >= fromVerse).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!isValid}
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mode === 'edit' ? t('common.save') : t('studiesWorkspace.addReferenceShort')}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ import { analyzeStudyNote } from '@clients/studyNote.structured';
  * {
  *   content: string;        // The note content to analyze
  *   existingTags?: string[]; // Optional existing tags to prefer
+ *   analysisType?: 'all' | 'title' | 'tags' | 'scriptureRefs'; // What to analyze
  * }
  * 
  * Response:
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { content, existingTags } = body;
+    const { content, existingTags, analysisType } = body;
 
     // Validate required fields
     if (!content || typeof content !== 'string') {
@@ -60,10 +61,11 @@ export async function POST(request: Request) {
     console.log("Studies analyze route: Analyzing note", {
       contentLength: content.length,
       existingTagsCount: existingTags?.length ?? 0,
+      analysisType: analysisType || 'all',
     });
 
     // Call the AI analysis function
-    const result = await analyzeStudyNote(content, existingTags);
+    const result = await analyzeStudyNote(content, existingTags, analysisType as 'all' | 'title' | 'tags' | 'scriptureRefs');
 
     if (!result.success) {
       console.error("Studies analyze route: Analysis failed", result.error);
@@ -75,8 +77,8 @@ export async function POST(request: Request) {
 
     console.log("Studies analyze route: Analysis successful", {
       title: result.data?.title,
-      refsCount: result.data?.scriptureRefs.length,
-      tagsCount: result.data?.tags.length,
+      refsCount: result.data?.scriptureRefs?.length ?? 0,
+      tagsCount: result.data?.tags?.length ?? 0,
     });
 
     return NextResponse.json({

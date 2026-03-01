@@ -66,10 +66,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
-    const { userId, content } = payload;
-    if (!userId || !content) {
-      return NextResponse.json({ error: 'userId and content are required' }, { status: 400 });
+    const { userId } = payload;
+    if (!userId) {
+      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
+    const content: string = payload.content ?? '';
 
     const note = await studiesRepository.createNote({
       userId,

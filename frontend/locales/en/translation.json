@@ -1792,6 +1792,7 @@
     "noRefs": "No scripture references yet",
     "addToMaterial": "Select for material",
     "materialBuilder": "Material builder",
+    "title": "Title",
     "materialTitlePlaceholder": "Title for sermon / study / group",
     "materialDescriptionPlaceholder": "Short description or goal",
     "materialTypes": {
@@ -1865,7 +1866,8 @@
       "openLink": "Open"
     },
     "aiAnalyze": {
-      "success": "AI Analysis successful.",
+      "success": "Analysis applied successfully.",
+      "noResults": "No useful suggestions found for this content.",
       "button": "AI Analyze",
       "buttonShort": "AI",
       "analyzing": "Analyzing...",
@@ -1873,7 +1875,21 @@
       "reanalyze": "Re-analyze with AI",
       "hintReanalyze": "Add missing metadata",
       "emptyContent": "Please enter note content first",
-      "error": "Failed to analyze note. Please try again."
+      "error": "Failed to analyze note. Please try again.",
+      "popoverTitle": "AI Actions",
+      "full": "Full Analysis",
+      "generateTitle": "Generate Title",
+      "findRefs": "Find Scripture Refs",
+      "generateTags": "Generate Tags",
+      "resultsTitle": "AI Analysis Results",
+      "resultsDesc": "Select the suggestions you'd like to apply to your note.",
+      "resultsDescMerge": "New items will be added to your note. Existing items are kept.",
+      "newLabel": "new",
+      "allAlreadyIn": "already in note",
+      "titleWillReplace": "will replace current",
+      "noNewTags": "No new tags suggested",
+      "noNewRefs": "No new references suggested",
+      "applySelected": "Apply Selected"
     },
     "voiceInput": {
       "button": "Record voice",

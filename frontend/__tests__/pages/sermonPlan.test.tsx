@@ -230,6 +230,19 @@ jest.mock('@/components/PreachingTimer', () => {
   };
 });
 jest.mock('@/components/FloatingTextScaleControls', () => () => <div data-testid="floating-text-controls">Mocked Floating Text Controls</div>);
+jest.mock('@components/ui/RichMarkdownEditor', () => {
+  const React = require('react');
+  return {
+    RichMarkdownEditor: ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) => (
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    ),
+  };
+});
+
 jest.mock('react-textarea-autosize', () => {
   const React = require('react');
   return function MockTextareaAutosize(props: any) {

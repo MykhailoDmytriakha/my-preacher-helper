@@ -55,12 +55,15 @@ export const ScriptureRefSchema = z.object({
 export const StudyNoteAnalysisSchema = z.object({
   title: z
     .string()
+    .optional()
     .describe("Short, descriptive title for the note (5-15 words). MUST be in the SAME language as the note content."),
   scriptureRefs: z
     .array(ScriptureRefSchema)
+    .optional()
     .describe("All Scripture references mentioned or alluded to in the note. Book names MUST be in English."),
   tags: z
     .array(z.string())
+    .optional()
     .describe("Relevant categorization tags (2-5 tags). MUST be in the SAME language as the note content."),
 });
 

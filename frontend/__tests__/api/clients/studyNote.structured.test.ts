@@ -55,7 +55,7 @@ describe('analyzeStudyNote', () => {
     expect(result.success).toBe(true);
     expect(result.data?.title).toBe('Блаженства в Нагорной проповеди');
     expect(result.data?.scriptureRefs).toHaveLength(2);
-    expect(result.data?.scriptureRefs[0].book).toBe('Matthew');
+    expect(result.data?.scriptureRefs?.[0].book).toBe('Matthew');
     expect(result.data?.tags).toContain('Нагорная проповедь');
   });
 
@@ -185,7 +185,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0].book).toBe('Matthew');
+    expect(result.data?.scriptureRefs?.[0].book).toBe('Matthew');
   });
 
   it('should remove toVerse when it equals fromVerse (single verse)', async () => {
@@ -215,15 +215,15 @@ describe('analyzeStudyNote', () => {
     expect(result.data?.scriptureRefs).toHaveLength(3);
 
     // Joel 2:1 - toVerse should be removed
-    expect(result.data?.scriptureRefs[0]).toEqual({
+    expect(result.data?.scriptureRefs?.[0]).toEqual({
       book: 'Joel',
       chapter: 2,
       fromVerse: 1,
     });
-    expect(result.data?.scriptureRefs[0]).not.toHaveProperty('toVerse');
+    expect(result.data?.scriptureRefs?.[0]).not.toHaveProperty('toVerse');
 
     // Matthew 5:1-12 - should keep range
-    expect(result.data?.scriptureRefs[1]).toEqual({
+    expect(result.data?.scriptureRefs?.[1]).toEqual({
       book: 'Matthew',
       chapter: 5,
       fromVerse: 1,
@@ -231,12 +231,12 @@ describe('analyzeStudyNote', () => {
     });
 
     // Romans 6:6 - toVerse should be removed
-    expect(result.data?.scriptureRefs[2]).toEqual({
+    expect(result.data?.scriptureRefs?.[2]).toEqual({
       book: 'Romans',
       chapter: 6,
       fromVerse: 6,
     });
-    expect(result.data?.scriptureRefs[2]).not.toHaveProperty('toVerse');
+    expect(result.data?.scriptureRefs?.[2]).not.toHaveProperty('toVerse');
   });
 
   it('should detect Cyrillic language and include language directive', async () => {
@@ -284,7 +284,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
   });
 
   it('should accept chapter-only references', async () => {
@@ -310,7 +310,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Romans', chapter: 8 });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Romans', chapter: 8 });
   });
 
   it('should accept chapter-range references', async () => {
@@ -336,7 +336,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0]).toEqual({
+    expect(result.data?.scriptureRefs?.[0]).toEqual({
       book: 'Matthew',
       chapter: 5,
       toChapter: 7,
@@ -367,7 +367,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0].book).toBe('Romans');
+    expect(result.data?.scriptureRefs?.[0].book).toBe('Romans');
   });
 
   it('should filter out references with toChapter but no chapter', async () => {
@@ -394,7 +394,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
   });
 
   it('should remove toChapter when it equals chapter (single chapter, not a range)', async () => {
@@ -423,14 +423,14 @@ describe('analyzeStudyNote', () => {
     expect(result.data?.scriptureRefs).toHaveLength(2);
 
     // Romans 8 - toChapter should be removed
-    expect(result.data?.scriptureRefs[0]).toEqual({
+    expect(result.data?.scriptureRefs?.[0]).toEqual({
       book: 'Romans',
       chapter: 8,
     });
-    expect(result.data?.scriptureRefs[0]).not.toHaveProperty('toChapter');
+    expect(result.data?.scriptureRefs?.[0]).not.toHaveProperty('toChapter');
 
     // Matthew 5-7 - should keep range
-    expect(result.data?.scriptureRefs[1]).toEqual({
+    expect(result.data?.scriptureRefs?.[1]).toEqual({
       book: 'Matthew',
       chapter: 5,
       toChapter: 7,
@@ -494,10 +494,10 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(4);
-    expect(result.data?.scriptureRefs[0]).toEqual({ book: 'Ezekiel' });
-    expect(result.data?.scriptureRefs[1]).toEqual({ book: 'Ezekiel', chapter: 1 });
-    expect(result.data?.scriptureRefs[2]).toEqual({ book: 'Ezekiel', chapter: 10, toChapter: 11 });
-    expect(result.data?.scriptureRefs[3]).toEqual({ book: 'Ezekiel', chapter: 40, toChapter: 48 });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[1]).toEqual({ book: 'Ezekiel', chapter: 1 });
+    expect(result.data?.scriptureRefs?.[2]).toEqual({ book: 'Ezekiel', chapter: 10, toChapter: 11 });
+    expect(result.data?.scriptureRefs?.[3]).toEqual({ book: 'Ezekiel', chapter: 40, toChapter: 48 });
   });
 
   it('should filter out references with fromVerse but no chapter', async () => {
@@ -524,7 +524,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs[0]).toEqual({
+    expect(result.data?.scriptureRefs?.[0]).toEqual({
       book: 'John',
       chapter: 3,
       fromVerse: 16,
@@ -560,14 +560,14 @@ describe('analyzeStudyNote', () => {
     expect(result.data?.scriptureRefs).toHaveLength(2);
 
     // Verify specific unique references exist
-    const danielRef = result.data?.scriptureRefs.find(r => r.book === 'Daniel');
+    const danielRef = result.data?.scriptureRefs?.find(r => r.book === 'Daniel');
     expect(danielRef).toEqual({
       book: 'Daniel',
       chapter: 1,
       fromVerse: 9,
     });
 
-    const matthewRef = result.data?.scriptureRefs.find(r => r.book === 'Matthew');
+    const matthewRef = result.data?.scriptureRefs?.find(r => r.book === 'Matthew');
     expect(matthewRef).toEqual({
       book: 'Matthew',
       chapter: 5
@@ -602,18 +602,18 @@ describe('analyzeStudyNote', () => {
       expect.arrayContaining(['Даниил', 'компромиссы', 'духовная жизнь'])
     );
     // Verify no duplicates
-    const uniqueTags = new Set(result.data?.tags);
-    expect(uniqueTags.size).toBe(result.data?.tags.length);
+    const uniqueTags = new Set(result.data?.tags ?? []);
+    expect(uniqueTags.size).toBe(result.data?.tags?.length);
   });
 
   it('should include CRITICAL book name mappings in prompt for Russian notes', async () => {
     // Arrange
     (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
       success: true,
-      data: { 
-        title: 'Тест', 
-        scriptureRefs: [{ book: '2 Samuel', chapter: 7 }], 
-        tags: ['Давид'] 
+      data: {
+        title: 'Тест',
+        scriptureRefs: [{ book: '2 Samuel', chapter: 7 }],
+        tags: ['Давид']
       },
       refusal: null,
       error: null,
@@ -625,14 +625,14 @@ describe('analyzeStudyNote', () => {
     // Assert - verify prompt contains critical mappings
     const callArgs = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
     const systemPrompt = callArgs[0];
-    
+
     // Check that prompt includes book name mapping table
     expect(systemPrompt).toContain('CRITICAL BOOK NAME MAPPINGS');
     expect(systemPrompt).toContain('1 Царств');
     expect(systemPrompt).toContain('1 Samuel');
     expect(systemPrompt).toContain('2 Samuel');
     expect(systemPrompt).toContain('NOT "2 Kings"');
-    
+
     // Check that prompt includes Psalm conversion rules
     expect(systemPrompt).toContain('PSALM NUMBERING CONVERSION');
     expect(systemPrompt).toContain('Septuagint → Hebrew');

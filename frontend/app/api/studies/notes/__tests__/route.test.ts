@@ -158,13 +158,13 @@ describe('Study Notes API Route', () => {
             tags: ['test'],
         };
 
-        it('returns 400 if userId or content is missing', async () => {
-            const req = createRequest('http://localhost/api/studies/notes', 'POST', { userId: '123' });
+        it('returns 400 if userId is missing', async () => {
+            const req = createRequest('http://localhost/api/studies/notes', 'POST', { content: 'Test content' });
             const response = await POST(req);
             const data = await response.json();
 
             expect(response.status).toBe(400);
-            expect(data.error).toBe('userId and content are required');
+            expect(data.error).toBe('userId is required');
         });
 
         it('creates a new note with correctly passed type', async () => {

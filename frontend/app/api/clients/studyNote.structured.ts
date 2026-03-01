@@ -57,7 +57,9 @@ function detectLanguage(text: string): {
 /**
  * Build the system prompt for study note analysis.
  */
-function buildSystemPrompt(languageHint: string): string {
+export type AnalysisType = 'all' | 'title' | 'tags' | 'scriptureRefs';
+
+function buildSystemPrompt(languageHint: string, analysisType: AnalysisType): string {
   // Build language directive based on detected language
   let languageDirective: string;
 
@@ -89,12 +91,28 @@ function buildSystemPrompt(languageHint: string): string {
 - Scripture book names MUST ALWAYS be in English.`;
   }
 
+  let extractionFocus = '';
+  switch (analysisType) {
+    case 'title':
+      extractionFocus = "1. ONLY a short, descriptive TITLE that captures the main theme (5-15 words). Do not return tags or scripture references.";
+      break;
+    case 'tags':
+      extractionFocus = "1. ONLY relevant TAGS for categorization (2-5 tags). Do not return a title or scripture references.";
+      break;
+    case 'scriptureRefs':
+      extractionFocus = "1. ONLY SCRIPTURE REFERENCES mentioned or alluded to in the note. Do not return a title or tags.";
+      break;
+    default:
+      extractionFocus = `1. A short, descriptive TITLE that captures the main theme (5-15 words)
+2. All SCRIPTURE REFERENCES mentioned or alluded to in the note
+3. Relevant TAGS for categorization (2-5 tags)`;
+      break;
+  }
+
   return `You are a biblical study assistant that helps organize and categorize study notes.
 
 Your task is to analyze a study note and extract:
-1. A short, descriptive TITLE that captures the main theme (5-15 words)
-2. All SCRIPTURE REFERENCES mentioned or alluded to in the note
-3. Relevant TAGS for categorization (2-5 tags)
+${extractionFocus}
 
 ${languageDirective}
 
@@ -346,7 +364,8 @@ ${existingTags.join(', ')}`;
  */
 export async function analyzeStudyNote(
   noteContent: string,
-  existingTags?: string[]
+  existingTags?: string[],
+  analysisType: AnalysisType = 'all'
 ): Promise<AnalyzeStudyNoteResult> {
   if (!noteContent.trim()) {
     return {
@@ -371,7 +390,7 @@ export async function analyzeStudyNote(
   });
 
   try {
-    const systemPrompt = buildSystemPrompt(languageHint);
+    const systemPrompt = buildSystemPrompt(languageHint, analysisType);
     const userMessage = buildUserMessage(noteContent, existingTags);
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "studyNoteAnalysis",
@@ -421,9 +440,13 @@ export async function analyzeStudyNote(
       };
     }
 
+    // Default to empty array/string if field wasn't requested
+    const rawRefs = result.data.scriptureRefs || [];
+    const rawTags = result.data.tags || [];
+
     // Validate and clean scripture refs
     // Now supporting flexible references: book-only, chapter-only, chapter-range, verse-level
-    const validatedRefs = result.data.scriptureRefs
+    const validatedRefs = rawRefs
       .filter(ref => {
         // Book is always required
         if (!ref.book) return false;
@@ -490,23 +513,38 @@ export async function analyzeStudyNote(
     const uniqueRefs = Array.from(uniqueRefsMap.values());
 
     // Deduplicate tags (case-sensitive, exact match)
-    const uniqueTags = Array.from(new Set(result.data.tags));
+    const uniqueTags = Array.from(new Set(rawTags));
 
     logger.success('AnalyzeStudyNote', "Analysis completed", {
       title: result.data.title,
       refsCount: uniqueRefs.length,
-      originalRefsCount: result.data.scriptureRefs.length,
+      originalRefsCount: rawRefs.length,
       tagsCount: uniqueTags.length,
-      originalTagsCount: result.data.tags.length,
+      originalTagsCount: rawTags.length,
     });
+
+    const finalData: StudyNoteAnalysis = {
+      ...result.data,
+      scriptureRefs: uniqueRefs,
+      tags: uniqueTags,
+    };
+
+    // If analysisType is specific, clear fields that were not requested
+    // Use undefined (not []) so the modal knows these fields were not analyzed
+    if (analysisType === 'title') {
+      finalData.scriptureRefs = undefined;
+      finalData.tags = undefined;
+    } else if (analysisType === 'tags') {
+      finalData.title = undefined;
+      finalData.scriptureRefs = undefined;
+    } else if (analysisType === 'scriptureRefs') {
+      finalData.title = undefined;
+      finalData.tags = undefined;
+    }
 
     return {
       success: true,
-      data: {
-        ...result.data,
-        scriptureRefs: uniqueRefs,
-        tags: uniqueTags,
-      },
+      data: finalData,
       error: null,
     };
 

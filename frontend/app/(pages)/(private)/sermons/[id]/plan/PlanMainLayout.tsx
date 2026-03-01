@@ -3,7 +3,6 @@ import Link from "next/link";
 import React, { createContext, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
-import TextareaAutosize from "react-textarea-autosize";
 import remarkGfm from "remark-gfm";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
@@ -18,6 +17,7 @@ import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
+import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 
 import {
   MARKDOWN_SECTION_VARIANT_CLASSES,
@@ -87,11 +87,11 @@ const Button = ({
       className={`${baseClasses} ${variantClass} ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className || ""}`}
       style={variant === "section" && sectionColor
         ? ({
-            backgroundColor: sectionColor.light,
-            "--hover-bg": sectionColor.dark,
-            "--active-bg": sectionColor.base,
-            borderColor: sectionColor.dark,
-          } as React.CSSProperties)
+          backgroundColor: sectionColor.light,
+          "--hover-bg": sectionColor.dark,
+          "--active-bg": sectionColor.base,
+          borderColor: sectionColor.dark,
+        } as React.CSSProperties)
         : undefined}
       title={title}
     >
@@ -361,42 +361,41 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
         </div>
       </h3>
 
-      <div className="relative">
-        <Button
-          className="absolute top-2 right-2 z-10 text-sm px-2 py-1 h-8"
-          onClick={() => onToggleEditMode(outlinePoint.id)}
-          variant="default"
-          title={editModePoints[outlinePoint.id] ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-        >
-          {editModePoints[outlinePoint.id] ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-        </Button>
+      <div>
         {editModePoints[outlinePoint.id] ? (
-          <TextareaAutosize
-            className="w-full p-3 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-base"
-            minRows={4}
-            placeholder={noContentText}
-            value={generatedContent[outlinePoint.id] || ""}
-            onChange={(e) => {
-              const newContent = e.target.value;
-              const isModified = newContent !== currentSavedContent;
+          <>
+            <div className="flex justify-end mb-1">
+              <Button
+                className="text-sm px-2 py-1 h-8"
+                onClick={() => onToggleEditMode(outlinePoint.id)}
+                variant="default"
+                title={t(TRANSLATION_KEYS.PLAN.VIEW_MODE)}
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            </div>
+            <RichMarkdownEditor
+              value={generatedContent[outlinePoint.id] || ""}
+              placeholder={noContentText}
+              minHeight="150px"
+              onChange={(newContent) => {
+                const isModified = newContent !== currentSavedContent;
 
-              setGeneratedContent((prev) => ({
-                ...prev,
-                [outlinePoint.id]: newContent,
-              }));
+                setGeneratedContent((prev) => ({
+                  ...prev,
+                  [outlinePoint.id]: newContent,
+                }));
 
-              setModifiedContent((prev) => ({
-                ...prev,
-                [outlinePoint.id]: isModified,
-              }));
+                setModifiedContent((prev) => ({
+                  ...prev,
+                  [outlinePoint.id]: isModified,
+                }));
 
-              onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
-              onSyncPairHeights(sectionKey, outlinePoint.id);
-            }}
-            onHeightChange={() => {
-              onSyncPairHeights(sectionKey, outlinePoint.id);
-            }}
-          />
+                onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
+                onSyncPairHeights(sectionKey, outlinePoint.id);
+              }}
+            />
+          </>
         ) : (
           <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
             <div className="absolute top-2 right-2 z-10">

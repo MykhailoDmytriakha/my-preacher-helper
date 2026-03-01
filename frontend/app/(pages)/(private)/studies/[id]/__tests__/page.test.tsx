@@ -36,6 +36,18 @@ jest.mock('react-textarea-autosize', () => ({
     default: (props: any) => <textarea {...props} />,
 }));
 
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+    __esModule: true,
+    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
+        <textarea
+            data-testid="rich-markdown-editor"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+        />
+    ),
+}));
+
 jest.mock('@/components/FocusRecorderButton', () => ({
     __esModule: true,
     FocusRecorderButton: ({ onRecordingComplete }: any) => (
@@ -281,7 +293,16 @@ describe('StudyNoteEditorPage Pagination', () => {
         const aiButton = screen.getByTitle('studiesWorkspace.aiAnalyze.button');
         fireEvent.click(aiButton);
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/studies/analyze', expect.any(Object));
+        const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
+        fireEvent.click(fullOption);
+
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith('/api/studies/analyze', expect.any(Object));
+        });
+
+        // Apply results from modal
+        const applyBtn = await screen.findByText('studiesWorkspace.aiAnalyze.applySelected');
+        fireEvent.click(applyBtn);
 
         // Wait for AI results to be applied
         await waitFor(() => {
@@ -326,8 +347,9 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     describe('Missing Coverage Tests', () => {
-        it('handles new note creation on initial load', async () => {
-            const mockCreateNote = jest.fn().mockResolvedValue('new-note-id');
+        it('handles new note creation on input', async () => {
+            jest.useFakeTimers();
+            const mockCreateNote = jest.fn().mockResolvedValue({ id: 'new-note-id' });
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
                 notes: mockNotes,
@@ -340,13 +362,20 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             render(<StudyNoteEditorPage />);
 
+            const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            fireEvent.change(titleInput, { target: { value: 'New Note' } });
+
+            jest.advanceTimersByTime(2000);
+
             await waitFor(() => {
                 expect(mockCreateNote).toHaveBeenCalled();
-                expect(mockRouter.replace).toHaveBeenCalledWith('/studies/new-note-id');
             });
+
+            jest.useRealTimers();
         });
 
         it('shows error if new note creation fails', async () => {
+            jest.useFakeTimers();
             const mockCreateNote = jest.fn().mockRejectedValue(new Error('fail'));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
@@ -360,9 +389,16 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             render(<StudyNoteEditorPage />);
 
+            const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            fireEvent.change(titleInput, { target: { value: 'New Note' } });
+
+            jest.advanceTimersByTime(2000);
+
             await waitFor(() => {
                 expect(mockCreateNote).toHaveBeenCalled();
             });
+
+            jest.useRealTimers();
         });
 
         it('handles delete note click correctly', async () => {
@@ -391,39 +427,44 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             await waitFor(() => {
                 expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
-                expect(mockRouter.back).toHaveBeenCalled();
+                expect(mockRouter.push).toHaveBeenCalledWith('/studies');
             });
         });
 
         it('handles AI analysis validation error (empty content)', async () => {
             render(<StudyNoteEditorPage />);
             fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            const contentInput = screen.getByTestId('rich-markdown-editor');
             fireEvent.change(contentInput, { target: { value: '   ' } });
             fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            expect(screen.getByTitle('studiesWorkspace.aiAnalyze.button')).toBeDisabled();
             // Button click is just a no-op that shows a toast.
         });
 
         it('handles AI analysis API failure response', async () => {
             render(<StudyNoteEditorPage />);
             fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            const contentInput = screen.getByTestId('rich-markdown-editor');
             fireEvent.change(contentInput, { target: { value: 'Something' } });
             (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
                 ok: true,
                 json: jest.fn().mockResolvedValue({ success: false, error: 'AI Error' })
             });
             fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
+            fireEvent.click(fullOption);
             await waitFor(() => expect(global.fetch).toHaveBeenCalled());
         });
 
         it('handles AI analysis network exception', async () => {
             render(<StudyNoteEditorPage />);
             fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            const contentInput = screen.getByTestId('rich-markdown-editor');
             fireEvent.change(contentInput, { target: { value: 'Something' } });
             (global.fetch as jest.Mock) = jest.fn().mockRejectedValue(new Error('Network error'));
             fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
+            fireEvent.click(fullOption);
             await waitFor(() => expect(global.fetch).toHaveBeenCalled());
         });
 
@@ -442,7 +483,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             render(<StudyNoteEditorPage />);
             fireEvent.click(screen.getByTitle('common.edit'));
 
-            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            const contentInput = screen.getByTestId('rich-markdown-editor');
             fireEvent.change(contentInput, { target: { value: 'Changed auto save content' } });
 
             jest.advanceTimersByTime(2000);
@@ -461,7 +502,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             render(<StudyNoteEditorPage />);
             fireEvent.click(screen.getByTitle('common.edit'));
 
-            const contentInput = screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder');
+            const contentInput = screen.getByTestId('rich-markdown-editor');
             fireEvent.change(contentInput, { target: { value: 'Changed for error' } });
 
             jest.advanceTimersByTime(2000);

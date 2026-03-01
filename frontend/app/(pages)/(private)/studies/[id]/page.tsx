@@ -8,6 +8,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
@@ -15,13 +16,13 @@ import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
+import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
-
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
@@ -90,21 +91,18 @@ function useNoteKeyboardNavigation({
 }
 
 function useNoteInitialization({
-    notesLoading, uid, isNew, isInitialized, existingNote, createNote, router, t,
+    notesLoading, uid, isNew, isInitialized, existingNote, t,
     setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
 }: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
     useEffect(() => {
         if (notesLoading || !uid) return;
 
         if (isNew && !isInitialized) {
-            createNote({
-                title: '', content: '', tags: [], scriptureRefs: [], type: 'note',
-                userId: uid, materialIds: [], relatedSermonIds: []
-            }).then((newNoteId: string) => {
-                router.replace(`/studies/${newNoteId}`);
-            }).catch(() => {
-                toast.error(t('studiesWorkspace.createError') || 'Failed to initialize note');
-            });
+            setTitle('');
+            setContent('');
+            setTags([]);
+            setScriptureRefs([]);
+            setType('note');
             setIsInitialized(true);
             return;
         }
@@ -118,15 +116,19 @@ function useNoteInitialization({
             setIsInitialized(true);
             setLastSaved(new Date(existingNote.updatedAt));
         }
-    }, [notesLoading, isNew, existingNote, isInitialized, createNote, uid, router, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved]);
+    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved]);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
     return async () => {
-        if (confirm(t('studiesWorkspace.deleteConfirm'))) {
+        if (window.confirm(t('studiesWorkspace.deleteConfirm'))) {
             if (noteId && !isNew && uid) {
-                await deleteNote(noteId);
+                try {
+                    await deleteNote(noteId);
+                } catch (e) {
+                    console.error('Error deleting note', e);
+                }
                 try {
                     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`);
                     if (res.ok) {
@@ -137,24 +139,49 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
                     console.error('Error deleting share link', e);
                 }
             }
-            router.back();
+            router.push('/studies');
         }
     };
 }
 
 function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, t
+    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
-    updateNote: any /* eslint-disable-line @typescript-eslint/no-explicit-any */; t: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    updateNote: (args: { id: string; updates: Partial<StudyNote> }) => Promise<StudyNote>;
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
+    uid: string | undefined; setCreatedNoteId: (id: string) => void;
+    t: ReturnType<typeof useTranslation>['t'];
 }) {
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
 
     const saveChanges = useCallback(async () => {
-        if (!noteId || isNew) return;
+        if (!noteId || !isInitialized) return;
+
+        if (isNew) {
+            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
+
+            setIsSaving(true);
+            setSaveError(null);
+            try {
+                const newNote = await createNote({
+                    title, content, tags, scriptureRefs, type,
+                    userId: uid ?? '', materialIds: [], relatedSermonIds: []
+                });
+                setLastSaved(new Date());
+                window.history.replaceState(null, '', `/studies/${newNote.id}`);
+                setCreatedNoteId(newNote.id);
+            } catch (e) {
+                console.error('Auto-create error', e);
+                setSaveError(t('common.saveError') || 'Error saving changes');
+            } finally {
+                setIsSaving(false);
+            }
+            return;
+        }
 
         if (existingNote) {
             const isUnchanged =
@@ -181,7 +208,7 @@ function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [noteId, isNew, existingNote, title, content, tags, scriptureRefs, type, updateNote, t]);
+    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t]);
 
     useEffect(() => {
         if (!isInitialized) return;
@@ -195,16 +222,19 @@ function useNoteAutoSave({
 }
 
 function useNoteAIAssistant({
-    content, title, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+    content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
 }: {
-    content: string; title: string; availableTags: string[];
+    content: string; availableTags: string[];
     setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
-    setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void; t: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
+    t: ReturnType<typeof useTranslation>['t'];
 }) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
-    const handleAIAnalyze = async () => {
+    const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
+
+    const handleAIAnalyze = async (analysisType: 'all' | 'title' | 'tags' | 'scriptureRefs' = 'all') => {
         if (!content.trim()) {
             toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
             return;
@@ -215,7 +245,7 @@ function useNoteAIAssistant({
             const response = await fetch('/api/studies/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, existingTags: availableTags }),
+                body: JSON.stringify({ content, existingTags: availableTags, analysisType }),
             });
             const result = await response.json();
 
@@ -224,25 +254,41 @@ function useNoteAIAssistant({
             }
 
             const aiResult = result.data;
-            if (!title.trim() && aiResult.title) setTitle(aiResult.title);
+            let hasAnyResult = false;
 
-            if (aiResult.scriptureRefs?.length > 0) {
-                setScriptureRefs((prev: ScriptureReference[]) => {
-                    const newRefs = aiResult.scriptureRefs.filter((nr: ScriptureReference) =>
-                        !prev.some((er: ScriptureReference) => er.book === nr.book && er.chapter === nr.chapter && er.fromVerse === nr.fromVerse)
-                    ).map((ref: Omit<ScriptureReference, 'id'>) => ({ ...ref, id: makeId() }));
-                    return [...prev, ...newRefs];
-                });
+            // Check if AI actually returned anything based on what we requested
+            if ((analysisType === 'all' || analysisType === 'title') && aiResult.title) hasAnyResult = true;
+            if ((analysisType === 'all' || analysisType === 'tags') && aiResult.tags?.length > 0) hasAnyResult = true;
+            if ((analysisType === 'all' || analysisType === 'scriptureRefs') && aiResult.scriptureRefs?.length > 0) hasAnyResult = true;
+
+            if (hasAnyResult) {
+                setPendingAnalysisResult(aiResult);
+                toast.success(t('studiesWorkspace.aiAnalyze.success') || 'Analysis complete. Please review suggestions.');
+            } else {
+                toast.info(t('studiesWorkspace.aiAnalyze.noResults') || 'No useful suggestions found for this content.');
             }
 
-            if (aiResult.tags?.length > 0) {
-                setTags((prev: string[]) => Array.from(new Set([...prev, ...aiResult.tags])));
-            }
-            toast.success(t('studiesWorkspace.aiAnalyze.success') || 'Analysis applied successfully');
         } catch {
             toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+
+    const handleApplyAnalysis = (data: AnalysisResultData) => {
+        if (data.title) setTitle(data.title);
+
+        if (data.scriptureRefs && data.scriptureRefs.length > 0) {
+            setScriptureRefs((prev: ScriptureReference[]) => {
+                const newRefs = data.scriptureRefs!.filter((nr: ScriptureReference) =>
+                    !prev.some((er: ScriptureReference) => er.book === nr.book && er.chapter === nr.chapter && er.fromVerse === nr.fromVerse)
+                ).map((ref: Omit<ScriptureReference, 'id'>) => ({ ...ref, id: makeId() }));
+                return [...prev, ...newRefs];
+            });
+        }
+
+        if (data.tags && data.tags.length > 0) {
+            setTags((prev: string[]) => Array.from(new Set([...prev, ...data.tags!])));
         }
     };
 
@@ -266,7 +312,10 @@ function useNoteAIAssistant({
         }
     };
 
-    return { isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete };
+    return {
+        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
+    };
 }
 
 function EditorHeader({
@@ -401,7 +450,10 @@ function EditorHeader({
                     {showMenu && (
                         <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 z-50">
                             <button
-                                onClick={() => { setShowMenu(false); handleDelete(); }}
+                                onClick={() => {
+                                    setShowMenu(false);
+                                    setTimeout(() => handleDelete(), 10);
+                                }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
                             >
                                 <TrashIcon className="h-4 w-4" />
@@ -419,7 +471,8 @@ export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
     const params = useParams();
-    const noteId = params.id as string;
+    const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
+    const noteId = createdNoteId || (params.id as string);
     const isNew = noteId === 'new';
 
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
@@ -470,18 +523,24 @@ export default function StudyNoteEditorPage() {
     const [isInitialized, setIsInitialized] = useState(false);
 
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
-        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, t
+        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type,
+        updateNote, createNote, uid, setCreatedNoteId, t
+    });
+
+    const [isAIPopoverOpen, setIsAIPopoverOpen] = useState(false);
+
+    // AI assistant hook
+    const {
+        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
+    } = useNoteAIAssistant({
+        content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
     });
 
     useNoteInitialization({
-        notesLoading, uid, isNew, isInitialized, existingNote, createNote, router, t,
+        notesLoading, uid, isNew, isInitialized, existingNote, t,
         setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
     });
-
-    const { isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete } = useNoteAIAssistant({
-        content, title, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
-    });
-
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
 
@@ -526,14 +585,25 @@ export default function StudyNoteEditorPage() {
             {/* EDITOR CONTENT */}
             <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-48 md:pb-32 transition-all duration-300">
                 {/* Title Area */}
-                <div>
+                <div className="relative group/title">
                     {isEditing ? (
-                        <TextareaAutosize
-                            value={title}
-                            onChange={e => setTitle(e.target.value)}
-                            placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-                            className="w-full text-4xl md:text-5xl font-extrabold tracking-tight bg-transparent border-none outline-none resize-none placeholder:text-gray-200 dark:placeholder:text-gray-800 text-gray-900 dark:text-gray-50 transition-colors"
-                        />
+                        <div className="flex items-start gap-4 w-full">
+                            <TextareaAutosize
+                                value={title}
+                                onChange={e => setTitle(e.target.value)}
+                                placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+                                className="flex-1 text-4xl md:text-5xl font-extrabold tracking-tight bg-transparent border-none outline-none resize-none placeholder:text-gray-200 dark:placeholder:text-gray-800 text-gray-900 dark:text-gray-50 transition-colors"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => handleAIAnalyze('title')}
+                                disabled={isAnalyzing || !content.trim()}
+                                title={t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
+                                className="hidden group-hover/title:flex items-center justify-center p-2 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50 shrink-0 mt-1"
+                            >
+                                <SparklesIcon className="h-6 w-6" />
+                            </button>
+                        </div>
                     ) : (
                         <h1 className="w-full text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-tight min-h-[1em]">
                             {title ? (
@@ -547,13 +617,14 @@ export default function StudyNoteEditorPage() {
 
                 <div className="relative group">
                     {isEditing ? (
-                        <TextareaAutosize
-                            value={content}
-                            onChange={(e) => setContent(e.target.value)}
-                            placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
-                            minRows={10}
-                            className="w-full resize-none text-lg md:text-xl bg-transparent border-none outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 text-gray-800 dark:text-gray-200 leading-relaxed transition-colors"
-                        />
+                        <div className="text-lg md:text-xl leading-relaxed">
+                            <RichMarkdownEditor
+                                value={content}
+                                onChange={setContent}
+                                placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
+                                minHeight="300px"
+                            />
+                        </div>
                     ) : (
                         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
                             <MarkdownDisplay content={content} searchQuery={searchQuery} />
@@ -564,16 +635,68 @@ export default function StudyNoteEditorPage() {
 
                 {isEditing && (
                     <div className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-50 flex flex-col gap-3">
-                        <button
-                            type="button"
-                            onClick={handleAIAnalyze}
-                            disabled={isAnalyzing || !content.trim()}
-                            title={t('studiesWorkspace.aiAnalyze.button')}
-                            className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600"
-                        >
-                            <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                        </button>
-                        <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                        <div className="relative">
+                            {/* Inner wrapper to handle outside clicks or state toggling */}
+                            <button
+                                type="button"
+                                onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
+                                disabled={isAnalyzing || !content.trim()}
+                                title={t('studiesWorkspace.aiAnalyze.button')}
+                                className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
+                            >
+                                <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                            </button>
+
+                            {/* Popover Menu */}
+                            {isAIPopoverOpen && (
+                                <div className="absolute bottom-full right-0 mb-3 w-56 rounded-xl bg-white shadow-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 py-2 z-10 origin-bottom-right animate-in slide-in-from-bottom-2 fade-in duration-200">
+                                    <div className="px-4 py-2 border-b border-gray-50 dark:border-gray-700/50 mb-1">
+                                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                            {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors flex items-center justify-between group"
+                                        onClick={() => { handleAIAnalyze('all'); setIsAIPopoverOpen(false); }}
+                                    >
+                                        {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
+                                        <SparklesIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                        onClick={() => { handleAIAnalyze('title'); setIsAIPopoverOpen(false); }}
+                                    >
+                                        {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                        onClick={() => { handleAIAnalyze('scriptureRefs'); setIsAIPopoverOpen(false); }}
+                                    >
+                                        {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                        onClick={() => { handleAIAnalyze('tags'); setIsAIPopoverOpen(false); }}
+                                    >
+                                        {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Invisible overlay to close popover when clicking outside */}
+                            {isAIPopoverOpen && (
+                                <div
+                                    className="fixed inset-0 z-0"
+                                    onClick={() => setIsAIPopoverOpen(false)}
+                                    aria-hidden="true"
+                                />
+                            )}
+                        </div>
+                        <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 relative z-20">
                             <FocusRecorderButton
                                 onRecordingComplete={handleVoiceRecordingComplete}
                                 isProcessing={isVoiceProcessing}
@@ -586,9 +709,23 @@ export default function StudyNoteEditorPage() {
                 {/* Metadata Tray (Tags & Refs) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">
                     {/* References */}
-                    <div className="flex flex-col h-full space-y-4">
-                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.scriptureRefs')}>
-                            <BookmarkIcon className="h-5 w-5" />
+                    <div className="flex flex-col h-full space-y-4 group/refs">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.scriptureRefs')}>
+                                <BookmarkIcon className="h-5 w-5" />
+                                <span className="text-sm font-medium">{t('studiesWorkspace.scriptureRefs')}</span>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleAIAnalyze('scriptureRefs')}
+                                    disabled={isAnalyzing || !content.trim()}
+                                    title={t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    className="hidden group-hover/refs:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                >
+                                    <SparklesIcon className="h-5 w-5" />
+                                </button>
+                            )}
                         </div>
 
                         {scriptureRefs.length > 0 && (
@@ -634,36 +771,46 @@ export default function StudyNoteEditorPage() {
                         {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{quickRefError}</p>}
 
                         {showRefPicker && (
-                            <div className="mt-2 relative">
-                                <ScriptureRefPicker
-                                    mode="add"
-                                    onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
-                                    onCancel={() => setShowRefPicker(false)}
-                                />
-                            </div>
+                            <ScriptureRefPicker
+                                mode="add"
+                                onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
+                                onCancel={() => setShowRefPicker(false)}
+                            />
                         )}
 
                         {editingRefIndex !== null && (
-                            <div className="mt-2 relative">
-                                <ScriptureRefPicker
-                                    mode="edit"
-                                    initialRef={scriptureRefs[editingRefIndex]}
-                                    onConfirm={(ref) => {
-                                        setScriptureRefs(prev => {
-                                            const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
-                                        });
-                                        setEditingRefIndex(null);
-                                    }}
-                                    onCancel={() => setEditingRefIndex(null)}
-                                />
-                            </div>
+                            <ScriptureRefPicker
+                                mode="edit"
+                                initialRef={scriptureRefs[editingRefIndex]}
+                                onConfirm={(ref) => {
+                                    setScriptureRefs(prev => {
+                                        const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
+                                    });
+                                    setEditingRefIndex(null);
+                                }}
+                                onCancel={() => setEditingRefIndex(null)}
+                            />
                         )}
                     </div>
 
                     {/* Tags */}
-                    <div className="flex flex-col h-full space-y-4">
-                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.tags')}>
-                            <TagIcon className="h-5 w-5" />
+                    <div className="flex flex-col h-full space-y-4 group/tags">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.tags')}>
+                                <TagIcon className="h-5 w-5" />
+                                <span className="text-sm font-medium">{t('studiesWorkspace.tags')}</span>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleAIAnalyze('tags')}
+                                    disabled={isAnalyzing || !content.trim()}
+                                    title={t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    className="hidden group-hover/tags:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                >
+                                    <SparklesIcon className="h-5 w-5" />
+                                </button>
+                            )}
                         </div>
 
                         {tags.length > 0 && (
@@ -709,6 +856,17 @@ export default function StudyNoteEditorPage() {
                 availableTags={availableTags}
                 selectedTags={tags}
                 onToggleTag={toggleTag}
+            />
+
+            <AnalysisConfirmationModal
+                isOpen={!!pendingAnalysisResult}
+                onClose={() => setPendingAnalysisResult(null)}
+                result={pendingAnalysisResult}
+                onApply={handleApplyAnalysis}
+                bibleLocale={bibleLocale}
+                currentTitle={title}
+                currentTags={tags}
+                currentScriptureRefs={scriptureRefs}
             />
         </div>
     );
