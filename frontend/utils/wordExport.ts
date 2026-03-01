@@ -11,14 +11,6 @@ interface WordExportOptions {
   focusedSection?: string;
 }
 
-const LOCALE_BY_LANGUAGE: Record<string, string> = {
-  en: 'en-US',
-  ru: 'ru-RU',
-  uk: 'uk-UA',
-};
-
-const resolveExportLocale = (language: string): string => LOCALE_BY_LANGUAGE[language] ?? language ?? 'en-US';
-
 const interpolate = (value: string, options?: Record<string, unknown>): string => {
   if (!options) return value;
   return value.replace(/\{\{(\w+)\}\}/g, (_match, optionKey) => {
@@ -422,16 +414,12 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
   try {
     const { data, filename = 'sermon-plan.docx', focusedSection } = options;
 
-    const planHeader = t('export.planHeader', 'SERMON PLAN');
-    const planDateLabel = t('export.planDateLabel', 'Date');
     const planDocTitle = t('export.planDocTitle', 'Sermon Plan: {{title}}', { title: data.sermonTitle });
     const planDocDescription = t('export.planDocDescription', 'Auto-generated sermon plan');
     const planFilenamePrefix = t('export.planFilenamePrefix', 'sermon-plan');
     const sectionIntroLabel = t('sections.introduction', 'Introduction').toUpperCase();
     const sectionMainLabel = t('sections.main', 'Main Part').toUpperCase();
     const sectionConclusionLabel = t('sections.conclusion', 'Conclusion').toUpperCase();
-    const exportLocale = resolveExportLocale(i18n.language);
-
     // Resolve canonical section colors (strip leading '#')
     const introHex = getSectionBaseColor('introduction').replace('#', '');
     const mainHex = getSectionBaseColor('main').replace('#', '');
@@ -522,33 +510,6 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
             },
           },
           children: [
-            // Metadata Header
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: planHeader,
-                  bold: true,
-                  size: 32,
-                  color: '1e40af',
-                  font: 'Arial',
-                }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 200 },
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${planDateLabel}: ${data.exportDate || new Date().toLocaleDateString(exportLocale)}`,
-                  size: 20,
-                  color: '6b7280',
-                  font: 'Arial',
-                }),
-              ],
-              alignment: AlignmentType.RIGHT,
-              spacing: { after: 400 },
-            }),
-
             // Sermon Title
             new Paragraph({
               children: [

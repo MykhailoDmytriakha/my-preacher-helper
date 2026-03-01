@@ -115,6 +115,79 @@ describe('wordExport', () => {
 
       await expect(exportToWord({ data: getPlanData() })).rejects.toThrow('Failed to export to Word document')
     })
+
+    it('starts document with sermon title — no metadata header or date paragraph', async () => {
+      jest.clearAllMocks()
+      await exportToWord({
+        data: { sermonTitle: 'Direct Title', sermonVerse: '', introduction: '', main: '', conclusion: '' },
+      })
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const docArgs = (Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any
+      const children = docArgs.sections[0].children as unknown[]
+
+      // title(1) + intro_label(1) + intro_placeholder(1)
+      // + main_label(1) + main_placeholder(1)
+      // + conclusion_label(1) + conclusion_placeholder(1) = 7
+      // If header + date were still present, count would be 9
+      expect(children).toHaveLength(7)
+      expect(children[0]).toBeInstanceOf(Paragraph)
+    })
+
+    it('exports only the requested focused section', async () => {
+      const singleSectionData = getPlanData({
+        sermonVerse: '',
+        introduction: 'Intro text',
+        main: 'Main text',
+        conclusion: 'Concl text',
+      })
+
+      await runScenarios([
+        {
+          name: 'focusedSection=introduction excludes main and conclusion',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({ data: singleSectionData, focusedSection: 'introduction' })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+            // title(1) + intro_label(1) + intro_content(1) = 3
+            expect(children).toHaveLength(3)
+          },
+        },
+        {
+          name: 'focusedSection=main excludes intro and conclusion',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({ data: singleSectionData, focusedSection: 'main' })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+            // title(1) + main_label(1) + main_content(1) = 3
+            expect(children).toHaveLength(3)
+          },
+        },
+        {
+          name: 'focusedSection=mainPart also shows main section',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({ data: singleSectionData, focusedSection: 'mainPart' })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+            expect(children).toHaveLength(3)
+          },
+        },
+        {
+          name: 'focusedSection=conclusion excludes intro and main',
+          run: async () => {
+            jest.clearAllMocks()
+            await exportToWord({ data: singleSectionData, focusedSection: 'conclusion' })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+            // title(1) + conclusion_label(1) + conclusion_content(1) = 3
+            expect(children).toHaveLength(3)
+          },
+        },
+      ])
+    })
   })
 
   describe('parseMarkdownToParagraphs', () => {
@@ -204,6 +277,16 @@ describe('wordExport', () => {
           run: () => {
             const quote = parseMarkdownToParagraphs('> Шахтёры собирались **на общее собрание — и начинают молитву**.')
             expect(quote[0]).toBeInstanceOf(Paragraph)
+          },
+        },
+        {
+          name: 'invalid heading format falls back to regular paragraph via catch',
+          run: () => {
+            // '#nospace' starts with '#' → parseHeading is called → throws (no space after #)
+            // → catch block → parseRegularParagraph fallback
+            const result = parseMarkdownToParagraphs('#nospace')
+            expect(result).toHaveLength(1)
+            expect(result[0]).toBeInstanceOf(Paragraph)
           },
         },
       ])
