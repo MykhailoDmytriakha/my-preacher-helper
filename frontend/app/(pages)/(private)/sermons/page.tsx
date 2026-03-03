@@ -72,10 +72,10 @@ export default function SermonsPage() {
   });
 
   // Persist preferences to localStorage
-  useEffect(() => { try { localStorage.setItem(LS_SORT, sortOption); } catch {} }, [sortOption]);
-  useEffect(() => { try { localStorage.setItem(LS_SERIES, seriesFilter); } catch {} }, [seriesFilter]);
-  useEffect(() => { try { localStorage.setItem(LS_IN_THOUGHTS, String(searchInThoughts)); } catch {} }, [searchInThoughts]);
-  useEffect(() => { try { localStorage.setItem(LS_IN_TAGS, String(searchInTags)); } catch {} }, [searchInTags]);
+  useEffect(() => { try { localStorage.setItem(LS_SORT, sortOption); } catch { } }, [sortOption]);
+  useEffect(() => { try { localStorage.setItem(LS_SERIES, seriesFilter); } catch { } }, [seriesFilter]);
+  useEffect(() => { try { localStorage.setItem(LS_IN_THOUGHTS, String(searchInThoughts)); } catch { } }, [searchInThoughts]);
+  useEffect(() => { try { localStorage.setItem(LS_IN_TAGS, String(searchInTags)); } catch { } }, [searchInTags]);
 
   // Sync search query to URL (debounced, replace to not pollute history)
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function SermonsPage() {
       router.replace(`/sermons?${params.toString()}`, { scroll: false });
     }, 300);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
   const hasFilterChanges =
     sortOption !== "newest" ||
@@ -113,7 +113,7 @@ export default function SermonsPage() {
       localStorage.removeItem(LS_SERIES);
       localStorage.removeItem(LS_IN_THOUGHTS);
       localStorage.removeItem(LS_IN_TAGS);
-    } catch {}
+    } catch { }
   };
 
   const handleDeleteSermon = (id: string) => {
@@ -228,19 +228,19 @@ export default function SermonsPage() {
       </div>
 
       {/* Search & Filters Toolbar */}
-      <div className="flex flex-col gap-2 bg-white dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
+      <div className="flex flex-col gap-5 mb-2">
         {/* Row 1: Search input */}
         <form
           role="search"
           aria-label={t('dashboard.searchPanel.title')}
           onSubmit={(event) => event.preventDefault()}
-          className="relative w-full"
+          className="relative w-full group"
         >
           <label htmlFor="dashboard-search-input" className="sr-only">
             {t('dashboard.searchSermons')}
           </label>
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-blue-500 text-gray-400">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
@@ -250,17 +250,18 @@ export default function SermonsPage() {
             placeholder={t('dashboard.searchSermons')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 border rounded-lg border-gray-200 dark:border-gray-700
-                      dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+            className="w-full pl-11 pr-12 py-3.5 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 rounded-2xl
+                      text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
+                      shadow-sm hover:shadow-md focus:shadow-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all duration-200"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
               aria-label={t('dashboard.clearSearch')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -268,95 +269,97 @@ export default function SermonsPage() {
         </form>
 
         {/* Row 2: Sort + Series + contextual search modifiers + reset */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Sort dropdown */}
-          <div className="relative">
-            <select
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-              className={`appearance-none pl-3 pr-8 py-1.5 border rounded-lg text-sm transition-colors
-                focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                ${sortOption !== "newest"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-300"
-                  : "border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                }`}
-            >
-              <option value="newest">{t('dashboard.newest')}</option>
-              <option value="oldest">{t('dashboard.oldest')}</option>
-              <option value="alphabetical">{t('dashboard.alphabetical')}</option>
-              <option value="recentlyUpdated">{t('dashboard.recentlyUpdated')}</option>
-            </select>
-            <div className={`absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none
-              ${sortOption !== "newest" ? "text-blue-500 dark:text-blue-400" : "text-gray-500"}`}>
-              <ChevronIcon direction="down" className="w-3.5 h-3.5" />
+        <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Sort dropdown */}
+            <div className="relative group/sort">
+              <select
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
+                className={`appearance-none pl-4 pr-9 py-2 border rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer shadow-sm hover:shadow
+                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                  ${sortOption !== "newest"
+                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60"
+                    : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+              >
+                <option value="newest">{t('dashboard.newest')}</option>
+                <option value="oldest">{t('dashboard.oldest')}</option>
+                <option value="alphabetical">{t('dashboard.alphabetical')}</option>
+                <option value="recentlyUpdated">{t('dashboard.recentlyUpdated')}</option>
+              </select>
+              <div className={`absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none transition-colors
+                ${sortOption !== "newest" ? "text-blue-500 dark:text-blue-400" : "text-gray-400 group-hover/sort:text-gray-600 dark:text-gray-500 dark:group-hover/sort:text-gray-300"}`}>
+                <ChevronIcon direction="down" className="w-4 h-4" />
+              </div>
+            </div>
+
+            {/* Series filter dropdown */}
+            <div className="relative group/series">
+              <select
+                value={seriesFilter}
+                onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
+                className={`appearance-none pl-4 pr-9 py-2 border rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer shadow-sm hover:shadow
+                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                  ${seriesFilter !== "all"
+                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60"
+                    : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+              >
+                <option value="all">{t('workspaces.series.filters.allSermons')}</option>
+                <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
+                <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
+              </select>
+              <div className={`absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none transition-colors
+                ${seriesFilter !== "all" ? "text-blue-500 dark:text-blue-400" : "text-gray-400 group-hover/series:text-gray-600 dark:text-gray-500 dark:group-hover/series:text-gray-300"}`}>
+                <ChevronIcon direction="down" className="w-4 h-4" />
+              </div>
             </div>
           </div>
 
-          {/* Series filter dropdown */}
-          <div className="relative">
-            <select
-              value={seriesFilter}
-              onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
-              className={`appearance-none pl-3 pr-8 py-1.5 border rounded-lg text-sm transition-colors
-                focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                ${seriesFilter !== "all"
-                  ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/20 dark:text-blue-300"
-                  : "border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                }`}
-            >
-              <option value="all">{t('workspaces.series.filters.allSermons')}</option>
-              <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
-              <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
-            </select>
-            <div className={`absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none
-              ${seriesFilter !== "all" ? "text-blue-500 dark:text-blue-400" : "text-gray-500"}`}>
-              <ChevronIcon direction="down" className="w-3.5 h-3.5" />
-            </div>
-          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search modifiers — visible only when search query is active */}
+            {searchQuery.trim().length > 0 && (
+              <div className="flex items-center gap-4 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-sm">
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={searchInThoughts}
+                    onChange={(e) => setSearchInThoughts(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 transition-all cursor-pointer"
+                  />
+                  {t('dashboard.searchInThoughts')}
+                </label>
+                <div className="w-px h-4 bg-gray-200 dark:bg-gray-600" />
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={searchInTags}
+                    onChange={(e) => setSearchInTags(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 transition-all cursor-pointer"
+                  />
+                  {t('dashboard.searchInTags')}
+                </label>
+              </div>
+            )}
 
-          {/* Search modifiers — visible only when search query is active */}
-          {searchQuery.trim().length > 0 && (
-            <>
-              <div className="w-px h-4 bg-gray-200 dark:bg-gray-600" />
-              <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={searchInThoughts}
-                  onChange={(e) => setSearchInThoughts(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-                />
-                {t('dashboard.searchInThoughts')}
-              </label>
-              <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={searchInTags}
-                  onChange={(e) => setSearchInTags(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-                />
-                {t('dashboard.searchInTags')}
-              </label>
-            </>
-          )}
-
-          {/* Reset — visible only when filters differ from defaults */}
-          {hasFilterChanges && (
-            <>
-              <div className="w-px h-4 bg-gray-200 dark:bg-gray-600" />
+            {/* Reset — visible only when filters differ from defaults */}
+            {hasFilterChanges && (
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200
+                         bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 shadow-sm"
               >
                 {activeFilterCount > 0 && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-blue-100 w-4 h-4 text-[10px] font-bold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                  <span className="inline-flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50 w-4 h-4 text-[10px] font-bold text-blue-700 dark:text-blue-300">
                     {activeFilterCount}
                   </span>
                 )}
                 {t('filters.resetFilters')}
               </button>
-            </>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
