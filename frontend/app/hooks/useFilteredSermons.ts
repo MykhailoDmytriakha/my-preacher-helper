@@ -9,7 +9,7 @@ type FilterOptions = {
     searchQuery: string;
     searchInThoughts: boolean;
     searchInTags: boolean;
-    sortOption: "newest" | "oldest" | "alphabetical";
+    sortOption: "newest" | "oldest" | "alphabetical" | "recentlyUpdated";
     seriesFilter: "all" | "inSeries" | "standalone";
     activeTab: "active" | "preached" | "all";
 };
@@ -87,6 +87,11 @@ export function useFilteredSermons(
                     return getSortTimestamp(a) - getSortTimestamp(b);
                 case "alphabetical":
                     return a.title.localeCompare(b.title);
+                case "recentlyUpdated": {
+                    const aTime = new Date(a.updatedAt ?? a.date).getTime();
+                    const bTime = new Date(b.updatedAt ?? b.date).getTime();
+                    return bTime - aTime;
+                }
                 default:
                     return 0;
             }

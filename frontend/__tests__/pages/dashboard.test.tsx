@@ -142,6 +142,9 @@ jest.mock('react-i18next', () => ({
         'dashboard.newest': 'Newest',
         'dashboard.oldest': 'Oldest',
         'dashboard.alphabetical': 'Alphabetical',
+        'dashboard.recentlyUpdated': 'Recently updated',
+        'filters.resetFilters': 'Reset filters',
+        'filters.activeFilters': 'Active filters',
         'dashboard.noSermons': 'No sermons yet',
         'dashboard.createFirstSermon': 'Create your first sermon to get started',
         'dashboard.noSearchResults': 'No search results',
@@ -161,9 +164,22 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+// localStorage mock
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; },
+  };
+})();
+Object.defineProperty(window, 'localStorage', { value: localStorageMock, writable: true });
+
 describe('Sermons Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorageMock.clear();
     // Default hook return values
     mockUseDashboardSermons.mockReturnValue({
       sermons: mockSermons,
@@ -436,6 +452,83 @@ describe('Sermons Page', () => {
       expect(mockOptimisticCreateSermon).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'New', verse: 'John 1:1' })
       );
+    });
+  });
+
+  describe('Toolbar — sort & filter dropdowns', () => {
+    it('renders recentlyUpdated option in sort dropdown', () => {
+      render(<SermonsPage />);
+      expect(screen.getByDisplayValue('Newest')).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Newest' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Recently updated' })).toBeInTheDocument();
+    });
+
+    it('persists sort selection to localStorage', () => {
+      render(<SermonsPage />);
+      const sortSelect = screen.getByDisplayValue('Newest');
+      fireEvent.change(sortSelect, { target: { value: 'oldest' } });
+      expect(localStorageMock.getItem('sermons:sort')).toBe('oldest');
+    });
+
+    it('reads initial sort from localStorage', () => {
+      localStorageMock.setItem('sermons:sort', 'alphabetical');
+      render(<SermonsPage />);
+      expect(screen.getByDisplayValue('Alphabetical')).toBeInTheDocument();
+    });
+
+    it('persists series filter to localStorage', () => {
+      render(<SermonsPage />);
+      const seriesSelect = screen.getByDisplayValue('All Sermons');
+      fireEvent.change(seriesSelect, { target: { value: 'inSeries' } });
+      expect(localStorageMock.getItem('sermons:seriesFilter')).toBe('inSeries');
+    });
+
+    it('reset restores default values in localStorage', () => {
+      localStorageMock.setItem('sermons:sort', 'oldest');
+      localStorageMock.setItem('sermons:seriesFilter', 'inSeries');
+      render(<SermonsPage />);
+
+      const resetBtn = screen.getByText('Reset filters');
+      fireEvent.click(resetBtn);
+
+      // useEffect writes defaults back after reset — verify non-custom values
+      expect(localStorageMock.getItem('sermons:sort')).not.toBe('oldest');
+      expect(localStorageMock.getItem('sermons:seriesFilter')).not.toBe('inSeries');
+      // Dropdowns show defaults
+      expect(screen.getByDisplayValue('Newest')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('All Sermons')).toBeInTheDocument();
+    });
+
+    it('shows active sort dropdown with non-default value', () => {
+      localStorageMock.setItem('sermons:sort', 'oldest');
+      render(<SermonsPage />);
+      const sortSelect = screen.getByDisplayValue('Oldest');
+      // active class contains 'border-blue'
+      expect(sortSelect.className).toMatch(/border-blue/);
+    });
+  });
+
+  describe('Toolbar — contextual search modifiers', () => {
+    it('hides thoughts/tags checkboxes when search is empty', () => {
+      render(<SermonsPage />);
+      expect(screen.queryByText('Search in thoughts')).not.toBeInTheDocument();
+      expect(screen.queryByText('Search in tags')).not.toBeInTheDocument();
+    });
+
+    it('shows thoughts/tags checkboxes when search query is typed', () => {
+      render(<SermonsPage />);
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      fireEvent.change(searchInput, { target: { value: 'grace' } });
+      expect(screen.getByText('Search in thoughts')).toBeInTheDocument();
+      expect(screen.getByText('Search in tags')).toBeInTheDocument();
+    });
+
+    it('persists searchInThoughts to localStorage', () => {
+      render(<SermonsPage />);
+      fireEvent.change(screen.getByPlaceholderText('Search sermons...'), { target: { value: 'x' } });
+      const checkbox = screen.getByRole('checkbox', { name: /thoughts/i });
+      fireEvent.click(checkbox);
+      expect(localStorageMock.getItem('sermons:searchInThoughts')).toBe('false');
     });
   });
 });
