@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { generateSermonPoints } from '@clients/openAI.client';
@@ -7,11 +9,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { section } = await request.json();
     const { id: sermonId } = await params;
-    
+
     if (!sermonId) {
       return NextResponse.json({ error: "Sermon ID is required" }, { status: 400 });
     }
-    
+
     if (!section || !['introduction', 'main', 'conclusion'].includes(section)) {
       return NextResponse.json({ error: "Valid section (introduction, main, conclusion) is required" }, { status: 400 });
     }
@@ -24,10 +26,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Generate outline points
     const { outlinePoints, success } = await generateSermonPoints(sermon, section);
-    
+
     if (!success) {
       return NextResponse.json(
-        { error: "Failed to generate outline points", outlinePoints: [] }, 
+        { error: "Failed to generate outline points", outlinePoints: [] },
         { status: 500 }
       );
     }
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("Error generating outline points:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { error: `Failed to generate outline points: ${errorMessage}` }, 
+      { error: `Failed to generate outline points: ${errorMessage}` },
       { status: 500 }
     );
   }

@@ -128,6 +128,7 @@ export interface Sermon {
     lastGenerated: string;
     chunksCount: number;
   };
+  updatedAt?: string;
 }
 
 export type SeriesKind = 'sermon' | 'group' | 'mixed';

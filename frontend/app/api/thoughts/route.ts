@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
@@ -38,8 +40,7 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
 }
 
 async function appendThoughtToSermon(sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
-  const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
-  await sermonDocRef.update({
+  await sermonsRepository.updateSermonData(sermonId, {
     thoughts: union(thought)
   });
 }
@@ -214,9 +215,7 @@ export async function DELETE(request: Request) {
     }
     console.log("Thoughts route: Deleting thought:", thought);
 
-    // Use Admin SDK instead of client SDK
-    const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
-    await sermonDocRef.update({
+    await sermonsRepository.updateSermonData(sermonId, {
       thoughts: FieldValue.arrayRemove(thought)
     });
 
@@ -316,8 +315,11 @@ export async function PUT(request: Request) {
           t.id === sanitizedMergedThought.id ? sanitizedMergedThought : t
         );
 
-        // Update in a single transaction
-        transaction.update(sermonDocRef, { thoughts: updatedThoughts });
+        // Update in a single transaction with updatedAt
+        transaction.update(sermonDocRef, {
+          thoughts: updatedThoughts,
+          updatedAt: new Date().toISOString()
+        });
       });
 
       console.log("Thoughts route: Successfully updated thought in transaction");

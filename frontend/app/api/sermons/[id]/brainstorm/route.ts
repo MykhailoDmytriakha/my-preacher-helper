@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { Sermon } from '@/models/models';
@@ -7,10 +9,10 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 // POST /api/sermons/:id/brainstorm
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   console.log("Brainstorm route: Received POST request for generating brainstorm suggestion");
-  
+
   try {
     const { id: sermonId } = await params;
-    
+
     if (!sermonId) {
       console.error("Brainstorm route: sermonId is missing");
       return NextResponse.json({ error: "Sermon ID is required" }, { status: 400 });
@@ -31,13 +33,13 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     }
 
     console.log("Brainstorm route: Successfully generated brainstorm suggestion");
-    
+
     return NextResponse.json({ suggestion });
   } catch (error: unknown) {
     console.error("Brainstorm route: Error generating brainstorm suggestion:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { error: `Failed to generate brainstorm suggestion: ${errorMessage}` }, 
+      { error: `Failed to generate brainstorm suggestion: ${errorMessage}` },
       { status: 500 }
     );
   }

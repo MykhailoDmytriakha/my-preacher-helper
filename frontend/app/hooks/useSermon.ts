@@ -79,6 +79,12 @@ function useSermon(sermonId: string) {
       });
       // Invalidate to ensure persisted cache syncs without immediate refetch
       queryClient.invalidateQueries({ queryKey: ["sermon", sermonId], refetchType: 'none' });
+
+      // Also invalidate the global list so the dashboard reflects updated timestamps (like updatedAt)
+      const currentUid = resolveUid();
+      if (currentUid) {
+        queryClient.invalidateQueries({ queryKey: ["sermons", currentUid] });
+      }
     },
     [queryClient, sermonId]
   );

@@ -22,6 +22,13 @@
 /frontend/node_modules
 /frontend/**coverage**
 
+# next-pwa auto-generated
+/frontend/public/sw.js
+/frontend/public/workbox-*.js
+/frontend/public/fallback-*.js
+/frontend/public/sw.js.map
+/frontend/public/workbox-*.js.map
+
 # production
 /build
 

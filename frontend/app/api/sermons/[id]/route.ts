@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-import { adminDb } from '@/config/firebaseAdminConfig';
 import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -23,8 +22,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     // Get fields from the request body
-    const { title, verse, isPreached, preparation } = await request.json(); 
-    
+    const { title, verse, isPreached, preparation } = await request.json();
+
     // Prepare the update object
     const updateData: { title?: string; verse?: string; isPreached?: boolean; preparation?: Record<string, unknown> } = {};
     if (title) updateData.title = title;
@@ -44,11 +43,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         { status: 400 }
       );
     }
-    
-    // Use Admin SDK to update the sermon
-    const sermonDocRef = adminDb.collection("sermons").doc(id);
-    await sermonDocRef.update(updateData); // Update with the constructed object
-    
+
+    // Use centralized repository to update the sermon
+    await sermonsRepository.updateSermonData(id, updateData);
+
     // Fetch the updated sermon to return it
     const updatedSermon = await sermonsRepository.fetchSermonById(id);
     return NextResponse.json(updatedSermon);

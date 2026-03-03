@@ -12,6 +12,7 @@ jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
     deleteSermonById: jest.fn(),
+    updateSermonData: jest.fn(),
   },
 }));
 
@@ -90,7 +91,7 @@ describe('Sermons [id] API Route', () => {
 
       expect(response.status).toBe(400);
       expect(data.error).toBe('No fields provided for update');
-      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(sermonsRepository.updateSermonData).not.toHaveBeenCalled();
     });
 
     it('updates sermon and returns updated data', async () => {
@@ -107,9 +108,7 @@ describe('Sermons [id] API Route', () => {
       const response = await PUT(request, { params: Promise.resolve({ id: 'sermon-1' }) });
       const data = await response.json();
 
-      expect(mockCollection).toHaveBeenCalledWith('sermons');
-      expect(mockDoc).toHaveBeenCalledWith('sermon-1');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(sermonsRepository.updateSermonData).toHaveBeenCalledWith('sermon-1', {
         title: 'Updated',
         isPreached: false,
         preparation: { notes: 'Test' },
@@ -118,7 +117,7 @@ describe('Sermons [id] API Route', () => {
     });
 
     it('returns 500 on update failure', async () => {
-      mockUpdate.mockRejectedValueOnce(new Error('Update failed'));
+      (sermonsRepository.updateSermonData as jest.Mock).mockRejectedValueOnce(new Error('Update failed'));
       const request = {
         json: jest.fn().mockResolvedValueOnce({ title: 'Updated' }),
       } as unknown as Request;

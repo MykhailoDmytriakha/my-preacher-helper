@@ -12,6 +12,7 @@ jest.mock('@repositories/sermons.repository', () => ({
       thoughts: [],
       userId: 'u-1',
     }),
+    updateSermonData: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -77,7 +78,7 @@ describe('api/thoughts POST attaches outlinePointId', () => {
       globalThis.Headers = globalThis.Headers || undici.Headers;
       globalThis.Request = globalThis.Request || undici.Request;
       globalThis.Response = globalThis.Response || undici.Response;
-    } catch {}
+    } catch { }
 
     const fd = new FormData();
     const blob = new Blob(['123'], { type: 'audio/webm' });

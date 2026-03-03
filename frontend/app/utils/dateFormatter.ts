@@ -25,6 +25,27 @@ const parseDateTime = (value: string): Date | null => {
   return parsedDateOnly;
 };
 
+export const extractIsoString = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  // Handle Firestore Timestamp object duck-typing
+  const safeValue = value as Record<string, unknown>;
+  if (typeof safeValue.toDate === 'function') {
+    return (safeValue.toDate as () => Date)().toISOString();
+  }
+
+  if (typeof safeValue.seconds === 'number') {
+    return new Date(safeValue.seconds * 1000).toISOString();
+  }
+
+  return null;
+};
+
 export const formatDate = (dateStr: string | undefined | null) => {
   try {
     if (!dateStr || dateStr === '') {

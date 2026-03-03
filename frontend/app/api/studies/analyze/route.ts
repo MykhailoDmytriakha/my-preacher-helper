@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { NextResponse } from 'next/server';
 
 import { analyzeStudyNote } from '@clients/studyNote.structured';

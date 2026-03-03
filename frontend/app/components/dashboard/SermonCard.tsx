@@ -1,6 +1,6 @@
 "use client";
 
-import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, Loader2 } from "lucide-react";
+import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
@@ -18,7 +18,7 @@ import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
 import { getContrastColor } from "@utils/color";
-import { formatDateOnly } from "@utils/dateFormatter";
+import { formatDateOnly, extractIsoString } from "@utils/dateFormatter";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
 
 import HighlightedText from "../HighlightedText";
@@ -45,6 +45,7 @@ interface SermonCardProps {
 interface SermonCardHeaderProps {
   sermon: Sermon;
   formattedCreatedDate: string;
+  formattedUpdatedDate: string | null;
   formattedPreachedDate: string | null;
   formattedPlannedDate: string | null;
   onDelete: (id: string) => void;
@@ -145,6 +146,7 @@ function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSy
 function SermonCardHeader({
   sermon,
   formattedCreatedDate,
+  formattedUpdatedDate,
   formattedPreachedDate,
   formattedPlannedDate,
   onDelete,
@@ -172,6 +174,13 @@ function SermonCardHeader({
           <span className="uppercase tracking-wide text-[10px]">{t('dashboard.created')}</span>
           <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
         </div>
+        {formattedUpdatedDate && (
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 px-2 py-0.5 text-xs font-medium">
+            <RefreshCw className="w-3 h-3" />
+            <span className="uppercase tracking-wide text-[10px]">{t('dashboard.updated')}</span>
+            <span className={TEXT_PRIMARY_CLASSES}>{formattedUpdatedDate}</span>
+          </div>
+        )}
         {hasStatusDate && (
           <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses}`}>
             <CheckCircle2 className="w-3 h-3" />
@@ -371,6 +380,8 @@ export default function SermonCard({
   const plannedDatesCount = countPreachDatesByStatus(sermon, 'planned');
 
   const formattedCreatedDate = formatDateOnly(sermon.date?.slice(0, 10));
+  const updatedIso = extractIsoString(sermon.updatedAt);
+  const formattedUpdatedDate = updatedIso ? formatDateOnly(updatedIso.slice(0, 10)) : null;
   const formattedPreachedDate = latestPreachedDate?.date ? formatDateOnly(latestPreachedDate.date) : null;
   const formattedPlannedDate =
     !formattedPreachedDate && nextPlannedDate?.date ? formatDateOnly(nextPlannedDate.date) : null;
@@ -412,6 +423,7 @@ export default function SermonCard({
           <SermonCardHeader
             sermon={sermon}
             formattedCreatedDate={formattedCreatedDate}
+            formattedUpdatedDate={formattedUpdatedDate}
             formattedPreachedDate={formattedPreachedDate}
             formattedPlannedDate={formattedPlannedDate}
             onDelete={onDelete}

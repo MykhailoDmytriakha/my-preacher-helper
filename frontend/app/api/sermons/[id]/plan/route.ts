@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { SermonContent } from '@/models/models';

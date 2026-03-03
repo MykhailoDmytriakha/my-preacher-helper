@@ -20,7 +20,10 @@ jest.mock('@/config/firebaseAdminConfig', () => {
   return {
     adminDb: mockAdminDb,
     initAdmin: jest.fn().mockResolvedValue(mockAdminDb),
-    FieldValue: { arrayUnion: mockArrayUnion },
+    FieldValue: {
+      arrayUnion: mockArrayUnion,
+      serverTimestamp: jest.fn().mockReturnValue('mocked-server-timestamp')
+    },
   };
 });
 
@@ -71,7 +74,7 @@ describe('SermonsRepository', () => {
     };
 
     it('validates plan permutations with scenarios', async () => {
-    const invalidPlanCases = [
+      const invalidPlanCases = [
         { name: 'plan is null', plan: null, error: 'Invalid content data' },
         { name: 'plan is undefined', plan: undefined, error: 'Invalid content data' },
         { name: 'plan is not object', plan: 'not an object', error: 'Invalid content data' },
@@ -123,10 +126,11 @@ describe('SermonsRepository', () => {
             name: 'successfully updates valid plan',
             run: async () => {
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', validPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: validPlan, plan: validPlan });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: validPlan, plan: validPlan, updatedAt: expect.any(String) });
               expect(result).toEqual(validPlan);
             }
           },
+
           ...invalidPlanCases.map(({ name, plan, error }) => ({
             name,
             run: async () => {
@@ -143,7 +147,7 @@ describe('SermonsRepository', () => {
                 conclusion: { outline: '' }
               };
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', emptyPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: emptyPlan, plan: emptyPlan });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: emptyPlan, plan: emptyPlan, updatedAt: expect.any(String) });
               expect(result).toEqual(emptyPlan);
             }
           },
@@ -156,7 +160,7 @@ describe('SermonsRepository', () => {
                 conclusion: { outline: 'Conclusion outline', outlinePoints: { point3: 'content3' } }
               };
               await sermonsRepository.updateSermonPlan('test-sermon-123', planWithSermonPoints);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: planWithSermonPoints, plan: planWithSermonPoints });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: planWithSermonPoints, plan: planWithSermonPoints, updatedAt: expect.any(String) });
             }
           },
           {
@@ -331,7 +335,7 @@ describe('SermonsRepository', () => {
             name: 'updates outline when sermon exists',
             run: async () => {
               const result = await sermonsRepository.updateSermonOutline('test-sermon-123', validOutline);
-              expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline });
+              expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline, updatedAt: expect.any(String) });
               expect(result).toEqual(validOutline);
             }
           },
@@ -547,13 +551,13 @@ describe('SermonsRepository', () => {
       await expect(
         sermonsRepository.updateSermonSeriesInfo('sermon-1', 'series-1', 2)
       ).resolves.toBeUndefined();
-      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 2 });
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 2, updatedAt: expect.any(String) });
 
       mockUpdate.mockClear();
       await expect(
         sermonsRepository.updateSermonSeriesInfo('sermon-1', null, null)
       ).resolves.toBeUndefined();
-      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: null, seriesPosition: null });
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: null, seriesPosition: null, updatedAt: expect.any(String) });
 
       mockUpdate.mockClear();
       await expect(
@@ -603,6 +607,7 @@ describe('SermonsRepository', () => {
             preachDates: expect.objectContaining({
               __arrayUnion: expect.objectContaining({ id: result.id }),
             }),
+            updatedAt: expect.any(String)
           }),
         );
         expect(result.date).toBe('2026-02-15');
@@ -658,6 +663,7 @@ describe('SermonsRepository', () => {
             status: 'preached',
           }),
         ],
+        updatedAt: expect.any(String)
       });
       expect(result.id).toBe('pd-1');
       expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z');
@@ -723,6 +729,7 @@ describe('SermonsRepository', () => {
         preachDates: [
           { id: 'pd-2', date: '2026-02-02', church: { id: 'c2', name: 'Church 2' }, createdAt: 'y' },
         ],
+        updatedAt: expect.any(String)
       });
 
       mockGet.mockResolvedValueOnce({ exists: false });

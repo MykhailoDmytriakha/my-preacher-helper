@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 import { NextResponse } from 'next/server';
 
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';

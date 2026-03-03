@@ -19,6 +19,7 @@ jest.mock('@clients/firestore.client', () => ({
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
+    updateSermonData: jest.fn(),
   },
 }));
 
@@ -80,7 +81,7 @@ describe('Thoughts API POST', () => {
 
   let POST: any;
   let generateThoughtStructuredMock: jest.Mock;
-  let adminDbMock: any;
+  let sermonsRepoMock: any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -96,10 +97,9 @@ describe('Thoughts API POST', () => {
     const openAIClient = await import('@clients/openAI.client');
     const sermonsRepo = await import('@repositories/sermons.repository');
     const thoughtStructured = await import('@clients/thought.structured');
-    const firebaseConfig = await import('@/config/firebaseAdminConfig');
 
     generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured as jest.Mock;
-    adminDbMock = firebaseConfig.adminDb;
+    sermonsRepoMock = sermonsRepo;
 
     // Configure these new mock instances
     (firestoreClient.getRequiredTags as jest.Mock).mockResolvedValue([]);
@@ -146,24 +146,20 @@ describe('Thoughts API POST', () => {
       id: 'mock-uuid',
     }));
 
-    // Verify it was saved to Firestore using the re-required adminDb mock
-    const collectionMock = adminDbMock.collection as jest.Mock;
-    expect(collectionMock).toHaveBeenCalledWith('sermons');
-
-    const docMock = collectionMock.mock.results[0].value.doc;
-    expect(docMock).toHaveBeenCalledWith(mockSermonId);
-
-    const updateMock = docMock.mock.results[0].value.update;
-    expect(updateMock).toHaveBeenCalledWith({
-      thoughts: expect.objectContaining({
-        elements: expect.arrayContaining([
-          expect.objectContaining({
-            text: mockTranscription,
-            tags: []
-          })
-        ])
+    // Verify it was saved using sermonsRepository.updateSermonData
+    expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledWith(
+      mockSermonId,
+      expect.objectContaining({
+        thoughts: expect.objectContaining({
+          elements: expect.arrayContaining([
+            expect.objectContaining({
+              text: mockTranscription,
+              tags: []
+            })
+          ])
+        })
       })
-    });
+    );
 
     spyConsoleWarn.mockRestore();
     spyConsoleLog.mockRestore();

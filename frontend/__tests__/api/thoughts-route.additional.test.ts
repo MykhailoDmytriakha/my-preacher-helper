@@ -16,6 +16,7 @@ jest.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     arrayUnion: (value: unknown) => ({ elements: [value] }),
     arrayRemove: (value: unknown) => ({ elements: [value] }),
+    serverTimestamp: () => 'mocked-server-timestamp',
   },
 }));
 
@@ -36,6 +37,7 @@ jest.mock('@clients/firestore.client', () => ({
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
+    updateSermonData: jest.fn(),
   },
 }));
 
@@ -76,6 +78,7 @@ describe('Thoughts API route additional coverage', () => {
   let getRequiredTagsMock: jest.Mock;
   let getCustomTagsMock: jest.Mock;
   let fetchSermonByIdMock: jest.Mock;
+  let sermonsRepoMock: any;
 
   beforeAll(async () => {
     try {
@@ -109,6 +112,7 @@ describe('Thoughts API route additional coverage', () => {
     generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured as jest.Mock;
     getRequiredTagsMock = firestoreClient.getRequiredTags as jest.Mock;
     getCustomTagsMock = firestoreClient.getCustomTags as jest.Mock;
+    sermonsRepoMock = sermonsRepo;
     fetchSermonByIdMock = sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock;
 
     getRequiredTagsMock.mockResolvedValue([]);
@@ -153,7 +157,7 @@ describe('Thoughts API route additional coverage', () => {
           position: 2,
         })
       );
-      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledTimes(1);
     });
 
     it('returns 400 when sermonId or thought is missing', async () => {
@@ -275,7 +279,7 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(200);
       expect(data).toEqual({ message: 'Thought deleted successfully.' });
-      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledTimes(1);
     });
 
     it('returns 400 when sermonId or thought is missing', async () => {
@@ -425,6 +429,7 @@ describe('Thoughts API route additional coverage', () => {
         thoughts: expect.arrayContaining([
           expect.objectContaining({ id: 'thought-1', text: 'new' }),
         ]),
+        updatedAt: expect.any(String),
       });
     });
 

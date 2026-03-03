@@ -50,6 +50,25 @@ export class SermonsRepository {
     }
   }
 
+  async updateSermonData(id: string, updateData: Record<string, unknown>): Promise<void> {
+    console.log(`Firestore: updating sermon data ${id}`);
+    try {
+      const docRef = adminDb.collection(this.collection).doc(id);
+
+      // Inject the server timestamp for updatedAt
+      const dataWithTimestamp = {
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      };
+
+      await docRef.update(dataWithTimestamp);
+      console.log(`Firestore: updated sermon data ${id} successfully`);
+    } catch (error) {
+      console.error(`Error updating sermon data for ${id}:`, error);
+      throw error;
+    }
+  }
+
   async deleteSermonById(id: string): Promise<void> {
     console.log(`Firestore: deleting sermon ${id}`);
     try {
@@ -95,7 +114,7 @@ export class SermonsRepository {
       }
 
       // Update the outline field in the sermon document
-      await docRef.update({ outline });
+      await this.updateSermonData(sermonId, { outline });
       console.log(`Sermon outline updated for sermon id ${sermonId}`);
 
       return outline;
@@ -138,7 +157,7 @@ export class SermonsRepository {
 
       // Update both the draft field and legacy plan for backward compatibility
       // Note: We keep "draft" as the field name in DB but refer to it as "content" in code
-      await docRef.update({ draft: content, plan: content });
+      await this.updateSermonData(sermonId, { draft: content, plan: content });
       console.log(`Sermon content updated for sermon id ${sermonId}`);
 
       return content;
@@ -230,7 +249,7 @@ export class SermonsRepository {
       }
 
       // Update the sermon document
-      await docRef.update(updateData);
+      await this.updateSermonData(sermonId, updateData);
       console.log(`Sermon series info updated for sermon id ${sermonId}`);
     } catch (error) {
       console.error(`Error updating sermon series info for sermon ${sermonId}:`, error);
@@ -241,7 +260,6 @@ export class SermonsRepository {
   async addPreachDate(sermonId: string, preachDate: Omit<PreachDate, 'id' | 'createdAt'>): Promise<PreachDate> {
     console.log(`Firestore: adding preach date to sermon ${sermonId}`);
     try {
-      const docRef = adminDb.collection(this.collection).doc(sermonId);
       const normalizedDate = toDateOnlyKey(preachDate.date);
       if (!normalizedDate) {
         throw new Error("Invalid preach date format");
@@ -255,7 +273,7 @@ export class SermonsRepository {
         createdAt: new Date().toISOString()
       };
 
-      await docRef.update({
+      await this.updateSermonData(sermonId, {
         preachDates: FieldValue.arrayUnion(newPreachDate)
       });
 
@@ -301,7 +319,7 @@ export class SermonsRepository {
       const updatedArray = [...preachDates];
       updatedArray[index] = updatedPreachDate;
 
-      await docRef.update({ preachDates: updatedArray });
+      await this.updateSermonData(sermonId, { preachDates: updatedArray });
       console.log(`Firestore: updated preach date ${dateId} for sermon ${sermonId}`);
       return updatedPreachDate;
     } catch (error) {
@@ -324,7 +342,7 @@ export class SermonsRepository {
       const preachDates = sermon.preachDates || [];
       const updatedArray = preachDates.filter(pd => pd.id !== dateId);
 
-      await docRef.update({ preachDates: updatedArray });
+      await this.updateSermonData(sermonId, { preachDates: updatedArray });
       console.log(`Firestore: deleted preach date ${dateId} from sermon ${sermonId}`);
     } catch (error) {
       console.error(`Error deleting preach date ${dateId} from sermon ${sermonId}:`, error);
