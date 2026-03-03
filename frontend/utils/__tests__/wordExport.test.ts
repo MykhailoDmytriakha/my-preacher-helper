@@ -39,7 +39,7 @@ global.Blob = jest.fn().mockImplementation((parts, options) => ({
 describe('wordExport', () => {
   const basePlanData: PlanData = {
     sermonTitle: 'Test Sermon',
-    sermonVerse: 'John 3:16',
+    sermonVerse: 'John 3:16\nJohn 3:17',
     introduction: '## Intro Heading\nThis is the introduction.\n- Point 1\n- Point 2',
     main: '# Main Heading\nThis is the main content.\n1. First point\n2. Second point',
     conclusion: 'This is the conclusion.\n> Important quote',
@@ -126,17 +126,16 @@ describe('wordExport', () => {
       const docArgs = (Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any
       const children = docArgs.sections[0].children as unknown[]
 
-      // title(1) + intro_label(1) + intro_placeholder(1)
-      // + main_label(1) + main_placeholder(1)
-      // + conclusion_label(1) + conclusion_placeholder(1) = 7
-      // If header + date were still present, count would be 9
-      expect(children).toHaveLength(7)
+      // conclusion_label(1) + conclusion_placeholder(1) + ColumnBreak(1) 
+      // + title(1) + intro_label(1) + intro_placeholder(1) + PageBreak(1)
+      // + main_label(1) + main_placeholder(1) = 9
+      expect(children).toHaveLength(9)
       expect(children[0]).toBeInstanceOf(Paragraph)
     })
 
     it('exports only the requested focused section', async () => {
       const singleSectionData = getPlanData({
-        sermonVerse: '',
+        sermonVerse: 'John 1:1\nJohn 1:2',
         introduction: 'Intro text',
         main: 'Main text',
         conclusion: 'Concl text',
@@ -150,8 +149,8 @@ describe('wordExport', () => {
             await exportToWord({ data: singleSectionData, focusedSection: 'introduction' })
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
-            // title(1) + intro_label(1) + intro_content(1) = 3
-            expect(children).toHaveLength(3)
+            // title(1) + verse(1) + intro_label(1) + intro_content(1) = 4
+            expect(children).toHaveLength(4)
           },
         },
         {
@@ -161,8 +160,8 @@ describe('wordExport', () => {
             await exportToWord({ data: singleSectionData, focusedSection: 'main' })
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
-            // title(1) + main_label(1) + main_content(1) = 3
-            expect(children).toHaveLength(3)
+            // title(1) + verse(1) + main_label(1) + main_content(1) = 4
+            expect(children).toHaveLength(4)
           },
         },
         {
@@ -172,14 +171,14 @@ describe('wordExport', () => {
             await exportToWord({ data: singleSectionData, focusedSection: 'mainPart' })
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
-            expect(children).toHaveLength(3)
+            expect(children).toHaveLength(4)
           },
         },
         {
           name: 'focusedSection=conclusion excludes intro and main',
           run: async () => {
             jest.clearAllMocks()
-            await exportToWord({ data: singleSectionData, focusedSection: 'conclusion' })
+            await exportToWord({ data: { ...singleSectionData, sermonVerse: '' }, focusedSection: 'conclusion' })
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
             // title(1) + conclusion_label(1) + conclusion_content(1) = 3
@@ -187,6 +186,28 @@ describe('wordExport', () => {
           },
         },
       ])
+    })
+
+    it('exports multiple verses correctly in focused section', async () => {
+      jest.clearAllMocks()
+      await exportToWord({
+        data: getPlanData({ sermonVerse: 'Verse 1\nVerse 2', introduction: 'Intro' }),
+        focusedSection: 'introduction'
+      })
+      // title(1) + verse(1) + intro_label(1) + intro_content(1) = 4
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+      expect(children).toHaveLength(4)
+    })
+
+    it('exports multiple verses correctly in full booklet layout', async () => {
+      jest.clearAllMocks()
+      await exportToWord({
+        data: getPlanData({ sermonVerse: 'Verse 1\nVerse 2' }),
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const children = ((Document as jest.MockedClass<typeof Document>).mock.calls[0][0] as any).sections[0].children as unknown[]
+      expect(children).toHaveLength(17)
     })
   })
 

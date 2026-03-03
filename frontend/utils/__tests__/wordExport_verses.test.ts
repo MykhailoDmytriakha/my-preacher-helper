@@ -8,6 +8,8 @@ jest.mock('docx', () => {
         Document: jest.fn(),
         Paragraph: jest.fn(),
         TextRun: jest.fn(),
+        ColumnBreak: jest.fn(),
+        PageBreak: jest.fn(),
         HeadingLevel: { HEADING_1: 'Heading1', HEADING_2: 'Heading2', HEADING_3: 'Heading3' },
         AlignmentType: { CENTER: 'center', JUSTIFIED: 'justified' },
         BorderStyle: { SINGLE: 'single' },

@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType, PageBreak, ColumnBreak } from 'docx';
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
@@ -402,11 +402,6 @@ export const parseInlineMarkdown = (text: string): TextRun[] => {
     }
   }
 
-  // If no runs were created, add the original text
-  if (runs.length === 0) {
-    runs.push(new TextRun(text));
-  }
-
   return runs;
 };
 
@@ -510,82 +505,101 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
             },
           },
           children: [
-            // Sermon Title
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: data.sermonTitle,
-                  bold: true,
-                  size: 28,
-                  color: '2563eb',
-                  font: 'Arial',
+            // Render different layout based on whether it's a full export (booklet) or focused
+            ...(focusedSection ? [
+              // Single Section Layout (Linear)
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: data.sermonTitle,
+                    bold: true,
+                    size: 28,
+                    color: '2563eb',
+                    font: 'Arial',
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+              }),
+
+              ...(data.sermonVerse ? [
+                new Paragraph({
+                  children: data.sermonVerse
+                    .split('\n')
+                    .filter(line => line.trim() !== '')
+                    .map((verse, index) =>
+                      new TextRun({
+                        text: verse.trim(),
+                        italics: true,
+                        size: 18, // 9pt
+                        color: '6b7280',
+                        font: 'Arial',
+                        break: index > 0 ? 1 : 0,
+                      })
+                    ),
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 400 },
                 }),
-              ],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 200 },
-            }),
+              ] : []),
 
-            // Scripture Verse (if provided)
-            ...(data.sermonVerse ? [
-              new Paragraph({
-                children: data.sermonVerse
-                  .split('\n')
-                  .filter(line => line.trim() !== '')
-                  .map((verse, index) =>
+              ...(focusedSection === 'introduction' ? [
+                new Paragraph({
+                  children: [
                     new TextRun({
-                      text: verse.trim(),
-                      italics: true,
-                      size: 22,
-                      color: '6b7280',
+                      text: sectionIntroLabel,
+                      bold: true,
+                      size: 28,
+                      color: introHex,
                       font: 'Arial',
-                      break: index > 0 ? 1 : 0,
-                    })
-                  ),
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 400 },
-              }),
-            ] : []),
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  style: 'sectionHeading',
+                  spacing: { before: 200, after: 200 },
+                }),
+                ...parseMarkdownToParagraphs(data.introduction, introHex),
+              ] : []),
 
-            // Introduction Section
-            ...((!focusedSection || focusedSection === 'introduction') ? [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: sectionIntroLabel,
-                    bold: true,
-                    size: 28,
-                    color: introHex,
-                    font: 'Arial',
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-                style: 'sectionHeading',
-                spacing: { before: 200, after: 200 },
-              }),
-              ...parseMarkdownToParagraphs(data.introduction, introHex),
-            ] : []),
+              ...((focusedSection === 'main' || focusedSection === 'mainPart') ? [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: sectionMainLabel,
+                      bold: true,
+                      size: 28,
+                      color: mainHex,
+                      font: 'Arial',
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  style: 'sectionHeading',
+                  spacing: { before: 200, after: 200 },
+                }),
+                ...parseMarkdownToParagraphs(data.main, mainHex),
+              ] : []),
 
-            // Main Section
-            ...((!focusedSection || focusedSection === 'main' || focusedSection === 'mainPart') ? [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: sectionMainLabel,
-                    bold: true,
-                    size: 28,
-                    color: mainHex,
-                    font: 'Arial',
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-                style: 'sectionHeading',
-                spacing: { before: 200, after: 200 },
-              }),
-              ...parseMarkdownToParagraphs(data.main, mainHex),
-            ] : []),
+              ...(focusedSection === 'conclusion' ? [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: sectionConclusionLabel,
+                      bold: true,
+                      size: 28,
+                      color: conclHex,
+                      font: 'Arial',
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  style: 'sectionHeading',
+                  spacing: { before: 200, after: 200 },
+                }),
+                ...parseMarkdownToParagraphs(data.conclusion, conclHex),
+              ] : []),
 
-            // Conclusion Section
-            ...((!focusedSection || focusedSection === 'conclusion') ? [
+            ] : [
+              // Full Export Layout (Booklet format)
+
+              // Page 1, Left Column (Back Cover): Conclusion
               new Paragraph({
                 children: [
                   new TextRun({
@@ -601,7 +615,87 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
                 spacing: { before: 200, after: 200 },
               }),
               ...parseMarkdownToParagraphs(data.conclusion, conclHex),
-            ] : []),
+
+              // Break to Right Column (Front Cover)
+              new Paragraph({
+                children: [new ColumnBreak()],
+              }),
+
+              // Sermon Title
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: data.sermonTitle,
+                    bold: true,
+                    size: 28,
+                    color: '2563eb',
+                    font: 'Arial',
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+              }),
+
+              // Scripture Verse (if provided)
+              ...(data.sermonVerse ? [
+                new Paragraph({
+                  children: data.sermonVerse
+                    .split('\n')
+                    .filter(line => line.trim() !== '')
+                    .map((verse, index) =>
+                      new TextRun({
+                        text: verse.trim(),
+                        italics: true,
+                        size: 18, // 9pt
+                        color: '6b7280',
+                        font: 'Arial',
+                        break: index > 0 ? 1 : 0,
+                      })
+                    ),
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 400 },
+                }),
+              ] : []),
+
+              // Introduction Section
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: sectionIntroLabel,
+                    bold: true,
+                    size: 28,
+                    color: introHex,
+                    font: 'Arial',
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                style: 'sectionHeading',
+                spacing: { before: 200, after: 200 },
+              }),
+              ...parseMarkdownToParagraphs(data.introduction, introHex),
+
+              // Break to Next Page (Inner Spread)
+              new Paragraph({
+                children: [new PageBreak()],
+              }),
+
+              // Main Section
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: sectionMainLabel,
+                    bold: true,
+                    size: 28,
+                    color: mainHex,
+                    font: 'Arial',
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                style: 'sectionHeading',
+                spacing: { before: 200, after: 200 },
+              }),
+              ...parseMarkdownToParagraphs(data.main, mainHex),
+            ]),
           ],
         },
       ],
@@ -611,7 +705,7 @@ export const exportToWord = async (options: WordExportOptions): Promise<void> =>
     const buffer = await Packer.toBuffer(doc);
 
     // Create blob and download
-    const blob = new Blob([buffer], {
+    const blob = new Blob([buffer as unknown as BlobPart], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
 

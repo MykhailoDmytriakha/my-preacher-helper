@@ -5,6 +5,8 @@ import {
   getLatestPreachedDate,
   getNextPlannedDate,
   getPreferredDateToMarkAsPreached,
+  isPreachDatePlanned,
+  isPreachDatePreached,
 } from '@/utils/preachDateStatus';
 
 import type { Sermon } from '@/models/models';
@@ -161,5 +163,84 @@ describe('preachDateStatus utils', () => {
 
     expect(getPreferredDateToMarkAsPreached(sermonWithPlan)?.id).toBe('pd-planned');
     expect(getPreferredDateToMarkAsPreached(sermonWithoutPlan)?.id).toBe('pd-preached');
+  });
+
+  it('handles invalid dates gracefully in toTimestamp', () => {
+    const sermon = buildSermon({
+      preachDates: [
+        {
+          id: 'pd-invalid',
+          date: 'invalid-date' as any,
+          status: 'planned',
+          church: { id: 'c-1', name: 'Church' },
+          createdAt: '2026-02-01T00:00:00Z',
+        },
+        {
+          id: 'pd-nan',
+          date: '0000-00-00', // matches YYYY-MM-DD but parses to NaN
+          status: 'planned',
+          church: { id: 'c-2', name: 'Church 2' },
+          createdAt: '2026-02-01T00:00:00Z',
+        }
+      ],
+    });
+    // Should filter out the invalid date
+    expect(getNextPlannedDate(sermon)).toBeNull();
+  });
+
+  it('treats status-less past/invalid dates as preached', () => {
+    expect(
+      getEffectivePreachDateStatus(
+        {
+          id: 'pd-past',
+          date: '2000-01-01',
+          church: { id: 'c-1', name: 'Church' },
+          createdAt: '2026-02-01T00:00:00Z',
+        },
+        false
+      )
+    ).toBe('preached');
+  });
+
+  it('tests isPreachDatePlanned and isPreachDatePreached specifically', () => {
+    const plannedDate = {
+      id: 'pd',
+      date: '2050-01-01',
+      status: 'planned' as const,
+      church: { id: 'c-1', name: 'Church' },
+      createdAt: '2026-02-01T00:00:00Z',
+    };
+    expect(isPreachDatePlanned(plannedDate)).toBe(true);
+    expect(isPreachDatePreached(plannedDate)).toBe(false);
+  });
+
+  it('getEffectiveIsPreached returns sermon.isPreached for empty preachDates', () => {
+    const unreachedSermon = buildSermon({ isPreached: false, preachDates: [] });
+    const preachedSermon = buildSermon({ isPreached: true, preachDates: [] });
+    expect(getEffectiveIsPreached(unreachedSermon)).toBe(false);
+    expect(getEffectiveIsPreached(preachedSermon)).toBe(true);
+  });
+
+  it('handles undefined preachDates array gracefully', () => {
+    // Create explicitly without preachDates array
+    const sermon = { id: 'sermon-1', title: 'Test', isPreached: true } as unknown as Sermon;
+
+    expect(countPreachDatesByStatus(sermon, 'planned')).toBe(0);
+    expect(getEffectiveIsPreached(sermon)).toBe(true);
+  });
+
+  it('getLatestPreachedDate returns null if no preached dates exist', () => {
+    const sermon = buildSermon({
+      preachDates: [
+        {
+          id: 'pd-planned',
+          date: '2050-01-01',
+          status: 'planned',
+          church: { id: 'c-1', name: 'Church' },
+          createdAt: '2026-02-01T00:00:00Z',
+        }
+      ],
+    });
+    expect(getLatestPreachedDate(sermon)).toBeNull();
   });
 });

@@ -60,4 +60,35 @@ describe('optimisticEntityStore', () => {
 
     await expect(loadOptimisticEntityRecords('thought', 'sermon-2')).resolves.toEqual([]);
   });
+
+  it('uses memoryStore when IndexedDB is not available', async () => {
+    // Ensure indexedDB is undefined
+    Reflect.deleteProperty(global as Record<string, unknown>, 'indexedDB');
+
+    // Re-import to trigger initialization with hasIndexedDb = false
+    const { loadOptimisticEntityRecords, saveOptimisticEntityRecords } = await import('@/utils/optimisticEntityStore');
+
+    // Initially empty
+    const loadedInitially = await loadOptimisticEntityRecords<{ id: string }>('thought', 'sermon-3');
+    expect(loadedInitially).toEqual([]);
+
+    // Save
+    const records = [{
+      localId: 'local-3',
+      entityId: 'thought-3',
+      entityType: 'thought' as const,
+      scopeId: 'sermon-3',
+      operation: 'create' as const,
+      status: 'pending' as const,
+      entity: { id: 'thought-3', text: 'Some text' },
+      createdAt: new Date().toISOString(),
+      lastAttemptAt: new Date().toISOString(),
+      expiresAt: new Date().toISOString(),
+    }];
+    await saveOptimisticEntityRecords('thought', 'sermon-3', records);
+
+    // Load again
+    const loadedAfter = await loadOptimisticEntityRecords<{ id: string }>('thought', 'sermon-3');
+    expect(loadedAfter).toEqual(records);
+  });
 });
