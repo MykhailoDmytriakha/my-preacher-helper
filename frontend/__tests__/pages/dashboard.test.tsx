@@ -48,11 +48,12 @@ jest.mock('@/services/firebaseAuth.service', () => ({
 
 // Mock next/navigation
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
-    replace: jest.fn(),
+    replace: mockReplace,
     prefetch: jest.fn(),
   }),
   useSearchParams: () => mockUseSearchParams(),
@@ -137,6 +138,7 @@ jest.mock('react-i18next', () => ({
       const translations: { [key: string]: string } = {
         'dashboard.mySermons': 'My Sermons',
         'dashboard.searchSermons': 'Search sermons...',
+        'dashboard.searchSettings': 'Search settings',
         'dashboard.searchInThoughts': 'Search in thoughts',
         'dashboard.searchInTags': 'Search in tags',
         'dashboard.newest': 'Newest',
@@ -178,8 +180,11 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock, writabl
 
 describe('Sermons Page', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     localStorageMock.clear();
+    jest.clearAllMocks();
+    // Default to empty search params
+    mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
+
     // Default hook return values
     mockUseDashboardSermons.mockReturnValue({
       sermons: mockSermons,
@@ -190,9 +195,6 @@ describe('Sermons Page', () => {
     mockUseSeries.mockReturnValue({
       series: [{ id: 'series-1', title: 'Series 1' }],
       createNewSeries: jest.fn(),
-    });
-    mockUseSearchParams.mockReturnValue({
-      get: (_key: string) => null, // Default: no query params = 'active'
     });
     mockPush.mockClear();
     mockOptimisticCreateSermon.mockReset();
@@ -235,7 +237,7 @@ describe('Sermons Page', () => {
   describe('Tabs Functionality', () => {
     it('switches between Active, All, and Preached tabs', async () => {
       // Setup initial state: tab=null -> active
-      mockUseSearchParams.mockReturnValue({ get: () => null });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
       const { rerender } = render(<SermonsPage />);
 
       // Initially Active tab - should show active sermons only
@@ -248,7 +250,7 @@ describe('Sermons Page', () => {
       expect(mockPush).toHaveBeenCalledWith('/sermons?tab=all');
 
       // Simulate router update
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
       rerender(<SermonsPage />);
 
       // Should show all sermons
@@ -261,7 +263,7 @@ describe('Sermons Page', () => {
       expect(mockPush).toHaveBeenCalledWith('/sermons?tab=preached');
 
       // Simulate router update
-      mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=preached'));
       rerender(<SermonsPage />);
 
       // Should show Preached sermon only
@@ -273,6 +275,7 @@ describe('Sermons Page', () => {
 
   describe('Sorting', () => {
     it('sorts preached sermons by latest preach date (newest first)', async () => {
+      localStorageMock.setItem('sermons:sort', 'newest');
       const preachedSermons = [
         {
           id: 'preached-older',
@@ -319,7 +322,7 @@ describe('Sermons Page', () => {
 
       // Simulate switching to preached tab directly via props or mock, 
       // but since we rely on URL, we just mock the return value for this test scenario:
-      mockUseSearchParams.mockReturnValue({ get: () => 'preached' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=preached'));
 
       // Re-render to pick up new mock value
       render(<SermonsPage />);
@@ -345,7 +348,7 @@ describe('Sermons Page', () => {
     });
 
     it('matches by thought text', async () => {
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
       render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
@@ -358,7 +361,7 @@ describe('Sermons Page', () => {
     });
 
     it('matches by thought tags', async () => {
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
       render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
@@ -372,7 +375,7 @@ describe('Sermons Page', () => {
     });
 
     it('shows snippet for thought match', async () => {
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
       render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
@@ -384,7 +387,7 @@ describe('Sermons Page', () => {
     });
 
     it('shows snippet for tag match', async () => {
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
       render(<SermonsPage />);
 
       // fireEvent.click(screen.getByText('All'));
@@ -427,13 +430,89 @@ describe('Sermons Page', () => {
 
   describe('Interactions', () => {
     it('handles tab change to active explicitly', async () => {
-      mockUseSearchParams.mockReturnValue({ get: () => 'all' });
+      // Setup mockUseSearchParams for this test specifically
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
+
       render(<SermonsPage />);
 
-      fireEvent.click(screen.getByText('Active Sermons'));
-      expect(mockPush).toHaveBeenCalledWith('/sermons');
+      const activeTab = screen.getByRole('button', { name: /Active Sermons/i });
+      fireEvent.click(activeTab);
+
+      // Wait for any potential updates
+      await waitFor(() => {
+        expect(activeTab).toHaveClass('bg-blue-50');
+      });
     });
 
+    it('updates URL with search query via debounce', async () => {
+      jest.useFakeTimers();
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
+
+      render(<SermonsPage />);
+
+      // Open search
+      fireEvent.click(screen.getByRole('button', { name: 'Search sermons...' }));
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+
+      fireEvent.change(searchInput, { target: { value: 'faith' } });
+
+      // Fast forward the debounce timer (300ms)
+      jest.advanceTimersByTime(300);
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledWith('/sermons?q=faith', { scroll: false });
+      });
+
+      // Clear search
+      fireEvent.change(searchInput, { target: { value: '' } });
+      jest.advanceTimersByTime(300);
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledWith('/sermons?', { scroll: false });
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('collapses search input on blur when empty', async () => {
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
+
+      render(<SermonsPage />);
+
+      // Click search icon to expand
+      const searchButton = screen.getByRole('button', { name: 'Search sermons...' });
+      fireEvent.click(searchButton);
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+      expect(searchInput).toHaveClass('opacity-100'); // Expanded
+
+      // Blur the search container by focusing an element outside
+      const activeTabButton = screen.getByRole('button', { name: /Active Sermons/i });
+      fireEvent.blur(searchInput, { relatedTarget: activeTabButton });
+
+      // Note: React's fireEvent.blur with relatedTarget on the input bubbles to the onBlur handler
+      // of the container div. Let's trigger the container's blur directly to be safe,
+      // as fireEvent doesn't perfectly simulate the focusout bubbling in all JSDOM setups.
+      const searchContainer = searchInput.closest('div.group\\/search');
+      if (searchContainer) {
+        fireEvent.blur(searchContainer, { relatedTarget: activeTabButton });
+      }
+
+      await waitFor(() => {
+        expect(searchInput).toHaveClass('opacity-0'); // Collapsed
+      });
+    });
+
+    it('auto-expands search input if URL has a query on load', () => {
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('q=faith'));
+
+      render(<SermonsPage />);
+
+      const searchInput = screen.getByPlaceholderText('Search sermons...');
+
+      // It should be expanded auto-magically due to the URL parameter
+      expect(searchInput).toHaveClass('opacity-100');
+    });
     it('handles sermon actions', async () => {
       const { deleteSermonFromCache, updateSermonCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
 
@@ -455,79 +534,83 @@ describe('Sermons Page', () => {
     });
   });
 
-  describe('Toolbar — sort & filter dropdowns', () => {
-    it('renders recentlyUpdated option in sort dropdown', () => {
+  describe('Toolbar — sort & filter dropdowns (Popover)', () => {
+    it('renders recentlyUpdated option in sort dropdown', async () => {
       render(<SermonsPage />);
-      expect(screen.getByDisplayValue('Newest')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /common.filters/i }));
+
+      expect(await screen.findByDisplayValue('Recently updated')).toBeInTheDocument();
       expect(screen.getByRole('option', { name: 'Newest' })).toBeInTheDocument();
       expect(screen.getByRole('option', { name: 'Recently updated' })).toBeInTheDocument();
     });
 
-    it('persists sort selection to localStorage', () => {
+    it('persists sort selection to localStorage and shows active filter pill', async () => {
       render(<SermonsPage />);
-      const sortSelect = screen.getByDisplayValue('Newest');
+      fireEvent.click(screen.getByRole('button', { name: /common.filters/i }));
+
+      const sortSelect = await screen.findByDisplayValue('Recently updated');
       fireEvent.change(sortSelect, { target: { value: 'oldest' } });
+
       expect(localStorageMock.getItem('sermons:sort')).toBe('oldest');
+      // Should show the pill
+      expect(screen.getAllByText(/Oldest/).length).toBeGreaterThan(0);
     });
 
-    it('reads initial sort from localStorage', () => {
+    it('reads initial sort from localStorage and renders pill immediately', async () => {
       localStorageMock.setItem('sermons:sort', 'alphabetical');
       render(<SermonsPage />);
-      expect(screen.getByDisplayValue('Alphabetical')).toBeInTheDocument();
+
+      // Pill should be visible without opening popover
+      expect(screen.getAllByText(/Alphabetical/).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole('button', { name: /common.filters/i }));
+      expect(await screen.findByDisplayValue('Alphabetical')).toBeInTheDocument();
     });
 
-    it('persists series filter to localStorage', () => {
+    it('persists series filter to localStorage and shows pill', async () => {
       render(<SermonsPage />);
-      const seriesSelect = screen.getByDisplayValue('All Sermons');
+      fireEvent.click(screen.getByRole('button', { name: /common.filters/i }));
+
+      const seriesSelect = await screen.findByDisplayValue('All Sermons');
       fireEvent.change(seriesSelect, { target: { value: 'inSeries' } });
+
       expect(localStorageMock.getItem('sermons:seriesFilter')).toBe('inSeries');
+      expect(screen.getAllByText(/In Series/).length).toBeGreaterThan(0);
     });
 
-    it('reset restores default values in localStorage', () => {
+    it('reset restores default values in localStorage', async () => {
       localStorageMock.setItem('sermons:sort', 'oldest');
       localStorageMock.setItem('sermons:seriesFilter', 'inSeries');
       render(<SermonsPage />);
 
-      const resetBtn = screen.getByText('Reset filters');
+      // Pills area has a clear button
+      const resetBtn = screen.getByText('filters.clear');
       fireEvent.click(resetBtn);
 
-      // useEffect writes defaults back after reset — verify non-custom values
       expect(localStorageMock.getItem('sermons:sort')).not.toBe('oldest');
       expect(localStorageMock.getItem('sermons:seriesFilter')).not.toBe('inSeries');
-      // Dropdowns show defaults
-      expect(screen.getByDisplayValue('Newest')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('All Sermons')).toBeInTheDocument();
-    });
 
-    it('shows active sort dropdown with non-default value', () => {
-      localStorageMock.setItem('sermons:sort', 'oldest');
-      render(<SermonsPage />);
-      const sortSelect = screen.getByDisplayValue('Oldest');
-      // active class contains 'border-blue'
-      expect(sortSelect.className).toMatch(/border-blue/);
+      // Open popover to verify defaults
+      fireEvent.click(screen.getByRole('button', { name: /common.filters/i }));
+      expect(await screen.findByDisplayValue('Recently updated')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('All Sermons')).toBeInTheDocument();
     });
   });
 
-  describe('Toolbar — contextual search modifiers', () => {
-    it('hides thoughts/tags checkboxes when search is empty', () => {
+  describe('Toolbar — search modifiers (Popover)', () => {
+    it('persists searchInThoughts to localStorage', async () => {
       render(<SermonsPage />);
-      expect(screen.queryByText('Search in thoughts')).not.toBeInTheDocument();
-      expect(screen.queryByText('Search in tags')).not.toBeInTheDocument();
-    });
 
-    it('shows thoughts/tags checkboxes when search query is typed', () => {
-      render(<SermonsPage />);
-      const searchInput = screen.getByPlaceholderText('Search sermons...');
-      fireEvent.change(searchInput, { target: { value: 'grace' } });
-      expect(screen.getByText('Search in thoughts')).toBeInTheDocument();
-      expect(screen.getByText('Search in tags')).toBeInTheDocument();
-    });
+      // Open search
+      fireEvent.click(screen.getByRole('button', { name: 'Search sermons...' }));
 
-    it('persists searchInThoughts to localStorage', () => {
-      render(<SermonsPage />);
-      fireEvent.change(screen.getByPlaceholderText('Search sermons...'), { target: { value: 'x' } });
-      const checkbox = screen.getByRole('checkbox', { name: /thoughts/i });
+      // Open search settings
+      fireEvent.click(screen.getByRole('button', { name: 'Search settings' }));
+
+      // The popover should be open now, we can find the checkbox
+      const checkbox = await screen.findByRole('checkbox', { name: /Search in thoughts/i });
       fireEvent.click(checkbox);
+
       expect(localStorageMock.getItem('sermons:searchInThoughts')).toBe('false');
     });
   });

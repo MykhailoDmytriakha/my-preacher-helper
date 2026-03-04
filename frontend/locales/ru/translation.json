@@ -89,6 +89,7 @@
   "dashboard": {
     "mySermons": "Мои проповеди",
     "searchSermons": "Поиск проповедей...",
+    "searchSettings": "Настройки поиска",
     "clearSearch": "Очистить поиск",
     "searchInThoughts": "Искать в мыслях",
     "searchInTags": "Искать в тегах",

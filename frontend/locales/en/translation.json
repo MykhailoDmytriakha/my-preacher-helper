@@ -89,6 +89,7 @@
   "dashboard": {
     "mySermons": "My Sermons",
     "searchSermons": "Search sermons...",
+    "searchSettings": "Search settings",
     "clearSearch": "Clear search",
     "searchInThoughts": "Search in thoughts",
     "searchInTags": "Search in tags",

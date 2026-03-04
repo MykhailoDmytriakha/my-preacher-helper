@@ -1,7 +1,9 @@
 "use client";
 
+import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/react';
+import { AdjustmentsHorizontalIcon, MagnifyingGlassIcon, XMarkIcon, ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import DashboardContent from "@/components/dashboard/DashboardContent";
@@ -15,7 +17,6 @@ import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
 import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import AddSermonModal from "@components/AddSermonModal";
-import { ChevronIcon } from "@components/Icons";
 
 // localStorage keys for user preferences
 const LS_SORT = "sermons:sort";
@@ -29,6 +30,8 @@ const TAB_BASE_CLASSES =
 const TAB_INACTIVE_CLASSES =
   "border-gray-200 text-gray-600 hover:text-gray-700 hover:border-gray-300 bg-white dark:bg-gray-900/40 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
 const BADGE_INACTIVE_CLASSES = "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300";
+const SELECT_CLASSES = "w-full appearance-none px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors";
+const CHECKBOX_CLASSES = "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 transition-colors cursor-pointer";
 
 export default function SermonsPage() {
   const { t } = useTranslation();
@@ -59,7 +62,7 @@ export default function SermonsPage() {
   type SeriesFilter = "all" | "inSeries" | "standalone";
 
   const [sortOption, setSortOption] = useState<SortOption>(() => {
-    try { return (localStorage.getItem(LS_SORT) as SortOption) || "newest"; } catch { return "newest"; }
+    try { return (localStorage.getItem(LS_SORT) as SortOption) || "recentlyUpdated"; } catch { return "recentlyUpdated"; }
   });
   const [seriesFilter, setSeriesFilter] = useState<SeriesFilter>(() => {
     try { return (localStorage.getItem(LS_SERIES) as SeriesFilter) || "all"; } catch { return "all"; }
@@ -70,6 +73,17 @@ export default function SermonsPage() {
   const [searchInTags, setSearchInTags] = useState(() => {
     try { return localStorage.getItem(LS_IN_TAGS) !== "false"; } catch { return true; }
   });
+
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+
+  // Auto-expand search if there's a pre-filled query on load
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      setIsSearchExpanded(true);
+    }
+    // Only run on init to handle search queries coming from URL
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist preferences to localStorage
   useEffect(() => { try { localStorage.setItem(LS_SORT, sortOption); } catch { } }, [sortOption]);
@@ -92,19 +106,19 @@ export default function SermonsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
   const hasFilterChanges =
-    sortOption !== "newest" ||
+    sortOption !== "recentlyUpdated" ||
     seriesFilter !== "all" ||
     !searchInThoughts ||
     !searchInTags;
 
   const activeFilterCount =
-    (searchQuery.trim().length > 0 ? 1 : 0) +
-    (sortOption !== "newest" ? 1 : 0) +
+    (sortOption !== "recentlyUpdated" ? 1 : 0) +
     (seriesFilter !== "all" ? 1 : 0) +
-    (!searchInThoughts || !searchInTags ? 1 : 0);
+    (!searchInThoughts ? 1 : 0) +
+    (!searchInTags ? 1 : 0);
 
   const handleResetFilters = () => {
-    setSortOption("newest");
+    setSortOption("recentlyUpdated");
     setSeriesFilter("all");
     setSearchInThoughts(true);
     setSearchInTags(true);
@@ -137,6 +151,7 @@ export default function SermonsPage() {
     },
     t
   );
+  const searchSermonsLabel = t('dashboard.searchSermons');
 
   return (
     <div className="space-y-6">
@@ -167,200 +182,336 @@ export default function SermonsPage() {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
-        <nav className="flex flex-wrap gap-2" aria-label="Tabs">
-          <button
-            onClick={() => handleTabChange("active")}
-            className={`
-              ${TAB_BASE_CLASSES}
-              ${activeTab === "active"
-                ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-900/30 dark:text-blue-300"
-                : TAB_INACTIVE_CLASSES
-              }
-            `}
-          >
-            {t('dashboard.activeSermons')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "active"
-              ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
-              : BADGE_INACTIVE_CLASSES
-              }`}>
-              {loading ? "-" : sermons.filter((sermon) => !getEffectiveIsPreached(sermon)).length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange("preached")}
-            className={`
-              ${TAB_BASE_CLASSES}
-              ${activeTab === "preached"
-                ? "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-500/40 dark:bg-purple-900/30 dark:text-purple-300"
-                : TAB_INACTIVE_CLASSES
-              }
-            `}
-          >
-            {t('dashboard.preached')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "preached"
-              ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
-              : BADGE_INACTIVE_CLASSES
-              }`}>
-              {loading ? "-" : sermons.filter((sermon) => getEffectiveIsPreached(sermon)).length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange("all")}
-            className={`
-              ${TAB_BASE_CLASSES}
-              ${activeTab === "all"
-                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/40 dark:bg-green-900/30 dark:text-green-300"
-                : TAB_INACTIVE_CLASSES
-              }
-            `}
-          >
-            {t('dashboard.all')}
-            <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "all"
-              ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
-              : BADGE_INACTIVE_CLASSES
-              }`}>
-              {loading ? "-" : sermons.length}
-            </span>
-          </button>
-        </nav>
-      </div>
-
       {/* Search & Filters Toolbar */}
-      <div className="flex flex-col gap-5 mb-2">
-        {/* Row 1: Search input */}
-        <form
-          role="search"
-          aria-label={t('dashboard.searchPanel.title')}
-          onSubmit={(event) => event.preventDefault()}
-          className="relative w-full group"
-        >
-          <label htmlFor="dashboard-search-input" className="sr-only">
-            {t('dashboard.searchSermons')}
-          </label>
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-blue-500 text-gray-400">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <input
-            id="dashboard-search-input"
-            type="search"
-            placeholder={t('dashboard.searchSermons')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-12 py-3.5 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 rounded-2xl
-                      text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500
-                      shadow-sm hover:shadow-md focus:shadow-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all duration-200"
-          />
-          {searchQuery && (
+      <div className="flex flex-col gap-4 mb-3 relative z-40">
+        {/* Row 1: Tabs + Interactive Icons/Search */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 pb-2">
+          {/* Left Side: Tabs */}
+          <nav className="flex flex-wrap gap-2" aria-label="Tabs">
             <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              aria-label={t('dashboard.clearSearch')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              onClick={() => handleTabChange("active")}
+              className={`
+                ${TAB_BASE_CLASSES}
+                ${activeTab === "active"
+                  ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-900/30 dark:text-blue-300"
+                  : TAB_INACTIVE_CLASSES
+                }
+              `}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              {t('dashboard.activeSermons')}
+              <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "active"
+                ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
+                : BADGE_INACTIVE_CLASSES
+                }`}>
+                {loading ? "-" : sermons.filter((sermon) => !getEffectiveIsPreached(sermon)).length}
+              </span>
             </button>
-          )}
-        </form>
+            <button
+              onClick={() => handleTabChange("preached")}
+              className={`
+                ${TAB_BASE_CLASSES}
+                ${activeTab === "preached"
+                  ? "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-500/40 dark:bg-purple-900/30 dark:text-purple-300"
+                  : TAB_INACTIVE_CLASSES
+                }
+              `}
+            >
+              {t('dashboard.preached')}
+              <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "preached"
+                ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
+                : BADGE_INACTIVE_CLASSES
+                }`}>
+                {loading ? "-" : sermons.filter((sermon) => getEffectiveIsPreached(sermon)).length}
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange("all")}
+              className={`
+                ${TAB_BASE_CLASSES}
+                ${activeTab === "all"
+                  ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/40 dark:bg-green-900/30 dark:text-green-300"
+                  : TAB_INACTIVE_CLASSES
+                }
+              `}
+            >
+              {t('dashboard.all')}
+              <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${activeTab === "all"
+                ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
+                : BADGE_INACTIVE_CLASSES
+                }`}>
+                {loading ? "-" : sermons.length}
+              </span>
+            </button>
+          </nav>
 
-        {/* Row 2: Sort + Series + contextual search modifiers + reset */}
-        <div className="flex flex-wrap items-center justify-between gap-4 px-1">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Sort dropdown */}
-            <div className="relative group/sort">
-              <select
-                value={sortOption}
-                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                className={`appearance-none pl-4 pr-9 py-2 border rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer shadow-sm hover:shadow
-                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
-                  ${sortOption !== "newest"
-                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60"
-                    : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  }`}
+          {/* Right Side: Search and Filters Container */}
+          <div className="flex items-center gap-2">
+            {/* Collapsible Search */}
+            <div className="relative group/search"
+              onFocus={() => setIsSearchExpanded(true)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node) && !searchQuery.trim()) {
+                  setIsSearchExpanded(false);
+                }
+              }}
+            >
+              <form
+                role="search"
+                aria-label={t('dashboard.searchPanel.title')}
+                onSubmit={(event) => event.preventDefault()}
+                className={`flex items-center overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
+                ${isSearchExpanded
+                    ? 'w-[280px] sm:w-[320px] bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/80 rounded-xl shadow-sm'
+                    : 'w-10 bg-transparent border border-transparent rounded-xl'}`}
               >
-                <option value="newest">{t('dashboard.newest')}</option>
-                <option value="oldest">{t('dashboard.oldest')}</option>
-                <option value="alphabetical">{t('dashboard.alphabetical')}</option>
-                <option value="recentlyUpdated">{t('dashboard.recentlyUpdated')}</option>
-              </select>
-              <div className={`absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none transition-colors
-                ${sortOption !== "newest" ? "text-blue-500 dark:text-blue-400" : "text-gray-400 group-hover/sort:text-gray-600 dark:text-gray-500 dark:group-hover/sort:text-gray-300"}`}>
-                <ChevronIcon direction="down" className="w-4 h-4" />
-              </div>
+                <label htmlFor="dashboard-search-input" className="sr-only">
+                  {searchSermonsLabel}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearchExpanded(true);
+                    document.getElementById('dashboard-search-input')?.focus();
+                  }}
+                  className={`flex-shrink-0 w-10 h-10 flex items-center justify-center transition-colors 
+                    ${isSearchExpanded ? 'text-blue-500' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl'}`}
+                  aria-label={searchSermonsLabel}
+                >
+                  <MagnifyingGlassIcon className="w-5 h-5" />
+                </button>
+                <input
+                  id="dashboard-search-input"
+                  type="search"
+                  placeholder={searchSermonsLabel}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`w-full py-2 bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none
+                    transition-opacity duration-300 ${isSearchExpanded ? 'opacity-100 pr-16' : 'opacity-0'}`}
+                  tabIndex={isSearchExpanded ? 0 : -1}
+                />
+
+                <div className={`absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity duration-300 ${isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label={t('dashboard.clearSearch')}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Search Modifiers Dropdown */}
+                  <Popover className="relative z-30 flex">
+                    {({ open }) => (
+                      <>
+                        <PopoverButton
+                          aria-label={t('dashboard.searchSettings', 'Настройки поиска')}
+                          className={`p-1.5 flex items-center justify-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${open || !searchInThoughts || !searchInTags
+                            ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/40'
+                            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                          <AdjustmentsHorizontalIcon className="w-4 h-4" />
+                        </PopoverButton>
+                        <Transition
+                          as={Fragment}
+                          enter="transition ease-out duration-200"
+                          enterFrom="opacity-0 translate-y-1"
+                          enterTo="opacity-100 translate-y-0"
+                          leave="transition ease-in duration-150"
+                          leaveFrom="opacity-100 translate-y-0"
+                          leaveTo="opacity-0 translate-y-1"
+                        >
+                          <PopoverPanel className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg p-3 z-40 focus:outline-none">
+                            <div className="space-y-3">
+                              <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={searchInThoughts}
+                                  onChange={(e) => setSearchInThoughts(e.target.checked)}
+                                  className={CHECKBOX_CLASSES}
+                                />
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
+                                  {t('dashboard.searchInThoughts')}
+                                </span>
+                              </label>
+                              <label className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={searchInTags}
+                                  onChange={(e) => setSearchInTags(e.target.checked)}
+                                  className={CHECKBOX_CLASSES}
+                                />
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
+                                  {t('dashboard.searchInTags')}
+                                </span>
+                              </label>
+                            </div>
+                          </PopoverPanel>
+                        </Transition>
+                      </>
+                    )}
+                  </Popover>
+                </div>
+              </form>
             </div>
 
-            {/* Series filter dropdown */}
-            <div className="relative group/series">
-              <select
-                value={seriesFilter}
-                onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
-                className={`appearance-none pl-4 pr-9 py-2 border rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer shadow-sm hover:shadow
-                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
-                  ${seriesFilter !== "all"
-                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60"
-                    : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  }`}
-              >
-                <option value="all">{t('workspaces.series.filters.allSermons')}</option>
-                <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
-                <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
-              </select>
-              <div className={`absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none transition-colors
-                ${seriesFilter !== "all" ? "text-blue-500 dark:text-blue-400" : "text-gray-400 group-hover/series:text-gray-600 dark:text-gray-500 dark:group-hover/series:text-gray-300"}`}>
-                <ChevronIcon direction="down" className="w-4 h-4" />
-              </div>
-            </div>
+            {/* Compact Popover for Filters */}
+            <Popover className="relative z-30">
+              {({ open }) => (
+                <>
+                  <PopoverButton
+                    className={`flex items-center justify-center w-10 h-10 border rounded-xl shadow-sm text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                    ${open || hasFilterChanges
+                        ? "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:border-blue-500/30 dark:text-blue-300"
+                        : "bg-white border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:bg-gray-800/80 dark:border-gray-700/80 dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-800"
+                      }
+                  `}
+                    aria-label={t('common.filters')}
+                  >
+                    <ArrowsUpDownIcon className="w-5 h-5" />
+                    {activeFilterCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold shadow-sm ring-2 ring-white dark:ring-gray-900">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                  </PopoverButton>
+
+                  <Transition
+                    as={Fragment}
+                    enter="transition ease-out duration-200"
+                    enterFrom="opacity-0 translate-y-1"
+                    enterTo="opacity-100 translate-y-0"
+                    leave="transition ease-in duration-150"
+                    leaveFrom="opacity-100 translate-y-0"
+                    leaveTo="opacity-0 translate-y-1"
+                  >
+                    <PopoverPanel className="absolute right-0 z-40 mt-2 w-72 origin-top-right rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700 focus:outline-none overflow-hidden">
+                      <div className="p-4 space-y-5">
+                        {/* Sort Options */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            {t('filters.sortOrder')}
+                          </label>
+                          <select
+                            value={sortOption}
+                            onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
+                            className={SELECT_CLASSES}
+                          >
+                            <option value="newest">{t('dashboard.newest')}</option>
+                            <option value="oldest">{t('dashboard.oldest')}</option>
+                            <option value="alphabetical">{t('dashboard.alphabetical')}</option>
+                            <option value="recentlyUpdated">{t('dashboard.recentlyUpdated')}</option>
+                          </select>
+                        </div>
+
+                        {/* Series Filter */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Серии
+                          </label>
+                          <select
+                            value={seriesFilter}
+                            onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
+                            className={SELECT_CLASSES}
+                          >
+                            <option value="all">{t('workspaces.series.filters.allSermons')}</option>
+                            <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
+                            <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
+                          </select>
+                        </div>
+
+                        {/* Modifiers (Moved to Search Settings inside the Search Input) */}
+
+                        {/* Reset Button */}
+                        {hasFilterChanges && (
+                          <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                            <button
+                              type="button"
+                              onClick={handleResetFilters}
+                              className="w-full py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/50 dark:hover:bg-gray-800 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 shadow-sm"
+                            >
+                              {t('filters.resetFilters')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </PopoverPanel>
+                  </Transition>
+                </>
+              )}
+            </Popover>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search modifiers — visible only when search query is active */}
-            {searchQuery.trim().length > 0 && (
-              <div className="flex items-center gap-4 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-sm">
-                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={searchInThoughts}
-                    onChange={(e) => setSearchInThoughts(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 transition-all cursor-pointer"
-                  />
-                  {t('dashboard.searchInThoughts')}
-                </label>
-                <div className="w-px h-4 bg-gray-200 dark:bg-gray-600" />
-                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={searchInTags}
-                    onChange={(e) => setSearchInTags(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 transition-all cursor-pointer"
-                  />
-                  {t('dashboard.searchInTags')}
-                </label>
-              </div>
+        {/* Active Filter Pills (Chips) */}
+        {hasFilterChanges && (
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            {sortOption !== "newest" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-500/30 shadow-sm">
+                <span>{t('filters.sortOrder')}: {t(`dashboard.${sortOption}`)}</span>
+                <button
+                  type="button"
+                  onClick={() => setSortOption("newest")}
+                  className="p-0.5 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                >
+                  <XMarkIcon className="w-3.5 h-3.5" />
+                </button>
+              </span>
             )}
 
-            {/* Reset — visible only when filters differ from defaults */}
-            {hasFilterChanges && (
+            {seriesFilter !== "all" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-500/30 shadow-sm">
+                <span>Серии: {t(`workspaces.series.filters.${seriesFilter}`)}</span>
+                <button
+                  type="button"
+                  onClick={() => setSeriesFilter("all")}
+                  className="p-0.5 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                >
+                  <XMarkIcon className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {!searchInThoughts && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 shadow-sm">
+                <span className="line-through opacity-70">{t('dashboard.searchInThoughts')}</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchInThoughts(true)}
+                  className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <XMarkIcon className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {!searchInTags && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 shadow-sm">
+                <span className="line-through opacity-70">{t('dashboard.searchInTags')}</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchInTags(true)}
+                  className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <XMarkIcon className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
+
+            {activeFilterCount > 1 && (
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200
-                         bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg transition-colors border border-gray-200 dark:border-gray-700 shadow-sm"
+                className="inline-flex items-center px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 underline decoration-gray-300 underline-offset-2 transition-colors ml-1"
               >
-                {activeFilterCount > 0 && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50 w-4 h-4 text-[10px] font-bold text-blue-700 dark:text-blue-300">
-                    {activeFilterCount}
-                  </span>
-                )}
-                {t('filters.resetFilters')}
+                {t('filters.clear', 'Очистить все')}
               </button>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Content Area */}
