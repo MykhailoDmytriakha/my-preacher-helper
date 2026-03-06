@@ -68,6 +68,8 @@ const config: Config = {
     '<rootDir>/app/types/TimerProps\\.ts$',
     '<rootDir>/app/api/clients/planTypes\\.ts$',
     '<rootDir>/app/\\(pages\\)/\\(private\\)/sermons/\\[id\\]/plan/types\\.ts$',
+    '<rootDir>/app/components/audio-recorder/types\\.ts$',
+    '<rootDir>/app/components/export-buttons/types\\.ts$',
     // Firebase bootstrap modules are env-driven startup glue, not useful line-coverage targets.
     '<rootDir>/app/config/firebaseConfig\\.ts$',
     '<rootDir>/app/config/firebaseAdminConfig\\.ts$',
@@ -90,6 +92,8 @@ const config: Config = {
     '!app/types/TimerProps.ts', // Types-only file; no runtime coverage
     '!app/api/clients/planTypes.ts', // Types-only AI client contracts
     '!app/(pages)/(private)/sermons/[id]/plan/types.ts', // Types-only plan view contracts
+    '!app/components/audio-recorder/types.ts', // Types-only recorder contracts
+    '!app/components/export-buttons/types.ts', // Types-only export button contracts
     '!app/config/firebaseConfig.ts', // Bootstrap config; env/init glue
     '!app/config/firebaseAdminConfig.ts', // Bootstrap config; env/init glue
     '!app/layout.tsx', // App shell wrapper; low-signal coverage target

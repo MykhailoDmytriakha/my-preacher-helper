@@ -74,6 +74,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   MockMediaRecorder.shouldErrorOnStart = false;
   MockMediaRecorder.shouldEmitDataOnStart = true;
+  let nextAnimationFrameId = 1;
 
   // getUserMedia mock
   (navigator as any).mediaDevices = {
@@ -88,10 +89,7 @@ beforeEach(() => {
     return { createMediaStreamSource: () => ({}), createAnalyser: () => ({ fftSize: 0, frequencyBinCount: 1, getByteFrequencyData: () => { } }), close: () => Promise.resolve(), state: 'running' } as any;
   } as any;
 
-  (global as any).requestAnimationFrame = jest.fn((cb: FrameRequestCallback) => {
-    cb(0);
-    return 0;
-  });
+  (global as any).requestAnimationFrame = jest.fn(() => nextAnimationFrameId++);
   (global as any).cancelAnimationFrame = jest.fn();
 });
 

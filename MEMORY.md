@@ -58,6 +58,11 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-05 DnD placeholder spacing:** In `@hello-pangea/dnd` lists, avoid sibling spacing utilities like `space-y-*` around draggable rows. `provided.placeholder` participates in that spacing and can cause a late end-of-drop snap; keep spacing inside a position-invariant draggable wrapper instead.
+- **2026-03-05 Mobile overlay controls:** Absolute-positioned mobile toggle buttons inside content containers must reserve or offset nearby content; otherwise the control can visually overlap the first real data row. Verify this with bounding-box overlap checks, not screenshots alone.
+- **2026-03-05 Codex browser QA boundary:** Separate global Codex readiness from repo mutation. Install browser skills into `~/.codex/skills` and enable `js_repl` in `~/.codex/config.toml`, but do not add workspace `playwright` dependencies to the app repo unless the next session actually needs the interactive skill’s local import path.
+- **2026-03-05 Codex curated-vs-installed skills:** A Codex skill being present in the curated catalog is not enough to use it in-session; it must also be installed into `~/.codex/skills`, and `playwright-interactive` additionally requires `js_repl = true` plus a fresh Codex session before it becomes callable.
+- **2026-03-05 Shared UI AI-friendly refactor:** When a shared component becomes a mixed-responsibility hub, keep the public import stable and extract a feature-local folder with `types`, `constants`, pure `utils`, state hooks, leaf components, and a local README so humans and AI agents both get smaller, explicit edit surfaces without breaking callers.
 - **2026-03-03 Firebase transaction shared repository methods:** Cannot easily reuse single-document repository methods (which call `docRef.update()`) inside of a Firestore transaction. Transactions must manually construct the `docRef`, perform `transaction.update(docRef, { ...data, updatedAt: FieldValue.serverTimestamp() })`, bypassing the repository helper wrapper because Transactions require operations to be executed on the `transaction` object itself to maintain atomic locks.
 - **2026-03-03 Firebase testing serverTimestamp mock:** Tests mocking `firebaseAdminConfig` will throw `TypeError: _firebaseAdminConfig.FieldValue.serverTimestamp is not a function` when APIs use backend server timestamps unless you explicitly mock `serverTimestamp: () => 'mocked-server-timestamp'` on `FieldValue` in `firebaseAdminConfig` test setups.
 - **2026-03-01 AI Diff UX (TRIZ+IFR):** When showing AI confirmation modals, always compute and show a diff (kept/added/removed) rather than just the final AI state. Users need context to understand what changes. Minimal implementation: compare arrays before rendering, color-code `+added` green and ~~removed~~ red.
@@ -262,6 +267,8 @@
 - **Export Order:** Use same ordering source (`ThoughtsBySection`) for export as for UI.
 - **Helper Extraction Audit:** After extraction, audit downstream usage + add targeted tests for new paths.
 - **Coverage Honesty:** For strict coverage workflows, exclude types-only contracts from `collectCoverageFrom` and cover IndexedDB branches with isolated module imports plus `idb-keyval` mocks instead of warping runtime code to satisfy the metric.
+- **Browser-Heavy Component Refactor:** For client components that mix browser APIs and UI (`MediaRecorder`, timers, responsive listeners, keyboard shortcuts), keep the public entry import stable and split into `types` + `constants` + presentational leaves + lifecycle hook + module `README`. *(small, explicit seams make AI edits safer without breaking caller contracts)*
+- **Shared Component Public Seams:** When refactoring a large shared component behind a new internal folder, preserve any root-level named exports that tests or downstream code import (for example modal exports from the root entry). Stable default import alone is not enough if the named export is part of the real public seam.
 
 ---
 
@@ -318,3 +325,8 @@
 - Dynamic Color Tinting: Light = inline `rgba()`, Dark = overlay div with `opacity-0 dark:opacity-100`
 - Back Nav: `BackLink.tsx` with `router.back()` + fallback
 - Toggle Switch: `w-11` rail, `h-5 w-5` thumb, `translate-x-5/translate-x-0`, Headless UI spec
+- Coverage Rule: when a refactor adds a types-only contract under `frontend/app/**`, extend `frontend/jest.config.ts` exclusions in the same change so strict diff coverage does not count non-runtime files.
+- Coverage Rule: for extracted browser hooks, add direct hook tests for modern `matchMedia`, legacy listeners, resize fallback, and timer/cleanup seams instead of relying only on parent component tests; React effect cleanup can make duplicated teardown branches dead, so remove redundant branches rather than chasing artificial coverage.
+- Coverage Ratchet Protocol: run strict coverage discovery only after implementation is complete. First cover the modified runtime lines in the final diff; if a changed runtime file is still below `80%`, add more tests until the whole file reaches `>=80%`. This keeps coverage compounding upward instead of stopping at bare diff coverage.
+- Coverage Scope Protocol: resolve and state the scope before running the strict coverage pass. Default to staged + unstaged only when the user does not narrow it; if the user says `staged` or points to a path/package, restrict discovery accordingly and report that scope explicitly.
+- Coverage New-File Protocol: every new runtime file in scope needs a direct suite tied to that file or its exact public seam. Incidental coverage through a parent component is not enough, even if the file already sits above `80%`.
