@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vision Architecture Flow"
+  short_description: "Freeze vision and architecture before implementation"
+  default_prompt: "Use $vision-architecture-flow to structure this messy problem before implementation."
