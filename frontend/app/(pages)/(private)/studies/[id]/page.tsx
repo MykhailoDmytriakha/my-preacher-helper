@@ -2,7 +2,7 @@
 
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
@@ -13,16 +13,26 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { debugLog } from '@/utils/debugMode';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
-import { BibleLocale, getLocalizedBookName } from '../bibleData';
+import { BibleLocale } from '../bibleData';
+import {
+    filterStudyNoteOutlineKeys,
+    getCollapsibleStudyNoteBranchKeys,
+    parseStudyNoteOutline,
+} from '../components/studyNoteOutline';
+import { StudyNoteOutlineView } from '../components/StudyNoteOutlineView';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
+import { filterAndSortStudyNotes } from '../utils/filterStudyNotes';
+
+import { useResizableOutlinePreview } from './useResizableOutlinePreview';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
@@ -45,22 +55,15 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
 
     const searchTokens = useMemo(() => searchQuery.toLowerCase().split(/\s+/).filter(Boolean), [searchQuery]);
 
-    // Replicate matching logic from studies/page.tsx
     const filteredNotes = useMemo(() => {
-        return notes
-            .filter((note: StudyNote) => {
-                if (activeTab === 'notes') return note.type !== 'question';
-                if (activeTab === 'questions') return note.type === 'question';
-                return true;
-            })
-            .filter((note: StudyNote) => (tagFilter ? note.tags.includes(tagFilter) : true))
-            .filter((note: StudyNote) => bookFilter ? note.scriptureRefs.some((ref: ScriptureReference) => ref.book.toLowerCase() === bookFilter.toLowerCase()) : true)
-            .filter((note: StudyNote) => {
-                if (searchTokens.length === 0) return true;
-                const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs.map((ref: ScriptureReference) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`).join(' ')}`.toLowerCase();
-                return searchTokens.every((token: string) => haystack.includes(token));
-            })
-            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        return filterAndSortStudyNotes({
+            notes,
+            activeTab: activeTab as 'all' | 'notes' | 'questions',
+            tagFilter,
+            bookFilter,
+            searchTokens,
+            bibleLocale,
+        });
     }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
     const currentIndex = useMemo(() => filteredNotes.findIndex(n => n.id === noteId), [filteredNotes, noteId]);
@@ -127,7 +130,7 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
                 try {
                     await deleteNote(noteId);
                 } catch (e) {
-                    console.error('Error deleting note', e);
+                    debugLog('Study note delete failed', { noteId, error: e });
                 }
                 try {
                     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`);
@@ -136,7 +139,7 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
                         await deleteStudyNoteShareLinkByNoteId(uid, noteId, links);
                     }
                 } catch (e) {
-                    console.error('Error deleting share link', e);
+                    debugLog('Study note share-link delete failed', { noteId, error: e });
                 }
             }
             router.push('/studies');
@@ -175,7 +178,7 @@ function useNoteAutoSave({
                 window.history.replaceState(null, '', `/studies/${newNote.id}`);
                 setCreatedNoteId(newNote.id);
             } catch (e) {
-                console.error('Auto-create error', e);
+                debugLog('Study note auto-create failed', { noteId, error: e });
                 setSaveError(t('common.saveError') || 'Error saving changes');
             } finally {
                 setIsSaving(false);
@@ -203,7 +206,7 @@ function useNoteAutoSave({
             });
             setLastSaved(new Date());
         } catch (e) {
-            console.error('Auto-save error', e);
+            debugLog('Study note auto-save failed', { noteId, error: e });
             setSaveError(t('common.saveError') || 'Error saving changes');
         } finally {
             setIsSaving(false);
@@ -315,6 +318,43 @@ function useNoteAIAssistant({
     return {
         isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
+    };
+}
+
+function useStructuredOutlineState(content: string) {
+    const noteOutline = useMemo(() => parseStudyNoteOutline(content), [content]);
+    const collapsibleBranchKeys = useMemo(
+        () => getCollapsibleStudyNoteBranchKeys(noteOutline.branches),
+        [noteOutline.branches]
+    );
+    const [foldedBranchKeys, setFoldedBranchKeys] = useState<string[]>([]);
+
+    useEffect(() => {
+        setFoldedBranchKeys((prev) => filterStudyNoteOutlineKeys(prev, noteOutline.branches));
+    }, [noteOutline.branches]);
+
+    const handleToggleBranch = useCallback((branchKey: string) => {
+        setFoldedBranchKeys((prev) =>
+            prev.includes(branchKey)
+                ? prev.filter((key) => key !== branchKey)
+                : [...prev, branchKey]
+        );
+    }, []);
+
+    const handleExpandAllBranches = useCallback(() => {
+        setFoldedBranchKeys([]);
+    }, []);
+
+    const handleCollapseAllBranches = useCallback(() => {
+        setFoldedBranchKeys(collapsibleBranchKeys);
+    }, [collapsibleBranchKeys]);
+
+    return {
+        noteOutline,
+        foldedBranchKeys,
+        handleToggleBranch,
+        handleExpandAllBranches,
+        handleCollapseAllBranches,
     };
 }
 
@@ -467,6 +507,130 @@ function EditorHeader({
     );
 }
 
+function StudyNoteContentSurface({
+    isEditing,
+    noteOutline,
+    content,
+    searchQuery,
+    foldedBranchKeys,
+    handleToggleBranch,
+    handleExpandAllBranches,
+    handleCollapseAllBranches,
+    isPreviewResizing,
+    previewPanelWidth,
+    handlePreviewResizeStart,
+    handlePreviewResizeReset,
+    setContent,
+    t,
+}: {
+    isEditing: boolean;
+    noteOutline: ReturnType<typeof parseStudyNoteOutline>;
+    content: string;
+    searchQuery: string;
+    foldedBranchKeys: string[];
+    handleToggleBranch: (branchKey: string) => void;
+    handleExpandAllBranches: () => void;
+    handleCollapseAllBranches: () => void;
+    isPreviewResizing: boolean;
+    previewPanelWidth: number;
+    handlePreviewResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    handlePreviewResizeReset: () => void;
+    setContent: (value: string) => void;
+    t: ReturnType<typeof useTranslation>['t'];
+}) {
+    const shouldShowOutlinePreview = noteOutline.hasOutline || content.trim();
+
+    if (isEditing) {
+        return (
+            <div className={`flex flex-col gap-6 ${shouldShowOutlinePreview ? 'xl:flex-row xl:items-start' : ''}`}>
+                <div className="min-w-0 flex-1 text-lg md:text-xl leading-relaxed">
+                    <RichMarkdownEditor
+                        value={content}
+                        onChange={setContent}
+                        placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
+                        minHeight="300px"
+                        stickyToolbar
+                        stickyToolbarTop="5rem"
+                        showOutlineStructureControls
+                    />
+                </div>
+
+                {shouldShowOutlinePreview && (
+                    <>
+                        <div className="hidden xl:flex xl:w-5 xl:flex-none xl:items-stretch xl:justify-center">
+                            <div
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label={t('studiesWorkspace.outlinePilot.resizePreview')}
+                                title={t('studiesWorkspace.outlinePilot.resizePreview')}
+                                data-testid="study-note-outline-resizer"
+                                onPointerDown={handlePreviewResizeStart}
+                                onDoubleClick={handlePreviewResizeReset}
+                                className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
+                                    isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                                }`}
+                            >
+                                <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
+                            </div>
+                        </div>
+
+                        <aside
+                            className="xl:sticky xl:top-24 xl:flex-none"
+                            style={{ width: `${previewPanelWidth}px`, maxWidth: '100%' }}
+                        >
+                            {noteOutline.hasOutline ? (
+                                <StudyNoteOutlineView
+                                    outline={noteOutline}
+                                    foldedBranchKeys={foldedBranchKeys}
+                                    onToggleBranch={handleToggleBranch}
+                                    onExpandAll={handleExpandAllBranches}
+                                    onCollapseAll={handleCollapseAllBranches}
+                                    searchQuery={searchQuery}
+                                    mode="preview"
+                                    testId="study-note-outline-preview"
+                                />
+                            ) : (
+                                <div
+                                    data-testid="study-note-outline-empty"
+                                    className="not-prose rounded-[28px] border border-dashed border-gray-200 bg-white/80 px-5 py-5 text-sm leading-6 text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400"
+                                >
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
+                                        {t('studiesWorkspace.outlinePilot.previewTitle')}
+                                    </p>
+                                    <p className="mt-3">
+                                        {t('studiesWorkspace.outlinePilot.noBranches')}
+                                    </p>
+                                </div>
+                            )}
+                        </aside>
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    if (noteOutline.hasOutline) {
+        return (
+            <StudyNoteOutlineView
+                outline={noteOutline}
+                foldedBranchKeys={foldedBranchKeys}
+                onToggleBranch={handleToggleBranch}
+                onExpandAll={handleExpandAllBranches}
+                onCollapseAll={handleCollapseAllBranches}
+                searchQuery={searchQuery}
+                mode="read"
+                testId="study-note-outline-read"
+            />
+        );
+    }
+
+    return (
+        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
+            <MarkdownDisplay content={content} searchQuery={searchQuery} />
+        </div>
+    );
+}
+
 export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
@@ -512,6 +676,19 @@ export default function StudyNoteEditorPage() {
         notes.forEach(n => n.tags.forEach(t => fromNotes.add(t)));
         return Array.from(new Set([...fromTags, ...Array.from(fromNotes)])).sort((a, b) => a.localeCompare(b));
     }, [tagData, notes]);
+    const {
+        noteOutline,
+        foldedBranchKeys,
+        handleToggleBranch,
+        handleExpandAllBranches,
+        handleCollapseAllBranches,
+    } = useStructuredOutlineState(content);
+    const {
+        previewPanelWidth,
+        isPreviewResizing,
+        handlePreviewResizeStart,
+        handlePreviewResizeReset,
+    } = useResizableOutlinePreview();
 
     // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
     const searchParams = useSearchParams();
@@ -616,21 +793,22 @@ export default function StudyNoteEditorPage() {
                 </div>
 
                 <div className="relative group">
-                    {isEditing ? (
-                        <div className="text-lg md:text-xl leading-relaxed">
-                            <RichMarkdownEditor
-                                value={content}
-                                onChange={setContent}
-                                placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
-                                minHeight="300px"
-                            />
-                        </div>
-                    ) : (
-                        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-                            <MarkdownDisplay content={content} searchQuery={searchQuery} />
-                        </div>
-                    )}
-
+                    <StudyNoteContentSurface
+                        isEditing={isEditing}
+                        noteOutline={noteOutline}
+                        content={content}
+                        searchQuery={searchQuery}
+                        foldedBranchKeys={foldedBranchKeys}
+                        handleToggleBranch={handleToggleBranch}
+                        handleExpandAllBranches={handleExpandAllBranches}
+                        handleCollapseAllBranches={handleCollapseAllBranches}
+                        isPreviewResizing={isPreviewResizing}
+                        previewPanelWidth={previewPanelWidth}
+                        handlePreviewResizeStart={handlePreviewResizeStart}
+                        handlePreviewResizeReset={handlePreviewResizeReset}
+                        setContent={setContent}
+                        t={t}
+                    />
                 </div>
 
                 {isEditing && (

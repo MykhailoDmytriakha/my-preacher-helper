@@ -88,6 +88,19 @@ const mockNotes: StudyNote[] = [
     { ...createMockNote('note-2', 'Next Note'), updatedAt: '2024-01-01T00:00:00.000Z' },
 ];
 
+const structuredNote: StudyNote = {
+    ...createMockNote('note-1', 'Structured Note'),
+    content: [
+        'Preface paragraph',
+        '',
+        '## Main Branch',
+        'Main branch body',
+        '',
+        '### Child Branch',
+        'Child branch body',
+    ].join('\n'),
+};
+
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -335,6 +348,52 @@ describe('StudyNoteEditorPage Pagination', () => {
         await waitFor(() => {
             expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue('Content for Current Note\n\nTranscribed text');
         });
+    });
+
+    it('renders the structured read view and supports collapsing branches', () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        expect(screen.getByTestId('study-note-outline-read')).toBeInTheDocument();
+        expect(screen.getByText('Preface paragraph')).toBeInTheDocument();
+        expect(screen.getByText('Main Branch')).toBeInTheDocument();
+        expect(screen.getByText('Child Branch')).toBeInTheDocument();
+        expect(screen.getByText('Main branch body')).toBeInTheDocument();
+        expect(screen.getByText('Child branch body')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-toggle-1'));
+
+        expect(screen.queryByText('Child Branch')).not.toBeInTheDocument();
+        expect(screen.queryByText('Child branch body')).not.toBeInTheDocument();
+    });
+
+    it('shows the live structure preview while editing heading-based content', () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        expect(screen.getByTestId('study-note-outline-preview')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-resizer')).toBeInTheDocument();
+        expect(screen.getByText('studiesWorkspace.outlinePilot.previewTitle')).toBeInTheDocument();
+        expect(screen.getByText('Main Branch')).toBeInTheDocument();
+        expect(screen.getByText('Child Branch')).toBeInTheDocument();
     });
 
     it('navigates back using the back button', () => {

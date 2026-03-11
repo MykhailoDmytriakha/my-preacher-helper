@@ -1,7 +1,30 @@
 import React from 'react';
 import { render, fireEvent, screen } from '@testing-library/react';
 
+// Mock @tiptap/react to avoid EventEmitter infrastructure requirements
+jest.mock('@tiptap/react', () => ({
+    ...jest.requireActual('@tiptap/react'),
+    useEditorState: ({ editor, selector }: { editor: unknown; selector: (arg: { editor: unknown }) => unknown }) => {
+        return selector({ editor });
+    },
+}));
+
 import { RichMarkdownToolbar } from '@/components/ui/RichMarkdownToolbar';
+
+const makeStateMock = () => ({
+    selection: {
+        $from: {
+            parent: {
+                type: { name: 'paragraph' },
+                attrs: {},
+            },
+        },
+        from: 0,
+    },
+    doc: {
+        nodesBetween: jest.fn(),
+    },
+});
 
 const makeEditorMock = (activeMarks: string[] = []) => ({
     isActive: jest.fn((markOrNode: string) => activeMarks.includes(markOrNode)),
@@ -14,6 +37,7 @@ const makeEditorMock = (activeMarks: string[] = []) => ({
     toggleBulletList: jest.fn().mockReturnValue({ run: jest.fn().mockReturnValue(true) }),
     toggleOrderedList: jest.fn().mockReturnValue({ run: jest.fn().mockReturnValue(true) }),
     toggleBlockquote: jest.fn().mockReturnValue({ run: jest.fn().mockReturnValue(true) }),
+    state: makeStateMock(),
 });
 
 describe('RichMarkdownToolbar', () => {

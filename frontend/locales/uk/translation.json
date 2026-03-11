@@ -716,7 +716,15 @@
     "collapse": "Згорнути",
     "unknown": "Невідомо",
     "saveError": "Помилка збереження. Будь ласка, спробуйте ще раз.",
-    "clickToEdit": "Натисніть, щоб редагувати"
+    "clickToEdit": "Натисніть, щоб редагувати",
+    "blockType": "Тип блока",
+    "bodyText": "Текст",
+    "branch": "Гілка",
+    "branchAtCurrentLevel": "Гілка на поточному рівні (H{{level}})",
+    "childBranch": "Підгілка",
+    "childBranchAtLevel": "Підгілка (H{{level}})",
+    "promote": "Вище",
+    "promoteBranch": "Підняти гілку"
   },
   "shareNotes": {
     "title": "Нотатка за посиланням",
@@ -1843,6 +1851,14 @@
       "prevNote": "Попередня нотатка",
       "nextNote": "Наступна нотатка",
       "keyboardHint": "Використовуйте ← → для навігації, ESC для виходу"
+    },
+    "outlinePilot": {
+      "structuredTitle": "Структурний режим",
+      "previewTitle": "Живий попередній перегляд структури",
+      "openingContent": "Вступний текст",
+      "branchCount": "{{count}} гілок",
+      "noBranches": "Додайте заголовки (##, ###, ...), щоб перетворити нотатку на гілки структури.",
+      "resizePreview": "Змінити ширину попереднього перегляду структури"
     },
     "shareLinks": {
       "title": "Посилання для доступу",

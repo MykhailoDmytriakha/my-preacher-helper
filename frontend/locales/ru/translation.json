@@ -716,7 +716,15 @@
     "collapse": "Свернуть",
     "unknown": "Неизвестно",
     "saveError": "Ошибка сохранения. Пожалуйста, попробуйте снова.",
-    "clickToEdit": "Нажмите, чтобы редактировать"
+    "clickToEdit": "Нажмите, чтобы редактировать",
+    "blockType": "Тип блока",
+    "bodyText": "Текст",
+    "branch": "Ветка",
+    "branchAtCurrentLevel": "Ветка на текущем уровне (H{{level}})",
+    "childBranch": "Подветка",
+    "childBranchAtLevel": "Подветка (H{{level}})",
+    "promote": "Выше",
+    "promoteBranch": "Поднять ветку"
   },
   "shareNotes": {
     "title": "Заметка по ссылке",
@@ -1843,6 +1851,14 @@
       "prevNote": "Предыдущая заметка",
       "nextNote": "Следующая заметка",
       "keyboardHint": "Используйте ← → для навигации, ESC для выхода"
+    },
+    "outlinePilot": {
+      "structuredTitle": "Структурный режим",
+      "previewTitle": "Живой предпросмотр структуры",
+      "openingContent": "Вводный текст",
+      "branchCount": "{{count}} веток",
+      "noBranches": "Добавьте заголовки (##, ###, ...), чтобы превратить заметку в ветви структуры.",
+      "resizePreview": "Изменить ширину предпросмотра структуры"
     },
     "shareLinks": {
       "title": "Ссылки для доступа",

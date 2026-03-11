@@ -716,7 +716,15 @@
     "collapse": "Collapse",
     "unknown": "Unknown",
     "saveError": "Failed to save. Please try again.",
-    "clickToEdit": "Click to edit"
+    "clickToEdit": "Click to edit",
+    "blockType": "Block type",
+    "bodyText": "Body",
+    "branch": "Branch",
+    "branchAtCurrentLevel": "Branch at current level (H{{level}})",
+    "childBranch": "Child",
+    "childBranchAtLevel": "Child branch (H{{level}})",
+    "promote": "Up",
+    "promoteBranch": "Promote branch"
   },
   "shareNotes": {
     "title": "Shared note",
@@ -1839,6 +1847,14 @@
       "prevNote": "Previous note",
       "nextNote": "Next note",
       "keyboardHint": "Use ← → arrows to navigate, ESC to exit"
+    },
+    "outlinePilot": {
+      "structuredTitle": "Structured view",
+      "previewTitle": "Live structure preview",
+      "openingContent": "Opening content",
+      "branchCount": "{{count}} branches",
+      "noBranches": "Add headings (##, ###, ...) to turn this note into branches.",
+      "resizePreview": "Resize structure preview"
     },
     "shareLinks": {
       "title": "Share links",

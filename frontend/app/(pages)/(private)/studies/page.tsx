@@ -26,6 +26,7 @@ import { StudyNote } from '@/models/models';
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
+import { filterAndSortStudyNotes } from './utils/filterStudyNotes';
 
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
@@ -156,28 +157,14 @@ export default function StudiesPage() {
 
   // Filter notes
   const filteredNotes = useMemo(() => {
-    return notes
-      // Tab filter
-      .filter((note) => {
-        if (activeTab === 'notes') return note.type !== 'question';
-        if (activeTab === 'questions') return note.type === 'question';
-        return true; // 'all'
-      })
-      .filter((note) => (tagFilter ? note.tags.includes(tagFilter) : true))
-      .filter((note) =>
-        bookFilter
-          ? note.scriptureRefs.some((ref) => ref.book.toLowerCase() === bookFilter.toLowerCase())
-          : true
-      )
-      .filter((note) => {
-        if (searchTokens.length === 0) return true;
-        const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-          .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
-          .join(' ')}`.toLowerCase();
-
-        return searchTokens.every((token) => haystack.includes(token));
-      })
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return filterAndSortStudyNotes({
+      notes,
+      activeTab,
+      tagFilter,
+      bookFilter,
+      searchTokens,
+      bibleLocale,
+    });
   }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
   const visibleNotes = useMemo(
