@@ -651,7 +651,7 @@ export default function SermonPage() {
     });
   }, [setSermon]);
 
-  const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string) => {
+  const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string | null) => {
     await handleSaveThoughtPatch(thought, {
       text: thought.text,
       tags: thought.tags,
@@ -732,7 +732,7 @@ export default function SermonPage() {
     void executeDelete();
   }, [displaySermon, persistStructureForThoughts, sermon, setSermon, t, thoughtSync]);
 
-  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
+  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => {
     if (!editingModalData) return;
     const currentSermon = displaySermon ?? sermon;
     if (!currentSermon) {

@@ -22,7 +22,7 @@ interface EditThoughtModalProps {
   allowedTags: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   containerSection?: string;
-  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string) => void;
+  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => void;
   onClose: () => void;
   allowOffline?: boolean;
 }
@@ -109,7 +109,7 @@ const OutlinePointSelect = ({
   t,
   disabled = false,
 }: {
-  selectedSermonPointId: string | undefined;
+  selectedSermonPointId: string | null | undefined;
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   filteredSermonPoints: Partial<Record<OutlineSectionKey, SermonPoint[]>>;
   selectedPointInfo: SermonPointInfo | undefined;
@@ -273,7 +273,7 @@ export default function EditThoughtModal({
   const isDictationDisabled = !isOnline || isReadOnly;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
-  const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | undefined>(initialSermonPointId);
+  const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -304,7 +304,7 @@ export default function EditThoughtModal({
   const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (isReadOnly) return;
     const value = e.target.value;
-    setSelectedSermonPointId(value === "" ? undefined : value);
+    setSelectedSermonPointId(value === "" ? null : value);
   };
 
   const handleSave = () => {

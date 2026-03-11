@@ -37,7 +37,7 @@ interface ThoughtCardProps {
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
-  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string) => Promise<void> | void;
+  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null) => Promise<void> | void;
   syncState?: OptimisticEntitySyncState;
   onRetrySync?: (thoughtId: string) => void;
   isReadOnly?: boolean;
@@ -234,7 +234,7 @@ const ThoughtCard = ({
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
   }, [hasInconsistentSection, hasMultipleStructureTags, isDeleting, isError, isPending, isSuccess, needsSectionTag]);
 
-  const handleSermonPointChange = useCallback(async (outlinePointId: string | undefined) => {
+  const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined) => {
     if (isReadOnly) return;
     if (!sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange) return;
     await onThoughtOutlinePointChange(thought, outlinePointId);

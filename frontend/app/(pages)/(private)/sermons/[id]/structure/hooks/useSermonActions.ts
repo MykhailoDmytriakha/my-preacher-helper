@@ -35,7 +35,7 @@ interface UseSermonActionsProps {
         removePendingThought: (localId: string, options?: { removeFromContainers?: boolean }) => void;
         replacePendingThought: (localId: string, newItem: Item) => void;
         updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string; operation?: 'create' | 'update' | 'delete' }) => void;
-        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string } | undefined;
+        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string | null } | undefined;
     };
 }
 
@@ -131,7 +131,7 @@ export function useSermonActions({
         sectionId: 'introduction' | 'main' | 'conclusion';
         text: string;
         tags: string[];
-        outlinePointId?: string;
+        outlinePointId?: string | null;
     }) => {
         if (!sermon) return;
         const { localId, sectionId, text, tags, outlinePointId } = payload;
@@ -234,7 +234,7 @@ export function useSermonActions({
     const handleCreateNewThought = async (
         updatedText: string,
         updatedTags: string[],
-        outlinePointId: string | undefined,
+        outlinePointId: string | null | undefined,
     ) => {
         if (!sermon) return;
         const section = addingThoughtToSection;
@@ -277,7 +277,7 @@ export function useSermonActions({
     const handleUpdateExistingThought = async (
         updatedText: string,
         updatedTags: string[],
-        outlinePointId: string | undefined,
+        outlinePointId: string | null | undefined,
     ) => {
         if (!sermon || !editingItem) return;
         if (isLocalThoughtId(editingItem.id)) return;
@@ -444,7 +444,7 @@ export function useSermonActions({
         void executeDelete();
     }, [buildSyncExpiresAt, containersRef, pendingActions, setContainers, setSermon, t]);
 
-    const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string) => {
+    const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => {
         if (!sermon) return;
 
         const trimmedText = updatedText.trim();

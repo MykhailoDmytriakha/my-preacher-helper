@@ -14,7 +14,7 @@ export interface PendingThoughtRecord {
   sectionId: PendingThoughtSection;
   text: string;
   tags: string[];
-  outlinePointId?: string;
+  outlinePointId?: string | null;
   createdAt: string;
   lastAttemptAt: string;
   expiresAt: string;
@@ -27,7 +27,7 @@ export interface PendingThoughtEntity {
   sectionId: PendingThoughtSection;
   text: string;
   tags: string[];
-  outlinePointId?: string;
+  outlinePointId?: string | null;
 }
 
 const PENDING_THOUGHTS_KEY_PREFIX = "pending-thoughts:";
