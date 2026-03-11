@@ -388,44 +388,12 @@ export default function EditThoughtModal({
           }
         >
           {/* Header */}
-          <div ref={headerRef} className="space-y-3 mb-3">
+          <div ref={headerRef} className="flex justify-between items-center mb-4">
             <h2 className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
-            <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {t('editThought.appendDictation')}
-                </span>
-                <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
-                  <FocusRecorderButton
-                    size="small"
-                    onRecordingComplete={handleDictationComplete}
-                    isProcessing={isDictating}
-                    disabled={isSubmitting || isDictationDisabled}
-                    onError={(errorMessage) => {
-                      toast.error(errorMessage);
-                      setIsDictating(false);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Body: on desktop scroll inside; on mobile the outer div scrolls */}
-          <div className="sm:flex-1 sm:overflow-y-auto sm:min-h-0 w-full flex flex-col gap-4">
-            {isReadOnly ? (
-              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
-                <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
-              </div>
-            ) : (
-              <RichMarkdownEditor
-                value={text}
-                onChange={setText}
-                placeholder={t('manualThought.placeholder')}
-              />
-            )}
-
+          <div className="sm:flex-1 sm:overflow-y-auto sm:min-h-0 w-full flex flex-col gap-6">
             <div ref={metaRef} className="space-y-4">
               {sermonOutline && (
                 <OutlinePointSelect
@@ -447,6 +415,41 @@ export default function EditThoughtModal({
                 t={t}
                 disabled={isReadOnly}
               />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {t('editThought.appendDictation')}
+                  </span>
+                  <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
+                    <FocusRecorderButton
+                      size="small"
+                      onRecordingComplete={handleDictationComplete}
+                      isProcessing={isDictating}
+                      disabled={isSubmitting || isDictationDisabled}
+                      onError={(errorMessage: string) => {
+                        toast.error(errorMessage);
+                        setIsDictating(false);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {isReadOnly ? (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-md prose prose-sm desktop:prose-base dark:prose-invert max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
+                </div>
+              ) : (
+                <RichMarkdownEditor
+                  value={text}
+                  onChange={setText}
+                  placeholder={t('manualThought.placeholder')}
+                />
+              )}
             </div>
           </div>
 
