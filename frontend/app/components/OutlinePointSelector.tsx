@@ -11,7 +11,7 @@ import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@ut
 interface SermonPointSelectorProps {
   thought: Thought;
   sermonOutline?: SermonOutline;
-  onSermonPointChange: (outlinePointId: string | undefined) => Promise<void>;
+  onSermonPointChange: (outlinePointId: string | null | undefined) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -85,12 +85,12 @@ export default function SermonPointSelector({
 
   const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
 
-  const handleSermonPointSelect = async (outlinePointId: string) => {
+  const handleSermonPointSelect = async (outlinePointId: string | null) => {
     if (isUpdating || disabled) return;
 
     setIsUpdating(true);
     try {
-      await onSermonPointChange(outlinePointId === '' ? undefined : outlinePointId);
+      await onSermonPointChange(outlinePointId);
       setIsOpen(false);
     } catch (error) {
       console.error('Failed to update outline point:', error);
@@ -145,7 +145,7 @@ export default function SermonPointSelector({
               className="absolute z-50 mt-2 min-w-[250px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto"
             >
               <button
-                onClick={() => handleSermonPointSelect('')}
+                onClick={() => handleSermonPointSelect(null)}
                 disabled={isUpdating}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
               >

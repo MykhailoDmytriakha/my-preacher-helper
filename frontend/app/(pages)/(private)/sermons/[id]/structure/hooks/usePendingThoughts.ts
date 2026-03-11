@@ -27,7 +27,7 @@ export type PendingThoughtInput = {
   sectionId: PendingThoughtSection;
   text: string;
   tags: string[];
-  outlinePointId?: string;
+  outlinePointId?: string | null;
 };
 
 interface UsePendingThoughtsParams {

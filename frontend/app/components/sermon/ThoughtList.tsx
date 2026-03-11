@@ -15,7 +15,7 @@ interface ThoughtListProps {
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
-  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string) => Promise<void> | void;
+  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null) => Promise<void> | void;
   syncStatesById?: Record<string, OptimisticEntitySyncState>;
   onRetrySync?: (thoughtId: string) => void;
   resetFilters: () => void;

@@ -259,7 +259,7 @@ describe('SermonPointSelector', () => {
               fireEvent.click(screen.getByText(/First main point/));
               await waitFor(() => screen.getByText('No outline point selected'));
               fireEvent.click(screen.getByText('No outline point selected'));
-              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith(undefined));
+              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith(null));
             }
           },
           {

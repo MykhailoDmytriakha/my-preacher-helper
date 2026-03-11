@@ -163,7 +163,7 @@ export const calculateGroupPosition = (
  * Helper function to find an outline point by ID within a sermon's outline
  */
 export function findOutlinePoint(
-  outlinePointId: string | undefined,
+  outlinePointId: string | null | undefined,
   sermon: Sermon | null
 ): { text: string; section: string } | undefined {
   if (!outlinePointId || !sermon?.outline) {
@@ -192,7 +192,7 @@ export function buildItemForUI(params: {
   tags: string[];
   allowedTags: { name: string; color: string }[];
   sectionTag?: string;
-  outlinePointId?: string;
+  outlinePointId?: string | null;
   outlinePoint?: { text: string; section: string };
 }): Item {
   const { id, text, tags, allowedTags, sectionTag, outlinePointId, outlinePoint } = params;
