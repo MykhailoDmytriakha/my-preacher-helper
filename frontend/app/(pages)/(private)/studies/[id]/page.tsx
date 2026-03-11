@@ -21,13 +21,19 @@ import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfir
 import { BibleLocale } from '../bibleData';
 import {
     findStudyNoteOutlineBranchByKey,
+    findStudyNoteOutlinePreviousSiblingKey,
     filterStudyNoteOutlineKeys,
     flattenStudyNoteOutlineBranches,
     getCollapsibleStudyNoteBranchKeys,
     parseStudyNoteOutline,
+    remapStudyNoteOutlineKeyIgnoringHeadingLevel,
     remapStudyNoteOutlineKeys,
 } from '../components/studyNoteOutline';
-import { insertStudyNoteOutlineBranch, moveStudyNoteOutlineBranch } from '../components/studyNoteOutlineActions';
+import {
+    insertStudyNoteOutlineBranch,
+    moveStudyNoteOutlineBranch,
+    shiftStudyNoteOutlineBranchDepth,
+} from '../components/studyNoteOutlineActions';
 import { StudyNoteOutlineView } from '../components/StudyNoteOutlineView';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
@@ -568,6 +574,7 @@ function StudyNoteContentSurface({
     setContent,
     handleMoveBranch,
     handleCreateBranch,
+    handleShiftBranchDepth,
     outlineWorkspaceMode,
     setOutlineWorkspaceMode,
     pendingHeadingSelection,
@@ -593,6 +600,7 @@ function StudyNoteContentSurface({
     setContent: Dispatch<SetStateAction<string>>;
     handleMoveBranch: (branchKey: string, direction: 'up' | 'down') => void;
     handleCreateBranch: (branchKey: string, position: 'sibling' | 'child') => void;
+    handleShiftBranchDepth: (branchKey: string, direction: 'promote' | 'demote') => void;
     outlineWorkspaceMode: 'editor' | 'split' | 'preview';
     setOutlineWorkspaceMode: Dispatch<SetStateAction<'editor' | 'split' | 'preview'>>;
     pendingHeadingSelection: PendingHeadingSelectionRequest | null;
@@ -701,6 +709,7 @@ function StudyNoteContentSurface({
                                         onCollapseAll={handleCollapseAllPreviewBranches}
                                         onMoveBranch={handleMoveBranch}
                                         onCreateBranch={handleCreateBranch}
+                                        onShiftBranchDepth={handleShiftBranchDepth}
                                         preferredActiveBranchRequest={preferredPreviewActiveBranchRequest}
                                         showNavigator={isSplitMode}
                                         searchQuery={searchQuery}
@@ -963,6 +972,46 @@ export default function StudyNoteEditorPage() {
         setContent(nextContent);
     }, [clearPreviewFoldedBranch, content, noteOutline.branches, outlineWorkspaceMode, setContent, t]);
 
+    const handleShiftOutlineBranchDepth = useCallback((branchKey: string, direction: 'promote' | 'demote') => {
+        const nextContent = shiftStudyNoteOutlineBranchDepth(content, branchKey, direction);
+
+        if (nextContent === content) {
+            return;
+        }
+
+        const currentBranch = findStudyNoteOutlineBranchByKey(noteOutline.branches, branchKey);
+        const nextOutline = parseStudyNoteOutline(nextContent);
+        const nextBranchKey = currentBranch
+            ? remapStudyNoteOutlineKeyIgnoringHeadingLevel(branchKey, noteOutline.branches, nextOutline.branches)
+            : null;
+        const nextBranch = nextBranchKey
+            ? findStudyNoteOutlineBranchByKey(nextOutline.branches, nextBranchKey)
+            : null;
+
+        if (direction === 'demote') {
+            const previousSiblingKey = findStudyNoteOutlinePreviousSiblingKey(
+                noteOutline.branches,
+                branchKey
+            );
+
+            if (previousSiblingKey) {
+                clearPreviewFoldedBranch(previousSiblingKey);
+            }
+        }
+
+        if (nextBranch) {
+            setPreferredPreviewActiveBranchRequest({
+                key: nextBranch.key,
+                token: makeId(),
+            });
+            setPendingHeadingSelection(
+                buildPendingHeadingSelectionRequest(nextOutline.branches, nextBranch)
+            );
+        }
+
+        setContent(nextContent);
+    }, [clearPreviewFoldedBranch, content, noteOutline.branches, setContent]);
+
     const addTag = () => {
         const value = tagInput.trim();
         if (!value) return;
@@ -1048,6 +1097,7 @@ export default function StudyNoteEditorPage() {
                         setContent={setContent}
                         handleMoveBranch={handleMoveOutlineBranch}
                         handleCreateBranch={handleCreateOutlineBranch}
+                        handleShiftBranchDepth={handleShiftOutlineBranchDepth}
                         outlineWorkspaceMode={outlineWorkspaceMode}
                         setOutlineWorkspaceMode={setOutlineWorkspaceMode}
                         pendingHeadingSelection={pendingHeadingSelection}

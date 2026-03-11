@@ -1,4 +1,8 @@
-import { insertStudyNoteOutlineBranch, moveStudyNoteOutlineBranch } from '../studyNoteOutlineActions';
+import {
+    insertStudyNoteOutlineBranch,
+    moveStudyNoteOutlineBranch,
+    shiftStudyNoteOutlineBranchDepth,
+} from '../studyNoteOutlineActions';
 import { parseStudyNoteOutline } from '../studyNoteOutline';
 
 describe('studyNoteOutlineActions', () => {
@@ -182,5 +186,108 @@ describe('studyNoteOutlineActions', () => {
 
         expect(insertStudyNoteOutlineBranch(markdown, '1', 'child', { title: 'Too deep' })).toBe(markdown);
         expect(insertStudyNoteOutlineBranch(markdown, 'missing', 'sibling', { title: 'Missing' })).toBe(markdown);
+    });
+
+    it('promotes a nested branch and cascades heading levels across its subtree', () => {
+        const markdown = [
+            '## Root',
+            'Root body',
+            '',
+            '### Child',
+            'Child body',
+            '',
+            '#### Grandchild',
+            'Grandchild body',
+            '',
+            '## Next',
+            'Next body',
+        ].join('\n');
+
+        const nextMarkdown = shiftStudyNoteOutlineBranchDepth(markdown, '1.1', 'promote');
+        const outline = parseStudyNoteOutline(nextMarkdown);
+
+        expect(outline.branches.map((branch) => branch.title)).toEqual([
+            'Root',
+            'Child',
+            'Next',
+        ]);
+        expect(outline.branches[1].children.map((branch) => branch.title)).toEqual(['Grandchild']);
+        expect(nextMarkdown).toContain('## Child');
+        expect(nextMarkdown).toContain('### Grandchild');
+    });
+
+    it('demotes a branch under the previous sibling and cascades descendants deeper', () => {
+        const markdown = [
+            '## Alpha',
+            'Alpha body',
+            '',
+            '### Existing child',
+            'Child body',
+            '',
+            '## Beta',
+            'Beta body',
+            '',
+            '### Beta child',
+            'Beta child body',
+            '',
+            '## Gamma',
+            'Gamma body',
+        ].join('\n');
+
+        const nextMarkdown = shiftStudyNoteOutlineBranchDepth(markdown, '2', 'demote');
+        const outline = parseStudyNoteOutline(nextMarkdown);
+
+        expect(outline.branches.map((branch) => branch.title)).toEqual([
+            'Alpha',
+            'Gamma',
+        ]);
+        expect(outline.branches[0].children.map((branch) => branch.title)).toEqual([
+            'Existing child',
+            'Beta',
+        ]);
+        expect(outline.branches[0].children[1].children.map((branch) => branch.title)).toEqual([
+            'Beta child',
+        ]);
+        expect(nextMarkdown).toContain('### Beta');
+        expect(nextMarkdown).toContain('#### Beta child');
+    });
+
+    it('returns the original markdown when promote/demote is structurally invalid', () => {
+        const rootMarkdown = [
+            '## Root',
+            'Root body',
+            '',
+            '## Next',
+            'Next body',
+        ].join('\n');
+        const h6Markdown = [
+            '## Root',
+            'Root body',
+            '',
+            '### Child',
+            'Child body',
+            '',
+            '###### Too deep already',
+            'Leaf body',
+        ].join('\n');
+        const h6SelfMarkdown = [
+            '## Root',
+            'Root body',
+            '',
+            '### Parent',
+            'Parent body',
+            '',
+            '###### First deep',
+            'First deep body',
+            '',
+            '###### Second deep',
+            'Second deep body',
+        ].join('\n');
+
+        expect(shiftStudyNoteOutlineBranchDepth(rootMarkdown, '1', 'promote')).toBe(rootMarkdown);
+        expect(shiftStudyNoteOutlineBranchDepth(rootMarkdown, '1', 'demote')).toBe(rootMarkdown);
+        expect(shiftStudyNoteOutlineBranchDepth(h6Markdown, '1.1', 'demote')).toBe(h6Markdown);
+        expect(shiftStudyNoteOutlineBranchDepth(h6SelfMarkdown, '1.1.2', 'demote')).toBe(h6SelfMarkdown);
+        expect(shiftStudyNoteOutlineBranchDepth(rootMarkdown, 'missing', 'promote')).toBe(rootMarkdown);
     });
 });

@@ -31,6 +31,16 @@ interface StudyNoteOutlineBranchMatchDescriptor {
     occurrenceIndex: number;
 }
 
+interface StudyNoteOutlineBranchSiblingContext {
+    branch: StudyNoteOutlineBranch;
+    siblings: StudyNoteOutlineBranch[];
+    siblingIndex: number;
+}
+
+interface StudyNoteOutlineBranchSignatureOptions {
+    includeHeadingLevel?: boolean;
+}
+
 interface CollectedHeading {
     headingLevel: number;
     rawTitle: string;
@@ -71,6 +81,31 @@ function stripInlineMarkdown(value: string): string {
         .trim();
 }
 
+function getShiftedFenceMarker(
+    activeFenceMarker: { marker: '`' | '~'; length: number } | null,
+    line: string
+): { marker: '`' | '~'; length: number } | null {
+    const trimmedLine = line.trim();
+    const fenceMatch = trimmedLine.match(FENCE_PATTERN);
+
+    if (!fenceMatch) {
+        return activeFenceMarker;
+    }
+
+    const marker = fenceMatch[1][0] as '`' | '~';
+    const markerLength = fenceMatch[1].length;
+
+    if (activeFenceMarker === null) {
+        return { marker, length: markerLength };
+    }
+
+    if (activeFenceMarker.marker === marker && markerLength >= activeFenceMarker.length) {
+        return null;
+    }
+
+    return activeFenceMarker;
+}
+
 function getCollapsedPreview(body: string): string {
     const firstNonEmptyLine = body
         .split('\n')
@@ -97,19 +132,7 @@ function collectHeadings(markdown: string): CollectedHeading[] {
     let activeFenceMarker: { marker: '`' | '~'; length: number } | null = null;
 
     lines.forEach((line) => {
-        const trimmedLine = line.trim();
-        const fenceMatch = trimmedLine.match(FENCE_PATTERN);
-
-        if (fenceMatch) {
-            const marker = fenceMatch[1][0] as '`' | '~';
-            const markerLength = fenceMatch[1].length;
-
-            if (activeFenceMarker === null) {
-                activeFenceMarker = { marker, length: markerLength };
-            } else if (activeFenceMarker.marker === marker && markerLength >= activeFenceMarker.length) {
-                activeFenceMarker = null;
-            }
-        }
+        activeFenceMarker = getShiftedFenceMarker(activeFenceMarker, line);
 
         if (activeFenceMarker === null) {
             const headingMatch = line.match(HEADING_PATTERN);
@@ -264,6 +287,51 @@ export function findStudyNoteOutlineBranchByKey(
     return null;
 }
 
+export function findStudyNoteOutlineBranchSiblingContext(
+    branches: StudyNoteOutlineBranch[],
+    branchKey: string
+): StudyNoteOutlineBranchSiblingContext | null {
+    for (let siblingIndex = 0; siblingIndex < branches.length; siblingIndex += 1) {
+        const branch = branches[siblingIndex];
+
+        if (branch.key === branchKey) {
+            return {
+                branch,
+                siblings: branches,
+                siblingIndex,
+            };
+        }
+
+        const nestedContext = findStudyNoteOutlineBranchSiblingContext(branch.children, branchKey);
+
+        if (nestedContext) {
+            return nestedContext;
+        }
+    }
+
+    return null;
+}
+
+export function findStudyNoteOutlinePreviousSiblingKey(
+    branches: StudyNoteOutlineBranch[],
+    branchKey: string
+): string | null {
+    const siblingContext = findStudyNoteOutlineBranchSiblingContext(branches, branchKey);
+
+    if (!siblingContext || siblingContext.siblingIndex <= 0) {
+        return null;
+    }
+
+    return siblingContext.siblings[siblingContext.siblingIndex - 1]?.key ?? null;
+}
+
+export function getStudyNoteOutlineBranchMaxHeadingLevel(branch: StudyNoteOutlineBranch): number {
+    return branch.children.reduce(
+        (maxHeadingLevel, childBranch) => Math.max(maxHeadingLevel, getStudyNoteOutlineBranchMaxHeadingLevel(childBranch)),
+        branch.headingLevel
+    );
+}
+
 export function getCollapsibleStudyNoteBranchKeys(branches: StudyNoteOutlineBranch[]): string[] {
     return flattenStudyNoteOutlineBranches(branches)
         .filter((branch) => Boolean(branch.body.trim()) || branch.children.length > 0)
@@ -279,18 +347,28 @@ export function filterStudyNoteOutlineKeys(
     return candidateKeys.filter((key) => validKeys.has(key));
 }
 
-function getStudyNoteOutlineBranchSignature(branch: StudyNoteOutlineBranch): string {
-    return JSON.stringify([
-        branch.headingLevel,
-        branch.rawTitle,
-        branch.body.trim(),
-        branch.children.length,
-    ]);
+function getStudyNoteOutlineBranchSignature(
+    branch: StudyNoteOutlineBranch,
+    { includeHeadingLevel = true }: StudyNoteOutlineBranchSignatureOptions = {}
+): string {
+    return JSON.stringify({
+        headingLevel: includeHeadingLevel ? branch.headingLevel : null,
+        rawTitle: branch.rawTitle,
+        body: branch.body.trim(),
+        children: branch.children.map((childBranch) =>
+            JSON.parse(
+                getStudyNoteOutlineBranchSignature(childBranch, {
+                    includeHeadingLevel,
+                })
+            )
+        ),
+    });
 }
 
 function getStudyNoteOutlineBranchMatchDescriptor(
     branches: StudyNoteOutlineBranch[],
-    branchKey: string
+    branchKey: string,
+    options: StudyNoteOutlineBranchSignatureOptions = {}
 ): StudyNoteOutlineBranchMatchDescriptor | null {
     const flattenedBranches = flattenStudyNoteOutlineBranches(branches);
     const branch = flattenedBranches.find((candidate) => candidate.key === branchKey);
@@ -299,9 +377,9 @@ function getStudyNoteOutlineBranchMatchDescriptor(
         return null;
     }
 
-    const signature = getStudyNoteOutlineBranchSignature(branch);
+    const signature = getStudyNoteOutlineBranchSignature(branch, options);
     const occurrenceIndex = flattenedBranches
-        .filter((candidate) => getStudyNoteOutlineBranchSignature(candidate) === signature)
+        .filter((candidate) => getStudyNoteOutlineBranchSignature(candidate, options) === signature)
         .findIndex((candidate) => candidate.key === branch.key);
 
     if (occurrenceIndex < 0) {
@@ -331,6 +409,27 @@ export function remapStudyNoteOutlineKey(
     return nextMatches[matchDescriptor.occurrenceIndex]?.key ?? null;
 }
 
+export function remapStudyNoteOutlineKeyIgnoringHeadingLevel(
+    branchKey: string,
+    previousBranches: StudyNoteOutlineBranch[],
+    nextBranches: StudyNoteOutlineBranch[]
+): string | null {
+    const matchDescriptor = getStudyNoteOutlineBranchMatchDescriptor(previousBranches, branchKey, {
+        includeHeadingLevel: false,
+    });
+
+    if (!matchDescriptor) {
+        return null;
+    }
+
+    const nextMatches = flattenStudyNoteOutlineBranches(nextBranches)
+        .filter((branch) =>
+            getStudyNoteOutlineBranchSignature(branch, { includeHeadingLevel: false }) === matchDescriptor.signature
+        );
+
+    return nextMatches[matchDescriptor.occurrenceIndex]?.key ?? null;
+}
+
 export function remapStudyNoteOutlineKeys(
     candidateKeys: string[],
     previousBranches: StudyNoteOutlineBranch[],
@@ -340,4 +439,31 @@ export function remapStudyNoteOutlineKeys(
         const remappedKey = remapStudyNoteOutlineKey(branchKey, previousBranches, nextBranches);
         return remappedKey ? [remappedKey] : [];
     });
+}
+
+export function shiftStudyNoteMarkdownHeadingLevels(markdown: string, delta: number): string {
+    const lines = markdown.split('\n');
+    let activeFenceMarker: { marker: '`' | '~'; length: number } | null = null;
+
+    return lines.map((line) => {
+        activeFenceMarker = getShiftedFenceMarker(activeFenceMarker, line);
+
+        if (activeFenceMarker !== null) {
+            return line;
+        }
+
+        const headingMatch = line.match(/^([ ]{0,3})(#{1,6})(?=[ \t]+.+$)/);
+
+        if (!headingMatch) {
+            return line;
+        }
+
+        const nextHeadingLevel = headingMatch[2].length + delta;
+
+        if (nextHeadingLevel < 1 || nextHeadingLevel > 6) {
+            return line;
+        }
+
+        return `${headingMatch[1]}${'#'.repeat(nextHeadingLevel)}${line.slice(headingMatch[1].length + headingMatch[2].length)}`;
+    }).join('\n');
 }

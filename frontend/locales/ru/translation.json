@@ -1864,6 +1864,8 @@
       "resizePreview": "Изменить ширину предпросмотра структуры",
       "addSibling": "Добавить соседнюю ветку",
       "addChild": "Добавить подветку",
+      "promoteBranch": "Поднять ветку",
+      "demoteBranch": "Сделать подветкой",
       "newBranchTitle": "Новая ветка"
     },
     "shareLinks": {

@@ -1864,6 +1864,8 @@
       "resizePreview": "Змінити ширину попереднього перегляду структури",
       "addSibling": "Додати сусідню гілку",
       "addChild": "Додати підгілку",
+      "promoteBranch": "Підняти гілку",
+      "demoteBranch": "Зробити підгілкою",
       "newBranchTitle": "Нова гілка"
     },
     "shareLinks": {

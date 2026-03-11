@@ -1,22 +1,20 @@
 import {
+    findStudyNoteOutlineBranchSiblingContext,
     findStudyNoteOutlineBranchByKey,
+    getStudyNoteOutlineBranchMaxHeadingLevel,
     normalizeStudyNoteMarkdown,
     parseStudyNoteOutline,
+    shiftStudyNoteMarkdownHeadingLevels,
     type StudyNoteOutlineBranch,
 } from './studyNoteOutline';
 
 type StudyNoteOutlineMoveDirection = 'up' | 'down';
 type StudyNoteOutlineInsertPosition = 'sibling' | 'child';
+type StudyNoteOutlineDepthDirection = 'promote' | 'demote';
 
 interface StudyNoteOutlineInsertOptions {
     title: string;
     body?: string;
-}
-
-interface BranchSiblingContext {
-    branch: StudyNoteOutlineBranch;
-    siblings: StudyNoteOutlineBranch[];
-    siblingIndex: number;
 }
 
 function trimBranchSliceForSwap(markdown: string): string {
@@ -44,31 +42,6 @@ function buildInsertedBranchMarkdown(
     const headingLine = `${'#'.repeat(headingLevel)} ${normalizedTitle}`;
 
     return normalizedBody ? `${headingLine}\n${normalizedBody}` : headingLine;
-}
-
-function findBranchSiblingContext(
-    branches: StudyNoteOutlineBranch[],
-    branchKey: string
-): BranchSiblingContext | null {
-    for (let siblingIndex = 0; siblingIndex < branches.length; siblingIndex += 1) {
-        const branch = branches[siblingIndex];
-
-        if (branch.key === branchKey) {
-            return {
-                branch,
-                siblings: branches,
-                siblingIndex,
-            };
-        }
-
-        const nestedContext = findBranchSiblingContext(branch.children, branchKey);
-
-        if (nestedContext) {
-            return nestedContext;
-        }
-    }
-
-    return null;
 }
 
 function swapSiblingSubtrees(
@@ -110,7 +83,7 @@ export function moveStudyNoteOutlineBranch(
 ): string {
     const normalizedMarkdown = normalizeStudyNoteMarkdown(markdown);
     const outline = parseStudyNoteOutline(normalizedMarkdown);
-    const branchContext = findBranchSiblingContext(outline.branches, branchKey);
+    const branchContext = findStudyNoteOutlineBranchSiblingContext(outline.branches, branchKey);
 
     if (!branchContext) {
         return markdown;
@@ -167,4 +140,41 @@ export function insertStudyNoteOutlineBranch(
     const nextMarkdown = `${before}${prefix}${insertedBranch}${suffix}${after}`;
 
     return restoreMarkdownLineEndings(nextMarkdown, markdown);
+}
+
+export function shiftStudyNoteOutlineBranchDepth(
+    markdown: string,
+    branchKey: string,
+    direction: StudyNoteOutlineDepthDirection
+): string {
+    const normalizedMarkdown = normalizeStudyNoteMarkdown(markdown);
+    const outline = parseStudyNoteOutline(normalizedMarkdown);
+    const branchContext = findStudyNoteOutlineBranchSiblingContext(outline.branches, branchKey);
+
+    if (!branchContext?.branch.sourceRange) {
+        return markdown;
+    }
+
+    if (direction === 'promote' && branchContext.branch.path.length <= 1) {
+        return markdown;
+    }
+
+    if (direction === 'demote') {
+        if (branchContext.siblingIndex === 0 || getStudyNoteOutlineBranchMaxHeadingLevel(branchContext.branch) >= 6) {
+            return markdown;
+        }
+    }
+
+    const headingDelta = direction === 'promote' ? -1 : 1;
+    const { startOffset, subtreeEndOffset } = branchContext.branch.sourceRange;
+    const before = normalizedMarkdown.slice(0, startOffset);
+    const subtree = normalizedMarkdown.slice(startOffset, subtreeEndOffset);
+    const after = normalizedMarkdown.slice(subtreeEndOffset);
+    const shiftedSubtree = shiftStudyNoteMarkdownHeadingLevels(subtree, headingDelta);
+
+    if (shiftedSubtree === subtree) {
+        return markdown;
+    }
+
+    return restoreMarkdownLineEndings(`${before}${shiftedSubtree}${after}`, markdown);
 }

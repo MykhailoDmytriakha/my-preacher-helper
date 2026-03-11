@@ -101,6 +101,22 @@ const structuredNote: StudyNote = {
     ].join('\n'),
 };
 
+const cascadedStructuredNote: StudyNote = {
+    ...createMockNote('note-1', 'Cascaded Structured Note'),
+    content: [
+        'Preface paragraph',
+        '',
+        '## Main Branch',
+        'Main branch body',
+        '',
+        '### Child Branch',
+        'Child branch body',
+        '',
+        '#### Grandchild Branch',
+        'Grandchild branch body',
+    ].join('\n'),
+};
+
 const movableStructuredNote: StudyNote = {
     ...createMockNote('note-1', 'Movable Structured Note'),
     content: [
@@ -639,6 +655,75 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(within(branchCards[0]).getByText('Main Branch')).toBeInTheDocument();
         expect(within(branchCards[1]).getByText('Child Branch')).toBeInTheDocument();
         expect(within(branchCards[2]).getByText('studiesWorkspace.outlinePilot.newBranchTitle')).toBeInTheDocument();
+    });
+
+    it('promotes a branch with descendants through the preview shell and preserves cascade wiring', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [cascadedStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-promote-1.1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Main Branch',
+                'Main branch body',
+                '',
+                '## Child Branch',
+                'Child branch body',
+                '',
+                '### Grandchild Branch',
+                'Grandchild branch body',
+            ].join('\n'));
+        });
+    });
+
+    it('demotes a branch through the preview shell and keeps it visible by unfolding the previous sibling', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-toggle-1'));
+
+        expect(screen.queryByText('Alpha child')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-demote-2'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Alpha',
+                'Alpha body',
+                '',
+                '### Alpha child',
+                'Alpha child body',
+                '',
+                '### Beta',
+                'Beta body',
+            ].join('\n'));
+        });
+
+        expect(screen.getByText('Alpha child')).toBeInTheDocument();
+        expect(screen.getByText('Beta')).toBeInTheDocument();
     });
 
     it('navigates back using the back button', () => {

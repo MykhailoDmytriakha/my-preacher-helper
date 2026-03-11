@@ -58,6 +58,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-11 Prefer Structural Lookup Over Path-Key Arithmetic:** While branch identity still uses positional path keys, any logic about sibling relationships or parent adoption should query the current outline tree structurally instead of deriving neighbors by string arithmetic. That keeps the seam stable as the system moves toward true branch IDs.
+- **2026-03-11 Heading-First Promote/Demote Is a Subtree Cascade:** In a heading-first outline, promoting or demoting a branch is never a one-line heading edit. Shift every heading marker inside `sourceRange.startOffset .. subtreeEndOffset` together, otherwise parent/child ownership silently breaks.
 - **2026-03-11 One Normalization Contract Per Outline Mutation:** If heading-first outline edits can both move branches and create branches, route them through the same markdown boundary-normalization contract. Separate mutation seams for move vs insert quickly diverge and create formatting drift inside the same note model.
 - **2026-03-11 Markdown Fence Closure Must Track Length:** For heading-aware markdown parsers, fenced code blocks cannot be tracked by fence character alone. Closing a fence requires the same marker type and a length at least as long as the opener; otherwise headings inside long-fence code blocks are falsely promoted into structure.
 - **2026-03-11 Derived Path Keys vs Reorder State:** If outline branch identity is derived from runtime path keys (`1`, `1.2`, `2.1`), any subtree reorder invalidates key-based fold/selection state. Until stable branch IDs exist, clear or recompute that UI state after moves instead of reusing stale keys.

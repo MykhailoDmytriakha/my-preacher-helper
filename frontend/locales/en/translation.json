@@ -1860,6 +1860,8 @@
       "resizePreview": "Resize structure preview",
       "addSibling": "Add sibling",
       "addChild": "Add child",
+      "promoteBranch": "Promote branch",
+      "demoteBranch": "Demote branch",
       "newBranchTitle": "New branch"
     },
     "shareLinks": {

@@ -229,6 +229,7 @@ describe('StudyNoteOutlineView', () => {
     it('shows preview move controls and forwards branch move actions with boundary guards', () => {
         const onMoveBranch = jest.fn();
         const onCreateBranch = jest.fn();
+        const onShiftBranchDepth = jest.fn();
 
         render(
             <StudyNoteOutlineView
@@ -239,6 +240,7 @@ describe('StudyNoteOutlineView', () => {
                 onCollapseAll={jest.fn()}
                 onMoveBranch={onMoveBranch}
                 onCreateBranch={onCreateBranch}
+                onShiftBranchDepth={onShiftBranchDepth}
                 mode="preview"
             />
         );
@@ -250,14 +252,24 @@ describe('StudyNoteOutlineView', () => {
         expect(screen.queryByTestId('study-note-branch-move-up-1.1')).not.toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-create-sibling-1')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-create-child-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-promote-1')).toBeDisabled();
+        expect(screen.getByTestId('study-note-branch-demote-1')).toBeDisabled();
+        expect(screen.getByTestId('study-note-branch-promote-1.1')).toBeEnabled();
+        expect(screen.getByTestId('study-note-branch-demote-1.1')).toBeDisabled();
+        expect(screen.getByTestId('study-note-branch-promote-2')).toBeDisabled();
+        expect(screen.getByTestId('study-note-branch-demote-2')).toBeEnabled();
 
         fireEvent.click(screen.getByTestId('study-note-branch-move-down-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-move-up-2'));
         fireEvent.click(screen.getByTestId('study-note-branch-create-sibling-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-create-child-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-promote-1.1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-demote-2'));
 
         expect(onMoveBranch).toHaveBeenNthCalledWith(1, '1', 'down');
         expect(onMoveBranch).toHaveBeenNthCalledWith(2, '2', 'up');
+        expect(onShiftBranchDepth).toHaveBeenNthCalledWith(1, '1.1', 'promote');
+        expect(onShiftBranchDepth).toHaveBeenNthCalledWith(2, '2', 'demote');
         expect(onCreateBranch).toHaveBeenNthCalledWith(1, '1', 'sibling');
         expect(onCreateBranch).toHaveBeenNthCalledWith(2, '1', 'child');
     });

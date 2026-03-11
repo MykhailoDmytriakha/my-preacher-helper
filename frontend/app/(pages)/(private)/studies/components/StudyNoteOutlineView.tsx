@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -8,6 +8,7 @@ import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import {
+    getStudyNoteOutlineBranchMaxHeadingLevel,
     remapStudyNoteOutlineKey,
     StudyNoteOutline,
     StudyNoteOutlineBranch,
@@ -21,6 +22,7 @@ interface StudyNoteOutlineViewProps {
     onCollapseAll: () => void;
     onMoveBranch?: (branchKey: string, direction: 'up' | 'down') => void;
     onCreateBranch?: (branchKey: string, position: 'sibling' | 'child') => void;
+    onShiftBranchDepth?: (branchKey: string, direction: 'promote' | 'demote') => void;
     searchQuery?: string;
     mode?: 'read' | 'preview';
     className?: string;
@@ -48,6 +50,7 @@ export function StudyNoteOutlineView({
     onCollapseAll,
     onMoveBranch,
     onCreateBranch,
+    onShiftBranchDepth,
     searchQuery = '',
     mode = 'read',
     className = '',
@@ -157,8 +160,12 @@ export function StudyNoteOutlineView({
         const canMoveUp = siblingIndex > 0;
         const canMoveDown = siblingIndex < siblingCount - 1;
         const canCreateChild = branch.headingLevel < 6;
+        const canPromote = branch.path.length > 1;
+        const canDemote = siblingIndex > 0 && getStudyNoteOutlineBranchMaxHeadingLevel(branch) < 6;
         const addSiblingLabel = t('studiesWorkspace.outlinePilot.addSibling');
         const addChildLabel = t('studiesWorkspace.outlinePilot.addChild');
+        const promoteLabel = t('studiesWorkspace.outlinePilot.promoteBranch');
+        const demoteLabel = t('studiesWorkspace.outlinePilot.demoteBranch');
 
         return (
             <section
@@ -267,6 +274,34 @@ export function StudyNoteOutlineView({
                                         <PlusIcon className="h-3.5 w-3.5" />
                                         <span>{addChildLabel}</span>
                                     </button>
+                                    {onShiftBranchDepth && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                data-testid={`study-note-branch-promote-${branch.key}`}
+                                                aria-label={promoteLabel}
+                                                title={promoteLabel}
+                                                disabled={!canPromote}
+                                                onClick={() => onShiftBranchDepth(branch.key, 'promote')}
+                                                className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                                            >
+                                                <ArrowLeftIcon className="h-3.5 w-3.5" />
+                                                <span>{promoteLabel}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                data-testid={`study-note-branch-demote-${branch.key}`}
+                                                aria-label={demoteLabel}
+                                                title={demoteLabel}
+                                                disabled={!canDemote}
+                                                onClick={() => onShiftBranchDepth(branch.key, 'demote')}
+                                                className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                                            >
+                                                <ArrowRightIcon className="h-3.5 w-3.5" />
+                                                <span>{demoteLabel}</span>
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
